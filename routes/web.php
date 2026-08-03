@@ -5,6 +5,13 @@ use Illuminate\Support\Facades\Route;
 Route::view('/', 'home')->name('home');
 
 /*
+ * Public sports data. These are read-only and served from cache, so a cold
+ * visitor never pays a database wake on Laravel Cloud's scale-to-zero MySQL.
+ */
+Route::livewire('scoreboard', 'scoreboard')->name('scoreboard');
+Route::livewire('standings', 'standings')->name('standings');
+
+/*
  * Anything that reads or writes a user's own data sits behind BOTH `auth` and
  * `verified`. The previous version of this app declared `verified` on its route
  * group but never applied `auth`, and its verify middleware body was commented

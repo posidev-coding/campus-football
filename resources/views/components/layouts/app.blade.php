@@ -20,6 +20,11 @@
                     {{ config('app.name') }}
                 </a>
 
+                <nav class="hidden items-center gap-1 sm:flex">
+                    <flux:button :href="route('scoreboard')" wire:navigate size="sm" variant="ghost">Scores</flux:button>
+                    <flux:button :href="route('standings')" wire:navigate size="sm" variant="ghost">Standings</flux:button>
+                </nav>
+
                 <div class="flex items-center gap-1">
                     @auth
                         <flux:dropdown position="bottom" align="end">
@@ -64,9 +69,9 @@
             >
                 <div class="grid h-[var(--nav-height)] grid-cols-4">
                     <x-nav-tab :href="route('home')" icon="home" label="Home" />
-                    <x-nav-tab href="#" icon="calendar-days" label="Scores" />
+                    <x-nav-tab :href="route('scoreboard')" icon="calendar-days" label="Scores" />
+                    <x-nav-tab :href="route('standings')" icon="table-cells" label="Standings" />
                     <x-nav-tab href="#" icon="clipboard-document-check" label="Picks" />
-                    <x-nav-tab href="#" icon="user-group" label="Groups" />
                 </div>
             </nav>
         @endauth
