@@ -5,6 +5,7 @@ namespace App\Services\Espn\Sync;
 use App\Enums\StandingSource;
 use App\Models\ConferenceSeason;
 use App\Models\Standing;
+use App\Models\Team;
 use App\Services\Espn\EspnClient;
 use App\Services\Espn\RecordParser;
 use Illuminate\Support\Facades\DB;
@@ -28,10 +29,22 @@ class SyncStandings
 {
     public function __construct(private EspnClient $espn) {}
 
-    public function handle(int $year, int $seasonType = 2): int
+    /**
+     * Divisions this app actually ranks.
+     *
+     * ESPN publishes standings for DII/DIII and NAIA too, but those cost
+     * hundreds of requests per run for data no screen surfaces. Pass an empty
+     * array to sync everything.
+     *
+     * @var list<string>
+     */
+    public const RANKED_CLASSIFICATIONS = ['FBS', 'FCS'];
+
+    public function handle(int $year, int $seasonType = 2, array $classifications = self::RANKED_CLASSIFICATIONS): int
     {
         $conferences = ConferenceSeason::where('season_year', $year)
             ->whereNotNull('classification')
+            ->when($classifications !== [], fn ($q) => $q->whereIn('classification', $classifications))
             ->pluck('conference_id');
 
         $synced = 0;
@@ -72,6 +85,14 @@ class SyncStandings
                 $rows[] = $row;
             }
         }
+
+        /*
+         * ESPN standings can reference teams that are not in the season's team
+         * list — DII/DIII payloads in particular. Dropping those rows keeps one
+         * stray reference from aborting an entire conference's update, which
+         * matters because the whole conference writes in a single transaction.
+         */
+        $rows = $this->rejectUnknownTeams($rows, $conferenceId);
 
         if ($rows === []) {
             Log::warning('ESPN standings payload contained no usable entries', [
@@ -152,6 +173,33 @@ class SyncStandings
             'team_id' => $teamId,
             'values' => $values,
         ];
+    }
+
+    /**
+     * @param  list<array>  $rows
+     * @return list<array>
+     */
+    private function rejectUnknownTeams(array $rows, int $conferenceId): array
+    {
+        if ($rows === []) {
+            return $rows;
+        }
+
+        $known = Team::whereIn('id', array_column($rows, 'team_id'))->pluck('id')->all();
+
+        $kept = array_values(array_filter(
+            $rows,
+            fn (array $row) => in_array($row['team_id'], $known, true)
+        ));
+
+        if (($dropped = count($rows) - count($kept)) > 0) {
+            Log::info('Skipped standings rows for teams not in the season roster', [
+                'conference_id' => $conferenceId,
+                'dropped' => $dropped,
+            ]);
+        }
+
+        return $kept;
     }
 
     /**

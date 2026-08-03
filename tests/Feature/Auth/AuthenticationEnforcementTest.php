@@ -2,6 +2,7 @@
 
 use App\Models\User;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\MassAssignmentException;
 
 /*
  * These are regression tests for the specific way v3 shipped broken, not
@@ -53,12 +54,26 @@ it('lets an admin into the admin panel', function () {
 });
 
 it('refuses to mass-assign the admin flag', function () {
-    $user = User::create([
+    // Outside production this throws rather than silently discarding, so a
+    // privilege-escalation attempt surfaces as a failure in dev and CI instead
+    // of quietly doing nothing. In production it degrades to a silent discard —
+    // either way `admin` is never set from a mass-assignment path.
+    expect(fn () => User::create([
         'name' => 'Escalation Attempt',
         'email' => 'nope@example.com',
         'password' => 'password',
         'admin' => true,
-    ]);
+    ]))->toThrow(MassAssignmentException::class);
 
-    expect($user->fresh()->admin)->toBeFalse();
+    expect(User::whereEmail('nope@example.com')->exists())->toBeFalse();
+});
+
+it('only sets admin through an explicit forceFill', function () {
+    $user = User::factory()->create();
+
+    expect($user->admin)->toBeFalse();
+
+    $user->forceFill(['admin' => true])->save();
+
+    expect($user->fresh()->isAdmin())->toBeTrue();
 });
