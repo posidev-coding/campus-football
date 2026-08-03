@@ -39,71 +39,154 @@ class SyncGames
     private const WINDOW_OVERLAP_DAYS = 5;
 
     /**
-     * Sync a whole season, in overlapping date windows.
+     * Tier 4 — the whole season, in overlapping date windows. Nine requests
+     * and ~950 games. Reserved for a backfill or a preseason rebuild;
+     * everything below is a cheaper way to stay current.
      *
-     * Two things force this shape. First, the obvious approach — one request
-     * per week — silently truncates: week 5 of 2025 returns 25 events when the
-     * real figure is far higher, and raising `limit` does not change it. Only a
-     * date range returns the complete set.
+     * Two things force the windowing. First, one request per week silently
+     * truncates: week 5 of 2025 returns 25 events against a much larger truth,
+     * and raising `limit` does not change it. Only a date range is complete.
      *
-     * Second, a season-wide range works but decodes to a 92 MB array and peaks
-     * around 138 MB, which blows PHP's default 128 MB limit. That failed as a
-     * bare exit-255 with an empty log, and it would fail the same way on a
-     * queue worker. Windowing keeps each payload small enough to be routine.
+     * Second, a season-wide range works but decodes to a 92 MB array peaking
+     * near 138 MB, over PHP's default 128 MB limit — it failed as a bare exit
+     * 255 with an empty log, and would fail the same way on a queue worker.
      *
      * Games are matched to their week by kickoff date afterwards, which is what
      * the weeks table's date-range index exists for.
      */
     public function season(int $year, int $group = 80): int
     {
-        $seasons = Season::where('year', $year)->get()->keyBy('type');
+        $changed = 0;
 
-        if ($seasons->isEmpty()) {
-            Log::warning('Cannot sync games before the season exists', compact('year'));
+        foreach ($this->windows($year) as [$from, $to]) {
+            $changed += $this->range($from, $to, $group);
+        }
 
+        return $changed;
+    }
+
+    /**
+     * Tier 3 — one week, one request.
+     *
+     * The weekly cadence: last week's finals and this week's slate. Note this
+     * uses the week's DATE RANGE, not ESPN's `week=` parameter, which silently
+     * truncates (week 5 of 2025 returns 25 events against a much larger truth).
+     */
+    public function week(Week $week, int $group = 80): int
+    {
+        if ($week->start_date === null || $week->end_date === null) {
             return 0;
         }
 
-        $weeks = $this->weeksBySeason($seasons);
+        return $this->range(
+            $week->start_date->format('Ymd'),
+            $week->end_date->format('Ymd'),
+            $group
+        );
+    }
 
+    /**
+     * Tier 2 — one day, one request.
+     */
+    public function day(?CarbonImmutable $date = null, int $group = 80): int
+    {
+        $date ??= CarbonImmutable::now(config('cfb.timezone'));
+
+        return $this->range($date->format('Ymd'), null, $group);
+    }
+
+    /**
+     * Tier 1 — refresh whatever is in progress right now. One request.
+     *
+     * There is deliberately no single-game sync. The obvious design — poll
+     * `summary?event={id}` for the game a user is watching — is measurably
+     * worse: that payload is 523 KB because it carries boxscore, drives,
+     * scoring plays, news and win probability, while the entire day's
+     * scoreboard is 440 KB for 25 games. Refreshing one game costs more than
+     * refreshing all of them.
+     *
+     * So N concurrent viewers of N different live games cost exactly one ESPN
+     * request between them. v3 cost one request per viewer per 15 seconds.
+     */
+    public function live(int $group = 80): int
+    {
+        if (! $this->hasLiveGames()) {
+            return 0;
+        }
+
+        return $this->day(group: $group);
+    }
+
+    public function hasLiveGames(): bool
+    {
+        return Game::query()->inProgress()->exists();
+    }
+
+    /**
+     * One scoreboard request over a date or date range.
+     *
+     * Returns the number of games whose data actually CHANGED. Unchanged games
+     * are not written at all — on a scale-to-zero database, a no-op write is
+     * not free, and this also means a caller can broadcast only real updates.
+     */
+    public function range(string $from, ?string $to = null, int $group = 80): int
+    {
+        $body = $this->espn->site('scoreboard', [
+            'limit' => self::MAX_EVENTS,
+            'dates' => $to === null ? $from : "{$from}-{$to}",
+            'groups' => $group,
+            // Deliberately uncached: these payloads are hundreds of kilobytes
+            // to tens of megabytes, and live data must never be served stale.
+        ], ttl: 0);
+
+        if ($body === null || empty($body['events'])) {
+            return 0;
+        }
+
+        if (count($body['events']) >= self::MAX_EVENTS) {
+            Log::warning('Scoreboard hit the event cap; this window may be truncated', [
+                'window' => $to === null ? $from : "{$from}-{$to}",
+            ]);
+        }
+
+        $years = $this->yearsIn($body['events']);
+        $seasons = Season::whereIn('year', $years)->get()->keyBy(fn (Season $s) => $s->year.':'.$s->type);
+        $weeks = $this->weeksFor($seasons);
+
+        $changed = 0;
         $seen = [];
 
-        foreach ($this->windows($year) as [$from, $to]) {
-            $body = $this->espn->site('scoreboard', [
-                'limit' => self::MAX_EVENTS,
-                'dates' => "{$from}-{$to}",
-                'groups' => $group,
-                // Deliberately uncached: this response is tens of megabytes and
-                // caching it would cost more memory than fetching it twice.
-            ], ttl: 0);
+        foreach ($body['events'] as $event) {
+            $id = (int) ($event['id'] ?? 0);
 
-            if ($body === null || empty($body['events'])) {
+            if ($id === 0 || isset($seen[$id])) {
                 continue;
             }
 
-            if (count($body['events']) >= self::MAX_EVENTS) {
-                Log::warning('Scoreboard hit the event cap; this window may be truncated', [
-                    'year' => $year,
-                    'window' => "{$from}-{$to}",
-                ]);
+            $seen[$id] = true;
+
+            if ($this->store($event, $seasons, $weeks)) {
+                $changed++;
             }
-
-            foreach ($body['events'] as $event) {
-                $id = (int) ($event['id'] ?? 0);
-
-                if ($id === 0 || isset($seen[$id])) {
-                    continue;
-                }
-
-                if ($this->store($event, $seasons, $weeks)) {
-                    $seen[$id] = true;
-                }
-            }
-
-            unset($body);
         }
 
-        return count($seen);
+        return $changed;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function yearsIn(array $events): array
+    {
+        $years = [];
+
+        foreach ($events as $event) {
+            if (isset($event['season']['year'])) {
+                $years[(int) $event['season']['year']] = true;
+            }
+        }
+
+        return array_keys($years) ?: [(int) date('Y')];
     }
 
     /**
@@ -138,17 +221,18 @@ class SyncGames
     }
 
     /**
-     * @return array<int, Collection<int, Week>>
+     * @return array<int, Collection<int, Week>> keyed by season id
      */
-    private function weeksBySeason($seasons): array
+    private function weeksFor($seasons): array
     {
-        $bySeason = [];
-
-        foreach ($seasons as $type => $season) {
-            $bySeason[$type] = Week::where('season_id', $season->id)->get();
+        if ($seasons->isEmpty()) {
+            return [];
         }
 
-        return $bySeason;
+        return Week::whereIn('season_id', $seasons->pluck('id'))
+            ->get()
+            ->groupBy('season_id')
+            ->all();
     }
 
     /**
@@ -187,60 +271,78 @@ class SyncGames
             return false;
         }
 
-        // Each event names its own season type, so regular and postseason come
-        // back in the same range request and are filed correctly.
+        // Each event names its own season and type, so a range spanning the
+        // regular season and the playoff files both correctly.
+        $seasonYear = (int) ($event['season']['year'] ?? date('Y'));
         $seasonType = (int) ($event['season']['type'] ?? Season::REGULAR);
-        $season = $seasons[$seasonType] ?? $seasons[Season::REGULAR] ?? null;
+
+        $season = $seasons["{$seasonYear}:{$seasonType}"]
+            ?? $seasons["{$seasonYear}:".Season::REGULAR]
+            ?? null;
 
         if ($season === null) {
             return false;
         }
 
         $kickoff = CarbonImmutable::parse($event['date']);
-        $week = $this->resolveWeek($weeks[$seasonType] ?? [], $kickoff);
+        $week = $this->resolveWeek($weeks[$season->id] ?? [], $kickoff);
         $status = $event['status'] ?? [];
         $type = $status['type'] ?? [];
 
-        Game::updateOrCreate(
-            ['id' => (int) $event['id']],
-            [
-                'season_id' => $season->id,
-                'week_id' => $week?->id,
-                'venue_id' => $this->venue($competition['venue'] ?? null),
-                'kickoff_at' => $kickoff,
-                /*
+        $game = Game::firstOrNew(['id' => (int) $event['id']]);
+
+        $game->fill([
+            'season_id' => $season->id,
+            'week_id' => $week?->id,
+            'venue_id' => $this->venue($competition['venue'] ?? null),
+            'kickoff_at' => $kickoff,
+            /*
                  * Day of week in Eastern, computed here rather than derived in
                  * SQL. Contests may only slate Saturday games, and a CFB season
                  * straddles EDT and EST — so this must go through a named zone,
                  * once, at write time.
                  */
-                'kickoff_day' => $kickoff->setTimezone(config('cfb.timezone'))->format('D'),
-                'name' => $event['name'] ?? 'Unknown matchup',
-                'short_name' => $event['shortName'] ?? null,
-                'neutral_site' => (bool) ($competition['neutralSite'] ?? false),
-                'conference_game' => (bool) ($competition['conferenceCompetition'] ?? false),
-                'attendance' => $competition['attendance'] ?? null,
-                'broadcasts' => $this->broadcasts($competition),
+            'kickoff_day' => $kickoff->setTimezone(config('cfb.timezone'))->format('D'),
+            'name' => $event['name'] ?? 'Unknown matchup',
+            'short_name' => $event['shortName'] ?? null,
+            'neutral_site' => (bool) ($competition['neutralSite'] ?? false),
+            'conference_game' => (bool) ($competition['conferenceCompetition'] ?? false),
+            'attendance' => $competition['attendance'] ?? null,
+            'broadcasts' => $this->broadcasts($competition),
 
-                'home_team_id' => (int) $home['id'],
-                'home_score' => (int) ($home['score'] ?? 0),
-                'home_rank' => $this->rank($home),
-                'home_record' => $this->record($home),
-                'home_line_scores' => $this->lineScores($home),
+            'home_team_id' => (int) $home['id'],
+            'home_score' => (int) ($home['score'] ?? 0),
+            'home_rank' => $this->rank($home),
+            'home_record' => $this->record($home),
+            'home_line_scores' => $this->lineScores($home),
 
-                'away_team_id' => (int) $away['id'],
-                'away_score' => (int) ($away['score'] ?? 0),
-                'away_rank' => $this->rank($away),
-                'away_record' => $this->record($away),
-                'away_line_scores' => $this->lineScores($away),
+            'away_team_id' => (int) $away['id'],
+            'away_score' => (int) ($away['score'] ?? 0),
+            'away_rank' => $this->rank($away),
+            'away_record' => $this->record($away),
+            'away_line_scores' => $this->lineScores($away),
 
-                'status' => $type['state'] ?? null,
-                'status_detail' => $type['shortDetail'] ?? null,
-                'period' => (int) ($status['period'] ?? 0),
-                'clock' => $status['displayClock'] ?? null,
-                'completed' => (bool) ($type['completed'] ?? false),
-            ]
-        );
+            'status' => $type['state'] ?? null,
+            'status_detail' => $type['shortDetail'] ?? null,
+            'period' => (int) ($status['period'] ?? 0),
+            'clock' => $status['displayClock'] ?? null,
+            'completed' => (bool) ($type['completed'] ?? false),
+        ]);
+
+        /*
+         * Write only when something actually moved.
+         *
+         * The live tier re-reads the whole day every minute, and on a typical
+         * Saturday most of those games have not changed since the last pass. A
+         * no-op UPDATE is not free against a scale-to-zero database, and
+         * skipping it also means the caller can broadcast on real changes
+         * rather than on every sync tick.
+         */
+        if ($game->exists && ! $game->isDirty()) {
+            return false;
+        }
+
+        $game->save();
 
         return true;
     }
