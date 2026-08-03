@@ -1,0 +1,146 @@
+<?php
+
+use App\Models\Game;
+use App\Models\GameOdd;
+use App\Models\GamePredictor;
+use App\Models\Season;
+use App\Models\Team;
+use App\Services\Espn\Sync\SyncOdds;
+use App\Services\Espn\Sync\SyncPredictors;
+use Illuminate\Support\Facades\Http;
+
+beforeEach(function () {
+    config()->set('espn.http.rate_limit', 0);
+
+    $this->season = Season::factory()->create(['year' => 2026, 'type' => Season::REGULAR]);
+    Team::factory()->create(['id' => 61, 'abbreviation' => 'UGA']);
+    Team::factory()->create(['id' => 333, 'abbreviation' => 'BAMA']);
+
+    $this->game = Game::factory()->create([
+        'id' => 999,
+        'season_id' => $this->season->id,
+        'home_team_id' => 61,
+        'away_team_id' => 333,
+        'completed' => false,
+    ]);
+});
+
+function oddsCompetition(float $spread, float $overUnder, int $favoriteId = 61): array
+{
+    return [
+        'odds' => [[
+            'provider' => ['id' => '100', 'name' => 'DraftKings'],
+            'details' => 'UGA -'.abs($spread),
+            'spread' => $spread,
+            'overUnder' => $overUnder,
+            'homeTeamOdds' => ['favorite' => $favoriteId === 61, 'moneyLine' => -280, 'team' => ['id' => '61']],
+            'awayTeamOdds' => ['favorite' => $favoriteId === 333, 'moneyLine' => 230, 'team' => ['id' => '333']],
+        ]],
+    ];
+}
+
+it('captures the current line from the scoreboard payload', function () {
+    app(SyncOdds::class)->fromCompetition(999, oddsCompetition(-7.5, 48.5));
+
+    $current = GameOdd::where('game_id', 999)->where('phase', GameOdd::CURRENT)->sole();
+
+    expect($current->spread)->toBe(-7.5)
+        ->and($current->over_under)->toBe(48.5)
+        ->and($current->provider)->toBe('DraftKings')
+        ->and($current->favorite_team_id)->toBe(61)
+        ->and($current->moneyline_home)->toBe(-280);
+});
+
+it('freezes the first line it ever sees as the open and never rewrites it', function () {
+    // ESPN's own opening line is not available from the scoreboard, so our
+    // first observation becomes the baseline for line movement.
+    $sync = app(SyncOdds::class);
+
+    $sync->fromCompetition(999, oddsCompetition(-7.5, 48.5));
+    $sync->fromCompetition(999, oddsCompetition(-10.5, 51.5));
+
+    $open = GameOdd::where('game_id', 999)->where('phase', GameOdd::OPEN)->sole();
+    $current = GameOdd::where('game_id', 999)->where('phase', GameOdd::CURRENT)->sole();
+
+    expect($open->spread)->toBe(-7.5)
+        ->and($current->spread)->toBe(-10.5);
+
+    // The delta is the money proxy that feeds the Game Quality Score.
+    expect(abs($open->spread - $current->spread))->toBe(3.0);
+});
+
+it('does not record a close until the game is under way', function () {
+    $sync = app(SyncOdds::class);
+
+    $sync->fromCompetition(999, oddsCompetition(-7.5, 48.5));
+    expect(GameOdd::where('game_id', 999)->where('phase', GameOdd::CLOSE)->exists())->toBeFalse();
+
+    $sync->fromCompetition(999, oddsCompetition(-8.5, 49.5), gameStarted: true);
+    expect(GameOdd::where('game_id', 999)->where('phase', GameOdd::CLOSE)->sole()->spread)->toBe(-8.5);
+});
+
+it('ignores a provider block with no usable line', function () {
+    app(SyncOdds::class)->fromCompetition(999, ['odds' => [[
+        'provider' => ['id' => '100', 'name' => 'DraftKings'],
+    ]]]);
+
+    expect(GameOdd::count())->toBe(0);
+});
+
+it('stores matchup quality for an upcoming game that has no game quality yet', function () {
+    /*
+     * The distinction that matters for tiering. Verified live: completed games
+     * return both metrics, upcoming games return matchupQuality alone, because
+     * gameQuality scores how the game turned out. A slate is built before
+     * kickoff, so matchupQuality is the one the Game Quality Score can use.
+     */
+    Http::fake(['*predictor*' => Http::response([
+        'homeTeam' => ['statistics' => [
+            ['name' => 'matchupQuality', 'value' => 63.56],
+            ['name' => 'gameProjection', 'value' => 51.54],
+            ['name' => 'oppSeasonStrengthRating', 'value' => 12.4],
+        ]],
+        'awayTeam' => ['statistics' => [
+            ['name' => 'matchupQuality', 'value' => 63.56],
+            ['name' => 'gameProjection', 'value' => 48.46],
+        ]],
+    ])]);
+
+    expect(app(SyncPredictors::class)->game(999))->toBeTrue();
+
+    $predictor = GamePredictor::where('game_id', 999)->sole();
+
+    expect($predictor->matchup_quality)->toBe(63.56)
+        ->and($predictor->game_quality)->toBeNull()
+        ->and($predictor->home_projection)->toBe(51.54);
+});
+
+it('writes nothing when ESPN has not modelled the game', function () {
+    Http::fake(['*predictor*' => Http::response('', 404)]);
+
+    expect(app(SyncPredictors::class)->game(999))->toBeFalse()
+        ->and(GamePredictor::count())->toBe(0);
+});
+
+it('only fetches predictors for upcoming Saturday games', function () {
+    Http::fake(['*predictor*' => Http::response([
+        'homeTeam' => ['statistics' => [['name' => 'matchupQuality', 'value' => 50.0]]],
+    ])]);
+
+    // A completed game, and a midweek fixture — neither is slate-eligible.
+    Game::factory()->finished()->onSaturday()->create(['season_id' => $this->season->id]);
+    Game::factory()->create([
+        'season_id' => $this->season->id,
+        'completed' => false,
+        'kickoff_at' => now()->addDays(2),
+        'kickoff_day' => 'Wed',
+    ]);
+
+    $saturday = Game::factory()->onSaturday()->create([
+        'season_id' => $this->season->id,
+        'completed' => false,
+    ]);
+
+    expect(app(SyncPredictors::class)->upcoming(days: 10))->toBe(1)
+        ->and(GamePredictor::where('game_id', $saturday->id)->exists())->toBeTrue();
+});

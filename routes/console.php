@@ -60,6 +60,29 @@ Schedule::command('cfb:games --tier=recent')
     ->when($inSeason)
     ->withoutOverlapping();
 
+/*
+ * Rankings: one request returns all five polls for a week, so this is the
+ * cheapest feed in the app. Polls drop Sunday afternoon and Tuesday evening.
+ */
+Schedule::command('cfb:sync --only=rankings')
+    ->days([ScheduleClass::SUNDAY, ScheduleClass::TUESDAY])
+    ->at('19:00')
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+/*
+ * Predictors cost one request per game, so they are scoped to upcoming Saturday
+ * fixtures — 60-80 a week. Running Wednesday puts fresh matchup quality in
+ * front of commissioners before the Wednesday-midnight slate deadline, and
+ * ahead of Thursday's autopilot.
+ */
+Schedule::command('cfb:sync --only=predictors')
+    ->weeklyOn(ScheduleClass::WEDNESDAY, '06:00')
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
 // Standings follow the games, so they run after the nightly game pass. The
 // reconciler runs last and flags any disagreement for the admin panel.
 Schedule::command('cfb:sync --only=standings')

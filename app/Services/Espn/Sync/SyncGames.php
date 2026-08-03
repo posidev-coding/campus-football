@@ -24,7 +24,10 @@ use Illuminate\Support\Facades\Log;
  */
 class SyncGames
 {
-    public function __construct(private EspnClient $espn) {}
+    public function __construct(
+        private EspnClient $espn,
+        private SyncOdds $odds,
+    ) {}
 
     /** ESPN's hard cap on scoreboard results, whatever `limit` says. */
     private const MAX_EVENTS = 1000;
@@ -338,13 +341,25 @@ class SyncGames
          * skipping it also means the caller can broadcast on real changes
          * rather than on every sync tick.
          */
-        if ($game->exists && ! $game->isDirty()) {
-            return false;
+        $changed = ! $game->exists || $game->isDirty();
+
+        if ($changed) {
+            $game->save();
         }
 
-        $game->save();
+        /*
+         * Odds ride along on the payload we already have, so this costs no
+         * extra request. Run it even when the game row itself is unchanged —
+         * a line can move while the score does not, and that movement is the
+         * signal the Game Quality Score depends on.
+         */
+        $this->odds->fromCompetition(
+            (int) $event['id'],
+            $competition,
+            gameStarted: ($type['state'] ?? 'pre') !== 'pre',
+        );
 
-        return true;
+        return $changed;
     }
 
     private function competitor(array $competition, string $side): ?array

@@ -7,6 +7,8 @@ use App\Services\Espn\Sync\ComputeStandings;
 use App\Services\Espn\Sync\ReconcileStandings;
 use App\Services\Espn\Sync\SyncConferences;
 use App\Services\Espn\Sync\SyncGames;
+use App\Services\Espn\Sync\SyncPredictors;
+use App\Services\Espn\Sync\SyncRankings;
 use App\Services\Espn\Sync\SyncSeason;
 use App\Services\Espn\Sync\SyncStandings;
 use App\Services\Espn\Sync\SyncTeams;
@@ -16,16 +18,21 @@ class SyncSeasonCommand extends Command
 {
     protected $signature = 'cfb:sync
         {--year= : Season year (defaults to CFB_SEASON)}
-        {--only= : Run a single step: seasons|conferences|teams|games|standings|compute|reconcile}';
+        {--only= : One step: seasons|conferences|teams|games|rankings|predictors|standings|compute|reconcile}';
 
     protected $description = 'Sync a season of reference data from ESPN';
 
     /**
      * Order matters and is not negotiable: conferences must exist before teams
-     * (teams inherit classification from the conference tree), and both must
-     * exist before standings (which iterate conferences and write team rows).
+     * (teams inherit classification from the conference tree), both must exist
+     * before games, and games must exist before predictors (which only fetch
+     * for upcoming fixtures) and standings.
      */
-    private const STEPS = ['seasons', 'conferences', 'teams', 'games', 'standings', 'compute', 'reconcile'];
+    private const STEPS = [
+        'seasons', 'conferences', 'teams', 'games',
+        'rankings', 'predictors',
+        'standings', 'compute', 'reconcile',
+    ];
 
     public function handle(EspnClient $espn): int
     {
@@ -67,6 +74,8 @@ class SyncSeasonCommand extends Command
             'conferences' => app(SyncConferences::class)->handle($year),
             'teams' => app(SyncTeams::class)->handle($year),
             'games' => app(SyncGames::class)->season($year),
+            'rankings' => app(SyncRankings::class)->season($year),
+            'predictors' => app(SyncPredictors::class)->upcoming(),
             'standings' => app(SyncStandings::class)->handle($year),
             'compute' => app(ComputeStandings::class)->handle($year),
             'reconcile' => app(ReconcileStandings::class)->handle($year),
