@@ -248,6 +248,17 @@ are in progress or how many people are watching. Respect the tiers in
 Scale-to-zero MySQL means writes are not free: sync only writes rows that
 actually changed (`fill` + `isDirty`), and public reads are cache-first.
 
+## Rebuild assets after touching Blade
+
+Tailwind 4 only emits utilities it finds in source. Adding a class to a Blade
+file and NOT running `npm run build` means that class silently does nothing —
+and it fails in a way that looks like a design bug, not a build one. A missing
+`size-14` rendered a 500px team logo at full size; missing `w-28` made inline
+selects stack full-width; the custom `@utility team-accent` and `stat-grid` were
+absent entirely because nothing used them at the previous build.
+
+    npm run build     # after any new utility class, always
+
 ## Commands
 
 ```
