@@ -103,13 +103,7 @@ new class extends Component
             <flux:heading size="xl" class="truncate">{{ $athlete->display_name }}</flux:heading>
 
             @if ($this->season?->team)
-                <a href="{{ route('team', $this->season->team) }}" wire:navigate
-                   class="flex items-center gap-1.5 text-sm text-zinc-600 hover:underline dark:text-zinc-400">
-                    @if ($this->season->team->logo)
-                        <img src="{{ $this->season->team->logo }}" alt="" class="size-4 object-contain">
-                    @endif
-                    {{ $this->season->team->display_name }}
-                </a>
+                <x-team-link :team="$this->season->team" class="text-zinc-600 dark:text-zinc-400" />
             @endif
 
             <div class="flex flex-wrap gap-1.5 pt-0.5">
@@ -167,8 +161,8 @@ new class extends Component
                         @foreach ($this->gameLog as $row)
                             <tr class="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
                                 <td class="whitespace-nowrap px-3 py-1.5">
-                                    <span class="text-zinc-400">{{ $row->game?->kickoff_at?->format('M j') }}</span>
-                                    <span class="ml-1">{{ $row->game?->short_name }}</span>
+                                    <span class="tabular text-zinc-400">{{ $row->game?->kickoff_at?->format('M j') }}</span>
+                                    <span class="ml-1.5">{{ $row->game?->short_name }}</span>
                                 </td>
                                 @foreach ($this->logColumns as $column)
                                     <td class="px-2 py-1.5 text-right">{{ $row->stats[$column] ?? '—' }}</td>

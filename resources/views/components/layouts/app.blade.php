@@ -62,20 +62,22 @@
         </main>
 
         {{-- Thumb-reachable primary nav. Hidden once there's room for the
-             header to carry navigation on its own. --}}
-        @auth
-            <nav
-                class="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-2xl border-t border-zinc-200 bg-white/95 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/95"
-                style="padding-bottom: env(safe-area-inset-bottom);"
-            >
-                <div class="grid h-[var(--nav-height)] grid-cols-4">
-                    <x-nav-tab :href="route('home')" icon="home" label="Home" />
-                    <x-nav-tab :href="route('scoreboard')" icon="calendar-days" label="Scores" />
-                    <x-nav-tab :href="route('standings')" icon="table-cells" label="Standings" />
-                    <x-nav-tab :href="route('scoreboard')" icon="user-group" label="Teams" />
-                </div>
-            </nav>
-        @endauth
+             header to carry navigation on its own.
+
+             Rendered for guests too: every destination here is public, and
+             gating it behind auth left a signed-out visitor on a phone with no
+             navigation whatsoever. --}}
+        <nav
+            class="fixed inset-x-0 bottom-0 z-20 mx-auto max-w-2xl border-t border-zinc-200 bg-white/95 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/95"
+            style="padding-bottom: env(safe-area-inset-bottom);"
+        >
+            <div class="grid h-[var(--nav-height)] grid-cols-4">
+                <x-nav-tab :href="route('home')" icon="home" label="Home" />
+                <x-nav-tab :href="route('scoreboard')" icon="calendar-days" label="Scores" />
+                <x-nav-tab :href="route('standings')" icon="table-cells" label="Standings" />
+                <x-nav-tab :href="route('recruiting')" icon="academic-cap" label="Recruits" />
+            </div>
+        </nav>
     </div>
 
     @fluxScripts

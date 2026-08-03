@@ -57,7 +57,7 @@ new class extends Component
     #[Computed]
     public function leaders()
     {
-        $rows = TeamLeader::with('athlete:id,display_name,headshot_url,slug')
+        $rows = TeamLeader::with('athlete:id,display_name,headshot_url')
             ->where('team_id', $this->team->id)
             ->where('season_year', $this->year)
             ->where('rank', 1)
@@ -68,6 +68,26 @@ new class extends Component
             ->map(fn (string $c) => $rows->get($c))
             ->filter()
             ->values();
+    }
+
+    /**
+     * The three headline leaders, each with a full stat line.
+     *
+     * Showing all fourteen categories as equal-weight rows meant the same
+     * quarterback appeared four times over (passing, pass yards, pass TD, rush
+     * TD) and nothing read as more important than anything else.
+     */
+    #[Computed]
+    public function headlineLeaders()
+    {
+        return $this->leaders->whereIn('category', ['passingLeader', 'rushingLeader', 'receivingLeader'])->values();
+    }
+
+    /** Everything else, as a compact grid of single numbers. */
+    #[Computed]
+    public function statLeaders()
+    {
+        return $this->leaders->whereNotIn('category', ['passingLeader', 'rushingLeader', 'receivingLeader'])->values();
     }
 
     #[Computed]
@@ -85,7 +105,11 @@ new class extends Component
         $seasonIds = Season::where('year', $this->year)->pluck('id');
 
         return Game::query()
-            ->with(['homeTeam:id,display_name,abbreviation,logo', 'awayTeam:id,display_name,abbreviation,logo'])
+            ->with([
+                'homeTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'awayTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'venue:id,name',
+            ])
             ->whereIn('season_id', $seasonIds)
             ->where(fn ($q) => $q->where('home_team_id', $this->team->id)->orWhere('away_team_id', $this->team->id))
             ->orderBy('kickoff_at')
@@ -153,16 +177,15 @@ new class extends Component
 >
     {{-- Team hero, in the team's own colour --}}
     <div class="team-accent -mx-4 -mt-5 flex items-center gap-3 px-4 py-5">
-        @if ($team->logo)
-            <img src="{{ $team->logo }}" alt="" class="size-14 shrink-0 object-contain drop-shadow">
-        @endif
+        <x-team-logo :team="$team" size="xl" class="drop-shadow" />
 
         <div class="flex min-w-0 flex-col">
             <span class="truncate text-xl font-bold leading-tight">{{ $team->display_name }}</span>
-            <span class="text-sm opacity-80">
-                {{ $this->seasonRow?->conference?->name ?? 'Independent' }}
+            <span class="flex flex-wrap items-center gap-x-1.5 text-sm opacity-90">
+                <x-conference-link :conference="$this->seasonRow?->conference" :year="$year" />
                 @if ($this->standing)
-                    &middot; {{ $this->standing->overallRecord() }} ({{ $this->standing->conferenceRecord() }})
+                    <span aria-hidden="true">&middot;</span>
+                    <span class="tabular">{{ $this->standing->overallRecord() }} ({{ $this->standing->conferenceRecord() }})</span>
                 @endif
             </span>
         </div>
@@ -187,24 +210,18 @@ new class extends Component
         <div class="flex flex-col gap-3">
             <flux:subheading>Season leaders</flux:subheading>
 
-            @forelse ($this->leaders as $leader)
-                <div class="flex items-center gap-3 rounded-lg border border-zinc-200 p-2.5 dark:border-zinc-800">
-                    @if ($leader->athlete?->headshot_url)
-                        <img src="{{ $leader->athlete->headshot_url }}" alt="" loading="lazy"
-                             class="size-10 shrink-0 rounded-full bg-zinc-100 object-cover dark:bg-zinc-800">
-                    @endif
+            @forelse ($this->headlineLeaders as $leader)
+                {{-- Stacks on a phone: the stat line is long enough that keeping
+                     it inline truncated the player's name to "Gunner…". --}}
+                <div class="flex flex-col gap-1.5 rounded-lg border border-zinc-200 p-3 sm:flex-row sm:items-center sm:gap-3 dark:border-zinc-800">
+                    <x-player-link
+                        :athlete="$leader->athlete"
+                        size="md"
+                        :subtitle="\App\Models\TeamLeader::label($leader->category)"
+                        class="min-w-0 sm:flex-1"
+                    />
 
-                    <div class="flex min-w-0 flex-1 flex-col">
-                        <span class="text-micro uppercase tracking-wide text-zinc-500">
-                            {{ \App\Models\TeamLeader::label($leader->category) }}
-                        </span>
-                        <a href="{{ route('player', $leader->athlete) }}" wire:navigate
-                           class="truncate text-sm font-medium hover:underline">
-                            {{ $leader->athlete?->display_name }}
-                        </a>
-                    </div>
-
-                    <span class="tabular shrink-0 text-right text-stat text-zinc-600 dark:text-zinc-300">
+                    <span class="tabular pl-[3.25rem] text-stat text-zinc-600 sm:shrink-0 sm:pl-0 sm:text-right dark:text-zinc-300">
                         {{ $leader->display_value }}
                     </span>
                 </div>
@@ -214,6 +231,26 @@ new class extends Component
                     <flux:callout.text>Nothing published for {{ $year }}.</flux:callout.text>
                 </flux:callout>
             @endforelse
+
+            @if ($this->statLeaders->isNotEmpty())
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    @foreach ($this->statLeaders as $leader)
+                        <a
+                            href="{{ route('player', $leader->athlete) }}"
+                            wire:navigate
+                            class="group flex flex-col gap-0.5 rounded-lg border border-zinc-200 p-2.5 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+                        >
+                            <span class="text-micro uppercase tracking-wide text-zinc-500">
+                                {{ \App\Models\TeamLeader::label($leader->category) }}
+                            </span>
+                            <span class="tabular text-base font-semibold">{{ $leader->display_value }}</span>
+                            <span class="truncate text-micro text-zinc-500 group-hover:underline">
+                                {{ $leader->athlete?->display_name }}
+                            </span>
+                        </a>
+                    @endforeach
+                </div>
+            @endif
         </div>
     @endif
 
@@ -245,29 +282,20 @@ new class extends Component
 
                 <div class="flex flex-col divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800/60 dark:border-zinc-800">
                     @foreach ($players as $row)
-                        <a href="{{ route('player', $row->athlete) }}" wire:navigate
-                           class="flex items-center gap-3 p-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900">
+                        <div class="flex items-center gap-3 p-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900">
                             <span class="tabular w-7 shrink-0 text-right text-stat text-zinc-400">{{ $row->jersey ?? '—' }}</span>
 
-                            @if ($row->athlete?->headshot_url)
-                                <img src="{{ $row->athlete->headshot_url }}" alt="" loading="lazy"
-                                     class="size-9 shrink-0 rounded-full bg-zinc-100 object-cover dark:bg-zinc-800">
-                            @else
-                                <div class="size-9 shrink-0 rounded-full bg-zinc-100 dark:bg-zinc-800"></div>
-                            @endif
-
-                            <div class="flex min-w-0 flex-1 flex-col">
-                                <span class="truncate text-sm font-medium">{{ $row->athlete?->display_name }}</span>
-                                <span class="truncate text-micro text-zinc-500">
-                                    {{ collect([$row->position?->abbreviation, $row->experience_class, $row->athlete?->hometown()])->filter()->implode(' · ') }}
-                                </span>
-                            </div>
+                            <x-player-link
+                                :athlete="$row->athlete"
+                                :subtitle="collect([$row->position?->abbreviation, $row->experience_class, $row->athlete?->hometown()])->filter()->implode(' · ')"
+                                class="flex-1"
+                            />
 
                             <span class="shrink-0 text-micro text-zinc-400">
                                 {{ collect([$row->athlete?->display_height, $row->athlete?->display_weight])->filter()->implode(', ') }}
                             </span>
-                        </a>
-                    @endforeach
+                        </div>
+                @endforeach
                 </div>
             </div>
         @empty

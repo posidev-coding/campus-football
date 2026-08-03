@@ -72,7 +72,7 @@ new class extends Component
             // `slug` is the Team route key — omitting it from a constrained
             // eager load makes route() fail with "missing required parameter",
             // which looks like a null relation but is a missing column.
-            ->with(['committedTeam:id,slug,display_name,abbreviation,logo', 'position:id,abbreviation'])
+            ->with(['committedTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark', 'position:id,abbreviation'])
             ->where('recruiting_class', $this->class)
             ->when($this->team !== '', fn ($q) => $q->where('committed_team_id', (int) $this->team))
             ->ranked()
@@ -88,7 +88,7 @@ new class extends Component
     public function teamClasses()
     {
         return Recruit::query()
-            ->with('committedTeam:id,slug,display_name,logo')
+            ->with('committedTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark')
             ->where('recruiting_class', $this->class)
             ->whereNotNull('committed_team_id')
             ->get()
@@ -148,12 +148,12 @@ new class extends Component
                 </div>
 
                 @if ($recruit->committedTeam)
-                    <div class="flex shrink-0 items-center gap-1.5" title="{{ $recruit->committedTeam->display_name }}">
-                        @if ($recruit->committedTeam->logo)
-                            <img src="{{ $recruit->committedTeam->logo }}" alt="" loading="lazy" class="size-5 object-contain">
-                        @endif
-                        <span class="text-micro text-zinc-500">{{ $recruit->committedTeam->abbreviation }}</span>
-                    </div>
+                    <x-team-link
+                        :team="$recruit->committedTeam"
+                        label="abbr"
+                        size="xs"
+                        class="shrink-0 text-zinc-500"
+                    />
                 @else
                     <flux:badge size="sm" color="zinc">{{ $recruit->status ?? 'Uncommitted' }}</flux:badge>
                 @endif
@@ -183,12 +183,7 @@ new class extends Component
                     @forelse ($this->teamClasses as $row)
                         <tr class="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
                             <td class="px-3 py-2">
-                                <a href="{{ route('team', $row['team']) }}" wire:navigate class="flex items-center gap-2 hover:underline">
-                                    @if ($row['team']?->logo)
-                                        <img src="{{ $row['team']->logo }}" alt="" loading="lazy" class="size-5 shrink-0 object-contain">
-                                    @endif
-                                    <span class="truncate">{{ $row['team']?->display_name }}</span>
-                                </a>
+                                <x-team-link :team="$row['team']" />
                             </td>
                             <td class="px-2 py-2 text-right">{{ $row['count'] }}</td>
                             <td class="px-2 py-2 text-right font-semibold">{{ $row['average'] }}</td>

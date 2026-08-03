@@ -45,6 +45,14 @@ new class extends Component
         $this->week ??= $this->defaultWeek();
     }
 
+    /**
+     * Land on a week that actually has games.
+     *
+     * Falling back to the highest week number puts a visitor on an empty
+     * "Nothing on the slate" screen out of season, which is the worst possible
+     * first impression for the app's busiest page. Prefer the week we are
+     * currently inside; otherwise the most recent week with any games in it.
+     */
     private function defaultWeek(): ?int
     {
         $season = Season::where('year', $this->year)->where('type', Season::REGULAR)->first();
@@ -53,13 +61,20 @@ new class extends Component
             return null;
         }
 
-        $now = now();
+        $current = Week::where('season_id', $season->id)
+            ->where('start_date', '<=', now())
+            ->where('end_date', '>=', now())
+            ->value('number');
 
-        return Week::where('season_id', $season->id)
-            ->where('start_date', '<=', $now)
-            ->where('end_date', '>=', $now)
-            ->value('number')
-            ?? Week::where('season_id', $season->id)->max('number');
+        if ($current !== null) {
+            return (int) $current;
+        }
+
+        return Week::query()
+            ->where('weeks.season_id', $season->id)
+            ->whereExists(fn ($q) => $q->selectRaw(1)->from('games')->whereColumn('games.week_id', 'weeks.id'))
+            ->orderByDesc('number')
+            ->value('number');
     }
 
     #[Computed]
@@ -136,7 +151,13 @@ new class extends Component
         }
 
         $query = Game::query()
-            ->with(['homeTeam:id,display_name,logo,logo_dark', 'awayTeam:id,display_name,logo,logo_dark', 'venue:id,name'])
+            // slug is the Team route key; omitting it from a constrained eager load
+            // breaks route() in a way that looks like a null relation.
+            ->with([
+                'homeTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'awayTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'venue:id,name',
+            ])
             ->where('season_id', $season->id)
             ->when($this->week, fn ($q) => $q->whereHas('week', fn ($w) => $w->where('number', $this->week)))
             ->orderBy('kickoff_at');

@@ -86,7 +86,7 @@ new class extends Component
 
         return Standing::query()
             ->fromEspn()
-            ->with(['team:id,display_name,logo,logo_dark,slug', 'conference:id,name'])
+            ->with(['team:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark', 'conference:id,name,short_name,abbreviation,logo'])
             ->where('season_year', $this->year)
             ->whereIn('conference_id', $conferenceIds)
             ->inStandingsOrder()
@@ -120,7 +120,9 @@ new class extends Component
 
     @forelse ($this->standings as $conferenceName => $rows)
         <div class="flex flex-col gap-2">
-            <flux:subheading>{{ $conferenceName }}</flux:subheading>
+            <flux:subheading>
+                <x-conference-link :conference="$rows->first()?->conference" :year="$year" />
+            </flux:subheading>
 
             {{-- Scrolls within its own container so the page body never
                  scrolls sideways on a phone. --}}
@@ -140,12 +142,7 @@ new class extends Component
                         @foreach ($rows as $row)
                             <tr class="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
                                 <td class="px-3 py-2">
-                                    <div class="flex items-center gap-2">
-                                        @if ($row->team?->logo)
-                                            <img src="{{ $row->team->logo }}" alt="" loading="lazy" class="size-5 shrink-0 object-contain">
-                                        @endif
-                                        <span class="truncate">{{ $row->team?->display_name ?? 'Unknown' }}</span>
-                                    </div>
+                                    <x-team-link :team="$row->team" />
                                 </td>
                                 <td class="px-2 py-2 text-right font-semibold">{{ $row->conferenceRecord() }}</td>
                                 <td class="px-2 py-2 text-right text-zinc-500">{{ $row->overallRecord() }}</td>
