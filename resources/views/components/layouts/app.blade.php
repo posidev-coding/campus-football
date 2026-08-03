@@ -71,7 +71,7 @@
                     <x-nav-tab :href="route('home')" icon="home" label="Home" />
                     <x-nav-tab :href="route('scoreboard')" icon="calendar-days" label="Scores" />
                     <x-nav-tab :href="route('standings')" icon="table-cells" label="Standings" />
-                    <x-nav-tab href="#" icon="clipboard-document-check" label="Picks" />
+                    <x-nav-tab :href="route('scoreboard')" icon="user-group" label="Teams" />
                 </div>
             </nav>
         @endauth

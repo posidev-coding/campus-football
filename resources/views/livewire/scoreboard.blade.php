@@ -31,8 +31,13 @@ new class extends Component
     #[Url]
     public ?int $week = null;
 
+    /*
+     * Typed as a string, not ?int. A querystring value is always a string, and
+     * the "All conferences" option submits an empty one — assigning that to an
+     * ?int property is a hard type error. Cast at the point of use instead.
+     */
     #[Url]
-    public ?int $conference = null;
+    public string $conference = '';
 
     public function mount(): void
     {
@@ -116,6 +121,11 @@ new class extends Component
         );
     }
 
+    private function conferenceId(): ?int
+    {
+        return $this->conference === '' ? null : (int) $this->conference;
+    }
+
     #[Computed]
     public function games()
     {
@@ -131,10 +141,10 @@ new class extends Component
             ->when($this->week, fn ($q) => $q->whereHas('week', fn ($w) => $w->where('number', $this->week)))
             ->orderBy('kickoff_at');
 
-        if ($this->conference) {
+        if ($this->conferenceId()) {
             // A conference's games are those involving its members that season.
             $members = TeamSeason::where('season_year', $this->year)
-                ->where('conference_id', $this->conference)
+                ->where('conference_id', $this->conferenceId())
                 ->pluck('team_id');
 
             $query->where(fn ($q) => $q->whereIn('home_team_id', $members)->orWhereIn('away_team_id', $members));
@@ -180,7 +190,7 @@ new class extends Component
             </flux:select>
 
             <flux:select wire:model.live="conference" size="sm" class="min-w-40 flex-1">
-                <flux:select.option :value="null">All conferences</flux:select.option>
+                <flux:select.option value="">All conferences</flux:select.option>
                 @foreach ($this->conferences as $c)
                     <flux:select.option :value="$c['id']">{{ $c['name'] }}</flux:select.option>
                 @endforeach

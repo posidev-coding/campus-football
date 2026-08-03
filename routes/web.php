@@ -10,6 +10,8 @@ Route::view('/', 'home')->name('home');
  */
 Route::livewire('scoreboard', 'scoreboard')->name('scoreboard');
 Route::livewire('standings', 'standings')->name('standings');
+Route::livewire('teams/{team}', 'team')->name('team');
+Route::livewire('players/{athlete}', 'player')->name('player');
 
 /*
  * Anything that reads or writes a user's own data sits behind BOTH `auth` and

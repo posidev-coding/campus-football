@@ -27,8 +27,9 @@ new class extends Component
     #[Url]
     public string $classification = 'FBS';
 
+    /** String for the same reason as on the scoreboard — see that component. */
     #[Url]
-    public ?int $conference = null;
+    public string $conference = '';
 
     public function mount(): void
     {
@@ -75,8 +76,8 @@ new class extends Component
     #[Computed]
     public function standings()
     {
-        $conferenceIds = $this->conference
-            ? [$this->conference]
+        $conferenceIds = $this->conference !== ''
+            ? [(int) $this->conference]
             : array_column($this->conferences, 'id');
 
         if ($conferenceIds === []) {
@@ -110,7 +111,7 @@ new class extends Component
         </flux:select>
 
         <flux:select wire:model.live="conference" size="sm" class="min-w-40 flex-1">
-            <flux:select.option :value="null">All conferences</flux:select.option>
+            <flux:select.option value="">All conferences</flux:select.option>
             @foreach ($this->conferences as $c)
                 <flux:select.option :value="$c['id']">{{ $c['name'] }}</flux:select.option>
             @endforeach

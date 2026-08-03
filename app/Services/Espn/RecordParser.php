@@ -102,4 +102,9 @@ class RecordParser
     {
         return preg_match('#/teams/(\d+)#', $ref, $m) ? (int) $m[1] : null;
     }
+
+    public static function athleteIdFromRef(string $ref): ?int
+    {
+        return preg_match('#/athletes/(\d+)#', $ref, $m) ? (int) $m[1] : null;
+    }
 }
