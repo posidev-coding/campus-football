@@ -23,6 +23,7 @@
                 <nav class="hidden items-center gap-1 sm:flex">
                     <flux:button :href="route('scoreboard')" wire:navigate size="sm" variant="ghost">Scores</flux:button>
                     <flux:button :href="route('standings')" wire:navigate size="sm" variant="ghost">Standings</flux:button>
+                    <flux:button :href="route('recruiting')" wire:navigate size="sm" variant="ghost">Recruiting</flux:button>
                 </nav>
 
                 <div class="flex items-center gap-1">

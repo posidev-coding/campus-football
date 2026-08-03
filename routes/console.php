@@ -118,3 +118,31 @@ Schedule::command('cfb:games --tier=season')
     ->weeklyOn(ScheduleClass::TUESDAY, '05:00')
     ->timezone($tz)
     ->withoutOverlapping();
+
+/*
+ * The player layer. Rosters change slowly and cost one request per team, so
+ * weekly is ample; nothing here is ever on a live path. Recruiting is capped
+ * (see SyncRecruiting) and matters most through the signing periods.
+ */
+Schedule::command('cfb:players --only=rosters')
+    ->weeklyOn(ScheduleClass::TUESDAY, '06:00')
+    ->timezone($tz)
+    ->withoutOverlapping();
+
+Schedule::command('cfb:players --only=stats')
+    ->weeklyOn(ScheduleClass::TUESDAY, '06:40')
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+Schedule::command('cfb:sync --only=injuries')
+    ->days([ScheduleClass::THURSDAY, ScheduleClass::FRIDAY])
+    ->at('12:00')
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+Schedule::command('cfb:sync --only=recruiting')
+    ->weeklyOn(ScheduleClass::WEDNESDAY, '03:00')
+    ->timezone($tz)
+    ->withoutOverlapping();

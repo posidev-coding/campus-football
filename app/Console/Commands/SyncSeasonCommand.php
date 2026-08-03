@@ -7,8 +7,10 @@ use App\Services\Espn\Sync\ComputeStandings;
 use App\Services\Espn\Sync\ReconcileStandings;
 use App\Services\Espn\Sync\SyncConferences;
 use App\Services\Espn\Sync\SyncGames;
+use App\Services\Espn\Sync\SyncInjuries;
 use App\Services\Espn\Sync\SyncPredictors;
 use App\Services\Espn\Sync\SyncRankings;
+use App\Services\Espn\Sync\SyncRecruiting;
 use App\Services\Espn\Sync\SyncSeason;
 use App\Services\Espn\Sync\SyncStandings;
 use App\Services\Espn\Sync\SyncTeams;
@@ -18,7 +20,7 @@ class SyncSeasonCommand extends Command
 {
     protected $signature = 'cfb:sync
         {--year= : Season year (defaults to CFB_SEASON)}
-        {--only= : One step: seasons|conferences|teams|games|rankings|predictors|standings|compute|reconcile}';
+        {--only= : One step: seasons|conferences|teams|games|rankings|predictors|recruiting|injuries|standings|compute|reconcile}';
 
     protected $description = 'Sync a season of reference data from ESPN';
 
@@ -30,7 +32,7 @@ class SyncSeasonCommand extends Command
      */
     private const STEPS = [
         'seasons', 'conferences', 'teams', 'games',
-        'rankings', 'predictors',
+        'rankings', 'predictors', 'recruiting', 'injuries',
         'standings', 'compute', 'reconcile',
     ];
 
@@ -76,6 +78,8 @@ class SyncSeasonCommand extends Command
             'games' => app(SyncGames::class)->season($year),
             'rankings' => app(SyncRankings::class)->season($year),
             'predictors' => app(SyncPredictors::class)->upcoming(),
+            'recruiting' => app(SyncRecruiting::class)->handle($year),
+            'injuries' => app(SyncInjuries::class)->handle($year),
             'standings' => app(SyncStandings::class)->handle($year),
             'compute' => app(ComputeStandings::class)->handle($year),
             'reconcile' => app(ReconcileStandings::class)->handle($year),
