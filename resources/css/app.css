@@ -1,0 +1,72 @@
+@import 'tailwindcss';
+@import '../../vendor/livewire/flux/dist/flux.css';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../vendor/livewire/flux/stubs/**/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* Tight scale. Data density comes from typography, not from cramming. */
+    --text-stat: 0.8125rem;
+    --text-stat--line-height: 1.15;
+    --text-micro: 0.6875rem;
+    --text-micro--line-height: 1.2;
+
+    /* Bottom nav height — layouts pad against this so content is never
+       trapped underneath it. */
+    --nav-height: 4rem;
+}
+
+@layer base {
+    /* Team color as a theming primitive. Team and player pages override these
+       inline from teams.color / teams.alt_color; everything else inherits a
+       neutral default, so a component never depends on being inside a themed
+       page to render correctly. */
+    :root {
+        --team-accent: var(--color-zinc-900);
+        --team-accent-contrast: white;
+    }
+
+    .dark {
+        --team-accent: var(--color-zinc-100);
+        --team-accent-contrast: var(--color-zinc-900);
+    }
+
+    html {
+        scrollbar-gutter: stable;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+        @apply bg-white text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+        /* Respect the notch and home indicator on iOS — this matters once the
+           same views are running inside the NativePHP shell. */
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+
+    /* Any figure that appears in a column must not jitter between values. */
+    table,
+    .tabular {
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: 'tnum' 1;
+    }
+}
+
+/* Wide stat tables scroll inside their own container. The page body must never
+   scroll sideways — the most common way a data-dense mobile layout breaks. */
+@utility stat-grid {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+@utility team-accent {
+    background-color: var(--team-accent);
+    color: var(--team-accent-contrast);
+}
