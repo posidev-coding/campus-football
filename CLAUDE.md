@@ -259,6 +259,17 @@ absent entirely because nothing used them at the previous build.
 
     npm run build     # after any new utility class, always
 
+## Verifying responsive layout
+
+Chrome will not size a window below ~600px, so asking it to resize to 390px is
+silently clamped and every media query below `sm` evaluates wrong. An iframe has
+no such floor. A local-only harness renders the app at exact device widths:
+
+    /__device?path=/scoreboard&w=390,768&h=800[&dark=1]
+
+Registered inside an `app()->isLocal()` guard, so it does not exist in
+production. Use it rather than trusting a resized window.
+
 ## Commands
 
 ```

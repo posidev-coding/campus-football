@@ -24,4 +24,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::view('account', 'account')->name('account');
 });
 
+/*
+ * Local-only responsive preview. Chrome will not size a window below ~600px,
+ * so a real phone viewport is unreachable by resizing; an iframe has no such
+ * floor. Registered only in local so it can never exist in production.
+ */
+if (app()->isLocal()) {
+    Route::view('__device', 'dev.device')->name('dev.device');
+}
+
 require __DIR__.'/auth.php';
