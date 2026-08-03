@@ -4,6 +4,7 @@ namespace App\Services\Espn\Sync;
 
 use App\Enums\StandingSource;
 use App\Models\Game;
+use App\Models\Season;
 use App\Models\Standing;
 use App\Models\TeamSeason;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +24,12 @@ use Illuminate\Support\Facades\DB;
  */
 class ComputeStandings
 {
-    public function handle(int $year): int
+    /**
+     * @param  int  $seasonType  Must match the season type the ESPN standings
+     *                           were pulled from, or the two sources are not
+     *                           comparable.
+     */
+    public function handle(int $year, int $seasonType = Season::REGULAR): int
     {
         $membership = TeamSeason::where('season_year', $year)
             ->whereNotNull('conference_id')
@@ -37,7 +43,16 @@ class ComputeStandings
 
         Game::query()
             ->completed()
-            ->whereHas('season', fn ($q) => $q->where('year', $year))
+            /*
+             * Regular season only.
+             *
+             * ESPN's types/2 standings stop at the end of the regular season,
+             * but our games table spans the CFP. Counting playoff results here
+             * made Indiana read 16-0 against ESPN's 13-0 and flagged five
+             * playoff teams as diverged — a bug in this computation, caught by
+             * the reconciler doing its job.
+             */
+            ->whereHas('season', fn ($q) => $q->where('year', $year)->where('type', $seasonType))
             ->whereNotNull('home_team_id')
             ->whereNotNull('away_team_id')
             // `id` is required by chunkById for cursor pagination, not just

@@ -60,6 +60,20 @@ it('does not count a cross-conference game toward the conference record', functi
         ->and($georgia->conf_wins)->toBe(0);
 });
 
+it('counts only regular-season games, not the playoff', function () {
+    // ESPN's types/2 standings stop at the end of the regular season. Counting
+    // CFP results here made Indiana read 16-0 against ESPN's 13-0 and flagged
+    // five playoff teams as diverged.
+    $postseason = Season::factory()->create(['year' => 2025, 'type' => Season::POSTSEASON]);
+
+    playedGame(61, 333, 31, 17, $this->season->id);
+    playedGame(61, 2483, 40, 10, $postseason->id);
+
+    app(ComputeStandings::class)->handle(2025);
+
+    expect(Standing::computed()->where('team_id', 61)->sole()->overall_wins)->toBe(1);
+});
+
 it('ignores games that have not finished', function () {
     Game::factory()->create([
         'season_id' => $this->season->id,

@@ -6,6 +6,7 @@ use App\Services\Espn\EspnClient;
 use App\Services\Espn\Sync\ComputeStandings;
 use App\Services\Espn\Sync\ReconcileStandings;
 use App\Services\Espn\Sync\SyncConferences;
+use App\Services\Espn\Sync\SyncGames;
 use App\Services\Espn\Sync\SyncSeason;
 use App\Services\Espn\Sync\SyncStandings;
 use App\Services\Espn\Sync\SyncTeams;
@@ -15,7 +16,7 @@ class SyncSeasonCommand extends Command
 {
     protected $signature = 'cfb:sync
         {--year= : Season year (defaults to CFB_SEASON)}
-        {--only= : Run a single step: seasons|conferences|teams|standings|compute|reconcile}';
+        {--only= : Run a single step: seasons|conferences|teams|games|standings|compute|reconcile}';
 
     protected $description = 'Sync a season of reference data from ESPN';
 
@@ -24,7 +25,7 @@ class SyncSeasonCommand extends Command
      * (teams inherit classification from the conference tree), and both must
      * exist before standings (which iterate conferences and write team rows).
      */
-    private const STEPS = ['seasons', 'conferences', 'teams', 'standings', 'compute', 'reconcile'];
+    private const STEPS = ['seasons', 'conferences', 'teams', 'games', 'standings', 'compute', 'reconcile'];
 
     public function handle(EspnClient $espn): int
     {
@@ -65,6 +66,7 @@ class SyncSeasonCommand extends Command
             'seasons' => count(app(SyncSeason::class)->handle($year)),
             'conferences' => app(SyncConferences::class)->handle($year),
             'teams' => app(SyncTeams::class)->handle($year),
+            'games' => app(SyncGames::class)->season($year),
             'standings' => app(SyncStandings::class)->handle($year),
             'compute' => app(ComputeStandings::class)->handle($year),
             'reconcile' => app(ReconcileStandings::class)->handle($year),
