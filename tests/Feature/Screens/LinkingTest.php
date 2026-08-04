@@ -151,7 +151,6 @@ it('gives guests navigation at phone width', function () {
         ->assertOk()
         ->assertSee(route('home'), escape: false)
         ->assertSee(route('standings'), escape: false)
-        ->assertSee(route('search'), escape: false)
         ->assertSee(route('login'), escape: false);
 });
 

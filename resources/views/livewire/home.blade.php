@@ -11,7 +11,7 @@ use Livewire\Component;
  * The front door.
  *
  * Signed out it is a national view: what is on, who is ranked, what happened.
- * Signed in, the user's favourite team leads — their news first, then their
+ * Signed in, the user's favorite team leads — their news first, then their
  * next game — because a college football fan opens an app to find out about one
  * team before they care about the other 135.
  */
@@ -24,7 +24,7 @@ new class extends Component
     }
 
     /**
-     * The favourite team's news, from ESPN's dedicated per-team feed.
+     * The favorite team's news, from ESPN's dedicated per-team feed.
      *
      * Deliberately not "articles tagged with this team": a national Top 25
      * preview tags 25 of them, so tag-matching would show every fan the same
@@ -49,7 +49,7 @@ new class extends Component
     }
 
     /**
-     * The favourite team's next game, or its most recent one out of season.
+     * The favorite team's next game, or its most recent one out of season.
      */
     #[Computed]
     public function teamGame()
@@ -61,8 +61,8 @@ new class extends Component
         }
 
         $with = [
-            'homeTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
-            'awayTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
+            'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
+            'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
             'venue:id,name',
             'odds',
         ];
@@ -90,8 +90,8 @@ new class extends Component
 
         return Game::query()
             ->with([
-                'homeTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
-                'awayTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'venue:id,name',
                 'odds',
             ])
@@ -116,6 +116,11 @@ new class extends Component
 }; ?>
 
 <div class="flex flex-col gap-6">
+    {{-- Search lives here now, not on a tab. The bar expands into a
+         full-screen panel in place; from `sm` up the header's ⌘K palette
+         takes over and the bar retires. --}}
+    <livewire:search-panel />
+
     @auth
         @if ($this->team)
             {{-- The user's team leads. --}}
@@ -149,7 +154,7 @@ new class extends Component
             <flux:callout icon="star">
                 <flux:callout.heading>Pick a team</flux:callout.heading>
                 <flux:callout.text>
-                    Choose a favourite and their news leads your home page.
+                    Choose a favorite and their news leads your home page.
                 </flux:callout.text>
                 <x-slot:actions>
                     <flux:button :href="route('account')" wire:navigate size="sm">Choose</flux:button>
@@ -180,18 +185,20 @@ new class extends Component
         </section>
     @endif
 
-    @if ($this->news->isNotEmpty())
-        <section class="flex flex-col gap-2">
-            <div class="flex items-baseline justify-between gap-2">
-                <flux:subheading>Latest news</flux:subheading>
-                <a href="{{ route('news') }}" wire:navigate class="text-micro text-zinc-500 hover:underline">
-                    More
-                </a>
-            </div>
+    {{-- The heading and its "More" link render unconditionally: with Home's
+         section strip gone this link is the News screen's only path on a
+         phone, and an empty articles table must not make a whole screen
+         unreachable. --}}
+    <section class="flex flex-col gap-2">
+        <div class="flex items-baseline justify-between gap-2">
+            <flux:subheading>Latest news</flux:subheading>
+            <a href="{{ route('news') }}" wire:navigate class="text-micro text-zinc-500 hover:underline">
+                More
+            </a>
+        </div>
 
-            @foreach ($this->news as $article)
-                <x-article-card :article="$article" wire:key="home-news-{{ $article->id }}" />
-            @endforeach
-        </section>
-    @endif
+        @foreach ($this->news as $article)
+            <x-article-card :article="$article" wire:key="home-news-{{ $article->id }}" />
+        @endforeach
+    </section>
 </div>

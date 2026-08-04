@@ -22,9 +22,10 @@ namespace App\Support;
  * landing route usually appears as its own first section, because "Scores" is
  * both where the Scores area starts and a thing you navigate back to.
  *
- * Room is left for a sixth area. Pick'em is the product's point and will earn
- * the centre slot when it ships; the tab bar sizes itself from the count rather
- * than hardcoding five.
+ * Room is left for a fifth area. Pick'em is the product's point and will earn
+ * the freed slot when it ships — Search gave its tab up for exactly that,
+ * moving into the bar at the top of Home. The tab bar sizes itself from the
+ * count rather than hardcoding it, so the addition is a one-entry change.
  */
 class Navigation
 {
@@ -47,11 +48,19 @@ class Navigation
                 'label' => 'Home',
                 'icon' => 'home',
                 'route' => 'home',
-                'routes' => ['home', 'news'],
-                'sections' => [
-                    ['route' => 'home', 'label' => 'For You'],
-                    ['route' => 'news', 'label' => 'News'],
-                ],
+                // News has no section strip to live in anymore, so its tab
+                // lighting comes from being listed here; the screen itself is
+                // reached through Home's "More" link. Search folded into Home
+                // when it lost its tab — the bar at the top of Home IS the
+                // search experience now, and /search survives only for deep
+                // links and shared URLs.
+                'routes' => ['home', 'news', 'search'],
+                /*
+                 * No sections. "For You" and "News" made a two-tab strip whose
+                 * first tab was the screen you were already on, and the search
+                 * bar now claims that row of the viewport instead.
+                 */
+                'sections' => [],
                 'guest' => true,
             ],
             [
@@ -92,16 +101,6 @@ class Navigation
                     ['route' => 'leaders', 'label' => 'Player Stats'],
                     ['route' => 'recruiting', 'label' => 'Recruiting'],
                 ],
-                'guest' => true,
-            ],
-            [
-                'key' => 'search',
-                'label' => 'Search',
-                'icon' => 'magnifying-glass',
-                'route' => 'search',
-                'routes' => ['search'],
-                // One screen, so no strip. "When necessary" is the rule.
-                'sections' => [],
                 'guest' => true,
             ],
             [

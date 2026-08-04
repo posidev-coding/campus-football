@@ -6,13 +6,13 @@
     The areas, in the desktop header.
 
     The same level as the phone's bottom tab bar, rendered where a desktop
-    sports site expects it. Search and Account are omitted here because the
-    header already carries both as their own affordances — the ⌘K trigger and
-    the avatar menu — and listing them twice in one bar is noise.
+    sports site expects it. Account is omitted here because the header already
+    carries it as its own affordance — the avatar menu — and listing it twice
+    in one bar is noise.
 --}}
 <nav {{ $attributes->class(['items-center gap-0.5']) }} aria-label="Areas">
     @foreach (Navigation::areas() as $area)
-        @continue(in_array($area['key'], ['search', 'account'], true))
+        @continue($area['key'] === 'account')
 
         @php $current = Navigation::isCurrent($area); @endphp
 

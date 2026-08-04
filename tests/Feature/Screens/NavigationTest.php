@@ -36,13 +36,14 @@ describe('areas', function () {
     it('gives a phone the same destinations the desktop header has', function () {
         /*
          * The header is hidden below `sm`, so everything in it must be
-         * reachable from the tab bar or it is unreachable on a phone. That is
-         * the rule this rework exists to satisfy — brand goes to Home, the
-         * search icon to Search, the avatar to Account.
+         * reachable from the tab bar or it is unreachable on a phone — brand
+         * goes to Home, the avatar to Account. Search is deliberately NOT a
+         * tab anymore: the bar at the top of Home carries it, and the freed
+         * slot is reserved for Pick'em.
          */
         $keys = collect(Navigation::areas())->pluck('key');
 
-        expect($keys)->toContain('home', 'search', 'account');
+        expect($keys->all())->toBe(['home', 'scores', 'league', 'account']);
     });
 
     it('keeps a tab lit on detail pages inside its area', function () {
@@ -69,7 +70,8 @@ describe('areas', function () {
             'stats' => 'league',
             'leaders' => 'league',
             'recruiting' => 'league',
-            'search' => 'search',
+            // /search survives for deep links, but it is Home's search now.
+            'search' => 'home',
         ];
 
         foreach ($cases as $route => $expected) {
@@ -124,9 +126,11 @@ describe('sections', function () {
         }
     });
 
-    it('renders no strip for a single-screen area', function () {
-        // "When necessary" — a strip with one item is chrome, not navigation.
-        $this->get(route('search'))
+    it('renders no strip on Home, whose strip gave way to the search bar', function () {
+        // "For You" and "News" made a two-tab strip whose first tab was the
+        // screen you were already on. The search bar claims that row now, and
+        // News is reached through the "More" link on the feed.
+        $this->get(route('home'))
             ->assertOk()
             ->assertDontSee('aria-label="Sections"', escape: false);
     });
@@ -143,10 +147,12 @@ describe('mobile chrome', function () {
     });
 
     it('gives guests navigation at phone width', function () {
+        // The tab bar renders for guests: League is reachable, and the Account
+        // tab resolves to sign-in rather than disappearing.
         $this->get(route('scoreboard'))
             ->assertOk()
             ->assertSee(route('standings'), escape: false)
-            ->assertSee(route('search'), escape: false);
+            ->assertSee(route('login'), escape: false);
     });
 });
 
@@ -170,17 +176,61 @@ describe('account absorbs the avatar menu', function () {
 
         $this->actingAs($admin)->get(route('account'))->assertOk()->assertSee('Admin');
     });
-});
 
-describe('search area', function () {
-    it('has a full screen, not only the palette', function () {
-        // A soft keyboard takes half a phone viewport; a centred dialog inside
-        // what is left is a poor place to read results.
-        $this->get(route('search'))->assertOk();
+    it('offers a light/dark/system appearance control', function () {
+        /*
+         * On Account rather than the header, because the header does not exist
+         * below `sm` — anything reachable only from the desktop avatar dropdown
+         * is unreachable on a phone, which is the failure the navigation rework
+         * exists to remove.
+         */
+        $response = $this->actingAs(User::factory()->create())
+            ->get(route('account'))
+            ->assertOk();
+
+        $response->assertSee('Appearance')
+            // Flux's own store: it owns the `.dark` class, localStorage, and
+            // the OS-preference listener, so "System" keeps tracking rather
+            // than freezing at page load.
+            ->assertSee('$flux.appearance', escape: false)
+            ->assertSee('value="light"', escape: false)
+            ->assertSee('value="dark"', escape: false)
+            ->assertSee('value="system"', escape: false);
     });
 
-    it('finds teams, players and conferences', function () {
+    it('keeps the mobile browser chrome in step with the theme', function () {
+        // Hardcoded dark, a phone's address bar stayed black in light mode —
+        // which only became visible once the appearance control existed.
+        $this->actingAs(User::factory()->create())
+            ->get(route('account'))
+            ->assertOk()
+            ->assertSee('meta[name=theme-color]', escape: false)
+            ->assertSee('$flux.dark', escape: false);
+    });
+});
+
+describe('search without a tab', function () {
+    it('puts the search bar at the top of Home', function () {
+        // Search gave its tab up for Pick'em; the bar on Home is where a phone
+        // searches now, expanding in place so the keyboard stays raised.
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee('Teams, players, conferences');
+    });
+
+    it('finds teams, players and conferences from the Home panel', function () {
         Athlete::create(['id' => 1, 'display_name' => 'George Player']);
+
+        Livewire::test('search-panel')
+            ->set('q', 'Georg')
+            ->assertSee('Georgia Bulldogs')
+            ->assertSee('George Player');
+    });
+
+    it('keeps /search alive for deep links and shared URLs', function () {
+        Athlete::create(['id' => 1, 'display_name' => 'George Player']);
+
+        $this->get(route('search', ['q' => 'Georg']))->assertOk();
 
         Livewire::test('search-page')
             ->set('q', 'Georg')
@@ -189,20 +239,31 @@ describe('search area', function () {
     });
 
     it('shares its results with the command palette', function () {
-        // Both read App\Support\SearchIndex, so the two cannot drift.
+        // Panel, page and palette all read the same index, so none can drift.
         Athlete::create(['id' => 2, 'display_name' => 'Georgina Test']);
 
-        $page = Livewire::test('search-page')->set('q', 'Georg');
+        $panel = Livewire::test('search-panel')->set('q', 'Georg');
         $palette = Livewire::test('search')->set('q', 'Georg');
 
         foreach (['Georgia Bulldogs', 'Georgina Test'] as $expected) {
-            $page->assertSee($expected);
+            $panel->assertSee($expected);
             $palette->assertSee($expected);
         }
     });
 
     it('refuses a query too short to be useful', function () {
-        Livewire::test('search-page')->set('q', 'G')->assertSee('Type at least two characters');
+        Livewire::test('search-panel')->set('q', 'G')->assertSee('Type at least two characters');
+    });
+
+    it('keeps News reachable from Home when the articles table is empty', function () {
+        /*
+         * With Home's section strip gone, the "More" link on the news feed is
+         * the News screen's only path on a phone — so it renders even when no
+         * articles exist to hang it under.
+         */
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee(route('news'), escape: false);
     });
 });
 
@@ -233,4 +294,22 @@ it('renders a player game log with ESPN column headings', function () {
         // ESPN's own headings, which beat anything we would name ourselves.
         ->assertSee('C/ATT')
         ->assertSee('25/42');
+});
+
+describe('stacking order', function () {
+    /*
+     * App chrome sits above anything a screen sticks to its own viewport.
+     *
+     * The scoreboard runs its own ladder inside the page — chrome 30, day
+     * heading 20, card contents 10 — and every one of those has to stay under
+     * the header and the tab bar. When the header and the day heading were
+     * both z-20, the later element in the document won on tree order, which is
+     * the page painting over the app.
+     */
+    it('keeps the header and tab bar above any screen-level sticky', function () {
+        $response = $this->get(route('scoreboard'))->assertOk();
+
+        $response->assertSee('sticky top-0 z-40', escape: false)
+            ->assertSee('fixed inset-x-0 bottom-0 z-40', escape: false);
+    });
 });
