@@ -19,7 +19,12 @@ Route::livewire('rankings', 'rankings')->name('rankings');
 Route::livewire('stats', 'stats')->name('stats');
 Route::livewire('leaders', 'leaders')->name('leaders');
 Route::livewire('news', 'news')->name('news');
-Route::livewire('bowls', 'bowls')->name('bowls');
+
+/*
+ * No `bowls` route. The postseason is two entries at the end of the scoreboard's
+ * week scroller — BOWLS and CFP — because ESPN publishes it as part of the same
+ * season and that is where a reader scrolls to find it.
+ */
 
 /*
  * Search is a bottom-nav AREA on a phone, so it needs a real screen rather than

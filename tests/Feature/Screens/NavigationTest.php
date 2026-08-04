@@ -63,7 +63,6 @@ describe('areas', function () {
             'home' => 'home',
             'news' => 'home',
             'scoreboard' => 'scores',
-            'bowls' => 'scores',
             'standings' => 'league',
             'rankings' => 'league',
             'teams' => 'league',
@@ -97,15 +96,32 @@ describe('sections', function () {
     it("shows only the current area's sections", function () {
         // Previously both navs listed all nine sections, so the top strip was
         // a second copy of the bottom bar rather than a level below it.
-        $this->get(route('scoreboard'))
-            ->assertOk()
-            ->assertSee('Bowls')
-            ->assertDontSee('Recruiting');
-
         $this->get(route('standings'))
             ->assertOk()
             ->assertSee('Recruiting')
-            ->assertDontSee('Bowls');
+            ->assertSee('Team Stats');
+    });
+
+    it('renders no strip on Scores, which is the only screen in its area', function () {
+        /*
+         * A strip with one tab is chrome, not navigation. Bowls and the playoff
+         * moved into the week scroller, which left Scores alone in its area —
+         * and freed it to carry the app's one non-redundant heading.
+         */
+        $this->get(route('scoreboard'))
+            ->assertOk()
+            ->assertDontSee('aria-label="Sections"', escape: false)
+            ->assertSee('Scoreboard');
+    });
+
+    it('keeps a screen-reader heading on screens whose heading is hidden', function () {
+        // The section strip names these screens, so the visible h1 was the same
+        // word twice. It stays in the DOM for anyone not looking at the strip.
+        foreach (['standings', 'rankings', 'teams', 'news', 'stats', 'leaders'] as $route) {
+            $this->get(route($route))
+                ->assertOk()
+                ->assertSee('<h1 class="sr-only">', escape: false);
+        }
     });
 
     it('renders no strip for a single-screen area', function () {

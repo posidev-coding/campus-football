@@ -345,6 +345,14 @@ A tab is lit by AREA, not by URL equality: a game page keeps Scores lit and a
 player page keeps League lit. Comparing `request()->url()` to the tab's own href
 lights up only on the area's landing screen.
 
+**No screen shows a visible heading except Scores.** The section strip already
+names every other screen, so an `h1` said the same word twice — it stays as
+`sr-only`. Scores is the exception precisely because it has no strip: bowls and
+the playoff live in its week scroller, leaving it alone in its area, so it
+carries a real heading with the scope filter inline beside it.
+
+Chrome above content went from 97-197px to 32-73px at 390px.
+
 **Below `sm` there is no top bar at all** — 56px reclaimed. That is only safe
 because every header affordance has a tab: brand → Home, search icon → Search,
 avatar → Account. Anything added to the desktop header must get a phone route
@@ -353,6 +361,32 @@ for exactly this reason.
 
 Pick'em gets the sixth tab when it ships; the bar sizes its columns from the
 area count rather than hardcoding five.
+
+## `games.name` is never the bowl name
+
+It only ever holds "A at B". The event's real name — "Rose Bowl Presented by
+Prudential", "College Football Playoff National Championship" — is
+`competitions[0].notes[0].headline`, and we discarded it until it was needed.
+Verified live: 41 of 41 postseason events carry one, and the 11 playoff games all
+begin "College Football Playoff", which is the ONLY way to tell a playoff game
+from any other bowl. A heuristic on `name` matches nothing at all.
+
+Stored as `games.note`; `Game::playoff()` and `Game::bowlsOnly()` read it.
+
+## The postseason is one ESPN week, shown as two
+
+`types/3/weeks` returns a single item called "Bowls" spanning Dec 13 to Jan 21
+and holding all 46 games. The scroller splits it into **BOWLS** and **CFP**, and
+each pill dates itself from its own games — using the shared week would put
+"DEC 13" on a playoff that starts a week later.
+
+Both pills share one `week_id`, so the scoreboard keys selection on the PAIR
+(`week` + `bracket`). Setting the id alone leaves a stale bracket showing the
+wrong half.
+
+There is no `/bowls` route. Note the consequence, which is deliberate but worth
+knowing: Scores has no season selector, so **historical** bowls are reachable
+only through a team's schedule or a direct game URL, not by browsing.
 
 ## Athletes route by id, not slug
 

@@ -1,7 +1,7 @@
 @props([
     'weeks' => [],
     'selected' => null,
-    'model' => 'week',
+    'bracket' => '',
 ])
 
 {{--
@@ -13,9 +13,10 @@
     end back a day before it gets here; otherwise two consecutive pills both
     claim the same date and it reads like a bug.
 
-    Keyed on week id, not week number: the postseason's "Bowls" is also week 1,
-    so a number-keyed selector collides them and makes the bowl slate
-    unreachable.
+    The postseason contributes TWO pills, BOWLS and CFP, which share one
+    `week_id` — so selection is keyed on the pair, not the id alone. ESPN
+    publishes the postseason as a single 46-game week, and leaving it that way
+    buries the playoff inside the bowl slate.
 --}}
 @if ($weeks !== [])
     <div
@@ -34,12 +35,15 @@
             class="flex snap-x snap-mandatory gap-1 overflow-x-auto scroll-smooth px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
             @foreach ($weeks as $week)
-                @php $active = (int) $selected === (int) $week['week_id']; @endphp
+                @php
+                    $active = (int) $selected === (int) $week['week_id']
+                        && (string) $bracket === (string) ($week['bracket'] ?? '');
+                @endphp
 
                 <button
                     type="button"
-                    wire:click="$set('{{ $model }}', {{ $week['week_id'] }})"
-                    wire:key="week-{{ $week['week_id'] }}"
+                    wire:click="selectWeek({{ $week['week_id'] }}, '{{ $week['bracket'] ?? '' }}')"
+                    wire:key="week-{{ $week['week_id'] }}-{{ $week['bracket'] ?? 'all' }}"
                     data-active="{{ $active ? 'true' : 'false' }}"
                     @class([
                         'flex shrink-0 snap-start flex-col items-center gap-0.5 rounded-lg px-3 py-2 text-center transition-colors',

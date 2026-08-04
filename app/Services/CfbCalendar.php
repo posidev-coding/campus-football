@@ -372,7 +372,19 @@ class CfbCalendar
      * first, because the first one populates the cache and returns the live
      * object. Same rule as never caching Eloquent models: cache plain scalars.
      *
-     * @return list<array{week_id:int, number:int, type:int, label:string, range:string, starts_at:?int}>
+     * The postseason is SPLIT into two entries, BOWLS and CFP, even though ESPN
+     * publishes it as a single week. Verified live: `types/3/weeks` returns
+     * exactly one week called "Bowls" covering Dec 13 to Jan 21, holding both
+     * the 35 ordinary bowls and the 11 playoff games. Presenting 46 games as one
+     * undifferentiated slate buries the playoff inside it, so the split is ours
+     * to make — off `games.note`, which is the only thing that distinguishes
+     * them.
+     *
+     * `bracket` is what the scoreboard filters on: '' for an ordinary week,
+     * 'bowls' or 'cfp' for the two halves of the postseason. It has to be a
+     * second dimension because both share one `week_id`.
+     *
+     * @return list<array{week_id:int, bracket:string, number:int, type:int, label:string, range:string, starts_at:?int}>
      */
     public function weekReleases(int $year): array
     {
@@ -386,29 +398,86 @@ class CfbCalendar
                 return [];
             }
 
-            return Week::whereIn('season_id', $seasons->keys())
+            $entries = [];
+
+            $weeks = Week::whereIn('season_id', $seasons->keys())
                 // Only weeks that actually have games. An empty week in the
                 // scroller is a dead end the user has to back out of.
                 ->whereExists(fn ($q) => $q->selectRaw(1)->from('games')->whereColumn('games.week_id', 'weeks.id'))
                 ->get()
-                ->map(function (Week $w) use ($seasons) {
-                    $type = $seasons[$w->season_id]->type ?? Season::REGULAR;
+                ->sortBy(fn (Week $w) => [$seasons[$w->season_id]->type ?? Season::REGULAR, $w->number]);
 
-                    return [
-                        'week_id' => $w->id,
-                        'number' => $w->number,
+            foreach ($weeks as $week) {
+                $type = $seasons[$week->season_id]->type ?? Season::REGULAR;
+
+                if ($type !== Season::POSTSEASON) {
+                    $entries[] = [
+                        'week_id' => $week->id,
+                        'bracket' => '',
+                        'number' => $week->number,
                         'type' => $type,
-                        'label' => $type === Season::POSTSEASON
-                            ? strtoupper($w->name ?: 'Bowls')
-                            : 'WEEK '.$w->number,
-                        'range' => $this->weekRange($w),
-                        'starts_at' => $w->start_date?->getTimestamp(),
+                        'label' => 'WEEK '.$week->number,
+                        'range' => $this->weekRange($week),
+                        'starts_at' => $week->start_date?->getTimestamp(),
                     ];
-                })
-                ->sortBy(fn (array $w) => [$w['type'], $w['number']])
-                ->values()
-                ->all();
+
+                    continue;
+                }
+
+                // Bowls first, then the playoff — the order they are played,
+                // and the order the reader expects to scroll through them.
+                foreach (['bowls' => 'BOWLS', 'cfp' => 'CFP'] as $bracket => $label) {
+                    $range = $this->bracketRange($week, $bracket);
+
+                    if ($range === null) {
+                        continue;
+                    }
+
+                    $entries[] = [
+                        'week_id' => $week->id,
+                        'bracket' => $bracket,
+                        'number' => $week->number,
+                        'type' => $type,
+                        'label' => $label,
+                        'range' => $range['label'],
+                        'starts_at' => $range['starts_at'],
+                    ];
+                }
+            }
+
+            return $entries;
         });
+    }
+
+    /**
+     * Date range for one half of the postseason, or null when it has no games.
+     *
+     * Read from the games themselves rather than the week, because the week
+     * spans both halves — showing "DEC 13-JAN 20" on the CFP pill when the
+     * playoff runs Dec 20 to Jan 20 would be wrong on both ends.
+     *
+     * @return array{label:string, starts_at:?int}|null
+     */
+    private function bracketRange(Week $week, string $bracket): ?array
+    {
+        $query = Game::where('week_id', $week->id);
+
+        $bracket === 'cfp' ? $query->playoff() : $query->bowlsOnly();
+
+        $first = (clone $query)->min('kickoff_at');
+        $last = (clone $query)->max('kickoff_at');
+
+        if ($first === null) {
+            return null;
+        }
+
+        $start = CarbonImmutable::parse($first)->setTimezone(config('cfb.timezone'));
+        $end = CarbonImmutable::parse($last)->setTimezone(config('cfb.timezone'));
+
+        return [
+            'label' => $this->range($start, $end),
+            'starts_at' => $start->getTimestamp(),
+        ];
     }
 
     /**
@@ -419,6 +488,20 @@ class CfbCalendar
      */
     public function defaultWeekId(int $year, ?CarbonImmutable $at = null): ?int
     {
+        return $this->defaultWeekEntry($year, $at)['week_id'] ?? null;
+    }
+
+    /**
+     * The scroller entry a scoreboard should open on — week AND bracket.
+     *
+     * The bracket matters: the postseason's two entries share a week id, so
+     * returning the id alone leaves the caller unable to tell whether to open on
+     * the bowls or the playoff.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function defaultWeekEntry(int $year, ?CarbonImmutable $at = null): ?array
+    {
         $weeks = $this->weekReleases($year);
 
         if ($weeks === []) {
@@ -426,13 +509,22 @@ class CfbCalendar
         }
 
         $at ??= CarbonImmutable::now(config('cfb.timezone'));
+        $now = $at->getTimestamp();
         $current = $this->week($at);
 
+        /*
+         * Inside a week: take it. For the postseason that is two entries
+         * sharing an id, so prefer the one whose own games have started —
+         * during bowl season that is BOWLS, and once the playoff is under way
+         * it becomes CFP.
+         */
         if ($current !== null) {
-            foreach ($weeks as $week) {
-                if ($week['week_id'] === $current->id) {
-                    return $week['week_id'];
-                }
+            $matches = array_values(array_filter($weeks, fn (array $w) => $w['week_id'] === $current->id));
+
+            if ($matches !== []) {
+                $started = array_filter($matches, fn (array $w) => ($w['starts_at'] ?? PHP_INT_MAX) <= $now);
+
+                return $started !== [] ? end($started) : $matches[0];
             }
         }
 
@@ -447,7 +539,6 @@ class CfbCalendar
          * thing in February, where the nearest week is the previous season's
          * bowls.
          */
-        $now = $at->getTimestamp();
         $nearest = null;
         $smallest = null;
 
@@ -460,11 +551,11 @@ class CfbCalendar
 
             if ($smallest === null || $distance < $smallest) {
                 $smallest = $distance;
-                $nearest = $week['week_id'];
+                $nearest = $week;
             }
         }
 
-        return $nearest ?? end($weeks)['week_id'];
+        return $nearest ?? end($weeks);
     }
 
     /**
@@ -479,6 +570,18 @@ class CfbCalendar
         $start = $week->start_date;
         $end = $week->end_date->subDay();
 
+        if ($end->lt($start)) {
+            $end = $start;
+        }
+
+        return $this->range($start, $end);
+    }
+
+    /**
+     * "AUG 23-SEP 1", collapsing to "DEC 1-7" within a single month.
+     */
+    private function range(CarbonImmutable $start, CarbonImmutable $end): string
+    {
         if ($end->lt($start)) {
             $end = $start;
         }

@@ -10,10 +10,16 @@
         ['team' => $game->homeTeam, 'score' => $game->home_score, 'rank' => $game->home_rank, 'record' => $game->home_record],
     ];
 
-    // The bowl or showcase name — "Aer Lingus College Football Classic". Only
-    // worth showing when it is not just "A at B", which is what `name` holds
-    // for an ordinary fixture.
-    $event = $game->name && ! str_contains($game->name, ' at ') ? $game->name : null;
+    /*
+     * The event's own name — "Rose Bowl Presented by Prudential", "College
+     * Football Playoff National Championship".
+     *
+     * Read from `note`, not `name`: `name` is only ever "A at B", so every bowl
+     * rendered as an ordinary fixture and there was no way to tell the National
+     * Championship from a Tuesday MAC game. Only postseason games carry a note,
+     * which is exactly why its presence is meaningful.
+     */
+    $event = $game->note;
 
     $broadcast = collect($game->broadcasts ?? [])->flatten()->filter()->first();
 @endphp

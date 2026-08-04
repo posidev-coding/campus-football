@@ -4,14 +4,12 @@ use App\Models\Article;
 use App\Models\Athlete;
 use App\Models\Conference;
 use App\Models\ConferenceSeason;
-use App\Models\Game;
 use App\Models\NationalLeader;
 use App\Models\Season;
 use App\Models\Standing;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\TeamSeasonStat;
-use App\Models\Week;
 use App\Support\Scope;
 use App\Support\Stats\LeaderQuery;
 use Illuminate\Support\Facades\Http;
@@ -208,27 +206,6 @@ describe('news', function () {
         $html = Livewire::test('news')->html();
 
         expect(strpos($html, 'Newer story'))->toBeLessThan(strpos($html, 'Older story'));
-    });
-});
-
-describe('bowls', function () {
-    it('renders for guests', function () {
-        $this->get(route('bowls'))->assertOk();
-    });
-
-    it('reads the postseason season type, not a week number', function () {
-        $week = Week::create([
-            'season_id' => $this->postseason->id, 'number' => 1, 'name' => 'Bowls',
-            'start_date' => '2025-12-13', 'end_date' => '2026-01-21',
-        ]);
-
-        Game::factory()->finished()->create([
-            'season_id' => $this->postseason->id, 'week_id' => $week->id,
-            'home_team_id' => 61, 'away_team_id' => 2000,
-            'name' => 'Sugar Bowl',
-        ]);
-
-        Livewire::test('bowls')->set('year', 2025)->assertSee('Georgia Bulldogs');
     });
 });
 

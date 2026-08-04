@@ -60,6 +60,8 @@ new class extends Component
 }; ?>
 
 <div class="flex flex-col gap-4">
+    <h1 class="sr-only">Search</h1>
+
     {{-- Autofocused so the keyboard is up the moment the tab opens: a Search
          area that needs a second tap to start typing wastes the trip. --}}
     <flux:input

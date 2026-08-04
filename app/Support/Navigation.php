@@ -61,11 +61,16 @@ class Navigation
                 'route' => 'scoreboard',
                 // A game belongs to Scores: you got there from a scoreboard and
                 // that is the tab that should stay lit.
-                'routes' => ['scoreboard', 'bowls', 'game'],
-                'sections' => [
-                    ['route' => 'scoreboard', 'label' => 'Scores'],
-                    ['route' => 'bowls', 'label' => 'Bowls'],
-                ],
+                'routes' => ['scoreboard', 'game'],
+                /*
+                 * No sections. Bowls and the playoff are entries at the end of
+                 * the week scroller rather than a separate screen — ESPN
+                 * publishes them as part of the same season and that is where
+                 * a reader scrolls to find them. With one screen in the area
+                 * the strip would be a single tab, which is chrome, not
+                 * navigation.
+                 */
+                'sections' => [],
                 'guest' => true,
             ],
             [
@@ -83,8 +88,8 @@ class Navigation
                     ['route' => 'standings', 'label' => 'Standings'],
                     ['route' => 'rankings', 'label' => 'Rankings'],
                     ['route' => 'teams', 'label' => 'Teams'],
-                    ['route' => 'stats', 'label' => 'Stats'],
-                    ['route' => 'leaders', 'label' => 'Leaders'],
+                    ['route' => 'stats', 'label' => 'Team Stats'],
+                    ['route' => 'leaders', 'label' => 'Player Stats'],
                     ['route' => 'recruiting', 'label' => 'Recruiting'],
                 ],
                 'guest' => true,

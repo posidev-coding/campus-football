@@ -28,7 +28,7 @@ new class extends Component
 }; ?>
 
 <div class="flex flex-col gap-4">
-    <flux:heading size="xl">News</flux:heading>
+    <h1 class="sr-only">News</h1>
 
     @forelse ($this->articles as $article)
         <x-article-card :article="$article" wire:key="article-{{ $article->id }}" />

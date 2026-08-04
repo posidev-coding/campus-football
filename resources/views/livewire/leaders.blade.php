@@ -144,10 +144,14 @@ new class extends Component
 }; ?>
 
 <div class="flex flex-col gap-4">
-    <x-scope-filter title="Player Stats" :year="$year" :selected="$scope" :top25="false" />
+    <h1 class="sr-only">Player Stats</h1>
 
+    {{-- One row, not three. The section strip already names the screen, so
+         everything here is a qualifier on it. --}}
     <div class="flex flex-wrap items-center gap-2">
-        <div class="-mx-4 min-w-0 flex-1 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <x-scope-filter :year="$year" :selected="$scope" :top25="false" class="shrink-0" />
+
+        <div class="-mx-1 min-w-0 flex-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <flux:radio.group wire:model.live="side" variant="segmented" size="sm" class="w-max">
                 @foreach ($this->sides as $value => $label)
                     <flux:radio :value="$value" :label="$label" />

@@ -97,7 +97,7 @@ new class extends Component
 }; ?>
 
 <div class="flex flex-col gap-4">
-    <flux:heading size="xl">Standings</flux:heading>
+    <h1 class="sr-only">Standings</h1>
 
     <div class="flex flex-wrap gap-2">
         <flux:select wire:model.live="year" size="sm" class="w-28">

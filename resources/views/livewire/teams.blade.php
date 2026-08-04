@@ -92,7 +92,7 @@ new class extends Component
 }; ?>
 
 <div class="flex flex-col gap-4">
-    <flux:heading size="xl">Teams</flux:heading>
+    <h1 class="sr-only">Teams</h1>
 
     <div class="flex flex-wrap gap-2">
         <flux:input

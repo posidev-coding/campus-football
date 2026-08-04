@@ -7,6 +7,7 @@ use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\Week;
+use App\Services\CfbCalendar;
 use App\Support\Scope;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
@@ -180,4 +181,93 @@ it('shows an empty state rather than erroring when a week has no games', functio
         ->set('week', $this->week->id)
         ->assertOk()
         ->assertSee('Nothing on the slate');
+});
+
+describe('postseason in the week scroller', function () {
+    beforeEach(function () {
+        $this->post = Season::factory()->create([
+            'year' => 2025, 'type' => Season::POSTSEASON,
+            'start_date' => '2025-12-13', 'end_date' => '2026-01-21',
+        ]);
+
+        $this->bowlWeek = Week::create([
+            'season_id' => $this->post->id, 'number' => 1, 'name' => 'Bowls',
+            'start_date' => '2025-12-13', 'end_date' => '2026-01-21',
+        ]);
+
+        $this->bowl = Game::factory()->finished()->create([
+            'season_id' => $this->post->id, 'week_id' => $this->bowlWeek->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'kickoff_at' => '2025-12-27 17:00:00',
+            'note' => 'Union Home Mortgage Gasparilla Bowl',
+        ]);
+
+        $this->title = Game::factory()->finished()->create([
+            'season_id' => $this->post->id, 'week_id' => $this->bowlWeek->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'kickoff_at' => '2026-01-20 19:30:00',
+            'note' => 'College Football Playoff National Championship Presented by AT&T',
+        ]);
+    });
+
+    it('splits one ESPN postseason week into BOWLS and CFP', function () {
+        /*
+         * ESPN publishes the whole postseason as ONE week called "Bowls" —
+         * verified live, `types/3/weeks` returns a single item covering Dec 13
+         * to Jan 21 and holding both the 35 ordinary bowls and the 11 playoff
+         * games. Leaving it undivided buries the playoff inside the bowl slate.
+         */
+        $entries = collect(app(CfbCalendar::class)->weekReleases(2025))
+            ->where('week_id', $this->bowlWeek->id);
+
+        expect($entries)->toHaveCount(2)
+            ->and($entries->pluck('bracket')->all())->toBe(['bowls', 'cfp'])
+            ->and($entries->pluck('label')->all())->toBe(['BOWLS', 'CFP']);
+    });
+
+    it('dates each half from its own games, not the shared week', function () {
+        // The week spans both halves, so using it would put "DEC 13" on the CFP
+        // pill when the playoff starts a week later.
+        $entries = collect(app(CfbCalendar::class)->weekReleases(2025))
+            ->where('week_id', $this->bowlWeek->id)->keyBy('bracket');
+
+        expect($entries['bowls']['range'])->toContain('DEC 27')
+            ->and($entries['cfp']['range'])->toContain('JAN 20');
+    });
+
+    it('shows only the playoff when CFP is selected', function () {
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->call('selectWeek', $this->bowlWeek->id, 'cfp')
+            ->assertSee('National Championship')
+            ->assertDontSee('Gasparilla');
+    });
+
+    it('shows only the bowls when BOWLS is selected', function () {
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->call('selectWeek', $this->bowlWeek->id, 'bowls')
+            ->assertSee('Gasparilla')
+            ->assertDontSee('National Championship');
+    });
+
+    it('moves both dimensions together', function () {
+        // The two pills share a week id, so setting the id alone would leave a
+        // stale bracket and show the wrong half.
+        $component = Livewire::test('scoreboard')
+            ->call('selectWeek', $this->bowlWeek->id, 'cfp')
+            ->call('selectWeek', $this->week->id, '');
+
+        expect($component->get('week'))->toBe($this->week->id)
+            ->and($component->get('bracket'))->toBe('');
+    });
+
+    it('names a bowl on its card instead of "A at B"', function () {
+        // games.name only ever holds "A at B", so every bowl rendered as an
+        // ordinary fixture until the event note was stored.
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->call('selectWeek', $this->bowlWeek->id, 'bowls')
+            ->assertSee('Union Home Mortgage Gasparilla Bowl');
+    });
 });

@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Game;
-use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Scope;
 use Livewire\Attributes\Computed;
@@ -18,7 +17,11 @@ use Livewire\Component;
  *
  * There is deliberately NO season selector. This is a "what is on now" screen;
  * comparing years belongs on Standings, Rankings, Stats and Leaders, where it is
- * the point. The season is whichever one the calendar says has results.
+ * the point.
+ *
+ * It is also the only screen in its area, so it carries a heading of its own —
+ * everywhere else the section strip already names the screen and a heading
+ * would say the same word twice.
  */
 new class extends Component
 {
@@ -26,18 +29,39 @@ new class extends Component
      * A week id, not a week number.
      *
      * Week numbers are not unique within a season — the postseason's "Bowls" is
-     * also week 1 — so a number-keyed selector collides them and makes the bowl
-     * slate unreachable.
+     * also week 1 — so a number-keyed selector collides them.
      */
     #[Url]
     public ?int $week = null;
+
+    /**
+     * '' for an ordinary week, 'bowls' or 'cfp' for the two halves of the
+     * postseason, which ESPN publishes as a single 46-game week.
+     */
+    #[Url]
+    public string $bracket = '';
 
     #[Url]
     public string $scope = Scope::TOP_25;
 
     public function mount(CfbCalendar $calendar): void
     {
-        $this->week ??= $calendar->defaultWeekId($this->year());
+        if ($this->week === null) {
+            $entry = $calendar->defaultWeekEntry($this->year());
+
+            $this->week = $entry['week_id'] ?? null;
+            $this->bracket = $entry['bracket'] ?? '';
+        }
+    }
+
+    /**
+     * Both dimensions move together — a bowls pill and a CFP pill share a week
+     * id, so setting the id alone would leave the bracket stale.
+     */
+    public function selectWeek(int $weekId, string $bracket = ''): void
+    {
+        $this->week = $weekId;
+        $this->bracket = $bracket;
     }
 
     /**
@@ -82,6 +106,8 @@ new class extends Component
                 'odds',
             ])
             ->where('week_id', $this->week)
+            ->when($this->bracket === 'cfp', fn ($q) => $q->playoff())
+            ->when($this->bracket === 'bowls', fn ($q) => $q->bowlsOnly())
             ->orderBy('kickoff_at');
 
         $teamIds = Scope::teamIds($this->scope, $this->year());
@@ -109,31 +135,33 @@ new class extends Component
     {
         return Game::query()->inProgress()->exists();
     }
-
-    #[Computed]
-    public function weekLabel(): ?string
-    {
-        return Week::find($this->week)?->name;
-    }
 }; ?>
 
-<div class="flex flex-col gap-4">
-    <div class="flex items-start justify-between gap-3">
-        <x-scope-filter title="Scores" :year="$this->scopeYear" :selected="$scope" />
+<div class="flex flex-col gap-3">
+    {{-- Scores is the only screen in its area, so there is no section strip
+         above it — which makes this the one heading in the app that is not a
+         repeat of the strip. The scope filter sits inline with it rather than
+         claiming a row of its own. --}}
+    <div class="flex items-center justify-between gap-3">
+        <div class="flex min-w-0 items-center gap-2">
+            <flux:heading size="xl" class="truncate">Scoreboard</flux:heading>
 
-        @if ($this->hasLiveGames)
-            <flux:badge color="red" size="sm" class="mt-1 shrink-0">Live</flux:badge>
-        @endif
+            @if ($this->hasLiveGames)
+                <flux:badge color="red" size="sm" class="shrink-0">Live</flux:badge>
+            @endif
+        </div>
+
+        <x-scope-filter :year="$this->scopeYear" :selected="$scope" class="shrink-0 items-end" />
     </div>
 
-    <x-week-scroller :weeks="$this->weeks" :selected="$week" />
+    <x-week-scroller :weeks="$this->weeks" :selected="$week" :bracket="$bracket" />
 
     {{-- Short-polls our own cache, never ESPN, and only while a game is
          actually in progress. --}}
     <div @if ($this->hasLiveGames) wire:poll.30s.visible @endif class="flex flex-col gap-5">
         @forelse ($this->games as $day => $games)
             <div class="flex flex-col gap-2">
-                <flux:subheading class="sticky top-14 z-10 bg-white/90 py-1 backdrop-blur dark:bg-zinc-950/90">
+                <flux:subheading class="sticky top-0 z-10 bg-white/90 py-1 backdrop-blur dark:bg-zinc-950/90">
                     {{ $day }}
                 </flux:subheading>
 
@@ -147,8 +175,7 @@ new class extends Component
             <flux:callout icon="calendar-days">
                 <flux:callout.heading>Nothing on the slate</flux:callout.heading>
                 <flux:callout.text>
-                    No {{ App\Support\Scope::label($scope, $this->scopeYear) }} games
-                    {{ $this->weekLabel ? 'in '.$this->weekLabel : 'this week' }}.
+                    No {{ App\Support\Scope::label($scope, $this->scopeYear) }} games here.
                     Try another week, or widen the filter to FBS.
                 </flux:callout.text>
             </flux:callout>

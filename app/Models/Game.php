@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  */
 #[Fillable([
     'id', 'season_id', 'week_id', 'venue_id', 'kickoff_at', 'kickoff_day',
-    'name', 'short_name', 'neutral_site', 'conference_game',
+    'name', 'short_name', 'note', 'neutral_site', 'conference_game',
     'home_team_id', 'home_score', 'home_rank', 'home_record', 'home_line_scores', 'home_win_prob',
     'away_team_id', 'away_score', 'away_rank', 'away_record', 'away_line_scores', 'away_win_prob',
     'status', 'status_detail', 'period', 'clock', 'completed', 'attendance', 'broadcasts',
@@ -115,6 +115,24 @@ class Game extends Model
     public function scopeCompleted(Builder $query): Builder
     {
         return $query->where('completed', true);
+    }
+
+    /**
+     * Playoff games, identified by ESPN's own event note.
+     *
+     * `games.name` is only ever "A at B", so before the note was stored there
+     * was no way to tell the National Championship from a Tuesday MAC game —
+     * a heuristic on `name` matched nothing at all.
+     */
+    public function scopePlayoff(Builder $query): Builder
+    {
+        return $query->where('note', 'like', 'College Football Playoff%');
+    }
+
+    /** Postseason games that are NOT part of the playoff bracket. */
+    public function scopeBowlsOnly(Builder $query): Builder
+    {
+        return $query->whereNotNull('note')->where('note', 'not like', 'College Football Playoff%');
     }
 
     public function scopeInProgress(Builder $query): Builder

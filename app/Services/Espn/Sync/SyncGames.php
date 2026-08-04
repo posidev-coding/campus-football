@@ -309,6 +309,10 @@ class SyncGames
             'kickoff_day' => $kickoff->setTimezone(config('cfb.timezone'))->format('D'),
             'name' => $event['name'] ?? 'Unknown matchup',
             'short_name' => $event['shortName'] ?? null,
+            // "Rose Bowl Presented by Prudential", "College Football Playoff
+            // National Championship". Absent on regular-season games, which is
+            // itself the signal that a game is one.
+            'note' => $this->note($competition),
             'neutral_site' => (bool) ($competition['neutralSite'] ?? false),
             'conference_game' => (bool) ($competition['conferenceCompetition'] ?? false),
             'attendance' => $competition['attendance'] ?? null,
@@ -437,6 +441,22 @@ class SyncGames
     /**
      * @return list<string>|null
      */
+    /**
+     * The event's own name, where it has one.
+     *
+     * Only postseason games carry this, and that is exactly what makes it
+     * useful: it is both the bowl's proper name for display and the only way to
+     * tell a playoff game from any other bowl. Verified live for 2025 — 41 of
+     * 41 postseason events have it, and the 11 playoff games all begin
+     * "College Football Playoff".
+     */
+    private function note(array $competition): ?string
+    {
+        $headline = data_get($competition, 'notes.0.headline');
+
+        return is_string($headline) && $headline !== '' ? $headline : null;
+    }
+
     private function broadcasts(array $competition): ?array
     {
         $names = [];
