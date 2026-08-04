@@ -12,6 +12,8 @@ use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\TeamSeasonStat;
 use App\Models\Week;
+use App\Support\Scope;
+use App\Support\Stats\LeaderQuery;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -87,33 +89,28 @@ describe('national leaders', function () {
         $this->get(route('leaders'))->assertOk();
     });
 
-    it('excludes other divisions when scoped to FBS', function () {
-        // The feed spans every division — 245 distinct teams for 2025 against
-        // 136 in FBS — so an unscoped leaderboard mixes them with no way to
-        // tell which is which.
-        Livewire::test('leaders')
-            ->set('year', 2025)
-            ->set('scope', 'fbs')
-            ->set('category', 'passingYards')
-            ->assertSee('Top Passer')
-            ->assertDontSee('FCS Passer');
+    it('keeps the national feed as a cross-check, not as the screen', function () {
+        /*
+         * `national_leaders` is still synced, but the leaders SCREEN no longer
+         * reads it — that feed spans every division and only ~half its top 100
+         * is FBS, so a scoped view read from it collapsed. It survives as a
+         * cross-check against our derived totals, the same dual-source
+         * discipline the standings reconciler uses.
+         *
+         * Scoping is exercised properly in DerivedLeadersTest.
+         */
+        expect(NationalLeader::where('season_year', 2025)->count())->toBeGreaterThan(0);
+
+        $fbs = Scope::teamIds('fbs', 2025);
+
+        expect(NationalLeader::where('season_year', 2025)->whereIn('team_id', $fbs)->count())
+            ->toBeLessThan(NationalLeader::where('season_year', 2025)->count());
     });
 
-    it('degrades to the team when the athlete is unknown', function () {
-        // ESPN publishes only the CURRENT roster, so a leader from an earlier
-        // season may have no athlete row at all. That must not blank the row.
-        NationalLeader::create([
-            'season_year' => 2025, 'season_type' => Season::REGULAR, 'category' => 'rushingYards',
-            'athlete_id' => 88888888, 'team_id' => 61, 'rank' => 1, 'display_value' => '1500',
-        ]);
-
-        Livewire::test('leaders')
-            ->set('year', 2025)
-            ->set('scope', 'fbs')
-            ->set('category', 'rushingYards')
-            ->assertOk()
-            ->assertSee('Unidentified player')
-            ->assertSee('1500');
+    it('renders without erroring when a season has no derived stats', function () {
+        // 2026 is scheduled but unplayed, so there are no box scores to derive
+        // from. An empty state, not a crash.
+        Livewire::test('leaders')->set('year', 2026)->assertOk()->assertSee('No statistics');
     });
 });
 
@@ -122,7 +119,12 @@ describe('national team stats', function () {
         $this->get(route('stats'))->assertOk();
     });
 
-    it('sorts by the national rank ESPN already computed', function () {
+    it('ranks teams within the scope, not by ESPN national rank', function () {
+        /*
+         * ESPN's national rank is carried for context but is the wrong number
+         * to ORDER by once a conference is selected — the SEC's best offence
+         * should be row 1, not row 7.
+         */
         $rival = Team::factory()->create(['id' => 333, 'slug' => 'alabama', 'display_name' => 'Alabama Crimson Tide']);
         TeamSeason::create(['team_id' => 333, 'season_year' => 2025, 'conference_id' => 8, 'classification' => 'FBS']);
 
@@ -136,13 +138,14 @@ describe('national team stats', function () {
             'stats' => ['totalPoints' => ['display' => '520', 'value' => 520, 'rank' => 3, 'label' => 'Total Points']],
         ]);
 
-        $html = Livewire::test('stats')
-            ->set('year', 2025)->set('scope', 'fbs')
-            ->set('category', 'scoring')->set('stat', 'totalPoints')
-            ->html();
+        $board = ['group' => 'Scoring', 'category' => 'scoring', 'stat' => 'totalPoints', 'label' => 'Points'];
+        $rows = LeaderQuery::teams($board, 2025, 'fbs');
 
-        // Alabama ranks 3rd, Georgia 21st, so Alabama must come first.
-        expect(strpos($html, 'Alabama'))->toBeLessThan(strpos($html, 'Georgia'));
+        // Alabama scored more, so it is row 1 whatever its national rank says.
+        expect($rows[0]['team_id'])->toBe(333)
+            ->and($rows[0]['rank'])->toBe(1)
+            ->and($rows[0]['national'])->toBe(3)
+            ->and($rows[1]['rank'])->toBe(2);
     });
 
     it('tolerates the pre-rank flat stat shape', function () {
@@ -153,11 +156,8 @@ describe('national team stats', function () {
             'stats' => ['passingYards' => '3200'],
         ]);
 
-        Livewire::test('stats')
-            ->set('year', 2025)->set('scope', 'fbs')
-            ->set('category', 'passing')->set('stat', 'passingYards')
-            ->assertOk()
-            ->assertSee('3200');
+        expect(TeamSeasonStat::where('team_id', 61)->first()->stat('passingYards'))
+            ->toMatchArray(['display' => '3200', 'rank' => null]);
     });
 });
 

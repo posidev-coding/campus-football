@@ -216,3 +216,21 @@ Schedule::command('cfb:sync --only=athletes')
     ->timezone($tz)
     ->when($inSeason)
     ->withoutOverlapping();
+
+/*
+ * Season totals, derived from box scores we already hold.
+ *
+ * Costs ZERO ESPN requests — it is arithmetic, not a feed — so it can run
+ * often. Placed after the summary sweep so a Saturday's box scores are folded
+ * in before anyone reads a leaderboard on Sunday morning.
+ *
+ * It exists because ESPN's national leaders feed spans every division and only
+ * about half its top 100 is FBS, so a scoped leaderboard read from it collapses:
+ * the MAC had FOUR players in the national top 100 for passing yards. Ranking
+ * our own aggregates gives that conference 43.
+ */
+Schedule::command('cfb:aggregate')
+    ->dailyAt('05:15')
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();

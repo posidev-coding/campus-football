@@ -1,25 +1,31 @@
 <?php
 
-use App\Models\NationalLeader;
-use App\Models\Season;
-use App\Services\CfbCalendar;
+use App\Models\Athlete;
+use App\Models\AthleteSeasonStat;
+use App\Models\Team;
 use App\Support\Scope;
+use App\Support\Stats\LeaderQuery;
+use App\Support\Stats\StatCatalog;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
- * National statistical leaders.
+ * National statistical leaders, derived from our own box scores.
  *
- * Backed by the cheapest feed in the app: one core-api request returns 13
- * categories of 100 athletes. The site equivalent 404s, so core is the only
- * source — the same shape of trap as the rankings endpoint refusing to serve
- * the CFP poll.
+ * NOT from ESPN's national leaders feed, which was the original source and the
+ * wrong one for a scoped screen: it spans every division, only about half its
+ * top 100 is FBS, and narrowing to a conference collapsed it — the MAC had FOUR
+ * players in the national top 100 for passing yards. Ranking our own season
+ * aggregates gives that conference 43 and numbers them 1..N.
  *
- * The feed spans every division, so scoping through team_seasons is not
- * optional. Without it an FCS player sits alongside an FBS one with nothing to
- * distinguish them.
+ * Grouped Offense / Defense / Special Teams, following ESPN's own stats page,
+ * because that is how people look for this rather than alphabetically.
+ *
+ * There is deliberately no Top 25 scope here. It filters TEAMS, which is
+ * meaningful on a scoreboard and misleading on a leaderboard — "leading rusher
+ * among 25 teams" reads as if it were the national leader.
  */
 new class extends Component
 {
@@ -30,38 +36,40 @@ new class extends Component
     public string $scope = Scope::FBS;
 
     #[Url]
-    public string $category = '';
+    public string $side = StatCatalog::OFFENSE;
 
-    /** How many rows before "show more". */
-    public int $limit = 25;
-
-    public function mount(CfbCalendar $calendar): void
+    public function mount(): void
     {
-        $this->year ??= $this->latestYearWithLeaders() ?? $calendar->resultsYear();
-        $this->category = $this->category ?: ($this->categories()[0]['value'] ?? '');
+        $this->year ??= $this->latestYear();
+
+        $this->normaliseScope();
     }
 
-    public function updatedYear(): void
+    /**
+     * Top 25 is not offered here, so a bookmarked URL carrying it — or a user
+     * arriving from Scores via wire:navigate with it still in the querystring —
+     * would otherwise silently scope a leaderboard to 25 teams and present it
+     * as if it were national.
+     */
+    public function updatedScope(): void
     {
-        $this->limit = 25;
+        $this->normaliseScope();
     }
 
-    public function updatedCategory(): void
+    private function normaliseScope(): void
     {
-        $this->limit = 25;
+        if ($this->scope === Scope::TOP_25) {
+            $this->scope = Scope::FBS;
+        }
     }
 
-    public function showAll(): void
-    {
-        $this->limit = 100;
-    }
-
-    private function latestYearWithLeaders(): ?int
+    private function latestYear(): int
     {
         return Cache::remember(
-            'leaders:latest-year',
+            'leaders:derived-year',
             3600,
-            fn () => NationalLeader::max('season_year')
+            fn () => AthleteSeasonStat::max('season_year')
+                ?? app(App\Services\CfbCalendar::class)->resultsYear()
         );
     }
 
@@ -69,119 +77,148 @@ new class extends Component
     #[Computed]
     public function years(): array
     {
-        return Cache::remember('leaders:years', 3600, fn () => NationalLeader::query()
-            ->distinct()
-            ->orderByDesc('season_year')
-            ->pluck('season_year')
-            ->all());
+        return Cache::remember('leaders:years', 3600, fn () => AthleteSeasonStat::query()
+            ->distinct()->orderByDesc('season_year')->pluck('season_year')->all());
+    }
+
+    /** @return array<string, string> */
+    #[Computed]
+    public function sides(): array
+    {
+        return StatCatalog::sideLabels();
     }
 
     /**
-     * Categories that have rows for this season, in a reading order that puts
-     * offense before defense rather than leaving them alphabetical.
+     * Every leaderboard on the current side, grouped, with its rows resolved.
      *
-     * @return list<array{value:string, label:string}>
+     * @return list<array{group:string, boards:list<array<string, mixed>>}>
      */
     #[Computed]
-    public function categories(): array
+    public function groups(): array
     {
-        $preferred = [
-            'passingYards', 'passingTouchdowns', 'quarterbackRating',
-            'rushingYards', 'rushingTouchdowns',
-            'receivingYards', 'receptions', 'receivingTouchdowns',
-            'totalTackles', 'sacks', 'interceptions', 'interceptionYards',
-        ];
+        $groups = [];
 
-        $present = NationalLeader::where('season_year', $this->year)
-            ->distinct()
-            ->pluck('category')
-            ->all();
+        foreach (StatCatalog::groups($this->side) as $group) {
+            $boards = [];
 
-        return collect($preferred)
-            ->filter(fn (string $c) => in_array($c, $present, true))
-            ->merge(collect($present)->reject(fn (string $c) => in_array($c, $preferred, true)))
-            ->map(fn (string $c) => ['value' => $c, 'label' => str($c)->headline()->toString()])
-            ->values()
-            ->all();
+            foreach (StatCatalog::boardsFor($this->side, $group) as $board) {
+                $rows = LeaderQuery::players($board, $this->year, $this->scope, limit: 5);
+
+                if ($rows !== []) {
+                    $boards[] = ['meta' => $board, 'rows' => $rows];
+                }
+            }
+
+            if ($boards !== []) {
+                $groups[] = ['group' => $group, 'boards' => $boards];
+            }
+        }
+
+        return $groups;
+    }
+
+    /**
+     * Athletes and teams for everything on screen, in two queries.
+     *
+     * Resolved in bulk rather than per row: a side renders up to ten
+     * leaderboards of five, and looking each one up individually would be 50
+     * round trips for what two `whereIn`s answer.
+     */
+    #[Computed]
+    public function athletes()
+    {
+        $ids = collect($this->groups)->pluck('boards')->flatten(1)->pluck('rows')->flatten(1)->pluck('athlete_id');
+
+        return Athlete::whereIn('id', $ids)->get(['id', 'slug', 'display_name', 'short_name', 'headshot_url'])->keyBy('id');
     }
 
     #[Computed]
-    public function leaders()
+    public function teams()
     {
-        if ($this->category === '') {
-            return collect();
-        }
+        $ids = collect($this->groups)->pluck('boards')->flatten(1)->pluck('rows')->flatten(1)->pluck('team_id')->filter();
 
-        $query = NationalLeader::query()
-            ->with([
-                'athlete:id,slug,display_name,short_name,headshot_url',
-                'team:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
-            ])
-            ->where('season_year', $this->year)
-            ->where('season_type', Season::REGULAR)
-            ->where('category', $this->category);
-
-        $teamIds = Scope::teamIds($this->scope, $this->year);
-
-        if ($teamIds !== null) {
-            $query->whereIn('team_id', $teamIds);
-        }
-
-        return $query->orderBy('rank')->limit($this->limit)->get();
+        return Team::whereIn('id', $ids)
+            ->get(['id', 'slug', 'display_name', 'short_display_name', 'abbreviation', 'logo', 'logo_dark'])
+            ->keyBy('id');
     }
 }; ?>
 
 <div class="flex flex-col gap-4">
-    <x-scope-filter title="Leaders" :year="$year" :selected="$scope" />
+    <x-scope-filter title="Player Stats" :year="$year" :selected="$scope" :top25="false" />
 
-    <div class="flex flex-wrap gap-2">
-        <flux:select wire:model.live="category" size="sm" class="min-w-40 flex-1">
-            @foreach ($this->categories as $c)
-                <flux:select.option :value="$c['value']">{{ $c['label'] }}</flux:select.option>
-            @endforeach
-        </flux:select>
+    <div class="flex flex-wrap items-center gap-2">
+        <div class="-mx-4 min-w-0 flex-1 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <flux:radio.group wire:model.live="side" variant="segmented" size="sm" class="w-max">
+                @foreach ($this->sides as $value => $label)
+                    <flux:radio :value="$value" :label="$label" />
+                @endforeach
+            </flux:radio.group>
+        </div>
 
-        <flux:select wire:model.live="year" size="sm" class="w-24">
+        <flux:select wire:model.live="year" size="sm" class="w-24 shrink-0">
             @foreach ($this->years as $y)
                 <flux:select.option :value="$y">{{ $y }}</flux:select.option>
             @endforeach
         </flux:select>
     </div>
 
-    @forelse ($this->leaders as $leader)
-        <div class="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"
-             wire:key="leader-{{ $leader->id }}">
-            <span class="tabular w-6 shrink-0 text-right text-stat font-semibold text-zinc-400">
-                {{ $leader->rank }}
-            </span>
+    @forelse ($this->groups as $group)
+        <div class="flex flex-col gap-2" wire:key="grp-{{ $side }}-{{ $group['group'] }}">
+            <flux:subheading>{{ $group['group'] }}</flux:subheading>
 
-            <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-                {{-- The athlete may be missing: ESPN publishes only the CURRENT
-                     roster, so a leader from an earlier season has no roster row
-                     to have come from. Degrade to the team rather than blank. --}}
-                @if ($leader->athlete)
-                    <x-player-link :athlete="$leader->athlete" size="sm" />
-                @else
-                    <span class="text-sm text-zinc-500">Unidentified player</span>
-                @endif
+            <div class="grid gap-3 lg:grid-cols-2">
+                @foreach ($group['boards'] as $board)
+                    <div class="flex flex-col rounded-lg border border-zinc-200 dark:border-zinc-800"
+                         wire:key="brd-{{ $board['meta']['stat'] }}">
+                        <header class="flex items-baseline justify-between gap-2 border-b border-zinc-100 px-3 py-2 dark:border-zinc-800/60">
+                            <h3 class="text-stat font-semibold">{{ $board['meta']['label'] }}</h3>
 
-                <x-team-link :team="$leader->team" label="short" size="xs" :logo="false" class="text-zinc-500" />
+                            @if (isset($board['meta']['min']))
+                                {{-- Stated, not hidden: a rate leaderboard with no
+                                     floor is won by whoever attempted once. --}}
+                                <span class="text-micro text-zinc-400">
+                                    min {{ $board['meta']['min'][1] }}
+                                </span>
+                            @endif
+                        </header>
+
+                        <ol class="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                            @foreach ($board['rows'] as $row)
+                                @php
+                                    $athlete = $this->athletes->get($row['athlete_id']);
+                                    $team = $this->teams->get($row['team_id']);
+                                @endphp
+
+                                <li class="flex items-center gap-2 px-3 py-1.5">
+                                    <span class="tabular w-4 shrink-0 text-right text-micro font-semibold text-zinc-400">
+                                        {{ $row['rank'] }}
+                                    </span>
+
+                                    <div class="flex min-w-0 flex-1 items-center gap-1.5">
+                                        @if ($athlete)
+                                            <x-player-link :athlete="$athlete" size="xs" />
+                                        @else
+                                            <span class="truncate text-micro text-zinc-500">Unknown player</span>
+                                        @endif
+
+                                        <x-team-link :team="$team" label="abbr" size="xs" :logo="false"
+                                                     class="shrink-0 text-zinc-400" />
+                                    </div>
+
+                                    <span class="tabular shrink-0 text-stat font-semibold">{{ $row['display'] }}</span>
+                                </li>
+                            @endforeach
+                        </ol>
+                    </div>
+                @endforeach
             </div>
-
-            <span class="tabular shrink-0 text-base font-bold tracking-tight">
-                {{ $leader->display_value ?? $leader->value }}
-            </span>
         </div>
     @empty
         <flux:callout icon="chart-bar">
-            <flux:callout.heading>No leaders</flux:callout.heading>
-            <flux:callout.text>Nothing published for this category and season.</flux:callout.text>
+            <flux:callout.heading>No statistics</flux:callout.heading>
+            <flux:callout.text>
+                Nothing derived for {{ $year }} yet. Run <code>php artisan cfb:aggregate</code>.
+            </flux:callout.text>
         </flux:callout>
     @endforelse
-
-    @if ($this->leaders->isNotEmpty() && $limit < 100)
-        <flux:button wire:click="showAll" size="sm" variant="ghost" class="self-center">
-            Show top 100
-        </flux:button>
-    @endif
 </div>

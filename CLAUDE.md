@@ -489,6 +489,56 @@ also week 1, so keying on number collides it with the season opener. And week
 date ranges ABUT — week 1 ends the day week 2 starts — so subtract a day before
 displaying a range.
 
+## Leaderboards are DERIVED, not read from ESPN's leaders feed
+
+ESPN's national leaders endpoint spans every division, and only about half its
+top 100 is FBS. Read directly, a scoped leaderboard breaks three ways: ranks go
+non-contiguous (1, 3, 4, 9...), "top 100" can only ever return ~55, and a
+conference collapses outright — **the MAC had FOUR players** in the national top
+100 for passing yards.
+
+`AggregateAthleteStats` folds `athlete_game_stats` into `athlete_season_stats`
+instead. Zero ESPN requests; it is arithmetic over box scores we already hold.
+The MAC goes from 4 rows to 43, ranked 1..N. Validated before being trusted:
+our sum for Drew Mestemaker's 2025 regular season is 4129, which is exactly what
+ESPN reports.
+
+Four rules the aggregation must keep:
+
+    SUM      counting stats
+    MAX      longRushing, longReception, longPunt... a season's longest run is
+             the longest single run, not the total of every game's longest
+    RATE     recomputed from summed components. Averaging per-game averages
+             weights a 1-carry game like a 30-carry one
+    DROP     adjQBR is a proprietary model, not arithmetic. Approximating it
+             would be inventing a number
+
+Rate leaderboards need a minimum-attempts floor or they are won by whoever
+attempted once.
+
+**`season_type = 0` means the whole year, bowls included.** ESPN's headline
+leaders are cumulative — its stats page reports 4,379 for the passer whose
+regular season was 4,129 — so the screens read type 0. It is stored as its own
+row rather than summed at read time, because rate stats cannot be added.
+
+`national_leaders` stays as a cross-check, the same dual-source discipline the
+standings reconciler uses.
+
+### `interceptions` means two opposite things
+
+It exists in the `passing` category (thrown — bad) and the `interceptions`
+category (caught — good). Same key, opposite meaning. A leaderboard keyed on the
+stat name alone ranks quarterbacks by how often they were picked off and calls
+them leaders. Always pair a stat with its category.
+
+### Top 25 is a TEAM filter
+
+Right on Scores — "the games that matter". Wrong on a leaderboard, where it
+silently means "the leading rusher among 25 teams" and reads as national. The
+scope filter takes `:top25="false"` on Stats and Leaders, and both screens
+rewrite the value on mount AND on update so a bookmarked or carried-over
+querystring cannot reintroduce it.
+
 ## Fan out for isolation and latency, not for throughput
 
 Steady-state load is about **1,600 requests a week** — under seven minutes of

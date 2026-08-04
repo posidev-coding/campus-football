@@ -3,12 +3,13 @@
     'selected' => 'top25',
     'model' => 'scope',
     'includeFcs' => false,
+    'top25' => true,
     'title' => null,
 ])
 
 @php
     $year ??= now()->year;
-    $options = App\Support\Scope::options($year, $includeFcs);
+    $options = App\Support\Scope::options($year, $includeFcs, $top25);
 @endphp
 
 {{--

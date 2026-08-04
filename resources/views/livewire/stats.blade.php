@@ -1,26 +1,27 @@
 <?php
 
-use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeasonStat;
-use App\Services\CfbCalendar;
+use App\Support\Ordinal;
 use App\Support\Scope;
+use App\Support\Stats\LeaderQuery;
+use App\Support\Stats\StatCatalog;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
- * National team statistics.
+ * National team statistics, grouped Offense / Defense / Special Teams the way
+ * ESPN's own stats page does.
  *
- * Every stat ESPN publishes for a team carries its NATIONAL RANK — it has
- * already ranked all 136 FBS teams on "average gain" and everything else. So
- * this screen is a sort over stored data rather than a computation, and it costs
- * no extra requests at all: the ranks arrive with the team stats sync.
+ * Ranked WITHIN the selected scope. ESPN publishes a national rank on every
+ * team stat and it is carried alongside for context, but it is the wrong number
+ * to order by the moment a reader picks a conference — the SEC's best offence
+ * should be row 1, not row 7.
  *
- * Ordering is by ESPN's rank where present, falling back to the raw value. The
- * fallback matters because rank is only meaningful within the classification
- * ESPN ranked — an FCS team's "3rd" is not comparable with an FBS team's.
+ * No Top 25 scope: it filters teams, which makes "the best offence among 25
+ * teams" read as if it were the national best.
  */
 new class extends Component
 {
@@ -31,27 +32,34 @@ new class extends Component
     public string $scope = Scope::FBS;
 
     #[Url]
-    public string $category = 'scoring';
+    public string $side = StatCatalog::OFFENSE;
 
-    #[Url]
-    public string $stat = '';
-
-    public function mount(CfbCalendar $calendar): void
+    public function mount(): void
     {
-        $this->year ??= $this->latestYear() ?? $calendar->resultsYear();
-        $this->stat = $this->stat ?: ($this->stats()[0]['value'] ?? '');
+        $this->year ??= Cache::remember(
+            'stats:latest-year',
+            3600,
+            fn () => TeamSeasonStat::max('season_year')
+                ?? app(App\Services\CfbCalendar::class)->resultsYear()
+        );
+
+        $this->normaliseScope();
     }
 
-    public function updatedCategory(): void
+    /**
+     * See the note on the leaders screen: Top 25 filters teams, so honouring it
+     * here would present "best offence among 25 teams" as the national best.
+     */
+    public function updatedScope(): void
     {
-        // The chosen stat belongs to the old category and will not exist in the
-        // new one, so re-resolve rather than render an empty table.
-        $this->stat = $this->stats()[0]['value'] ?? '';
+        $this->normaliseScope();
     }
 
-    private function latestYear(): ?int
+    private function normaliseScope(): void
     {
-        return Cache::remember('stats:latest-year', 3600, fn () => TeamSeasonStat::max('season_year'));
+        if ($this->scope === Scope::TOP_25) {
+            $this->scope = Scope::FBS;
+        }
     }
 
     /** @return list<int> */
@@ -62,127 +70,112 @@ new class extends Component
             ->distinct()->orderByDesc('season_year')->pluck('season_year')->all());
     }
 
-    /** @return list<string> */
+    /** @return array<string, string> */
     #[Computed]
-    public function categories(): array
+    public function sides(): array
     {
-        return Cache::remember("stats:categories:{$this->year}", 3600, fn () => TeamSeasonStat::query()
-            ->where('season_year', $this->year)
-            ->distinct()->orderBy('category')->pluck('category')->all());
+        return StatCatalog::sideLabels();
     }
 
     /**
-     * The stats available inside the chosen category, read off a sample row.
-     *
-     * @return list<array{value:string, label:string}>
+     * @return list<array{group:string, boards:list<array<string, mixed>>}>
      */
     #[Computed]
-    public function stats(): array
+    public function groups(): array
     {
-        $sample = TeamSeasonStat::where('season_year', $this->year)
-            ->where('category', $this->category)
-            ->where('season_type', Season::REGULAR)
-            ->first();
+        $groups = [];
 
-        if ($sample === null) {
-            return [];
+        foreach (StatCatalog::groups($this->side, team: true) as $group) {
+            $boards = [];
+
+            foreach (StatCatalog::boardsFor($this->side, $group, team: true) as $board) {
+                $rows = LeaderQuery::teams($board, $this->year, $this->scope, limit: 5);
+
+                if ($rows !== []) {
+                    $boards[] = ['meta' => $board, 'rows' => $rows];
+                }
+            }
+
+            if ($boards !== []) {
+                $groups[] = ['group' => $group, 'boards' => $boards];
+            }
         }
 
-        return collect($sample->entries())
-            ->map(fn (array $s) => ['value' => $s['name'], 'label' => $s['label']])
-            ->sortBy('label')
-            ->values()
-            ->all();
+        return $groups;
     }
 
-    /**
-     * @return list<array{team:?Team, display:?string, value:?float, rank:?int}>
-     */
     #[Computed]
-    public function rows(): array
+    public function teams()
     {
-        if ($this->stat === '') {
-            return [];
-        }
+        $ids = collect($this->groups)->pluck('boards')->flatten(1)->pluck('rows')->flatten(1)->pluck('team_id');
 
-        $teamIds = Scope::teamIds($this->scope, $this->year);
-
-        $query = TeamSeasonStat::query()
-            ->with('team:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark')
-            ->where('season_year', $this->year)
-            ->where('season_type', Season::REGULAR)
-            ->where('category', $this->category);
-
-        if ($teamIds !== null) {
-            $query->whereIn('team_id', $teamIds);
-        }
-
-        return $query->get()
-            ->map(fn (TeamSeasonStat $row) => [
-                'team' => $row->team,
-                'display' => $row->stat($this->stat)['display'],
-                'value' => $row->stat($this->stat)['value'],
-                'rank' => $row->stat($this->stat)['rank'],
-            ])
-            ->filter(fn (array $r) => $r['display'] !== null)
-            // Rank ascending where ESPN gave us one; value descending otherwise.
-            ->sortBy(fn (array $r) => $r['rank'] ?? PHP_INT_MAX)
-            ->values()
-            ->all();
+        return Team::whereIn('id', $ids)
+            ->get(['id', 'slug', 'display_name', 'short_display_name', 'abbreviation', 'logo', 'logo_dark'])
+            ->keyBy('id');
     }
 }; ?>
 
 <div class="flex flex-col gap-4">
-    <x-scope-filter title="Team Stats" :year="$year" :selected="$scope" />
+    <x-scope-filter title="Team Stats" :year="$year" :selected="$scope" :top25="false" />
 
-    <div class="flex flex-wrap gap-2">
-        <flux:select wire:model.live="category" size="sm" class="w-36">
-            @foreach ($this->categories as $c)
-                <flux:select.option :value="$c">{{ str($c)->headline() }}</flux:select.option>
-            @endforeach
-        </flux:select>
+    <div class="flex flex-wrap items-center gap-2">
+        <div class="-mx-4 min-w-0 flex-1 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <flux:radio.group wire:model.live="side" variant="segmented" size="sm" class="w-max">
+                @foreach ($this->sides as $value => $label)
+                    <flux:radio :value="$value" :label="$label" />
+                @endforeach
+            </flux:radio.group>
+        </div>
 
-        <flux:select wire:model.live="stat" size="sm" class="min-w-40 flex-1">
-            @foreach ($this->stats as $s)
-                <flux:select.option :value="$s['value']">{{ $s['label'] }}</flux:select.option>
-            @endforeach
-        </flux:select>
-
-        <flux:select wire:model.live="year" size="sm" class="w-24">
+        <flux:select wire:model.live="year" size="sm" class="w-24 shrink-0">
             @foreach ($this->years as $y)
                 <flux:select.option :value="$y">{{ $y }}</flux:select.option>
             @endforeach
         </flux:select>
     </div>
 
-    @if ($this->rows !== [])
-        <div class="stat-grid rounded-lg border border-zinc-200 dark:border-zinc-800">
-            <table class="w-full min-w-md text-stat">
-                <thead>
-                    <tr class="border-b border-zinc-200 text-micro uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
-                        <th class="w-10 px-3 py-2 text-right font-medium">#</th>
-                        <th class="px-2 py-2 text-left font-medium">Team</th>
-                        <th class="px-3 py-2 text-right font-medium">Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach ($this->rows as $index => $row)
-                        <tr class="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60"
-                            wire:key="stat-{{ $row['team']?->id }}">
-                            <td class="tabular px-3 py-2 text-right text-zinc-400">{{ $index + 1 }}</td>
-                            <td class="px-2 py-2">
-                                <x-team-link :team="$row['team']" size="sm" />
-                            </td>
-                            <td class="tabular px-3 py-2 text-right font-semibold">{{ $row['display'] }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
+    @forelse ($this->groups as $group)
+        <div class="flex flex-col gap-2" wire:key="tgrp-{{ $side }}-{{ $group['group'] }}">
+            <flux:subheading>{{ $group['group'] }}</flux:subheading>
+
+            <div class="grid gap-3 lg:grid-cols-2">
+                @foreach ($group['boards'] as $board)
+                    <div class="flex flex-col rounded-lg border border-zinc-200 dark:border-zinc-800"
+                         wire:key="tbrd-{{ $board['meta']['category'] }}-{{ $board['meta']['stat'] }}">
+                        <header class="border-b border-zinc-100 px-3 py-2 dark:border-zinc-800/60">
+                            <h3 class="text-stat font-semibold">{{ $board['meta']['label'] }}</h3>
+                        </header>
+
+                        <ol class="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                            @foreach ($board['rows'] as $row)
+                                <li class="flex items-center gap-2 px-3 py-1.5">
+                                    <span class="tabular w-4 shrink-0 text-right text-micro font-semibold text-zinc-400">
+                                        {{ $row['rank'] }}
+                                    </span>
+
+                                    <x-team-link :team="$this->teams->get($row['team_id'])" label="short"
+                                                 size="xs" class="min-w-0 flex-1" />
+
+                                    {{-- ESPN's national rank, kept as context when the
+                                         scope is narrower than the whole division. --}}
+                                    @if ($row['national'] && $scope !== Scope::FBS)
+                                        <span class="tabular shrink-0 text-micro text-zinc-400">
+                                            {{ Ordinal::of($row['national']) }}
+                                        </span>
+                                    @endif
+
+                                    <span class="tabular shrink-0 text-stat font-semibold">{{ $row['display'] }}</span>
+                                </li>
+                            @endforeach
+                        </ol>
+                    </div>
+                @endforeach
+            </div>
         </div>
-    @else
+    @empty
         <flux:callout icon="chart-bar">
             <flux:callout.heading>No statistics</flux:callout.heading>
-            <flux:callout.text>Nothing published for this season yet.</flux:callout.text>
+            <flux:callout.text>Nothing published for {{ $year }} yet.</flux:callout.text>
         </flux:callout>
-    @endif
+    @endforelse
 </div>

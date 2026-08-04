@@ -40,16 +40,24 @@ class Scope
      *
      * @return list<array{value:string, label:string}>
      */
-    public static function options(int $year, bool $includeFcs = false): array
+    public static function options(int $year, bool $includeFcs = false, bool $top25 = true): array
     {
         return Cache::remember(
-            "scope:options:{$year}:".($includeFcs ? 'all' : 'fbs'),
+            "scope:options:{$year}:".($includeFcs ? 'all' : 'fbs').':'.($top25 ? 't' : 'f'),
             self::CACHE_TTL,
-            function () use ($year, $includeFcs) {
-                $options = [
-                    ['value' => self::TOP_25, 'label' => 'Top 25'],
-                    ['value' => self::FBS, 'label' => 'FBS'],
-                ];
+            function () use ($year, $includeFcs, $top25) {
+                /*
+                 * Top 25 is a filter on TEAMS, so it is meaningful on a
+                 * scoreboard — "show me the games that matter" — and meaningless
+                 * on a statistical leaderboard, where it would silently mean
+                 * "the leading rusher among 25 teams" and read as if it were
+                 * the national leader.
+                 */
+                $options = $top25
+                    ? [['value' => self::TOP_25, 'label' => 'Top 25']]
+                    : [];
+
+                $options[] = ['value' => self::FBS, 'label' => 'FBS'];
 
                 if ($includeFcs) {
                     $options[] = ['value' => self::FCS, 'label' => 'FCS'];
@@ -178,7 +186,7 @@ class Scope
      */
     public static function label(string $scope, int $year): string
     {
-        foreach (self::options($year, includeFcs: true) as $option) {
+        foreach (self::options($year, includeFcs: true, top25: true) as $option) {
             if ($option['value'] === $scope) {
                 return $option['label'];
             }
