@@ -21,6 +21,14 @@ Route::livewire('leaders', 'leaders')->name('leaders');
 Route::livewire('news', 'news')->name('news');
 Route::livewire('bowls', 'bowls')->name('bowls');
 
+/*
+ * Search is a bottom-nav AREA on a phone, so it needs a real screen rather than
+ * only the ⌘K palette — a soft keyboard takes half the viewport and a centred
+ * dialog inside what is left is a poor place to read results. Both read the
+ * same App\Support\SearchIndex.
+ */
+Route::livewire('search', 'search-page')->name('search');
+
 Route::livewire('teams', 'teams')->name('teams');
 Route::livewire('teams/{team}', 'team')->name('team');
 Route::livewire('conferences/{conference}', 'conference')->name('conference');

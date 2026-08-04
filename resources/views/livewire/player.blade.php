@@ -58,19 +58,38 @@ new class extends Component
     }
 
     /**
-     * Column order for the log.
+     * Column order and headings for the log.
      *
      * Read from `display_stats`, not from `array_keys($stats)`: MySQL's JSON
      * type reorders object keys on write, so the keyed stats map cannot be
      * trusted for ordering. The ordered names are stored as a JSON array,
      * which does preserve order.
+     *
+     * Two shapes are tolerated because two syncs write this column. The game
+     * summary stores `{name, label}` pairs carrying ESPN's own headings —
+     * C/ATT, YDS, AVG, TD, INT, QBR — which beat anything we could name
+     * ourselves. Older rows hold a flat list of names, which falls back to the
+     * hand-written table below.
+     *
+     * @return list<array{name:string, label:string}>
      */
     #[Computed]
     public function logColumns(): array
     {
         $first = $this->gameLog->first();
 
-        return $first?->display_stats ?? ($first ? array_keys($first->stats) : []);
+        if ($first === null) {
+            return [];
+        }
+
+        $columns = $first->display_stats ?: array_keys($first->stats ?? []);
+
+        return collect($columns)
+            ->map(fn (array|string $column) => is_array($column)
+                ? ['name' => $column['name'], 'label' => $column['label'] ?? $this->statLabel($column['name'])]
+                : ['name' => $column, 'label' => $this->statLabel($column)])
+            ->values()
+            ->all();
     }
 
     public function statLabel(string $name): string
@@ -153,7 +172,7 @@ new class extends Component
                         <tr class="border-b border-zinc-200 text-micro uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
                             <th class="px-3 py-2 text-left font-medium">Game</th>
                             @foreach ($this->logColumns as $column)
-                                <th class="px-2 py-2 text-right font-medium">{{ $this->statLabel($column) }}</th>
+                                <th class="px-2 py-2 text-right font-medium">{{ $column['label'] }}</th>
                             @endforeach
                         </tr>
                     </thead>
@@ -165,7 +184,7 @@ new class extends Component
                                     <span class="ml-1.5">{{ $row->game?->short_name }}</span>
                                 </td>
                                 @foreach ($this->logColumns as $column)
-                                    <td class="px-2 py-1.5 text-right">{{ $row->stats[$column] ?? '—' }}</td>
+                                    <td class="tabular px-2 py-1.5 text-right">{{ $row->stats[$column['name']] ?? '—' }}</td>
                                 @endforeach
                             </tr>
                         @endforeach

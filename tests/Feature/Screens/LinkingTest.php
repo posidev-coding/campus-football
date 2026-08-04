@@ -139,12 +139,20 @@ it('defaults the scoreboard to a week that has games', function () {
 });
 
 it('gives guests navigation at phone width', function () {
-    // The bottom nav was auth-gated while the header links are sm:hidden, so a
-    // signed-out visitor on a phone had no navigation at all.
+    /*
+     * The bottom nav was once auth-gated while the header links were
+     * sm:hidden, so a signed-out visitor on a phone had no navigation at all.
+     *
+     * Asserts the AREA tabs, not every section. Sections are now scoped to the
+     * current area, so Recruiting is deliberately absent from a Scores page —
+     * it is one tab away in League rather than listed on every screen.
+     */
     $this->get(route('scoreboard'))
         ->assertOk()
+        ->assertSee(route('home'), escape: false)
         ->assertSee(route('standings'), escape: false)
-        ->assertSee(route('recruiting'), escape: false);
+        ->assertSee(route('search'), escape: false)
+        ->assertSee(route('login'), escape: false);
 });
 
 it('keeps the right rail additive rather than load-bearing', function () {

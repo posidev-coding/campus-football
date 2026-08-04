@@ -1,95 +1,36 @@
 <?php
 
-use App\Models\Athlete;
-use App\Models\Conference;
-use App\Models\Team;
+use App\Support\SearchIndex;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 /**
- * Global search across teams, players and conferences.
+ * The ⌘K command palette.
  *
- * Entirely local — 854 teams, ~14,000 athletes and 115 conferences all live in
- * our own database, so this costs one indexed query per group and never touches
- * ESPN. ESPN does publish a search endpoint, but using it would put an external
- * dependency on the fastest interaction in the app.
- *
- * Matching is prefix-first: a leading wildcard cannot use an index, and on the
- * athletes table that is the difference between an index range scan and reading
- * every row. "Geo" finds Georgia; "eorgia" deliberately does not.
+ * Desktop-only: on a phone, Search is a bottom-nav area with its own full
+ * screen, which is a better fit for a thumb and a soft keyboard than a modal.
+ * Both read the same SearchIndex so the two can never drift apart.
  */
 new class extends Component
 {
     public string $q = '';
 
-    /** Below this a query matches most of the database and is not useful. */
-    private const MIN_LENGTH = 2;
-
-    public function clear(): void
-    {
-        $this->q = '';
-    }
-
-    private function tooShort(): bool
-    {
-        return mb_strlen(trim($this->q)) < self::MIN_LENGTH;
-    }
-
     #[Computed]
     public function teams()
     {
-        if ($this->tooShort()) {
-            return collect();
-        }
-
-        $term = trim($this->q);
-
-        return Team::query()
-            ->where(fn ($q) => $q
-                ->where('display_name', 'like', $term.'%')
-                ->orWhere('location', 'like', $term.'%')
-                ->orWhere('nickname', 'like', $term.'%')
-                ->orWhere('abbreviation', 'like', $term.'%'))
-            ->orderBy('display_name')
-            ->limit(6)
-            ->get(['id', 'slug', 'display_name', 'short_display_name', 'abbreviation', 'logo', 'logo_dark']);
+        return SearchIndex::teams($this->q);
     }
 
     #[Computed]
     public function players()
     {
-        if ($this->tooShort()) {
-            return collect();
-        }
-
-        $term = trim($this->q);
-
-        return Athlete::query()
-            ->where(fn ($q) => $q
-                ->where('display_name', 'like', $term.'%')
-                ->orWhere('last_name', 'like', $term.'%'))
-            ->orderBy('display_name')
-            ->limit(6)
-            ->get(['id', 'slug', 'display_name', 'short_name', 'headshot_url']);
+        return SearchIndex::players($this->q);
     }
 
     #[Computed]
     public function conferences()
     {
-        if ($this->tooShort()) {
-            return collect();
-        }
-
-        $term = trim($this->q);
-
-        return Conference::query()
-            ->where('is_conference', true)
-            ->where(fn ($q) => $q
-                ->where('name', 'like', $term.'%')
-                ->orWhere('short_name', 'like', $term.'%'))
-            ->orderBy('name')
-            ->limit(4)
-            ->get(['id', 'name', 'short_name', 'abbreviation', 'logo']);
+        return SearchIndex::conferences($this->q);
     }
 
     #[Computed]
@@ -160,7 +101,7 @@ new class extends Component
 
                 @if (! $this->hasResults)
                     <div class="px-3 py-6 text-center text-sm text-zinc-500">
-                        {{ mb_strlen(trim($q)) < 2 ? 'Type at least two characters.' : 'Nothing found for that.' }}
+                        {{ App\Support\SearchIndex::tooShort($q) ? 'Type at least two characters.' : 'Nothing found for that.' }}
                     </div>
                 @endif
             </flux:command.items>

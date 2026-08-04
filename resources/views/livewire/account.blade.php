@@ -81,9 +81,9 @@ new class extends Component
     <flux:card class="flex flex-col gap-3">
         <div class="flex items-center gap-3">
             <flux:avatar :initials="auth()->user()->initials()" />
-            <div class="flex flex-col">
-                <span class="font-medium">{{ auth()->user()->name }}</span>
-                <span class="text-sm text-zinc-500">{{ auth()->user()->email }}</span>
+            <div class="flex min-w-0 flex-col">
+                <span class="truncate font-medium">{{ auth()->user()->name }}</span>
+                <span class="truncate text-sm text-zinc-500">{{ auth()->user()->email }}</span>
             </div>
         </div>
 
@@ -134,5 +134,34 @@ new class extends Component
                 Not following anyone yet. There is a Follow button on every team page.
             </flux:text>
         @endforelse
+    </flux:card>
+
+    {{--
+        Admin and sign-out live here, not only in the desktop avatar menu.
+        The header is hidden below `sm`, so anything reachable only from that
+        dropdown would be unreachable on a phone — which is exactly the failure
+        this navigation rework exists to remove.
+    --}}
+    <flux:card class="flex flex-col gap-2">
+        @if (auth()->user()->isAdmin())
+            <flux:button href="/admin" icon="wrench-screwdriver" size="sm" variant="ghost" class="justify-start">
+                Admin
+            </flux:button>
+        @endif
+
+        <flux:button
+            type="submit"
+            form="logout-form-account"
+            icon="arrow-right-start-on-rectangle"
+            size="sm"
+            variant="ghost"
+            class="justify-start"
+        >
+            Log out
+        </flux:button>
+
+        <form id="logout-form-account" method="POST" action="{{ route('logout') }}" class="hidden">
+            @csrf
+        </form>
     </flux:card>
 </div>

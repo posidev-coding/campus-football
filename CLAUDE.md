@@ -328,6 +328,46 @@ a standing right rail — not like a phone layout centred in whitespace.
 Verify with the device harness rather than a resized window; Chrome will not go
 below ~600px. See below.
 
+## Navigation is two levels, and they are not the same list
+
+    AREAS     the bottom tab bar. A small fixed set of places the app is IN.
+              Home · Scores · League · Search · Account. They do not change as
+              you move around inside one.
+    SECTIONS  the scrolling strip at the top, belonging to the CURRENT area.
+              Scores shows Scores · Bowls; League shows Standings · Rankings ·
+              Teams · Stats · Leaders · Recruiting.
+
+Both once listed the same nine sections, which made the top strip a second copy
+of the bottom bar. `App\Support\Navigation` is the single source of truth for
+both — add a route to an area's `routes` array or it will not light a tab.
+
+A tab is lit by AREA, not by URL equality: a game page keeps Scores lit and a
+player page keeps League lit. Comparing `request()->url()` to the tab's own href
+lights up only on the area's landing screen.
+
+**Below `sm` there is no top bar at all** — 56px reclaimed. That is only safe
+because every header affordance has a tab: brand → Home, search icon → Search,
+avatar → Account. Anything added to the desktop header must get a phone route
+too, or it is unreachable at 390px. Log out and Admin live on the Account screen
+for exactly this reason.
+
+Pick'em gets the sixth tab when it ships; the bar sizes its columns from the
+area count rather than hardcoding five.
+
+## Athletes route by id, not slug
+
+326 athlete slugs collide (`xavier-williams` ×5, `cam-smith` ×5). `Athlete` has
+no `getRouteKeyName()`, deliberately — making player URLs "pretty" would break
+routing for hundreds of players. Teams route by slug because theirs are unique.
+
+## `athlete_game_stats.display_stats` holds {name, label} pairs
+
+Written by the game summary sync with ESPN's own column headings — C/ATT, YDS,
+AVG, TD, INT, QBR — which beat anything we would name ourselves. Readers must
+handle both that and the older flat list of names. Passing a pair to a method
+typed `string` fatalled the player page, and nothing caught it because
+`athlete_game_stats` was empty until the summary backfill ran.
+
 ## Rebuild assets after touching Blade
 
 Tailwind 4 only emits utilities it finds in source. Adding a class to a Blade
