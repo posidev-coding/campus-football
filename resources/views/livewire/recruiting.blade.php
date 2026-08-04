@@ -135,7 +135,13 @@ new class extends Component
     @if ($view === 'players')
         <div class="grid gap-2 xl:grid-cols-2">
         @forelse ($this->prospects as $recruit)
-            <div class="flex items-center gap-3 rounded-lg border border-zinc-200 p-2.5 dark:border-zinc-800"
+            {{-- `min-w-0` for the same reason the game card needs it: this is a
+                 grid item, whose automatic minimum size is its MIN-CONTENT
+                 width. The inner column truncates, but truncation cannot help
+                 while the row is free to grow to fit the longest high school
+                 and hometown — it reached 516px inside a 343px track and
+                 scrolled the page sideways. --}}
+            <div class="flex min-w-0 items-center gap-3 rounded-lg border border-zinc-200 p-2.5 dark:border-zinc-800"
                  wire:key="r-{{ $recruit->id }}">
                 <span class="tabular w-8 shrink-0 text-right text-stat font-semibold text-zinc-400">
                     {{ $recruit->national_rank }}

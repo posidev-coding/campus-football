@@ -20,6 +20,9 @@
     $text = match ($label) {
         'abbr' => $team?->abbreviation ?? $team?->short_display_name,
         'short' => $team?->short_display_name ?? $team?->display_name,
+        // The place without the nickname, shortened when the place itself is
+        // long. See Team::placeName().
+        'location' => $team?->placeName(),
         'none' => null,
         default => $team?->display_name,
     };
@@ -61,7 +64,16 @@
         {{ $slot }}
     </a>
 @else
+    {{-- An unfilled slot, not an error. Every bowl and playoff game is
+         published TBD-vs-TBD months ahead, so this is what most of the
+         postseason looks like until December. It keeps the logo's footprint so
+         a scheduled fixture reads as the same shape of card as a played one
+         rather than as a collapsed row. --}}
     <span {{ $attributes->class(['flex min-w-0 items-center gap-2 text-zinc-500', $textSize]) }}>
+        @if ($logo)
+            <x-team-logo :team="null" :size="$size === 'xs' ? 'xs' : ($size === 'lg' ? 'lg' : 'sm')" />
+        @endif
+
         <span class="truncate">TBD</span>
     </span>
 @endif

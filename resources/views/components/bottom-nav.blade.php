@@ -20,7 +20,10 @@
     adding Pick'em as a sixth area is a one-line change here.
 --}}
 <nav
-    class="fixed inset-x-0 bottom-0 z-20 border-t border-zinc-200 bg-white/95 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/95"
+    {{-- z-40, matching the header: app chrome always sits above whatever a
+         screen sticks to its own viewport. A sticky day heading low on the
+         page would otherwise paint over the tab bar. --}}
+    class="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/95"
     style="padding-bottom: env(safe-area-inset-bottom);"
     aria-label="Primary"
 >

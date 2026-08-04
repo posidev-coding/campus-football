@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Game;
+use App\Models\Team;
 use App\Services\CfbCalendar;
 use App\Support\Scope;
 use Livewire\Attributes\Computed;
@@ -97,8 +98,135 @@ new class extends Component
         return $this->year();
     }
 
+    /**
+     * The week's slate, split into the viewer's teams and everything else.
+     *
+     * Both halves come out of ONE already-filtered result set, and that is the
+     * whole design. A followed team is floated by being lifted out of the games
+     * the scope already admitted — never by a second query that fetches it
+     * separately.
+     *
+     * That is what makes the rule hold without a rule: pick Top 25 while your
+     * team is unranked and their game was never in the set to be lifted out of,
+     * so it does not appear. Fetching it separately and then re-checking the
+     * scope would be the same behaviour held together by a condition somebody
+     * has to remember to keep in step with `Scope`.
+     *
+     * @return array{pinned: list<array{team: Team, day: string, games: Illuminate\Support\Collection, favorite: bool}>, days: Illuminate\Support\Collection}
+     */
+    #[Computed]
+    public function slate(): array
+    {
+        $byDay = fn ($games) => $games->groupBy(
+            fn (Game $game) => $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('l, M j')
+        );
+
+        $games = $this->scopedGames();
+        $teams = $this->pinnedTeams();
+        $favorite = auth()->user()?->favorite_team_id;
+
+        if ($teams->isEmpty()) {
+            return ['pinned' => [], 'days' => $byDay($games)];
+        }
+
+        $pinned = [];
+        $claimed = [];
+
+        /*
+         * Walked in priority order — favorite first — and each game is claimed
+         * by the FIRST team that wants it. That is what keeps a game between
+         * two followed teams appearing once, under the one the viewer cares
+         * about more, rather than twice under both.
+         */
+        foreach ($teams as $team) {
+            $theirs = $games->filter(fn (Game $game) => ! isset($claimed[$game->id])
+                && ($game->home_team_id === $team->id || $game->away_team_id === $team->id));
+
+            foreach ($theirs as $game) {
+                $claimed[$game->id] = true;
+            }
+
+            // Grouped by day as well, so a pinned card keeps its date. Lifting
+            // it out of the chronology is the point, but losing the date with
+            // it is not — "3:30pm" alone does not say which day.
+            foreach ($byDay($theirs) as $day => $dayGames) {
+                $pinned[] = [
+                    'team' => $team,
+                    'day' => $day,
+                    'games' => $dayGames,
+                    'favorite' => $team->id === $favorite,
+                ];
+            }
+        }
+
+        return [
+            'pinned' => $pinned,
+            'days' => $byDay($games->reject(fn (Game $game) => isset($claimed[$game->id]))),
+        ];
+    }
+
+    /**
+     * The viewer's teams, favorite first, then everyone else they follow.
+     *
+     * The favorite leads because it is the one team they would look for before
+     * any other; the rest follow in the order they were followed. Setting a
+     * favorite also follows it (see SetFavoriteTeam), but this unions the two
+     * anyway rather than trusting that invariant to hold for every row that
+     * already exists.
+     *
+     * @return Illuminate\Support\Collection<int, Team>
+     */
+    private function pinnedTeams()
+    {
+        $user = auth()->user();
+
+        if ($user === null) {
+            return collect();
+        }
+
+        $columns = ['teams.id', 'location', 'display_name', 'short_display_name'];
+
+        $followed = $user->followedTeams()
+            ->orderByPivot('created_at')
+            // Deterministic tiebreak. Several follows written in the same
+            // second — which is exactly what onboarding will do — otherwise
+            // come back in whatever order MySQL feels like, and the pinned
+            // block reshuffles itself between page loads.
+            ->orderBy('teams.display_name')
+            ->get($columns);
+
+        $favorite = $user->favorite_team_id;
+
+        // Union, not just a sort. Setting a favorite follows it too, but a row
+        // written before that was true — or by a future caller that skips the
+        // action — would otherwise drop the viewer's own team off the top of
+        // their scoreboard, which is the one thing this feature exists to do.
+        if ($favorite !== null && ! $followed->contains('id', $favorite)) {
+            $followed->push(Team::select($columns)->find($favorite));
+        }
+
+        return $followed
+            ->filter()
+            // PHP's sort is stable, so the followed order survives inside the
+            // second group.
+            ->sortBy(fn (Team $team) => $team->id === $favorite ? 0 : 1)
+            ->values();
+    }
+
     #[Computed]
     public function games()
+    {
+        return $this->slate()['days'];
+    }
+
+    /** @return list<array{team: Team, day: string, games: Illuminate\Support\Collection, favorite: bool}> */
+    #[Computed]
+    public function pinned(): array
+    {
+        return $this->slate()['pinned'];
+    }
+
+    private function scopedGames()
     {
         if ($this->week === null) {
             return collect();
@@ -108,8 +236,8 @@ new class extends Component
             // slug is the Team route key; omitting it from a constrained eager load
             // breaks route() in a way that looks like a null relation.
             ->with([
-                'homeTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
-                'awayTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'venue:id,name',
                 'odds',
             ])
@@ -126,12 +254,21 @@ new class extends Component
         if ($teamIds !== null) {
             $query->where(fn ($q) => $q
                 ->whereIn('home_team_id', $teamIds)
-                ->orWhereIn('away_team_id', $teamIds));
+                ->orWhereIn('away_team_id', $teamIds)
+                /*
+                 * A fixture whose teams are not announced yet cannot be
+                 * excluded on the basis of its teams. Every bowl and playoff
+                 * game is published as TBD-vs-TBD months ahead, so filtering
+                 * them out on "does not involve an FBS team" would empty the
+                 * entire postseason slate until December — which is precisely
+                 * the stretch when knowing the date and venue is useful.
+                 */
+                ->orWhere(fn ($tbd) => $tbd
+                    ->whereNull('home_team_id')
+                    ->whereNull('away_team_id')));
         }
 
-        return $query->get()->groupBy(
-            fn (Game $game) => $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('l, M j')
-        );
+        return $query->get();
     }
 
     /**
@@ -152,13 +289,45 @@ new class extends Component
          * block's height. Measured rather than hardcoded: the strip's height
          * depends on the font and the title wraps at narrow widths, and a
          * guessed constant leaves either a gap or an overlap.
+         *
+         * Written to the DOCUMENT element, not to this component's root. The
+         * server HTML carries no `style` attribute here, so Livewire's morph
+         * treats an inline one as drift and strips it — picking a different
+         * week wiped the variable, `top` fell back to 0, and every day heading
+         * stuck underneath the chrome instead of below it. Livewire never
+         * morphs <html>.
          */
         sync() {
-            const h = this.$refs.chrome?.offsetHeight ?? 0
-            this.$el.style.setProperty('--scores-chrome', h + 'px')
+            const chrome = this.$refs.chrome
+
+            if (! chrome) return
+
+            /*
+             * The chrome's own sticky offset counts too. It is `top-0` at base
+             * but `sm:top-14`, clearing the layout header that only exists from
+             * `sm` up — so its resting bottom edge is its height PLUS that
+             * offset. Measuring height alone put every day heading 56px too
+             * high from `sm` up, which hid them behind the chrome rather than
+             * parking them below it.
+             */
+            const offset = parseFloat(getComputedStyle(chrome).top) || 0
+
+            document.documentElement.style.setProperty(
+                '--scores-chrome', (chrome.offsetHeight + offset) + 'px'
+            )
         },
     }"
-    x-init="sync(); $nextTick(() => sync())"
+    {{--
+        Both listeners earn their place. The observer catches height changes a
+        window resize never sees — the webfont swapping in, the title wrapping,
+        the strip gaining or losing the postseason pills on a week change. The
+        resize handler catches the reverse: crossing `sm` changes the chrome's
+        `top` from 0 to 56px without changing its height at all.
+    --}}
+    x-init="
+        sync()
+        new ResizeObserver(() => sync()).observe($refs.chrome)
+    "
     x-on:resize.window="sync()"
     class="flex flex-col gap-3"
 >
@@ -170,9 +339,28 @@ new class extends Component
          Sticky as a single block: the title and the week strip travel together,
          so the reader always knows which week they are scrolling through. It
          sits under the layout header at `sm`, where that header exists. --}}
+    {{-- `-mt-5` cancels the layout container's `py-5`, exactly as `-mx-4`
+         cancels its `px-4`. Without it the block sat 20px down the page and
+         travelled that distance before sticking, which reads as the title
+         drifting upward on the first flick of a scroll.
+
+         The breathing room moves INSIDE the block as `pt-3`, so it belongs to
+         the chrome and travels with it rather than scrolling away. Net space
+         above the title goes from 24px to 12px.
+
+         The `sm` offset is 14 spacing units PLUS ONE PIXEL, because that is the
+         header's real height: `h-14` plus its own `border-b`. Sticking at a
+         flat `top-14` left the block one pixel of travel, which is small but
+         is still the drift this is meant to remove.
+
+         Still `sticky`, not `fixed`. With zero travel the two are visually
+         identical, but `fixed` would take the block out of flow and drop the
+         whole page underneath it — needing a spacer the exact height of a
+         block whose height is variable, which is the very thing
+         `--scores-chrome` exists to measure. --}}
     <div
         x-ref="chrome"
-        class="sticky top-0 z-20 -mx-4 flex flex-col gap-3 bg-white px-4 pt-1 pb-0 sm:top-14 dark:bg-zinc-950"
+        class="sticky top-0 z-30 -mx-4 -mt-5 flex flex-col gap-3 bg-white px-4 pt-3 pb-0 sm:top-[calc(var(--spacing)*14+1px)] dark:bg-zinc-950"
     >
         <div class="flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-2">
@@ -192,28 +380,33 @@ new class extends Component
     {{-- Short-polls our own cache, never ESPN, and only while a game is
          actually in progress. --}}
     <div @if ($this->hasLiveGames) wire:poll.30s.visible @endif class="flex flex-col gap-5">
-        @forelse ($this->games as $day => $games)
-            <div class="flex flex-col gap-2">
-                {{-- Fully opaque, not a translucent blur. A half-transparent
-                     heading with game cards sliding under it was genuinely
-                     hard to read — backdrop-blur softens the text behind it
-                     but does not stop it competing. The negative margin lets
-                     the background span the full width so nothing shows
-                     through at the edges. --}}
-                <flux:subheading
-                    class="sticky z-10 -mx-4 bg-white px-4 py-1.5 dark:bg-zinc-950"
-                    style="top: var(--scores-chrome, 0px)"
-                >
-                    {{ $day }}
-                </flux:subheading>
+        {{-- The viewer's teams first, favorite at the top. These games were
+             lifted OUT of the day groups below, so they appear once, not twice
+             — floating a game is moving it, not copying it.
 
-                <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    @foreach ($games as $game)
-                        <x-game-card :game="$game" wire:key="game-{{ $game->id }}" />
-                    @endforeach
-                </div>
-            </div>
-        @empty
+             There is no scope check here on purpose. These come from the same
+             filtered set as everything else, so a team the scope excluded never
+             reaches this loop. --}}
+        @foreach ($this->pinned as $group)
+            <x-scoreboard-day
+                :heading="$group['team']->placeName()"
+                :meta="$group['day']"
+                :games="$group['games']"
+                pinned
+                :favorite="$group['favorite']"
+                wire:key="pinned-{{ $group['team']->id }}-{{ $loop->index }}"
+            />
+        @endforeach
+
+        @foreach ($this->games as $day => $games)
+            <x-scoreboard-day :heading="$day" :games="$games" wire:key="day-{{ $day }}" />
+        @endforeach
+
+        {{-- Checks BOTH halves. A week where the only games in scope belong to
+             the viewer's own teams leaves the day groups empty, and keying the
+             empty state on those alone would print "Nothing on the slate"
+             directly above their games. --}}
+        @if ($this->pinned === [] && $this->games->isEmpty())
             <flux:callout icon="calendar-days">
                 <flux:callout.heading>Nothing on the slate</flux:callout.heading>
                 <flux:callout.text>
@@ -221,6 +414,6 @@ new class extends Component
                     Try another week, or widen the filter to FBS.
                 </flux:callout.text>
             </flux:callout>
-        @endforelse
+        @endif
     </div>
 </div>

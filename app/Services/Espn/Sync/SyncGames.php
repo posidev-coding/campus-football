@@ -11,6 +11,7 @@ use App\Services\Espn\EspnClient;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Games, from the site scoreboard rather than the core event API.
@@ -169,8 +170,25 @@ class SyncGames
 
             $seen[$id] = true;
 
-            if ($this->store($event, $seasons, $weeks)) {
-                $changed++;
+            /*
+             * Per-event, so one unstorable game cannot take out the rest of the
+             * window. It already did once: an unannounced fixture carries a
+             * NEGATIVE team id, which threw against an unsigned foreign key and
+             * aborted the whole request — silently truncating the 2026 season at
+             * the first conference championship and losing every bowl behind it.
+             *
+             * The same isolation the job fan-out buys between teams, bought here
+             * between events in one payload.
+             */
+            try {
+                if ($this->store($event, $seasons, $weeks)) {
+                    $changed++;
+                }
+            } catch (Throwable $e) {
+                Log::warning('Skipped an unstorable game', [
+                    'game' => $id,
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 
@@ -318,13 +336,13 @@ class SyncGames
             'attendance' => $competition['attendance'] ?? null,
             'broadcasts' => $this->broadcasts($competition),
 
-            'home_team_id' => (int) $home['id'],
+            'home_team_id' => $this->teamId($home),
             'home_score' => (int) ($home['score'] ?? 0),
             'home_rank' => $this->rank($home),
             'home_record' => $this->record($home),
             'home_line_scores' => $this->lineScores($home),
 
-            'away_team_id' => (int) $away['id'],
+            'away_team_id' => $this->teamId($away),
             'away_score' => (int) ($away['score'] ?? 0),
             'away_rank' => $this->rank($away),
             'away_record' => $this->record($away),
@@ -388,6 +406,30 @@ class SyncGames
         );
 
         return $changed;
+    }
+
+    /**
+     * A competitor's team id, or null when the slot is not filled yet.
+     *
+     * ESPN publishes an unassigned slot as a real competitor whose team id is
+     * NEGATIVE — `-1` for home, `-2` for away — with the name "TBD". Every bowl
+     * and playoff game is announced this way months ahead, and so is a
+     * conference championship until its standings resolve.
+     *
+     * `games.home_team_id` is `mediumint unsigned` with a foreign key, so
+     * writing -1 fails outright. It is nullable, though, and `x-team-link`
+     * already renders a null team as "TBD" — so nulling the slot stores the
+     * fixture with its date, venue and bowl name intact and the matchup blank,
+     * which is exactly what the schedule is at that point.
+     *
+     * Same rule as the box-score pseudo-athletes: ESPN uses non-positive ids
+     * for things that are not real entities. Never store one.
+     */
+    private function teamId(array $competitor): ?int
+    {
+        $id = (int) ($competitor['id'] ?? $competitor['team']['id'] ?? 0);
+
+        return $id > 0 ? $id : null;
     }
 
     private function competitor(array $competition, string $side): ?array

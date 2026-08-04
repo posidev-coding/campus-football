@@ -1,11 +1,14 @@
 <?php
 
+use App\Actions\FollowTeam;
+use App\Actions\SetFavoriteTeam;
 use App\Models\Conference;
 use App\Models\Game;
 use App\Models\Ranking;
 use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeason;
+use App\Models\User;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Scope;
@@ -28,8 +31,15 @@ beforeEach(function () {
     ]);
 
     $conference = Conference::factory()->create(['id' => 8, 'name' => 'Southeastern Conference', 'short_name' => 'SEC']);
-    $this->georgia = Team::factory()->create(['id' => 61, 'display_name' => 'Georgia Bulldogs']);
-    $this->alabama = Team::factory()->create(['id' => 333, 'display_name' => 'Alabama Crimson Tide']);
+    // Both `location` and `display_name`, because the two are shown in
+    // different places: a game card names the place, a team page the full name.
+    // A fixture that sets only one cannot tell them apart.
+    $this->georgia = Team::factory()->create([
+        'id' => 61, 'location' => 'Georgia', 'display_name' => 'Georgia Bulldogs',
+    ]);
+    $this->alabama = Team::factory()->create([
+        'id' => 333, 'location' => 'Alabama', 'display_name' => 'Alabama Crimson Tide',
+    ]);
 
     foreach ([61, 333] as $teamId) {
         TeamSeason::create([
@@ -56,8 +66,12 @@ it('shows games for the selected week', function () {
     Livewire::test('scoreboard')
         ->set('scope', Scope::FBS)
         ->set('week', $this->week->id)
-        ->assertSee('Georgia Bulldogs')
-        ->assertSee('Alabama Crimson Tide');
+        ->assertSee('Georgia')
+        ->assertSee('Alabama')
+        // The place, not the nickname. A card is scanned rather than read, and
+        // "Bulldogs" is nine characters in front of what the reader wants.
+        ->assertDontSee('Bulldogs')
+        ->assertDontSee('Crimson Tide');
 });
 
 it('never calls ESPN while rendering', function () {
@@ -78,7 +92,7 @@ it('never calls ESPN while rendering', function () {
 });
 
 it('scopes games through season-scoped conference membership', function () {
-    $outsider = Team::factory()->create(['display_name' => 'Some Independent']);
+    $outsider = Team::factory()->create(['location' => 'Some Independent']);
 
     Game::factory()->finished()->create([
         'season_id' => $this->season->id,
@@ -97,7 +111,7 @@ it('scopes games through season-scoped conference membership', function () {
     Livewire::test('scoreboard')
         ->set('week', $this->week->id)
         ->set('scope', '8')
-        ->assertSee('Georgia Bulldogs')
+        ->assertSee('Georgia')
         ->assertDontSee('Some Independent');
 });
 
@@ -142,7 +156,7 @@ it('restricts Top 25 to ranked teams', function () {
         'home_team_id' => 61, 'away_team_id' => 333,
     ]);
 
-    $unranked = Team::factory()->create(['display_name' => 'Unranked State']);
+    $unranked = Team::factory()->create(['location' => 'Unranked State']);
 
     Game::factory()->finished()->create([
         'season_id' => $this->season->id, 'week_id' => $this->week->id,
@@ -152,7 +166,7 @@ it('restricts Top 25 to ranked teams', function () {
     Livewire::test('scoreboard')
         ->set('week', $this->week->id)
         ->set('scope', Scope::TOP_25)
-        ->assertSee('Georgia Bulldogs')
+        ->assertSee('Georgia')
         ->assertDontSee('Unranked State');
 });
 
@@ -336,9 +350,9 @@ describe('sticky chrome', function () {
         // are scrolling through.
         $this->get(route('scoreboard'))
             ->assertOk()
-            ->assertSee('sticky top-0 z-20', escape: false)
+            ->assertSee('sticky top-0 z-30 -mx-4 -mt-5', escape: false)
             // Clears the layout header, which only exists from sm upward.
-            ->assertSee('sm:top-14', escape: false);
+            ->assertSee('sm:top-[calc(var(--spacing)*14+1px)]', escape: false);
     });
 
     beforeEach(function () {
@@ -361,6 +375,42 @@ describe('sticky chrome', function () {
             ->assertSee('top: var(--scores-chrome', escape: false);
     });
 
+    it('keeps the chrome offset off the component root, where a morph would strip it', function () {
+        /*
+         * The server HTML carries no `style` attribute on the component root,
+         * so Livewire's morph treats an inline one as drift and removes it.
+         * Writing the offset there meant picking a different week wiped it,
+         * `top` fell back to 0, and the day headings stuck underneath the
+         * chrome. document.documentElement is never morphed.
+         */
+        $this->get(route('scoreboard'))
+            ->assertOk()
+            ->assertSee('document.documentElement.style.setProperty', escape: false)
+            ->assertDontSee('this.$el.style.setProperty', escape: false);
+    });
+
+    it('adds the chrome\'s own sticky offset, not just its height', function () {
+        // The chrome is `top-0` at base but `sm:top-14`, so its resting bottom
+        // edge is height PLUS that offset. Height alone parked every day
+        // heading 56px too high from sm up, behind the chrome.
+        $this->get(route('scoreboard'))
+            ->assertOk()
+            ->assertSee('getComputedStyle(chrome).top', escape: false);
+    });
+
+    it('stacks day headings above card contents', function () {
+        /*
+         * An opaque background is not enough on its own. A game card's inner
+         * wrapper is `relative` with `z-index: auto`, which opens no stacking
+         * context, so the team rows keep their `z-10` in the ROOT context —
+         * tying with the heading and winning on tree order. Team names painted
+         * over the background and it read as though there were none.
+         */
+        $this->get(route('scoreboard'))
+            ->assertOk()
+            ->assertSee('sticky z-20 -mx-4 flex min-w-0 items-center gap-1.5 bg-white', escape: false);
+    });
+
     it('gives day headings an opaque background', function () {
         // A translucent heading with cards sliding under it was hard to read;
         // backdrop-blur softens what is behind but does not stop it competing.
@@ -368,5 +418,353 @@ describe('sticky chrome', function () {
 
         $response->assertSee('bg-white px-4 py-1.5 dark:bg-zinc-950', escape: false)
             ->assertDontSee('bg-white/90', escape: false);
+    });
+});
+
+describe('team naming on a card', function () {
+    /*
+     * A card names the PLACE. The nickname belongs on a team page, where there
+     * is room for it and where a reader has stopped to read rather than scan.
+     */
+    it('shortens a long place name rather than truncating it', function () {
+        // ESPN's own shortening, which is better than anything we would invent:
+        // "Florida International" is FIU to everyone who follows the sport.
+        $team = Team::factory()->create([
+            'location' => 'Florida International',
+            'short_display_name' => 'FIU',
+            'display_name' => 'Florida International Golden Panthers',
+        ]);
+
+        expect($team->placeName())->toBe('FIU');
+    });
+
+    it('keeps a place name that fits', function () {
+        $team = Team::factory()->create([
+            'location' => 'Ohio State',
+            'short_display_name' => 'Ohio State',
+            'display_name' => 'Ohio State Buckeyes',
+        ]);
+
+        expect($team->placeName())->toBe('Ohio State');
+    });
+
+    it('falls back to the place when there is no shortening to use', function () {
+        // 103 of 136 FBS teams have identical location and short_display_name,
+        // but nothing guarantees the column is populated.
+        $team = Team::factory()->create([
+            'location' => 'Somewhere Exceedingly Long',
+            'short_display_name' => null,
+        ]);
+
+        expect($team->placeName())->toBe('Somewhere Exceedingly Long');
+    });
+});
+
+describe('fixtures with no teams yet', function () {
+    /*
+     * The whole postseason is TBD-vs-TBD until December. A scope filter matches
+     * on teams, so filtering these out on "does not involve an FBS team" empties
+     * the bowl and playoff slates for the eleven months when knowing the date,
+     * venue and bowl name is the only thing on offer.
+     */
+    beforeEach(function () {
+        $this->tbd = Game::factory()->create([
+            'season_id' => $this->season->id,
+            'week_id' => $this->week->id,
+            'home_team_id' => null,
+            'away_team_id' => null,
+            'note' => 'Boca Raton Bowl',
+            'completed' => false,
+            'status' => 'pre',
+            'kickoff_at' => '2025-09-25 18:00:00',
+        ]);
+    });
+
+    it('shows an unannounced fixture under a team scope', function () {
+        Livewire::test('scoreboard')
+            ->set('week', $this->week->id)
+            ->set('scope', Scope::FBS)
+            ->assertOk()
+            ->assertSee('Boca Raton Bowl')
+            ->assertSee('TBD');
+    });
+
+    it('shows it under a conference scope too', function () {
+        // A fixture with no teams cannot belong to a conference, but it cannot
+        // be excluded from one either — there is nothing to judge it on.
+        Livewire::test('scoreboard')
+            ->set('week', $this->week->id)
+            ->set('scope', '8')
+            ->assertOk()
+            ->assertSee('Boca Raton Bowl');
+    });
+
+    it('still excludes a game whose teams are simply out of scope', function () {
+        // The escape hatch is for UNANNOUNCED games, not for widening the
+        // filter — a real matchup outside the scope must stay filtered out.
+        $outsider = Team::factory()->create(['location' => 'Some Independent']);
+
+        Game::factory()->finished()->create([
+            'season_id' => $this->season->id,
+            'week_id' => $this->week->id,
+            'home_team_id' => $outsider->id,
+            'away_team_id' => Team::factory()->create()->id,
+        ]);
+
+        Livewire::test('scoreboard')
+            ->set('week', $this->week->id)
+            ->set('scope', '8')
+            ->assertDontSee('Some Independent');
+    });
+});
+
+describe('horizontal overflow', function () {
+    /*
+     * The page body must never scroll sideways. When it does, the fixed tab bar
+     * and the sticky chrome stop lining up with content that is travelling
+     * horizontally underneath them, and the whole screen reads as coming apart.
+     *
+     * The cause is always the same shape: a flex or grid ITEM keeps its
+     * automatic minimum size, which is its MIN-CONTENT width. Any `truncate`
+     * inside it sets `white-space: nowrap`, whose min-content width is the
+     * entire unwrapped string — so the item grows to fit the text instead of
+     * clipping it, and `truncate` never gets a constrained box to work against.
+     *
+     * `min-w-0` on the item is what lets truncation actually happen. These
+     * assertions pin it on the containers that hold long unwrappable strings.
+     */
+    it('lets a game card shrink below its longest caption', function () {
+        // "College Football Playoff Quarterfinal at the Chick-fil-A Peach Bowl"
+        // is the longest string the app renders inside a card.
+        Game::factory()->finished()->create([
+            'season_id' => $this->season->id,
+            'week_id' => $this->week->id,
+            'home_team_id' => 61,
+            'away_team_id' => 333,
+            'note' => 'College Football Playoff Quarterfinal at the Goodyear Cotton Bowl Classic',
+        ]);
+
+        Livewire::test('scoreboard')
+            ->set('week', $this->week->id)
+            ->set('scope', Scope::FBS)
+            ->assertSee('flex min-w-0 flex-col rounded-lg border', escape: false);
+    });
+});
+
+describe('favorite team floats to the top', function () {
+    beforeEach(function () {
+        $this->fan = User::factory()->create(['favorite_team_id' => 61]);
+
+        // Georgia plays Saturday; two other games sit ahead of it on Thursday,
+        // so an unfloated card would be third and below a day heading.
+        $this->theirs = Game::factory()->finished()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'kickoff_at' => '2025-09-27 19:30:00',
+        ]);
+
+        $this->other = Team::factory()->create(['id' => 99, 'location' => 'Elsewhere']);
+        TeamSeason::create([
+            'team_id' => 99, 'season_year' => 2025,
+            'conference_id' => 8, 'classification' => 'FBS',
+        ]);
+
+        Game::factory()->finished()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 99, 'away_team_id' => 333,
+            'kickoff_at' => '2025-09-25 19:30:00',
+        ]);
+    });
+
+    it('lifts their game above the day groups', function () {
+        $html = $this->actingAs($this->fan)
+            ->get(route('scoreboard', ['week' => $this->week->id, 'scope' => Scope::FBS]))
+            ->assertOk()
+            ->getContent();
+
+        // Position, not presence: the whole point is that it comes FIRST, ahead
+        // of a Thursday game that is earlier in the week.
+        expect(strpos($html, 'data-pinned="true"'))->toBeInt()
+            ->and(strpos($html, 'data-pinned="true"'))->toBeLessThan(strpos($html, 'Elsewhere'));
+    });
+
+    it('shows it once, not twice', function () {
+        // Floating a game moves it; it does not copy it. A card appearing both
+        // pinned and in its own day group reads as a duplicate fixture.
+        $html = $this->actingAs($this->fan)
+            ->get(route('scoreboard', ['week' => $this->week->id, 'scope' => Scope::FBS]))
+            ->getContent();
+
+        expect(substr_count($html, 'wire:key="game-'.$this->theirs->id.'"'))->toBe(1);
+    });
+
+    it('keeps the date, which the card alone does not carry', function () {
+        // Lifted out of the chronology, a card only says "7:30pm". The date has
+        // to ride on the pinned heading itself — asserting it appears somewhere
+        // on the page would pass off the ordinary day heading below.
+        $html = $this->actingAs($this->fan)
+            ->get(route('scoreboard', ['week' => $this->week->id, 'scope' => Scope::FBS]))
+            ->getContent();
+
+        // Wide enough to clear the inline star SVG that sits before the text.
+        $pinnedHeading = substr($html, strpos($html, 'data-pinned="true"'), 2000);
+
+        expect($pinnedHeading)->toContain('Georgia')
+            ->and($pinnedHeading)->toContain('Saturday, Sep 27');
+    });
+
+    it('does NOT show their game when the scope excludes them', function () {
+        /*
+         * The rule that matters. An unranked favorite under a Top 25 filter
+         * stays hidden — floating is a reordering of what the scope already
+         * admitted, never a way past it.
+         */
+        Ranking::create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'poll' => 'ap', 'team_id' => 99, 'rank' => 1, 'record' => '5-0',
+        ]);
+
+        Cache::flush();
+
+        $url = fn (string $scope) => route('scoreboard', ['week' => $this->week->id, 'scope' => $scope]);
+
+        // The contrast IS the assertion. Asserting only that nothing is pinned
+        // under Top 25 would pass just as well with the whole feature switched
+        // off, so pin the control case in the same test.
+        $underFbs = $this->actingAs($this->fan)->get($url(Scope::FBS))->getContent();
+
+        expect($underFbs)->toContain('data-pinned="true"');
+
+        $this->actingAs($this->fan)
+            ->get($url(Scope::TOP_25))
+            ->assertOk()
+            // Ranked, so the slate is not simply empty.
+            ->assertSee('Elsewhere')
+            ->assertDontSee('data-pinned', escape: false);
+    });
+
+    it('leaves a guest scoreboard entirely alone', function () {
+        $url = route('scoreboard', ['week' => $this->week->id, 'scope' => Scope::FBS]);
+
+        // Same contrast: the signed-in case proves the marker can appear at all.
+        expect($this->actingAs($this->fan)->get($url)->getContent())
+            ->toContain('data-pinned="true"');
+
+        auth()->logout();
+
+        $this->get($url)->assertOk()->assertDontSee('data-pinned', escape: false);
+    });
+
+    it('does not print an empty state when the only game in scope is theirs', function () {
+        Game::query()->whereKeyNot($this->theirs->id)->delete();
+
+        $this->actingAs($this->fan)
+            ->get(route('scoreboard', ['week' => $this->week->id, 'scope' => Scope::FBS]))
+            ->assertOk()
+            ->assertDontSee('Nothing on the slate');
+    });
+});
+
+describe('all followed teams float', function () {
+    beforeEach(function () {
+        $this->vols = Team::factory()->create(['id' => 2633, 'location' => 'Tennessee', 'display_name' => 'Tennessee Volunteers']);
+        $this->tide = Team::factory()->create(['id' => 334, 'location' => 'Alabama Crimson', 'display_name' => 'Alabama Crimson Tide']);
+        $this->neutral = Team::factory()->create(['id' => 77, 'location' => 'Neutralville']);
+
+        foreach ([2633, 334, 77] as $id) {
+            TeamSeason::create([
+                'team_id' => $id, 'season_year' => 2025,
+                'conference_id' => 8, 'classification' => 'FBS',
+            ]);
+        }
+
+        $this->fan = User::factory()->create();
+        // Followed in this order; Tennessee is made the favorite afterwards, so
+        // the ordering under test is priority, not follow order.
+        foreach ([$this->tide, $this->vols] as $team) {
+            app(FollowTeam::class)->handle($this->fan, $team);
+        }
+        app(SetFavoriteTeam::class)->handle($this->fan, $this->vols);
+
+        $this->slate = fn () => $this->actingAs($this->fan)
+            ->get(route('scoreboard', ['week' => $this->week->id, 'scope' => Scope::FBS]))
+            ->getContent();
+    });
+
+    it('floats a followed team that is not the favorite', function () {
+        Game::factory()->finished()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 334, 'away_team_id' => 77,
+            'kickoff_at' => '2025-09-27 19:30:00',
+        ]);
+
+        $html = ($this->slate)();
+
+        expect(substr($html, strpos($html, 'data-pinned="true"'), 2000))
+            ->toContain('Alabama Crimson');
+    });
+
+    it('puts the favorite above the other followed teams', function () {
+        Game::factory()->finished()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 334, 'away_team_id' => 77,
+            'kickoff_at' => '2025-09-25 19:30:00',
+        ]);
+
+        // Tennessee kicks off LATER, so chronology would put Alabama first.
+        Game::factory()->finished()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 2633, 'away_team_id' => 61,
+            'kickoff_at' => '2025-09-27 19:30:00',
+        ]);
+
+        $html = ($this->slate)();
+
+        expect(strpos($html, 'Tennessee'))->toBeLessThan(strpos($html, 'Alabama Crimson'));
+    });
+
+    it('shows a game between two followed teams once, under the favorite', function () {
+        /*
+         * Both teams want this game. Walking them in priority order and marking
+         * each game claimed is what stops the same card rendering twice — which
+         * would read as two different fixtures.
+         */
+        $shared = Game::factory()->finished()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 2633, 'away_team_id' => 334,
+            'kickoff_at' => '2025-09-27 19:30:00',
+        ]);
+
+        $html = ($this->slate)();
+
+        expect(substr_count($html, 'wire:key="game-'.$shared->id.'"'))->toBe(1)
+            ->and(substr_count($html, 'data-pinned="true"'))->toBe(1)
+            ->and(substr($html, strpos($html, 'data-pinned="true"'), 2000))->toContain('Tennessee');
+    });
+
+    it('still respects the scope for every followed team, not just the favorite', function () {
+        /*
+         * BOTH sides out of scope, which is the case worth testing. Moving only
+         * Alabama proves nothing: a game shows when EITHER team is in scope, so
+         * their SEC opponent would keep it on the board — and floating it there
+         * is correct, because the scope already admitted it.
+         */
+        Conference::factory()->create(['id' => 999, 'name' => 'Other', 'short_name' => 'OTH']);
+
+        TeamSeason::whereIn('team_id', [334, 77])->update(['conference_id' => 999]);
+
+        Game::factory()->finished()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 334, 'away_team_id' => 77,
+            'kickoff_at' => '2025-09-27 19:30:00',
+        ]);
+
+        Cache::flush();
+
+        $html = $this->actingAs($this->fan)
+            ->get(route('scoreboard', ['week' => $this->week->id, 'scope' => '8']))
+            ->getContent();
+
+        expect($html)->not->toContain('Alabama Crimson');
     });
 });

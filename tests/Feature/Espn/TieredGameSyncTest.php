@@ -206,3 +206,76 @@ it('stores an unranked team as null rather than ESPN 99 sentinel', function () {
     expect($game->home_rank)->toBe(1)
         ->and($game->away_rank)->toBeNull();
 });
+
+describe('unannounced fixtures', function () {
+    /*
+     * ESPN publishes every bowl and playoff game months ahead as "TBD at TBD",
+     * and it does NOT use a null competitor for that — it sends a real
+     * competitor whose team id is NEGATIVE (-1 home, -2 away).
+     *
+     * `games.home_team_id` is `mediumint unsigned` with a foreign key to
+     * `teams`, so storing that verbatim fails outright and the whole postseason
+     * slate goes missing. Same rule as the box-score pseudo-athletes: ESPN uses
+     * non-positive ids for things that are not real entities.
+     */
+    it('stores a TBD fixture with null teams rather than negative ids', function () {
+        Queue::fake();
+
+        $event = scoreboardEvent(402, '2025-09-27T19:30Z', 0, 0, completed: false, state: 'pre');
+        $event['name'] = 'TBD at TBD';
+        $event['competitions'][0]['competitors'] = [
+            ['id' => '-1', 'homeAway' => 'home', 'score' => '0'],
+            ['id' => '-2', 'homeAway' => 'away', 'score' => '0'],
+        ];
+        $event['competitions'][0]['notes'] = [['headline' => 'Boca Raton Bowl']];
+
+        fakeScoreboard([$event]);
+
+        expect(app(SyncGames::class)->week($this->week))->toBe(1);
+
+        $game = Game::find(402);
+
+        expect($game)->not->toBeNull()
+            ->and($game->home_team_id)->toBeNull()
+            ->and($game->away_team_id)->toBeNull()
+            // The point of storing it at all: the date, venue and bowl name are
+            // known long before the teams are.
+            ->and($game->note)->toBe('Boca Raton Bowl');
+    });
+
+    it('keeps a real team id', function () {
+        Queue::fake();
+
+        fakeScoreboard([scoreboardEvent(403, '2025-09-27T19:30Z', 31, 17)]);
+
+        app(SyncGames::class)->week($this->week);
+
+        expect(Game::find(403)->home_team_id)->toBe(61)
+            ->and(Game::find(403)->away_team_id)->toBe(333);
+    });
+});
+
+it('does not let one unstorable game take out the rest of the window', function () {
+    /*
+     * This is the failure that hid an entire postseason. A game referencing a
+     * team we do not carry throws against the foreign key; without isolation
+     * the exception aborted the whole request, so every event after it in the
+     * payload was silently lost — the 2026 season stopped at the first
+     * conference championship and no bowl was ever stored.
+     */
+    Queue::fake();
+
+    $bad = scoreboardEvent(500, '2025-09-27T19:30Z', 0, 0);
+    $bad['competitions'][0]['competitors'][0]['id'] = '99999999';
+
+    fakeScoreboard([
+        $bad,
+        scoreboardEvent(501, '2025-09-27T23:00Z', 21, 14),
+    ]);
+
+    expect(app(SyncGames::class)->week($this->week))->toBe(1);
+
+    expect(Game::find(500))->toBeNull()
+        // The one that matters: the good game after it still landed.
+        ->and(Game::find(501))->not->toBeNull();
+});

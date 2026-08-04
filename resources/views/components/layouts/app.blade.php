@@ -6,14 +6,35 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    {{-- Kept in step with the chosen appearance by the sync element at the top
+         of <body>. Hardcoded dark, a phone's address bar stayed black after
+         switching to Light — which the appearance control made visible. --}}
     <meta name="theme-color" content="#09090b">
 
     <title>{{ $title ?? config('app.name') }}</title>
 
+    {{-- Emits the preload link and the @font-face block for the self-hosted
+         variable font. @vite does NOT do this on its own — the font was
+         declared in the theme and never actually loaded until this was added,
+         which reads as a font that "doesn't look right" rather than one that
+         is missing. --}}
+    @fonts
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @fluxAppearance
 </head>
 <body class="min-h-dvh">
+    {{-- Tints the mobile browser chrome to match. It lives in <body> because
+         Alpine only initialises inside it — an `x-data` on the meta tag itself
+         is never picked up. `x-effect` re-runs whenever `$flux.dark` changes,
+         which covers all three cases: an explicit pick, and the OS flipping
+         under "System". --}}
+    <div
+        x-data
+        x-effect="document.querySelector('meta[name=theme-color]')
+            ?.setAttribute('content', $flux.dark ? '#09090b' : '#ffffff')"
+        hidden
+    ></div>
+
     {{--
         Mobile-first, widening in additive steps. Nothing below `sm` is
         sacrificed to make the desktop layout work:
@@ -34,7 +55,22 @@
         navigation at all.
     --}}
     <div class="mx-auto flex min-h-dvh w-full max-w-7xl flex-col">
-        <header class="sticky top-0 z-20 border-b border-zinc-200 bg-white/85 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/85">
+        {{-- z-40 puts app chrome above anything a screen sticks to its own
+             viewport. A screen may stack internally (the scoreboard runs
+             chrome 30 / day heading 20 / card contents 10); none of it may
+             climb over the header or the tab bar. --}}
+        @php $hasSections = count(App\Support\Navigation::currentSections()) > 1; @endphp
+
+        {{-- The bottom border is conditional because below `sm` this header can
+             be genuinely EMPTY — Scores is its own area with no section strip,
+             so the bar is `sm:flex` and the strip renders nothing. An
+             unconditional `border-b` left a 1px rule floating at the top of the
+             screen with nothing above or below it, and gave anything sticking
+             underneath 1px of travel before it settled. --}}
+        <header @class([
+            'sticky top-0 z-40 border-zinc-200 bg-white/85 backdrop-blur sm:border-b dark:border-zinc-800 dark:bg-zinc-950/85',
+            'border-b' => $hasSections,
+        ])>
             {{-- Reclaimed on mobile: 56px of brand mark, search icon and avatar
                  that the tab bar carries instead. --}}
             <div class="hidden h-14 items-center gap-4 px-4 sm:flex">

@@ -83,8 +83,8 @@ new class extends Component
 
         return Game::query()
             ->with([
-                'homeTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
-                'awayTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'venue:id,name',
                 'odds',
             ])
@@ -143,7 +143,11 @@ new class extends Component
 
 <div class="flex flex-col gap-5">
     <div class="flex items-start justify-between gap-3">
-        <div class="flex items-center gap-3">
+        {{-- `min-w-0` so this side can actually shrink. The heading truncates,
+             but only once its container is allowed to be narrower than the
+             text — otherwise this block holds its min-content width and shoves
+             the year select clean off the right edge. --}}
+        <div class="flex min-w-0 items-center gap-3">
             @if ($conference->logo)
                 <img src="{{ $conference->logo }}" alt="" class="size-10 shrink-0 object-contain">
             @endif

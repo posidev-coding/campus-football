@@ -9,7 +9,13 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    /* Archivo — a grotesque built for small sizes and dense figures, which is
+       what a stats app is made of. Loaded as one variable file, so every
+       Tailwind weight from `font-thin` to `font-black` is available at no
+       extra request. The @font-face itself comes from `@fonts` in the layout;
+       naming a family here without loading it is how this silently fell back
+       to system-ui for the whole build before. */
+    --font-sans: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 
     /* Tight scale. Data density comes from typography, not from cramming. */
@@ -41,6 +47,13 @@
     html {
         scrollbar-gutter: stable;
         -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Alpine's own convention: hide x-show elements until Alpine initialises,
+       so panel chrome does not flash on first paint. Neither Tailwind nor Flux
+       ships this rule. */
+    [x-cloak] {
+        display: none !important;
     }
 
     body {

@@ -154,8 +154,8 @@ new class extends Component
 
         return Game::query()
             ->with([
-                'homeTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
-                'awayTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'venue:id,name',
             ])
             ->whereIn('season_id', $seasonIds)

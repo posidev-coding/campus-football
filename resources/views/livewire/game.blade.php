@@ -34,8 +34,8 @@ new class extends Component
     public function mount(Game $game): void
     {
         $this->game = $game->load([
-            'homeTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark,color',
-            'awayTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark,color',
+            'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color',
+            'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color',
             'venue',
             'week:id,name',
             'season:id,year',

@@ -90,7 +90,7 @@ class SyncOdds
     }
 
     /**
-     * ESPN marks the favourite on whichever side block carries `favorite: true`.
+     * ESPN marks the favorite on whichever side block carries `favorite: true`.
      */
     private function favoriteTeamId(array $odds): ?int
     {

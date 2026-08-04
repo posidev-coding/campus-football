@@ -24,12 +24,29 @@
     $broadcast = collect($game->broadcasts ?? [])->flatten()->filter()->first();
 @endphp
 
-<div {{ $attributes->class(['flex flex-col rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700']) }}>
+{{--
+    `min-w-0` is load-bearing, not tidying.
+
+    This card is a grid item, and a grid item's automatic minimum size is its
+    MIN-CONTENT width. The event caption below is `truncate`, which sets
+    `white-space: nowrap` — and the min-content width of unwrappable text is the
+    whole string. So the card refused to shrink below the longest bowl name,
+    grew to 404px inside a 343px track, and pushed the document sideways.
+
+    `truncate` cannot save it: clipping needs a constrained box, and the box was
+    growing to fit the text instead of the other way round.
+
+    It surfaced on the CFP bracket because that is where the longest strings
+    live — "College Football Playoff Quarterfinal at the Chick-fil-A Peach Bowl"
+    against an ordinary bowl's much shorter name.
+--}}
+<div {{ $attributes->class(['flex min-w-0 flex-col rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700']) }}>
     <div class="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-1.5 text-micro dark:border-zinc-800/60">
+        {{-- No "Conf" badge. Anyone reading a college football scoreboard knows
+             which matchups are in-conference from the teams themselves, so it
+             was a chip spending width to say nothing. `conference_game` is
+             still synced and still filters standings. --}}
         <span class="flex min-w-0 items-center gap-1.5 text-zinc-500">
-            @if ($game->conference_game)
-                <span class="shrink-0 rounded bg-zinc-100 px-1 py-px font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">Conf</span>
-            @endif
             <span class="truncate">{{ $game->venue?->name ?? 'Venue TBD' }}</span>
         </span>
 
@@ -72,11 +89,16 @@
             @php $lost = $final && $winner !== null && $winner !== $side['team']?->id; @endphp
 
             <div class="relative z-10 flex items-center gap-2">
+                {{-- Place only, no nickname. A card is scanned, not read: the
+                     reader is looking for "North Carolina", and "Tar Heels" is
+                     nine characters of decoration in front of the next team's
+                     name. --}}
                 <x-team-link
                     :team="$side['team']"
                     :rank="$side['rank']"
                     :record="$side['record']"
                     :muted="$lost"
+                    label="location"
                     class="flex-1"
                 />
 
