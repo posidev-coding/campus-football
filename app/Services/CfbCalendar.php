@@ -265,7 +265,7 @@ class CfbCalendar
     }
 
     /**
-     * Every poll release for a season, newest first.
+     * Every poll release for a season, in chronological order.
      *
      * A release is a (season type, week) pair rather than a week number, because
      * the polls span three season types and the numbers restart in each:
@@ -304,17 +304,26 @@ class CfbCalendar
                     'number' => $w->number,
                     'label' => $this->releaseLabel($seasons[$w->season_id]->type ?? Season::REGULAR, $w),
                 ])
-                ->sortByDesc(fn (array $r) => [$r['type'], $r['number']])
+                // Chronological: preseason, then the weekly polls, then the
+                // final rankings — the order the season is actually played.
+                ->sortBy(fn (array $r) => [$r['type'], $r['number']])
                 ->map(fn (array $r) => ['week_id' => $r['week_id'], 'label' => $r['label']])
                 ->values()
                 ->all();
         });
     }
 
-    /** The most recent poll release for a season, as a week id. */
+    /**
+     * The most recent poll release for a season, as a week id.
+     *
+     * Reads the END of the list — releases are ordered chronologically for the
+     * selector, so the newest is last, not first.
+     */
     public function latestRankingRelease(int $year, string $poll): ?int
     {
-        return $this->rankingReleases($year, $poll)[0]['week_id'] ?? null;
+        $releases = $this->rankingReleases($year, $poll);
+
+        return $releases === [] ? null : end($releases)['week_id'];
     }
 
     private function releaseLabel(int $seasonType, Week $week): string

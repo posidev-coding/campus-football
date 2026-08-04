@@ -231,9 +231,11 @@ it('labels releases across all three season types', function () {
 
     $labels = collect($this->calendar->rankingReleases(2025, 'ap'))->pluck('label')->all();
 
-    // Newest first, and week 1 of the preseason must not collide with week 1
+    // Chronological, and week 1 of the preseason must not collide with week 1
     // of the postseason.
-    expect($labels)->toBe(['Final Rankings', 'Week 5', 'Preseason']);
+    expect($labels)->toBe(['Preseason', 'Week 5', 'Final Rankings'])
+        // The default still points at the newest release, which is now last.
+        ->and($this->calendar->latestRankingRelease(2025, 'ap'))->toBe($postWeek->id);
 });
 
 it('labels the current week during play', function () {
