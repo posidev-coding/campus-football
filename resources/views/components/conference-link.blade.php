@@ -21,8 +21,13 @@
      * A caller may phrase the link itself — the team hero says "6th in SEC"
      * rather than the bare conference name. Whitespace-only slots (an @if
      * that rendered nothing) fall back to the name.
+     *
+     * Livewire brackets every @if inside a component with literal
+     * `<!--[if BLOCK]><![endif]-->` markers, and they arrive as part of the
+     * slot STRING — echoing it through Blade's escaping then prints them as
+     * visible text. Strip them before deciding anything.
      */
-    $custom = trim((string) ($slot ?? ''));
+    $custom = trim(preg_replace('/<!--\[if (?:END)?BLOCK\]><!\[endif\]-->/', '', (string) ($slot ?? '')));
 @endphp
 
 @if ($conference)

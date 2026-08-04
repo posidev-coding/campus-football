@@ -211,7 +211,16 @@ describe('the hero KPI line', function () {
 
         Livewire::test('team', ['team' => $this->team])
             ->assertSeeInOrder(['8-4 (4-4)', '6th in SEC'])
-            ->assertSee(route('conference', ['conference' => 8, 'year' => 2025]), escape: false);
+            ->assertSee(route('conference', ['conference' => 8, 'year' => 2025]), escape: false)
+            /*
+             * Livewire brackets @if blocks with `<!--[if BLOCK]-->` comment
+             * markers, and they ride along INSIDE a slot's string — echoing
+             * the slot escaped once printed them around this very phrase as
+             * VISIBLE text. The markers are fine as real comments; what must
+             * never appear is their HTML-escaped form, which is what renders
+             * on screen. assertSee alone matches straight through the junk.
+             */
+            ->assertDontSee('&lt;!--[if', escape: false);
     });
 
     it('falls back to the bare conference name when no standing exists yet', function () {
