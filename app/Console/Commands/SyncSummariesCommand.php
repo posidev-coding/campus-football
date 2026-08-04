@@ -50,13 +50,26 @@ class SyncSummariesCommand extends Command
         $bar->start();
 
         $synced = 0;
-        $failed = 0;
+        $empty = 0;
+        $errors = [];
 
         foreach ($games as $game) {
-            // Deliberately the unthrottled path: the throttle exists to stop
-            // page views stampeding one game, and a sequential backfill is
-            // already paced by the client's process-wide rate limiter.
-            $sync->handle($game) ? $synced++ : $failed++;
+            try {
+                // Deliberately the unthrottled path: the throttle exists to stop
+                // page views stampeding one game, and a sequential backfill is
+                // already paced by the client's process-wide rate limiter.
+                $sync->handle($game) ? $synced++ : $empty++;
+            } catch (\Throwable $e) {
+                /*
+                 * One bad game must not end the run. A single scoring play with
+                 * a negative score aborted a 954-game backfill at game 260 —
+                 * the other 694 were fine and got no chance to sync. Record it,
+                 * carry on, and report at the end; `--missing` will retry it on
+                 * the next pass.
+                 */
+                $errors[$game->id] = $e->getMessage();
+            }
+
             $bar->advance();
         }
 
@@ -64,12 +77,17 @@ class SyncSummariesCommand extends Command
         $this->newLine(2);
 
         $this->line(sprintf(
-            '  <fg=green>✓</> %d synced%s  <fg=gray>%d requests, %.1fs</>',
+            '  <fg=green>✓</> %d synced%s%s  <fg=gray>%d requests, %.1fs</>',
             $synced,
-            $failed > 0 ? ", <fg=yellow>{$failed} returned no data</>" : '',
+            $empty > 0 ? ", <fg=yellow>{$empty} returned no data</>" : '',
+            $errors !== [] ? ', <fg=red>'.count($errors).' errored</>' : '',
             $espn->callCount(),
             microtime(true) - $started
         ));
+
+        foreach (array_slice($errors, 0, 5, true) as $gameId => $message) {
+            $this->line("    <fg=red>✗</> game {$gameId}: ".mb_substr($message, 0, 120));
+        }
 
         return self::SUCCESS;
     }

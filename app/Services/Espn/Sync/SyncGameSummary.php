@@ -183,10 +183,33 @@ class SyncGameSummary
                 'abbreviation' => data_get($play, 'scoringType.abbreviation')
                     ?? data_get($play, 'type.abbreviation'),
                 'text' => $play['text'] ?? null,
-                'home_score' => $play['homeScore'] ?? null,
-                'away_score' => $play['awayScore'] ?? null,
+                'home_score' => $this->score($play['homeScore'] ?? null),
+                'away_score' => $this->score($play['awayScore'] ?? null),
             ]);
         }
+    }
+
+    /**
+     * A running score, or null if ESPN sent something impossible.
+     *
+     * Verified live: game 401767129 carries a scoring play with
+     * `homeScore: -14`. A running score cannot be negative, and the column is
+     * unsigned, so writing it raw threw and took down a 954-game backfill at
+     * game 260 over one corrupt row in one game.
+     *
+     * Null rather than clamping to zero: we do not know what the score was, and
+     * inventing 0 would render a confidently wrong scoreline. The play text
+     * still displays.
+     */
+    private function score(mixed $value): ?int
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $score = (int) $value;
+
+        return $score >= 0 && $score <= 255 ? $score : null;
     }
 
     /**

@@ -174,3 +174,40 @@ it('links a game card to its game page', function () {
         ->set('week', $this->week->id)
         ->assertSee(route('game', $this->game), escape: false);
 });
+
+it('survives a negative running score from ESPN', function () {
+    /*
+     * Verified live: game 401767129 carries a scoring play with
+     * `homeScore: -14`. A running score cannot be negative, the column is
+     * unsigned, and writing it raw threw — which aborted a 954-game backfill at
+     * game 260 over one corrupt row.
+     *
+     * Null rather than clamped to zero: we do not know what the score was, and
+     * inventing 0 renders a confidently wrong scoreline.
+     */
+    Http::fake(['*' => Http::response([
+        'boxscore' => ['teams' => [], 'players' => []],
+        'scoringPlays' => [[
+            'text' => 'Ernest Campbell 22 Yd pass from Cardell Williams',
+            'homeScore' => -14,
+            'awayScore' => 0,
+            'period' => ['number' => 1],
+            'clock' => ['displayValue' => '0:05'],
+            'type' => ['text' => 'Passing Touchdown'],
+            'scoringType' => ['abbreviation' => 'TD'],
+            'team' => ['id' => 61],
+        ]],
+    ])]);
+
+    $sync = app(SyncGameSummary::class);
+
+    expect(fn () => $sync->handle($this->game))->not->toThrow(Throwable::class);
+
+    $play = GameScoringPlay::where('game_id', $this->game->id)->first();
+
+    expect($play)->not->toBeNull()
+        ->and($play->home_score)->toBeNull()
+        ->and($play->away_score)->toBe(0)
+        // The play itself is still worth having.
+        ->and($play->text)->toContain('Ernest Campbell');
+});
