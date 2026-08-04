@@ -489,6 +489,32 @@ also week 1, so keying on number collides it with the season opener. And week
 date ranges ABUT — week 1 ends the day week 2 starts — so subtract a day before
 displaying a range.
 
+## `queue:work --memory` is useless below PHP's own limit
+
+Ordering matters and getting it wrong looks like the guard simply not working:
+
+    PHP memory_limit   512M   the hard kill, mid-job, no cleanup
+    --memory           200    Laravel's graceful restart, checked BETWEEN jobs
+
+Laravel only checks its threshold between jobs. With the CLI default of 128M,
+`--memory=256` can never fire — PHP kills the process first. Run summary workers
+as `php -d memory_limit=512M artisan queue:work --memory=200`.
+
+Game summaries need this because memory grows roughly a megabyte per game and
+never comes back inside one process. A job per game plus a recycling worker is
+the fix; a longer loop is not.
+
+## Bus batches need the Batchable trait
+
+`Illuminate\Foundation\Queue\Queueable` does NOT include it, so `$this->batch()`
+is a fatal error at run time rather than a compile-time one. Any job dispatched
+in a batch that checks for cancellation must `use Batchable` explicitly.
+
+## `STORED` is reserved in MySQL 8
+
+`count(x) stored` in a selectRaw is a 1064 syntax error — it is the keyword from
+generated columns. Alias it something else rather than reaching for backticks.
+
 ## Never cache anything that isn't a plain scalar
 
 Already true of Eloquent models; it bit again with **Carbon**. Caching

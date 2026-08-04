@@ -177,6 +177,11 @@ Schedule::call(fn () => app(SyncNews::class)->followed())
  * game pass rather than during the day. A final game's summary can never
  * change, so `--missing` means each game is fetched exactly once, ever, and a
  * normal in-season night is only the ~60 games just played.
+ *
+ * This QUEUES one job per game rather than fetching inline — the scheduler
+ * process stays free, and memory is bounded by the worker rather than growing
+ * across a run. The shared rate limiter keeps the fan-out from raising upstream
+ * load.
  */
 Schedule::command('cfb:summaries --missing --limit=150')
     ->dailyAt('05:00')

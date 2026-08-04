@@ -216,7 +216,12 @@ class EspnClient
     }
 
     /**
-     * Process-wide request throttle.
+     * Request throttle, shared across every process using the same cache.
+     *
+     * Not merely process-wide: RateLimiter is cache-backed, so ten queue
+     * workers pulling game summaries in parallel still sit under one 240/min
+     * ceiling. That is precisely what makes fanning a backfill out across
+     * workers safe — throughput rises, upstream load does not.
      *
      * Blocks rather than failing: a sync job would rather take longer than lose
      * a run, and the backfill deliberately runs at the edge of this limit.

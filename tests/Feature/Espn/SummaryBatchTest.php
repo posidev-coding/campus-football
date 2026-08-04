@@ -1,0 +1,155 @@
+<?php
+
+use App\Jobs\FetchGameSummary;
+use App\Models\Game;
+use App\Models\GameSummary;
+use App\Models\Season;
+use App\Models\Team;
+use App\Models\Week;
+use App\Services\Espn\Sync\SyncGameSummary;
+use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+
+beforeEach(function () {
+    $this->season = Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
+    $this->week = Week::create([
+        'season_id' => $this->season->id, 'number' => 5, 'name' => 'Week 5',
+        'start_date' => '2025-09-23', 'end_date' => '2025-09-29',
+    ]);
+
+    Team::factory()->create(['id' => 61, 'display_name' => 'Georgia Bulldogs']);
+    Team::factory()->create(['id' => 333, 'display_name' => 'Alabama Crimson Tide']);
+
+    $this->games = collect(range(1, 3))->map(fn () => Game::factory()->finished()->create([
+        'season_id' => $this->season->id,
+        'week_id' => $this->week->id,
+        'home_team_id' => 61,
+        'away_team_id' => 333,
+    ]));
+});
+
+it('queues one job per game rather than looping in-process', function () {
+    /*
+     * The sequential version died at PHP's 128 MB limit partway through a
+     * 693-game run — memory grew about a megabyte a game and a single
+     * long-lived process never gave it back. A job per game bounds memory to
+     * one payload.
+     */
+    Bus::fake();
+
+    $this->artisan('cfb:summaries --year=2025')->assertSuccessful();
+
+    Bus::assertBatched(fn ($batch) => $batch->jobs->count() === 3
+        && $batch->jobs->every(fn ($job) => $job instanceof FetchGameSummary));
+});
+
+it('lets one bad game fail without cancelling the batch', function () {
+    // ESPN game 401767129 carries a scoring play with a negative score. Before
+    // allowFailures(), one such row ended a 954-game run at game 260.
+    Bus::fake();
+
+    $this->artisan('cfb:summaries --year=2025')->assertSuccessful();
+
+    Bus::assertBatched(fn ($batch) => $batch->options['allowFailures'] ?? false);
+});
+
+it('skips games that already have a summary', function () {
+    // A final game's summary can never change, so --missing makes every re-run
+    // a resume rather than a restart.
+    GameSummary::create([
+        'game_id' => $this->games->first()->id,
+        'is_final' => true,
+        'synced_at' => now(),
+    ]);
+
+    Bus::fake();
+
+    $this->artisan('cfb:summaries --year=2025')->assertSuccessful();
+
+    Bus::assertBatched(fn ($batch) => $batch->jobs->count() === 2);
+});
+
+it('reports nothing to do rather than queueing an empty batch', function () {
+    foreach ($this->games as $game) {
+        GameSummary::create(['game_id' => $game->id, 'is_final' => true, 'synced_at' => now()]);
+    }
+
+    Bus::fake();
+
+    $this->artisan('cfb:summaries --year=2025')
+        ->expectsOutputToContain('Nothing to sync')
+        ->assertSuccessful();
+
+    Bus::assertNothingBatched();
+});
+
+it('deduplicates on the game, so a double dispatch is one fetch', function () {
+    $job = new FetchGameSummary(401756846);
+
+    expect($job->uniqueId())->toBe('401756846')
+        ->and($job->uniqueId())->not->toBe((new FetchGameSummary(1))->uniqueId());
+});
+
+it('keeps the job timeout below the queue retry_after', function () {
+    // v3 had this backwards and re-ran long jobs while the first copy was still
+    // executing. Checked against every connection that defines one, because the
+    // suite runs on `sync`, which does not.
+    $timeout = (new FetchGameSummary(1))->timeout;
+    $checked = 0;
+
+    foreach (config('queue.connections') as $name => $connection) {
+        if (! isset($connection['retry_after'])) {
+            continue;
+        }
+
+        expect($timeout)->toBeLessThan($connection['retry_after'], "Under [{$name}] retry_after.");
+        $checked++;
+    }
+
+    expect($checked)->toBeGreaterThan(0);
+});
+
+it('actually stores a summary when the job runs', function () {
+    Http::fake(['*' => Http::response([
+        'boxscore' => [
+            'teams' => [[
+                'team' => ['id' => 61],
+                'statistics' => [['name' => 'totalYards', 'displayValue' => '461', 'label' => 'Total Yards']],
+            ]],
+            'players' => [],
+        ],
+        'scoringPlays' => [],
+        'header' => ['competitions' => [['status' => ['type' => ['completed' => true]]]]],
+        'gameInfo' => ['attendance' => 92746],
+    ])]);
+
+    $game = $this->games->first();
+
+    (new FetchGameSummary($game->id))->handle(app(SyncGameSummary::class));
+
+    expect(GameSummary::whereKey($game->id)->exists())->toBeTrue()
+        ->and(GameSummary::find($game->id)->attendance)->toBe(92746)
+        ->and($game->teamStats()->count())->toBe(1);
+});
+
+it('does nothing for a game that no longer exists', function () {
+    Http::fake();
+
+    (new FetchGameSummary(999999999))->handle(app(SyncGameSummary::class));
+
+    Http::assertNothingSent();
+});
+
+it('still supports an in-process run for one game', function () {
+    // --now keeps the old path for debugging and single games, where spinning
+    // up a worker is more trouble than the work.
+    Http::fake(['*' => Http::response(['boxscore' => ['teams' => [], 'players' => []]])]);
+    Queue::fake();
+
+    $this->artisan('cfb:summaries --now --game='.$this->games->first()->id)
+        ->assertSuccessful();
+
+    Queue::assertNothingPushed();
+    expect(GameSummary::whereKey($this->games->first()->id)->exists())->toBeTrue();
+});

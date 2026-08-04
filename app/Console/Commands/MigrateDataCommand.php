@@ -152,6 +152,9 @@ class MigrateDataCommand extends Command
         return match ($step['command']) {
             'cfb:sync' => $args + ['--only' => $step['step']],
             'cfb:players' => $args + ['--only' => $step['step'], '--classification' => 'FBS'],
+            // Queued, not inline: the migration would otherwise hold one
+            // process open for thousands of 544 KB payloads and exhaust memory.
+            // A worker has to be running for this step to make progress.
             'cfb:summaries' => $args + ['--missing' => true, '--limit' => 2000],
             default => $args,
         };
