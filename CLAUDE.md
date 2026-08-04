@@ -403,6 +403,23 @@ Two shapes in that payload to respect:
 - `categories[]` lists each team **twice** ("Georgia Bulldogs" and "University of
   Georgia", same `teamId`). Dedupe or the pivot doubles.
 
+**Following a team is what fetches its news.** `FollowTeam` dispatches
+`SyncTeamNews`, because a follow is the moment a team's feed becomes worth a
+request — measured live, Alabama's feed held 25 articles we did not have and
+Miami's 19. The job is unique on the TEAM, so a team gaining 500 followers after
+an upset is one fetch, not 500. Note what it does and does not do: it DENSIFIES
+the window, it does not extend it — the earliest article date barely moves.
+
+Every write that creates a follow goes through `app/Actions`, never straight to
+the relation, so the dispatch cannot be forgotten by a new caller.
+
+## Lazy loading is disabled, so a missing eager load is a 500
+
+`x-article-card` renders team chips, so anything selecting Articles must
+`->with('teams:id,slug,…')`. Three screens shipped without it and only the one
+whose test fixture actually attached an article caught it. **A fixture with no
+rows never reaches the render path it is supposed to be testing.**
+
 ## National leaders and ranks are already computed for us
 
 - `core/seasons/{y}/types/{t}/leaders` returns **13 categories × 100 athletes in

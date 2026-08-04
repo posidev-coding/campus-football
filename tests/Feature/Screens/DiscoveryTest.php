@@ -163,7 +163,14 @@ describe('national team stats', function () {
 
 describe('conference page', function () {
     it('renders for guests', function () {
-        $this->get(route('conference', $this->sec))->assertOk();
+        // With an attached article: the article card renders team chips, and
+        // lazy loading is disabled app-wide, so a missing eager load is a hard
+        // 500 rather than a silent N+1. A fixture with no articles never
+        // exercises that path.
+        $article = Article::create(['espn_id' => 77, 'headline' => 'SEC news', 'published_at' => now()]);
+        $article->teams()->attach(61);
+
+        $this->get(route('conference', $this->sec))->assertOk()->assertSee('SEC news');
     });
 
     it('shows the conference standings for the season', function () {

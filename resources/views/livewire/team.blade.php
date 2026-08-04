@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\SyncTeamNews;
 use App\Models\Article;
 use App\Models\AthleteTeamSeason;
 use App\Models\Game;
@@ -9,7 +10,6 @@ use App\Models\Team;
 use App\Models\TeamLeader;
 use App\Models\TeamSeasonStat;
 use App\Services\CfbCalendar;
-use App\Services\Espn\Sync\SyncNews;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -110,26 +110,37 @@ new class extends Component
     }
 
     /**
-     * This team's news, fetched on demand and cached.
+     * This team's news.
      *
      * ESPN honours `team=` on the news endpoint — verified live, Georgia's feed
      * shares only 5 of 50 articles with the general one and reaches back weeks
      * further. Worth stating because the sibling `athlete=` parameter on the
      * same endpoint is silently IGNORED.
      *
-     * Fetched when the tab is opened rather than for all 136 teams on a
-     * schedule, so cost tracks who is actually being read about.
+     * The fetch is DISPATCHED, never awaited. It briefly ran inline here behind
+     * a cache, which meant a page render could block on a 250 KB upstream
+     * request — the exact thing that made v3's game and team pages collapse
+     * under load. This reads what we have and lets the queue catch up; the job
+     * is unique per team, so a busy team page is still one fetch.
      */
     #[Computed]
     public function news()
     {
         Cache::remember(
-            "team:news:{$this->team->id}",
+            "team:news:dispatched:{$this->team->id}",
             1800,
-            fn () => app(SyncNews::class)->team($this->team->id)
+            function () {
+                SyncTeamNews::dispatch($this->team->id);
+
+                return true;
+            }
         );
 
+        // `teams` is eager-loaded because the article card renders team chips;
+        // lazy loading is disabled app-wide, so omitting it is a hard error
+        // rather than a silent N+1.
         return Article::query()
+            ->with('teams:id,slug,short_display_name,abbreviation,logo,logo_dark')
             ->whereHas('teams', fn ($q) => $q->whereKey($this->team->id))
             ->newest()
             ->limit(20)
@@ -216,7 +227,7 @@ new class extends Component
     <div class="team-accent -mx-4 -mt-5 flex items-center gap-3 px-4 py-5">
         <x-team-logo :team="$team" size="xl" class="drop-shadow" />
 
-        <div class="flex min-w-0 flex-col">
+        <div class="flex min-w-0 flex-1 flex-col">
             <span class="truncate text-xl font-bold leading-tight">{{ $team->display_name }}</span>
             <span class="flex flex-wrap items-center gap-x-1.5 text-sm opacity-90">
                 <x-conference-link :conference="$this->seasonRow?->conference" :year="$year" />
@@ -226,6 +237,10 @@ new class extends Component
                 @endif
             </span>
         </div>
+
+        {{-- Following dispatches the per-team news fetch, which is what fills
+             this team's News tab. --}}
+        <livewire:follow-button :team="$team" :key="'follow-'.$team->id" class="shrink-0" />
     </div>
 
     <div class="flex flex-wrap items-center gap-2">

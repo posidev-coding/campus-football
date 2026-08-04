@@ -133,6 +133,7 @@ new class extends Component
         }
 
         return Article::query()
+            ->with('teams:id,slug,short_display_name,abbreviation,logo,logo_dark')
             ->whereHas('teams', fn ($q) => $q->whereIn('teams.id', $members))
             ->newest()
             ->limit(5)

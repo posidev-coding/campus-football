@@ -34,7 +34,7 @@ Route::livewire('recruiting/{class?}', 'recruiting')->name('recruiting');
  * out — so the entire application was publicly reachable. Both are real here.
  */
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::view('account', 'account')->name('account');
+    Route::livewire('account', 'account')->name('account');
 });
 
 /*
