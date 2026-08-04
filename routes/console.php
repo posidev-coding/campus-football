@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\Espn\Sync\SyncNews;
 use Illuminate\Console\Scheduling\Schedule as ScheduleClass;
 use Illuminate\Support\Facades\Schedule;
 
@@ -145,4 +146,57 @@ Schedule::command('cfb:sync --only=injuries')
 Schedule::command('cfb:sync --only=recruiting')
     ->weeklyOn(ScheduleClass::WEDNESDAY, '03:00')
     ->timezone($tz)
+    ->withoutOverlapping();
+
+/*
+ * News. The feed is a rolling window of roughly six days and clamps `limit` to
+ * 50 whatever you ask for, so history is ACCUMULATED here rather than
+ * backfilled — missing a run loses those articles permanently. Cheap enough
+ * (one request) to run often.
+ */
+Schedule::command('cfb:sync --only=news')
+    ->hourly()
+    ->timezone($tz)
+    ->withoutOverlapping();
+
+/*
+ * Per-team news, but only for teams somebody actually follows. 136 teams is too
+ * many to refresh blindly for content nobody has asked to see; everyone else's
+ * team page fetches on demand and caches. Cost tracks interest.
+ */
+Schedule::call(fn () => app(SyncNews::class)->followed())
+    ->twiceDaily(7, 19)
+    ->timezone($tz)
+    ->name('cfb:news:followed')
+    ->withoutOverlapping();
+
+/*
+ * Box scores for games that have finished.
+ *
+ * One request per game at 544 KB, so this is capped and runs after the nightly
+ * game pass rather than during the day. A final game's summary can never
+ * change, so `--missing` means each game is fetched exactly once, ever, and a
+ * normal in-season night is only the ~60 games just played.
+ */
+Schedule::command('cfb:summaries --missing --limit=150')
+    ->dailyAt('05:00')
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+/*
+ * National leaders: one request for 1,300 leaderboard rows, the cheapest feed
+ * in the app. The athlete resolve pass that follows is capped, so a leaderboard
+ * naming players we have never seen cannot turn this into a slow job.
+ */
+Schedule::command('cfb:sync --only=leaders')
+    ->dailyAt('05:30')
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+Schedule::command('cfb:sync --only=athletes')
+    ->dailyAt('05:40')
+    ->timezone($tz)
+    ->when($inSeason)
     ->withoutOverlapping();

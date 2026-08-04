@@ -10,6 +10,8 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Str;
@@ -19,7 +21,7 @@ use Laravel\Sanctum\HasApiTokens;
  * `admin` is deliberately absent from Fillable — it is a privilege escalation
  * vector the moment it reaches a mass-assignment path from a request.
  */
-#[Fillable(['name', 'email', 'password', 'avatar', 'timezone', 'trash_talk_intensity'])]
+#[Fillable(['name', 'email', 'password', 'avatar', 'timezone', 'trash_talk_intensity', 'favorite_team_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 {
@@ -54,6 +56,26 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'admin' => 'boolean',
             'trash_talk_intensity' => TrashTalkIntensity::class,
         ];
+    }
+
+    /**
+     * The one team whose news leads this user's home page.
+     */
+    public function favoriteTeam(): BelongsTo
+    {
+        return $this->belongsTo(Team::class, 'favorite_team_id');
+    }
+
+    /**
+     * Teams this user follows.
+     *
+     * A pivot rather than v3's JSON column, so the per-team news sync can ask
+     * "which teams does anyone follow" as an indexed query rather than by
+     * scanning every user row and decoding JSON.
+     */
+    public function followedTeams(): BelongsToMany
+    {
+        return $this->belongsToMany(Team::class, 'team_follows')->withTimestamps();
     }
 
     public function isAdmin(): bool

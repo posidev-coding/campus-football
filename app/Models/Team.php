@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -58,6 +60,30 @@ class Team extends Model
     public function rankings(): HasMany
     {
         return $this->hasMany(Ranking::class);
+    }
+
+    public function articles(): BelongsToMany
+    {
+        return $this->belongsToMany(Article::class);
+    }
+
+    public function followers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'team_follows')->withTimestamps();
+    }
+
+    /**
+     * Every game this team played, home or away.
+     *
+     * Home and away are separate denormalized columns on `games` — that is what
+     * keeps the scoreboard join-free — so a team's schedule is a union rather
+     * than a single relation, and the two scopes above cannot express it.
+     */
+    public function games(): Builder
+    {
+        return Game::query()->where(fn ($q) => $q
+            ->where('home_team_id', $this->id)
+            ->orWhere('away_team_id', $this->id));
     }
 
     /**

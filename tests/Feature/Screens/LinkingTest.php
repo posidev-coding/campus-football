@@ -51,8 +51,8 @@ it('links both teams from a game card on the scoreboard', function () {
     ]);
 
     Livewire::test('scoreboard')
-        ->set('year', 2025)
-        ->set('week', 5)
+        ->set('scope', 'fbs')
+        ->set('week', $this->week->id)
         ->assertSee(route('team', $this->georgia), escape: false)
         ->assertSee(route('team', $this->alabama), escape: false);
 });
@@ -68,8 +68,8 @@ it('uses the dark logo variant where one exists', function () {
     // Synced all along but never rendered, so light-on-light marks vanished
     // against a dark surface.
     Livewire::test('scoreboard')
-        ->set('year', 2025)
-        ->set('week', 5)
+        ->set('scope', 'fbs')
+        ->set('week', $this->week->id)
         ->assertSee('https://espn/61-dark.png', escape: false);
 });
 
@@ -82,9 +82,10 @@ it('links teams and the conference from standings', function () {
     Livewire::test('standings')
         ->set('year', 2025)
         ->assertSee(route('team', $this->georgia), escape: false)
-        // A conference has no page of its own, so its name points at the
-        // standings filtered to it.
-        ->assertSee('conference=8', escape: false);
+        // A conference now has a page of its own. It used to deep-link back
+        // into a filtered standings page, which answered one question and left
+        // the reader on a screen about something else.
+        ->assertSee(route('conference', ['conference' => 8, 'year' => 2025]), escape: false);
 });
 
 it('links the team from a player page', function () {
@@ -107,8 +108,8 @@ it('renders TBD rather than a dead link when a team is missing', function () {
     ]);
 
     Livewire::test('scoreboard')
-        ->set('year', 2025)
-        ->set('week', 5)
+        ->set('scope', 'fbs')
+        ->set('week', $this->week->id)
         ->assertOk()
         ->assertSee('TBD');
 });
@@ -128,8 +129,12 @@ it('defaults the scoreboard to a week that has games', function () {
         'away_team_id' => 333,
     ]);
 
+    // `week` holds a week ID, not a number: the postseason's "Bowls" is also
+    // week 1, so a number-keyed selector collides the two and makes the bowl
+    // slate unreachable.
     Livewire::test('scoreboard')
-        ->assertSet('week', 5)
+        ->set('scope', 'fbs')
+        ->assertSet('week', $this->week->id)
         ->assertDontSee('Nothing on the slate');
 });
 

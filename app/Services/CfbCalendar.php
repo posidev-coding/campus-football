@@ -151,11 +151,49 @@ class CfbCalendar
     public function resultsYear(): int
     {
         return Cache::remember('calendar:results-year', self::CACHE_TTL, function () {
-            $seasonId = Game::query()->max('season_id');
+            /*
+             * Ordered by YEAR, not by season id.
+             *
+             * This read `Game::max('season_id')` originally, which happened to
+             * work only while seasons were inserted in chronological order.
+             * Backfilling 2021-2024 gave those older seasons HIGHER ids than
+             * 2025 and 2026, and the whole app quietly moved to 2024 — every
+             * default season on every screen. Insertion order is not
+             * chronology.
+             */
+            $year = Season::query()
+                ->whereExists(fn ($q) => $q->selectRaw(1)->from('games')
+                    ->whereColumn('games.season_id', 'seasons.id')
+                    // Games PLAYED, not games scheduled. The upcoming season's
+                    // fixture list is loaded months ahead, so "has any games"
+                    // moves this forward in February and empties every results
+                    // screen — standings and final rankings do not exist yet.
+                    ->where('games.completed', true))
+                ->max('year');
 
-            return $seasonId
-                ? (int) (Season::whereKey($seasonId)->value('year') ?? config('cfb.season'))
-                : (int) config('cfb.season');
+            return (int) ($year ?? config('cfb.season'));
+        });
+    }
+
+    /**
+     * The season a "what is on now" screen should open on.
+     *
+     * Different from resultsYear(): in August the upcoming season is scheduled
+     * but unplayed, and a scoreboard that opens on last season's bowls is
+     * showing history rather than what is on. Prefers the season we are in or
+     * heading into, provided it has a schedule to show.
+     */
+    public function scoreboardYear(): int
+    {
+        return Cache::remember('calendar:scoreboard-year', self::CACHE_TTL, function () {
+            $current = $this->currentYear();
+
+            $hasSchedule = Season::query()
+                ->where('year', $current)
+                ->whereExists(fn ($q) => $q->selectRaw(1)->from('games')->whereColumn('games.season_id', 'seasons.id'))
+                ->exists();
+
+            return $hasSchedule ? $current : $this->resultsYear();
         });
     }
 
@@ -311,6 +349,145 @@ class CfbCalendar
                 ->values()
                 ->all();
         });
+    }
+
+    /**
+     * Every week of a season that has games, in the order they are played.
+     *
+     * This is the week scroller's data source, and it deliberately mirrors
+     * rankingReleases() rather than reading `weeks` by number, for the same
+     * reason that method exists: **a week number is not unique within a
+     * season**. Regular season week 1 and the postseason's "Bowls" are both
+     * number 1, so a selector keyed on number alone silently collides them and
+     * the bowl slate becomes unreachable.
+     *
+     * Date ranges are returned INCLUSIVE. ESPN publishes weeks that abut — week
+     * 1 ends 2025-09-02 and week 2 starts 2025-09-02 — so the end is pulled
+     * back a day before display, otherwise consecutive pills both claim the
+     * same date and the scroller reads as if it were wrong.
+     *
+     * `starts_at` is a UNIX TIMESTAMP, not a Carbon instance. This result is
+     * cached, and a Carbon object round-trips out of the cache as
+     * `__PHP_Incomplete_Class` — which fails on the SECOND request, not the
+     * first, because the first one populates the cache and returns the live
+     * object. Same rule as never caching Eloquent models: cache plain scalars.
+     *
+     * @return list<array{week_id:int, number:int, type:int, label:string, range:string, starts_at:?int}>
+     */
+    public function weekReleases(int $year): array
+    {
+        return Cache::remember("calendar:weeks:{$year}", self::CACHE_TTL, function () use ($year) {
+            $seasons = Season::where('year', $year)
+                ->whereIn('type', [Season::REGULAR, Season::POSTSEASON])
+                ->get()
+                ->keyBy('id');
+
+            if ($seasons->isEmpty()) {
+                return [];
+            }
+
+            return Week::whereIn('season_id', $seasons->keys())
+                // Only weeks that actually have games. An empty week in the
+                // scroller is a dead end the user has to back out of.
+                ->whereExists(fn ($q) => $q->selectRaw(1)->from('games')->whereColumn('games.week_id', 'weeks.id'))
+                ->get()
+                ->map(function (Week $w) use ($seasons) {
+                    $type = $seasons[$w->season_id]->type ?? Season::REGULAR;
+
+                    return [
+                        'week_id' => $w->id,
+                        'number' => $w->number,
+                        'type' => $type,
+                        'label' => $type === Season::POSTSEASON
+                            ? strtoupper($w->name ?: 'Bowls')
+                            : 'WEEK '.$w->number,
+                        'range' => $this->weekRange($w),
+                        'starts_at' => $w->start_date?->getTimestamp(),
+                    ];
+                })
+                ->sortBy(fn (array $w) => [$w['type'], $w['number']])
+                ->values()
+                ->all();
+        });
+    }
+
+    /**
+     * The week a scoreboard should open on, as a week id.
+     *
+     * Returns an id rather than a number so the caller cannot re-introduce the
+     * regular-season/postseason collision described above.
+     */
+    public function defaultWeekId(int $year, ?CarbonImmutable $at = null): ?int
+    {
+        $weeks = $this->weekReleases($year);
+
+        if ($weeks === []) {
+            return null;
+        }
+
+        $at ??= CarbonImmutable::now(config('cfb.timezone'));
+        $current = $this->week($at);
+
+        if ($current !== null) {
+            foreach ($weeks as $week) {
+                if ($week['week_id'] === $current->id) {
+                    return $week['week_id'];
+                }
+            }
+        }
+
+        /*
+         * Between weeks, or out of season entirely: the week NEAREST to now,
+         * not the last one in the list.
+         *
+         * The difference is the whole month of August. Falling back to the last
+         * week opened the 2026 scoreboard on week 16 — a fixture list four
+         * months away — while "nearest" lands on week 1, which is what a person
+         * looking at a scoreboard in August wants. It also still does the right
+         * thing in February, where the nearest week is the previous season's
+         * bowls.
+         */
+        $now = $at->getTimestamp();
+        $nearest = null;
+        $smallest = null;
+
+        foreach ($weeks as $week) {
+            if ($week['starts_at'] === null) {
+                continue;
+            }
+
+            $distance = abs($week['starts_at'] - $now);
+
+            if ($smallest === null || $distance < $smallest) {
+                $smallest = $distance;
+                $nearest = $week['week_id'];
+            }
+        }
+
+        return $nearest ?? end($weeks)['week_id'];
+    }
+
+    /**
+     * "AUG 23-SEP 1" — inclusive, so consecutive weeks never share a day.
+     */
+    private function weekRange(Week $week): string
+    {
+        if ($week->start_date === null || $week->end_date === null) {
+            return '';
+        }
+
+        $start = $week->start_date;
+        $end = $week->end_date->subDay();
+
+        if ($end->lt($start)) {
+            $end = $start;
+        }
+
+        $startLabel = strtoupper($start->format('M j'));
+
+        return $start->isSameMonth($end)
+            ? $startLabel.'-'.$end->format('j')
+            : $startLabel.'-'.strtoupper($end->format('M j'));
     }
 
     /**

@@ -8,6 +8,8 @@ use App\Services\Espn\Sync\ReconcileStandings;
 use App\Services\Espn\Sync\SyncConferences;
 use App\Services\Espn\Sync\SyncGames;
 use App\Services\Espn\Sync\SyncInjuries;
+use App\Services\Espn\Sync\SyncNationalLeaders;
+use App\Services\Espn\Sync\SyncNews;
 use App\Services\Espn\Sync\SyncPredictors;
 use App\Services\Espn\Sync\SyncRankings;
 use App\Services\Espn\Sync\SyncRecruiting;
@@ -20,7 +22,7 @@ class SyncSeasonCommand extends Command
 {
     protected $signature = 'cfb:sync
         {--year= : Season year (defaults to CFB_SEASON)}
-        {--only= : One step: seasons|conferences|teams|games|rankings|predictors|recruiting|injuries|standings|compute|reconcile}';
+        {--only= : One step: seasons|conferences|teams|games|rankings|predictors|recruiting|injuries|standings|compute|reconcile|leaders|athletes|news}';
 
     protected $description = 'Sync a season of reference data from ESPN';
 
@@ -29,11 +31,15 @@ class SyncSeasonCommand extends Command
      * (teams inherit classification from the conference tree), both must exist
      * before games, and games must exist before predictors (which only fetch
      * for upcoming fixtures) and standings.
+     *
+     * `leaders` runs before `athletes` because the athlete resolve pass reads
+     * the leaderboard to find out who is missing.
      */
     private const STEPS = [
         'seasons', 'conferences', 'teams', 'games',
         'rankings', 'predictors', 'recruiting', 'injuries',
         'standings', 'compute', 'reconcile',
+        'leaders', 'athletes', 'news',
     ];
 
     public function handle(EspnClient $espn): int
@@ -83,10 +89,17 @@ class SyncSeasonCommand extends Command
             'standings' => app(SyncStandings::class)->handle($year),
             'compute' => app(ComputeStandings::class)->handle($year),
             'reconcile' => app(ReconcileStandings::class)->handle($year),
+            'leaders' => app(SyncNationalLeaders::class)->season($year),
+            'athletes' => app(SyncNationalLeaders::class)->resolveAthletes(),
+            // News is a rolling few-day window with no season parameter, so it
+            // is year-independent — syncing it per year would just refetch the
+            // same articles.
+            'news' => app(SyncNews::class)->general(),
         };
 
         $label = match ($step) {
             'reconcile' => $count > 0 ? "{$count} diverged" : 'no divergence',
+            'athletes' => "{$count} resolved",
             default => "{$count} records",
         };
 

@@ -350,10 +350,114 @@ no such floor. A local-only harness renders the app at exact device widths:
 Registered inside an `app()->isLocal()` guard, so it does not exist in
 production. Use it rather than trusting a resized window.
 
+## `conferences.abbreviation` is not an abbreviation
+
+It holds ESPN's URL slug. Verified: `acc`, `big10`, `usa`, `midam`, `mwest`,
+`belt`, `pac12`, `sec`, `ind`. Rendering it puts lowercase slugs in front of the
+reader.
+
+    short_name   ACC · Big Ten · CUSA · MAC · Mountain West · Sun Belt · SEC
+
+`short_name` is the display form, everywhere, including where a prop is called
+`abbr`.
+
+## The game summary is the only source of a box score
+
+Box scores, scoring plays and drives exist in exactly one payload — `summary` —
+and it is 544 KB, LARGER than a whole day's 25-game scoreboard. So it is the
+only single-game fetch in the app, and it is bounded twice over:
+
+- A **final** game is fetched once, ever. Its summary cannot change, so
+  `game_summaries.is_final` short-circuits every later page view to a pure
+  database read.
+- A **live** game is throttled by `Cache::lock("espn:summary:{id}", 60)` — keyed
+  on the GAME, not the viewer. A hundred people watching one game is one request
+  a minute. The lock is never released, only allowed to expire; it rate-limits
+  rather than guarding a critical section.
+
+It is also the **only source of historical players.** Rosters publish the
+current season only, so a 2021 player has no roster row to have come from; box
+scores name everyone who took a snap.
+
+Two shapes in that payload to respect:
+
+- Player lines are POSITIONAL arrays, but a parallel `keys[]` names each slot.
+  Zip them; never index `stats[0]`.
+- Box scores contain pseudo-athletes with **negative ids** and the name "Team"
+  (sack yardage charged to the team). `athletes.id` is unsigned, so inserting one
+  fails outright. Skip `id <= 0`.
+
+## News: clamped, rolling, and only one of its filters works
+
+- `limit` is **clamped to 50** however much you ask for. There is no pagination
+  parameter that lifts it.
+- The window is about **six days**, so article history is ACCUMULATED by syncing
+  on a schedule and cannot be backfilled. Nothing in the sync may delete.
+- **`?team=` is honoured** and returns a genuinely different set — Georgia shares
+  only 5 of 50 articles with the general feed, and reaches back weeks further.
+  **`?athlete=` on the same endpoint is silently ignored.** One parameter can be
+  trusted and its sibling cannot.
+- Every article on the college-football path carries an `NCAA Football` tag, so
+  no filtering is needed. Basketball tags appear as ADDITIONAL tags on
+  multi-sport stories, not as off-topic articles.
+- `categories[]` lists each team **twice** ("Georgia Bulldogs" and "University of
+  Georgia", same `teamId`). Dedupe or the pivot doubles.
+
+## National leaders and ranks are already computed for us
+
+- `core/seasons/{y}/types/{t}/leaders` returns **13 categories × 100 athletes in
+  ONE request**. The site equivalent 404s — core is the only source, same trap as
+  the CFP rankings.
+- It spans **every division** (245 teams for 2025 vs 136 in FBS), so a
+  leaderboard must scope through `team_seasons.classification`.
+- Team `statistics` carries a **national `rank` on every stat**. Keep it — the
+  national stats screen is then a sort, not a computation over 136 teams.
+
+## Season id is not chronology
+
+`resultsYear()` once read `Game::max('season_id')`, which worked only while
+seasons happened to be inserted in year order. Backfilling 2021-2024 gave those
+older seasons HIGHER ids and moved every default season in the app backwards.
+**Order by `year`.**
+
+Two different questions, and conflating them empties a screen:
+
+    resultsYear()      latest season with games PLAYED     — standings, rankings
+    scoreboardYear()   season we are in or heading into    — scores
+
+In August they differ. A scoreboard on `resultsYear()` shows last season's bowls.
+
+Likewise a week selector must key on **week id**: the postseason's "Bowls" is
+also week 1, so keying on number collides it with the season opener. And week
+date ranges ABUT — week 1 ends the day week 2 starts — so subtract a day before
+displaying a range.
+
+## Never cache anything that isn't a plain scalar
+
+Already true of Eloquent models; it bit again with **Carbon**. Caching
+`CarbonImmutable` in `weekReleases()` came back as `__PHP_Incomplete_Class` and
+fatalled — on the SECOND request, because the first populates the cache and
+returns the live object. Cache timestamps as ints.
+
+Any test for this class of bug must **call twice**. A single-call test always
+passes.
+
+## Don't name a helper after a base-class method
+
+Two fatals in one sitting, both at class-load time:
+
+    TeamSeasonStat::all()      collides with Model::all()      → use entries()
+    MigrateDataCommand::arguments()  collides with Command::arguments()
+
 ## Commands
 
 ```
-php artisan cfb:sync --year=2025 [--only=step]   # reference data + standings
+php artisan cfb:migrate --from=2021 --to=2026     # empty DB -> fully populated
+php artisan cfb:migrate --resume                  # after an interruption
+php artisan cfb:migrate --summaries               # opt in to the slow pass
+
+php artisan cfb:sync --year=2025 [--only=step]    # reference data + standings
 php artisan cfb:games --tier=live|today|current|recent|season
 php artisan cfb:players [--only=rosters|stats] [--team=61]
+php artisan cfb:summaries --missing [--year=2025] # box scores, 1 req/game
 ```

@@ -7,20 +7,20 @@
 
 @php
     /*
-     * Conferences have no page of their own yet, so the appropriate destination
-     * is the standings filtered to that conference and season — which is what a
-     * conference name is really asking for.
+     * `abbreviation` is NOT an abbreviation. Despite the name it holds ESPN's
+     * URL slug — `acc`, `big10`, `usa`, `midam`, `mwest`, `belt` — so rendering
+     * it puts lowercase slugs in front of the reader. `short_name` is the real
+     * display form: ACC, Big Ten, CUSA, MAC, Mountain West, Sun Belt.
      */
     $text = match ($label) {
-        'abbr' => $conference?->abbreviation ?? $conference?->short_name ?? $conference?->name,
-        'short' => $conference?->short_name ?? $conference?->name,
+        'abbr', 'short' => $conference?->short_name ?? $conference?->name,
         default => $conference?->name,
     };
 @endphp
 
 @if ($conference)
     <a
-        href="{{ route('standings', ['conference' => $conference->id, 'year' => $year ?? config('cfb.season')]) }}"
+        href="{{ route('conference', ['conference' => $conference->id] + ($year ? ['year' => $year] : [])) }}"
         wire:navigate
         {{ $attributes->class(['group inline-flex min-w-0 items-center gap-1.5']) }}
     >

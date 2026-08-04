@@ -1,12 +1,9 @@
 <?php
 
-use App\Models\Conference;
 use App\Models\Game;
-use App\Models\Season;
-use App\Models\TeamSeason;
 use App\Models\Week;
 use App\Services\CfbCalendar;
-use Illuminate\Support\Facades\Cache;
+use App\Support\Scope;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -19,110 +16,59 @@ use Livewire\Component;
  * one request a minute for everybody, and this component just reads what it
  * wrote — so viewer count has no effect on upstream load at all.
  *
- * Note that nothing cached here is an Eloquent model. Caching model collections
- * round-trips through Redis as __PHP_Incomplete_Class, which fails only on the
- * SECOND request — the first populates the cache and looks fine. Plain arrays
- * are also smaller and cheaper to hydrate.
+ * There is deliberately NO season selector. This is a "what is on now" screen;
+ * comparing years belongs on Standings, Rankings, Stats and Leaders, where it is
+ * the point. The season is whichever one the calendar says has results.
  */
 new class extends Component
 {
-    #[Url]
-    public ?int $year = null;
-
+    /**
+     * A week id, not a week number.
+     *
+     * Week numbers are not unique within a season — the postseason's "Bowls" is
+     * also week 1 — so a number-keyed selector collides them and makes the bowl
+     * slate unreachable.
+     */
     #[Url]
     public ?int $week = null;
 
-    /*
-     * Typed as a string, not ?int. A querystring value is always a string, and
-     * the "All conferences" option submits an empty one — assigning that to an
-     * ?int property is a hard type error. Cast at the point of use instead.
-     */
     #[Url]
-    public string $conference = '';
+    public string $scope = Scope::TOP_25;
 
     public function mount(CfbCalendar $calendar): void
     {
-        // The season that has games, not the one the clock says — in August the
-        // upcoming season exists but has not been played.
-        $this->year ??= $calendar->resultsYear();
-        $this->week ??= $calendar->defaultWeekNumber($this->year);
-    }
-
-    public function updatedYear(CfbCalendar $calendar): void
-    {
-        $this->week = $calendar->defaultWeekNumber($this->year);
-    }
-
-    #[Computed]
-    public function seasons(): array
-    {
-        return Cache::remember('scoreboard:seasons', 3600, fn () => Season::query()
-            ->where('type', Season::REGULAR)
-            ->orderByDesc('year')
-            ->pluck('year', 'year')
-            ->all());
+        $this->week ??= $calendar->defaultWeekId($this->year());
     }
 
     /**
-     * @return list<array{number:int, name:string}>
+     * The season we are in or heading into, provided it has a schedule.
+     *
+     * NOT resultsYear(): that is the latest season with games PLAYED, which in
+     * August is last season — so the scoreboard would open on bowl games from
+     * eight months ago instead of the upcoming week 1.
      */
+    private function year(): int
+    {
+        return app(CfbCalendar::class)->scoreboardYear();
+    }
+
+    /** @return list<array<string, mixed>> */
     #[Computed]
     public function weeks(): array
     {
-        $season = Season::where('year', $this->year)->where('type', Season::REGULAR)->first();
-
-        if ($season === null) {
-            return [];
-        }
-
-        return Cache::remember(
-            "scoreboard:weeks:{$season->id}",
-            3600,
-            fn () => Week::where('season_id', $season->id)
-                ->orderBy('number')
-                ->get(['number', 'name'])
-                ->map(fn (Week $w) => ['number' => $w->number, 'name' => $w->name])
-                ->all()
-        );
+        return app(CfbCalendar::class)->weekReleases($this->year());
     }
 
-    /**
-     * Conferences that actually had FBS teams this season — read through
-     * team_seasons, because membership is season-scoped.
-     *
-     * @return list<array{id:int, name:string}>
-     */
     #[Computed]
-    public function conferences(): array
+    public function scopeYear(): int
     {
-        return Cache::remember(
-            "scoreboard:conferences:{$this->year}",
-            3600,
-            fn () => Conference::query()
-                ->whereIn('id', TeamSeason::where('season_year', $this->year)
-                    ->where('classification', 'FBS')
-                    ->whereNotNull('conference_id')
-                    ->distinct()
-                    ->pluck('conference_id'))
-                ->where('is_conference', true)
-                ->orderBy('name')
-                ->get(['id', 'name'])
-                ->map(fn (Conference $c) => ['id' => $c->id, 'name' => $c->name])
-                ->all()
-        );
-    }
-
-    private function conferenceId(): ?int
-    {
-        return $this->conference === '' ? null : (int) $this->conference;
+        return $this->year();
     }
 
     #[Computed]
     public function games()
     {
-        $season = Season::where('year', $this->year)->where('type', Season::REGULAR)->first();
-
-        if ($season === null) {
+        if ($this->week === null) {
             return collect();
         }
 
@@ -133,18 +79,20 @@ new class extends Component
                 'homeTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'awayTeam:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'venue:id,name',
+                'odds',
             ])
-            ->where('season_id', $season->id)
-            ->when($this->week, fn ($q) => $q->whereHas('week', fn ($w) => $w->where('number', $this->week)))
+            ->where('week_id', $this->week)
             ->orderBy('kickoff_at');
 
-        if ($this->conferenceId()) {
-            // A conference's games are those involving its members that season.
-            $members = TeamSeason::where('season_year', $this->year)
-                ->where('conference_id', $this->conferenceId())
-                ->pluck('team_id');
+        $teamIds = Scope::teamIds($this->scope, $this->year());
 
-            $query->where(fn ($q) => $q->whereIn('home_team_id', $members)->orWhereIn('away_team_id', $members));
+        // Null means "do not filter" and an empty array means "filter to
+        // nothing". Treating them the same would show every game for a scope
+        // that has no members.
+        if ($teamIds !== null) {
+            $query->where(fn ($q) => $q
+                ->whereIn('home_team_id', $teamIds)
+                ->orWhereIn('away_team_id', $teamIds));
         }
 
         return $query->get()->groupBy(
@@ -161,60 +109,49 @@ new class extends Component
     {
         return Game::query()->inProgress()->exists();
     }
+
+    #[Computed]
+    public function weekLabel(): ?string
+    {
+        return Week::find($this->week)?->name;
+    }
 }; ?>
 
-<div>
-    <div class="flex flex-col gap-4">
-        <div class="flex items-center justify-between gap-3">
-            <flux:heading size="xl">Scoreboard</flux:heading>
+<div class="flex flex-col gap-4">
+    <div class="flex items-start justify-between gap-3">
+        <x-scope-filter title="Scores" :year="$this->scopeYear" :selected="$scope" />
 
-            @if ($this->hasLiveGames)
-                <flux:badge color="red" size="sm" class="shrink-0">Live</flux:badge>
-            @endif
-        </div>
+        @if ($this->hasLiveGames)
+            <flux:badge color="red" size="sm" class="mt-1 shrink-0">Live</flux:badge>
+        @endif
+    </div>
 
-        <div class="flex flex-wrap gap-2">
-            <flux:select wire:model.live="year" size="sm" class="w-28">
-                @foreach ($this->seasons as $season)
-                    <flux:select.option :value="$season">{{ $season }}</flux:select.option>
-                @endforeach
-            </flux:select>
+    <x-week-scroller :weeks="$this->weeks" :selected="$week" />
 
-            <flux:select wire:model.live="week" size="sm" class="w-32">
-                @foreach ($this->weeks as $w)
-                    <flux:select.option :value="$w['number']">{{ $w['name'] }}</flux:select.option>
-                @endforeach
-            </flux:select>
+    {{-- Short-polls our own cache, never ESPN, and only while a game is
+         actually in progress. --}}
+    <div @if ($this->hasLiveGames) wire:poll.30s.visible @endif class="flex flex-col gap-5">
+        @forelse ($this->games as $day => $games)
+            <div class="flex flex-col gap-2">
+                <flux:subheading class="sticky top-14 z-10 bg-white/90 py-1 backdrop-blur dark:bg-zinc-950/90">
+                    {{ $day }}
+                </flux:subheading>
 
-            <flux:select wire:model.live="conference" size="sm" class="min-w-40 flex-1">
-                <flux:select.option value="">All conferences</flux:select.option>
-                @foreach ($this->conferences as $c)
-                    <flux:select.option :value="$c['id']">{{ $c['name'] }}</flux:select.option>
-                @endforeach
-            </flux:select>
-        </div>
-
-        {{-- Short-polls our own cache, never ESPN, and only while a game is
-             actually in progress. --}}
-        <div @if ($this->hasLiveGames) wire:poll.30s.visible @endif class="flex flex-col gap-5">
-            @forelse ($this->games as $day => $games)
-                <div class="flex flex-col gap-2">
-                    <flux:subheading class="sticky top-14 z-10 bg-white/90 py-1 backdrop-blur dark:bg-zinc-950/90">
-                        {{ $day }}
-                    </flux:subheading>
-
-                    <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                        @foreach ($games as $game)
-                            <x-game-card :game="$game" wire:key="game-{{ $game->id }}" />
-                        @endforeach
-                    </div>
+                <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    @foreach ($games as $game)
+                        <x-game-card :game="$game" wire:key="game-{{ $game->id }}" />
+                    @endforeach
                 </div>
-            @empty
-                <flux:callout icon="calendar-days">
-                    <flux:callout.heading>Nothing on the slate</flux:callout.heading>
-                    <flux:callout.text>No games found for this week. Try another week or season.</flux:callout.text>
-                </flux:callout>
-            @endforelse
-        </div>
+            </div>
+        @empty
+            <flux:callout icon="calendar-days">
+                <flux:callout.heading>Nothing on the slate</flux:callout.heading>
+                <flux:callout.text>
+                    No {{ App\Support\Scope::label($scope, $this->scopeYear) }} games
+                    {{ $this->weekLabel ? 'in '.$this->weekLabel : 'this week' }}.
+                    Try another week, or widen the filter to FBS.
+                </flux:callout.text>
+            </flux:callout>
+        @endforelse
     </div>
 </div>

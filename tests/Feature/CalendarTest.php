@@ -243,3 +243,72 @@ it('labels the current week during play', function () {
 
     expect($this->calendar->label())->toBe('Week 7');
 });
+
+it('survives a second read of the cached week list', function () {
+    /*
+     * Regression: weekReleases() cached CarbonImmutable instances, which come
+     * back out of the cache as __PHP_Incomplete_Class and fatal the moment a
+     * method is called on them.
+     *
+     * The failure mode is why this test calls TWICE. The first call populates
+     * the cache and returns live objects, so it always passes; only the second
+     * read hits the serialized copy. A single-call test would have shipped this.
+     */
+    $calendar = app(CfbCalendar::class);
+
+    $calendar->weekReleases(2025);
+    $calendar->defaultWeekId(2025);
+
+    expect(fn () => $calendar->defaultWeekId(2025))->not->toThrow(Throwable::class);
+
+    foreach ($calendar->weekReleases(2025) as $week) {
+        expect($week['starts_at'])->toBeInt();
+    }
+});
+
+it('opens the scoreboard on the upcoming season once it is scheduled', function () {
+    /*
+     * In August the current season is scheduled but unplayed, so resultsYear()
+     * points at LAST season. A scoreboard defaulting to that shows bowl games
+     * from eight months ago instead of week 1.
+     */
+    $this->travelTo('2026-08-04');
+
+    $week = Week::create([
+        'season_id' => $this->next->id, 'number' => 1, 'name' => 'Week 1',
+        'start_date' => '2026-08-22 07:00', 'end_date' => '2026-09-02 06:59',
+    ]);
+
+    Game::factory()->create(['season_id' => $this->next->id, 'week_id' => $week->id]);
+
+    expect($this->calendar->scoreboardYear())->toBe(2026)
+        ->and($this->calendar->defaultWeekId(2026))->toBe($week->id);
+});
+
+it('orders results year by year, not by season id', function () {
+    /*
+     * Regression: this read Game::max('season_id'), which only worked while
+     * seasons happened to be inserted in chronological order. Backfilling older
+     * seasons gave them HIGHER ids and moved every default season in the app
+     * backwards — the whole app quietly fell back a year.
+     */
+    Game::factory()->create([
+        'season_id' => $this->regular->id,
+        'week_id' => Week::where('season_id', $this->regular->id)->value('id'),
+    ]);
+
+    // Inserted last, so 2019 holds the HIGHEST season id in the table.
+    $old = Season::factory()->create([
+        'year' => 2019, 'type' => Season::REGULAR,
+        'start_date' => '2019-08-24', 'end_date' => '2019-12-14',
+    ]);
+
+    $oldWeek = Week::create([
+        'season_id' => $old->id, 'number' => 1, 'name' => 'Week 1',
+        'start_date' => '2019-08-24 07:00', 'end_date' => '2019-09-02 06:59',
+    ]);
+
+    Game::factory()->create(['season_id' => $old->id, 'week_id' => $oldWeek->id]);
+
+    expect($this->calendar->resultsYear())->toBe(2025);
+});

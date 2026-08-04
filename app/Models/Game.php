@@ -80,6 +80,26 @@ class Game extends Model
         return $this->hasOne(GamePredictor::class);
     }
 
+    public function summary(): HasOne
+    {
+        return $this->hasOne(GameSummary::class);
+    }
+
+    public function teamStats(): HasMany
+    {
+        return $this->hasMany(GameTeamStat::class);
+    }
+
+    public function scoringPlays(): HasMany
+    {
+        return $this->hasMany(GameScoringPlay::class);
+    }
+
+    public function athleteStats(): HasMany
+    {
+        return $this->hasMany(AthleteGameStat::class);
+    }
+
     /**
      * Games a contest is allowed to slate.
      *

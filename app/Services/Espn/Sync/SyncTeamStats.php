@@ -71,12 +71,28 @@ class SyncTeamStats
                 continue;
             }
 
-            // Keyed by ESPN's stat name — never by position.
+            /*
+             * Keyed by ESPN's stat name — never by position.
+             *
+             * The national rank rides along on every stat and is kept, because
+             * it is the whole basis of the national team stats screen and costs
+             * nothing extra: ESPN has already computed "81st in average gain"
+             * for us. Discarding it, as this did originally, would mean either
+             * no such screen or ranking 136 teams ourselves on every read.
+             *
+             * `display` and `rank` rather than a bare scalar, so a caller can
+             * always ask for both without a second lookup.
+             */
             $stats = [];
 
             foreach ($category['stats'] as $stat) {
                 if (isset($stat['name'])) {
-                    $stats[$stat['name']] = $stat['displayValue'] ?? $stat['value'] ?? null;
+                    $stats[$stat['name']] = [
+                        'display' => $stat['displayValue'] ?? $stat['value'] ?? null,
+                        'value' => $stat['value'] ?? null,
+                        'rank' => $stat['rank'] ?? null,
+                        'label' => $stat['displayName'] ?? $stat['shortDisplayName'] ?? $stat['name'],
+                    ];
                 }
             }
 

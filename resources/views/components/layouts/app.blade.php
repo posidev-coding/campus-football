@@ -33,29 +33,9 @@
                     <span class="sm:hidden">CFB</span>
                 </a>
 
-                {{-- Section nav, the way a sports site carries it: always
-                     visible, current section marked. --}}
-                <nav class="hidden min-w-0 flex-1 items-center gap-0.5 sm:flex">
-                    @foreach ([
-                        ['route' => 'scoreboard', 'label' => 'Scores'],
-                        ['route' => 'standings', 'label' => 'Standings'],
-                        ['route' => 'rankings', 'label' => 'Rankings'],
-                        ['route' => 'recruiting', 'label' => 'Recruiting'],
-                    ] as $item)
-                        @php $active = request()->routeIs($item['route']); @endphp
-                        <a
-                            href="{{ route($item['route']) }}"
-                            wire:navigate
-                            @class([
-                                'rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors',
-                                'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100' => $active,
-                                'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100' => ! $active,
-                            ])
-                        >{{ $item['label'] }}</a>
-                    @endforeach
-                </nav>
-
                 <div class="ml-auto flex shrink-0 items-center gap-1">
+                    <livewire:search />
+
                     @auth
                         <flux:dropdown position="bottom" align="end">
                             <flux:profile :initials="auth()->user()->initials()" :chevron="false" />
@@ -84,6 +64,11 @@
                     @endauth
                 </div>
             </div>
+
+            {{-- The secondary nav, ESPN-style. Nine sections will not fit in a
+                 header row, so they scroll horizontally on a phone and settle
+                 into a full strip once there is room. --}}
+            <x-section-nav class="border-b-0" />
         </header>
 
         <div class="flex flex-1 gap-6 px-4 py-5 pb-[calc(var(--nav-height)+1.5rem)] sm:pb-6">

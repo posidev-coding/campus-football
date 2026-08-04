@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Article;
 use App\Models\AthleteTeamSeason;
 use App\Models\Game;
 use App\Models\Season;
@@ -8,6 +9,8 @@ use App\Models\Team;
 use App\Models\TeamLeader;
 use App\Models\TeamSeasonStat;
 use App\Services\CfbCalendar;
+use App\Services\Espn\Sync\SyncNews;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -104,6 +107,33 @@ new class extends Component
             ->where('season_year', $this->year)
             ->get()
             ->keyBy('category');
+    }
+
+    /**
+     * This team's news, fetched on demand and cached.
+     *
+     * ESPN honours `team=` on the news endpoint — verified live, Georgia's feed
+     * shares only 5 of 50 articles with the general one and reaches back weeks
+     * further. Worth stating because the sibling `athlete=` parameter on the
+     * same endpoint is silently IGNORED.
+     *
+     * Fetched when the tab is opened rather than for all 136 teams on a
+     * schedule, so cost tracks who is actually being read about.
+     */
+    #[Computed]
+    public function news()
+    {
+        Cache::remember(
+            "team:news:{$this->team->id}",
+            1800,
+            fn () => app(SyncNews::class)->team($this->team->id)
+        );
+
+        return Article::query()
+            ->whereHas('teams', fn ($q) => $q->whereKey($this->team->id))
+            ->newest()
+            ->limit(20)
+            ->get();
     }
 
     #[Computed]
@@ -205,12 +235,17 @@ new class extends Component
             @endforeach
         </flux:select>
 
-        <flux:radio.group wire:model.live="tab" variant="segmented" size="sm">
-            <flux:radio value="overview" label="Overview" />
-            <flux:radio value="schedule" label="Schedule" />
-            <flux:radio value="roster" label="Roster" />
-            <flux:radio value="stats" label="Stats" />
-        </flux:radio.group>
+        {{-- Scrolls on a phone: five tabs will not fit at 390px, and a
+             segmented control that overflows silently clips the last one. --}}
+        <div class="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <flux:radio.group wire:model.live="tab" variant="segmented" size="sm" class="w-max">
+                <flux:radio value="overview" label="Overview" />
+                <flux:radio value="schedule" label="Schedule" />
+                <flux:radio value="roster" label="Roster" />
+                <flux:radio value="stats" label="Stats" />
+                <flux:radio value="news" label="News" />
+            </flux:radio.group>
+        </div>
     </div>
 
     @if ($tab === 'overview')
@@ -321,10 +356,17 @@ new class extends Component
                 <div class="stat-grid rounded-lg border border-zinc-200 dark:border-zinc-800">
                     <table class="w-full text-stat">
                         <tbody>
-                            @foreach ($row->stats as $name => $value)
+                            @foreach ($row->entries() as $stat)
                                 <tr class="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
-                                    <td class="px-3 py-1.5 text-zinc-500">{{ str($name)->headline() }}</td>
-                                    <td class="px-3 py-1.5 text-right font-medium">{{ $value }}</td>
+                                    <td class="px-3 py-1.5 text-zinc-500">{{ $stat['label'] }}</td>
+                                    <td class="px-3 py-1.5 text-right font-medium">{{ $stat['display'] }}</td>
+                                    {{-- ESPN ranks all 136 FBS teams on every stat it
+                                         publishes, so this comes free with the value. --}}
+                                    <td class="tabular w-14 px-3 py-1.5 text-right text-micro text-zinc-400">
+                                        @if ($stat['rank'])
+                                            {{ \App\Support\Ordinal::of($stat['rank']) }}
+                                        @endif
+                                    </td>
                                 </tr>
                             @endforeach
                         </tbody>
@@ -335,6 +377,19 @@ new class extends Component
             <flux:callout icon="chart-bar">
                 <flux:callout.heading>No statistics</flux:callout.heading>
                 <flux:callout.text>Nothing published for {{ $year }}.</flux:callout.text>
+            </flux:callout>
+        @endforelse
+    @endif
+
+    @if ($tab === 'news')
+        @forelse ($this->news as $article)
+            <x-article-card :article="$article" wire:key="tnews-{{ $article->id }}" />
+        @empty
+            <flux:callout icon="newspaper">
+                <flux:callout.heading>No news</flux:callout.heading>
+                <flux:callout.text>
+                    ESPN's feed only reaches back a few days, so this fills in as news is synced.
+                </flux:callout.text>
             </flux:callout>
         @endforelse
     @endif
