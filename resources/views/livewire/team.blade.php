@@ -220,12 +220,21 @@ new class extends Component
     class="flex flex-col gap-5"
     @style([
         '--team-accent: '.$team->accentColor() => $team->accentColor(),
-        '--team-accent-contrast: white' => $team->accentColor(),
+        '--team-accent-contrast: '.$team->accentContrast() => $team->accentContrast(),
     ])
 >
-    {{-- Team hero, in the team's own colour --}}
-    <div class="team-accent -mx-4 -mt-5 flex items-center gap-3 px-4 py-5">
-        <x-team-logo :team="$team" size="xl" class="drop-shadow" />
+    {{-- Team hero, in the team's own color. The logo rides a neutral puck
+         rather than the accent — a one-color mark in its own color vanishes
+         into the surface — and the alt color draws the keyline along the
+         hero's bottom edge, jersey-piping style. Text color is computed from
+         the accent's luminance, never assumed white. --}}
+    <div
+        class="team-gradient -mx-4 -mt-5 flex items-center gap-3 px-4 py-5"
+        @style(['border-bottom: 3px solid '.$team->altAccentColor() => $team->altAccentColor()])
+    >
+        <span class="flex size-20 shrink-0 items-center justify-center rounded-full bg-white shadow-md ring-1 ring-black/10 dark:bg-zinc-950 dark:ring-white/15">
+            <x-team-logo :team="$team" size="xl" />
+        </span>
 
         <div class="flex min-w-0 flex-1 flex-col">
             <span class="truncate text-xl font-bold leading-tight">{{ $team->display_name }}</span>

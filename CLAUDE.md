@@ -946,6 +946,26 @@ So the woff2 is checked into `resources/fonts/` and declared with `local()` at
 weight `'100 900'`. Only the `latin` subset: verified, not assumed — zero of
 34,836 athlete names use a character outside Latin-1.
 
+## A team logo never sits on the team's color
+
+A one-color mark in the team's own color vanishes into an accent surface —
+Tennessee's orange Power T on Tennessee orange was invisible. Two rules, both
+in the glance-card header and the team-page hero:
+
+- **The logo rides a neutral puck**: `bg-white` in light mode, `dark:bg-zinc-950`
+  in dark — which also matches the logo variant `x-team-logo` picks, since
+  ESPN's dark-variant logos are drawn for dark surfaces.
+- **Text color on an accent is COMPUTED, never assumed white.**
+  `Team::accentContrast()` runs YIQ luminance with a threshold of 150: maize
+  and gold take near-black text, and Tennessee's #FF8200 sits at 152 — the
+  dark side, correctly, because white on that orange is about 2.4:1.
+
+The branding lives in the surface instead: the `team-gradient` utility (accent
+falling toward its own shadow) and a 3px `alt_color` keyline along the
+header's bottom edge, jersey-piping style. `--team-accent-contrast` is set
+per-surface from `accentContrast()`; the flat `team-accent` utility remains
+for surfaces that carry no logo.
+
 ## A game card names the PLACE, not the team
 
 `Team::placeName()` — "North Carolina", never "North Carolina Tar Heels". A card

@@ -20,14 +20,27 @@
     {{ $attributes->class(['overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800']) }}
     @style([
         '--team-accent: '.$team->accentColor() => $team->accentColor(),
-        '--team-accent-contrast: white' => $team->accentColor(),
+        '--team-accent-contrast: '.$team->accentContrast() => $team->accentContrast(),
     ])
 >
     {{-- The header is the card's link to the team page. The whole card cannot
          be one, because the form pills and game lines are links themselves and
-         anchors do not nest. --}}
-    <a href="{{ route('team', $team) }}" wire:navigate class="team-accent flex items-center gap-3 px-4 py-3">
-        <x-team-logo :team="$team" size="lg" class="drop-shadow" />
+         anchors do not nest.
+
+         The logo sits on a neutral puck, never on the accent itself — a
+         one-color mark in the team's own color (Tennessee's orange T on
+         orange) vanishes into the surface. The puck follows the appearance
+         mode, which also matches the logo variant x-team-logo picks. The
+         alt color gets its keyline along the header's bottom edge. --}}
+    <a
+        href="{{ route('team', $team) }}"
+        wire:navigate
+        class="team-gradient flex items-center gap-3 px-4 py-3"
+        @style(['border-bottom: 3px solid '.$team->altAccentColor() => $team->altAccentColor()])
+    >
+        <span class="flex size-12 shrink-0 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/10 dark:bg-zinc-950 dark:ring-white/15">
+            <x-team-logo :team="$team" size="size-9" />
+        </span>
 
         <span class="min-w-0 flex-1">
             <span class="flex min-w-0 items-baseline gap-1.5">

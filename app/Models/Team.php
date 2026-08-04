@@ -133,6 +133,43 @@ class Team extends Model
     }
 
     /**
+     * The secondary color, same caveat. Often white or a metallic; used as a
+     * keyline against the primary, never as a surface of its own.
+     */
+    public function altAccentColor(): ?string
+    {
+        return $this->alt_color ? '#'.ltrim($this->alt_color, '#') : null;
+    }
+
+    /**
+     * Black or white — whichever actually survives on top of the accent.
+     *
+     * This used to be hardcoded white, which fails the same way the logo did:
+     * white text on Tennessee orange is about 2.4:1, and on a maize or gold
+     * accent it disappears entirely. YIQ luminance with a threshold of 150
+     * sends every light accent to near-black text; Tennessee's #FF8200 sits at
+     * 152 and lands — correctly — on the dark side.
+     */
+    public function accentContrast(): ?string
+    {
+        $hex = ltrim((string) $this->color, '#');
+
+        if (strlen($hex) === 3) {
+            $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+        }
+
+        if (! preg_match('/^[0-9a-fA-F]{6}$/', $hex)) {
+            return null;
+        }
+
+        $yiq = (hexdec(substr($hex, 0, 2)) * 299
+            + hexdec(substr($hex, 2, 2)) * 587
+            + hexdec(substr($hex, 4, 2)) * 114) / 1000;
+
+        return $yiq >= 150 ? '#18181b' : '#ffffff';
+    }
+
+    /**
      * The team's place without its nickname — "North Carolina", not "North
      * Carolina Tar Heels".
      *

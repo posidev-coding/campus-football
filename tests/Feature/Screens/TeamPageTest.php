@@ -112,3 +112,37 @@ it('shows empty states rather than erroring for a season with no data', function
         ->assertOk()
         ->assertSee('No leaders yet');
 });
+
+describe('the branded hero', function () {
+    it('computes the text color from the accent instead of assuming white', function () {
+        // White text on a light accent is the same failure as an orange logo
+        // on an orange surface. Maize must get near-black text.
+        $maize = Team::factory()->create(['slug' => 'michigan-wolverines', 'color' => 'FFCB05']);
+        $navy = Team::factory()->create(['slug' => 'navy-team', 'color' => '002244']);
+
+        expect($maize->accentContrast())->toBe('#18181b')
+            ->and($navy->accentContrast())->toBe('#ffffff')
+            // Tennessee orange sits at YIQ 152 — the dark side, correctly:
+            // white on #FF8200 is about 2.4:1.
+            ->and(Team::factory()->make(['color' => 'FF8200'])->accentContrast())->toBe('#18181b')
+            ->and(Team::factory()->make(['color' => null])->accentContrast())->toBeNull()
+            ->and(Team::factory()->make(['color' => 'xyzzy!'])->accentContrast())->toBeNull();
+    });
+
+    it('never seats the logo on the accent surface', function () {
+        // The logo rides a neutral puck — white in light mode, near-black in
+        // dark — because a one-color mark in the team's own color vanishes
+        // into an accent background.
+        Livewire::test('team', ['team' => $this->team])
+            ->assertSee('team-gradient', escape: false)
+            ->assertSee('bg-white shadow-md ring-1 ring-black/10 dark:bg-zinc-950', escape: false)
+            ->assertSee('--team-accent-contrast: #ffffff', escape: false);
+    });
+
+    it('draws the alt color as a keyline when the team has one', function () {
+        $this->team->update(['alt_color' => 'BA0C2F']);
+
+        Livewire::test('team', ['team' => $this->team])
+            ->assertSee('border-bottom: 3px solid #BA0C2F', escape: false);
+    });
+});

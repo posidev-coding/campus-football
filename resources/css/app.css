@@ -84,3 +84,19 @@
     background-color: var(--team-accent);
     color: var(--team-accent-contrast);
 }
+
+/* The branded header surface: the accent with a little depth, falling toward
+   its own shadow. Text color comes from --team-accent-contrast, which is
+   COMPUTED per team (Team::accentContrast) — never assume white; maize and
+   gold accents need dark text. Logos never sit directly on this surface: they
+   get a neutral puck (white in light mode, near-black in dark), because a
+   one-color mark in the team's own color vanishes into it. */
+@utility team-gradient {
+    background-color: var(--team-accent);
+    background-image: linear-gradient(
+        115deg,
+        var(--team-accent) 35%,
+        color-mix(in srgb, var(--team-accent) 78%, black)
+    );
+    color: var(--team-accent-contrast);
+}

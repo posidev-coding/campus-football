@@ -29,6 +29,19 @@ beforeEach(function () {
 });
 
 describe('the team swiper', function () {
+    it('brands the card header without seating the logo on the accent', function () {
+        $this->tennessee->update(['color' => 'FF8200', 'alt_color' => 'FFFFFF']);
+
+        $this->actingAs($this->user)->get(route('home'))
+            ->assertOk()
+            // Gradient surface, neutral logo puck, and text color computed
+            // from the accent — Tennessee orange takes dark text, not white.
+            ->assertSee('team-gradient', escape: false)
+            ->assertSee('bg-white shadow-sm ring-1 ring-black/10 dark:bg-zinc-950', escape: false)
+            ->assertSee('--team-accent-contrast: #18181b', escape: false)
+            ->assertSee('border-bottom: 3px solid #FFFFFF', escape: false);
+    });
+
     it('renders one card per followed team, pinned favorite first', function () {
         $html = $this->actingAs($this->user)->get(route('home'))->assertOk()->content();
 
