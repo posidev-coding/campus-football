@@ -60,6 +60,18 @@ class Voice
             'r' => "You're at :max. Something's gotta give.",
         ],
 
+        'home.follow_prompt' => [
+            'pg' => 'Follow a team and their games, news and form lead this page.',
+            'pg13' => 'Follow a team and this page starts working for you — their games, news and form, front and center.',
+            'r' => 'This page is better with a team on it. Pick yours and their games, news and form take over from here.',
+        ],
+
+        'home.pickem' => [
+            'pg' => "Groups, weekly picks and bragging rights with your friends. It's on the way.",
+            'pg13' => "Groups, weekly slates, and a season-long paper trail of everyone's bad calls. It's coming.",
+            'r' => "Groups, weekly slates, and receipts on every terrible pick your friends swear they never made. It's coming.",
+        ],
+
         'search.empty' => [
             'pg' => 'No matches for ":query". Try the start of a name — "Geo" finds Georgia.',
             'pg13' => 'Swing and a miss on ":query". Try the start of a name — "Geo" finds Georgia.',

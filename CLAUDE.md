@@ -362,6 +362,37 @@ live on the Account screen for exactly this reason.
 Pick'em gets the fifth tab when it ships — Search gave its tab up for exactly
 that. The bar sizes its columns from the area count rather than hardcoding it.
 
+## Home is the user's teams, swiped
+
+One at-a-glance card per followed team — record, standing, form pills, live
+or next game, last result — pinned favorite first, in the same priority order
+the scoreboard floats. Native `scroll-snap` IS the animation: no JS tween, no
+library; momentum scrolling is what feels buttery. An IntersectionObserver
+sets the active index; the dots and the per-team news lists key off the same
+`glances` array index, so they cannot disagree about which team is showing.
+
+**Every followed team's news renders up front and Alpine toggles it** — at
+most 5 teams × 5 articles. A Livewire round trip per swipe puts a visible
+stall on the one interaction that has to feel instant.
+
+**One query per CONCERN across all teams, never per card.** Completed games
+(form + last result), pending games (live + next), and the news join are each
+one query for all five teams; everything else comes from TeamGlance's cached
+maps. `HomeTest` asserts the page issues the SAME number of queries for one
+followed team as for five — that is the regression that matters once cards
+multiply.
+
+Two scoping rules that look wrong until August: form is scoped to the results
+year (or it walks back through a decade of games), but pending games are NOT
+season-scoped — in August the results year is fully complete and the next
+game belongs to the season that has not started counting yet. The card polls
+(`wire:poll.30s.visible`) only while one of the teams is actually live, and
+reads only our own database.
+
+The Pick'em teaser card is designed and deliberately INERT — the app should
+read as a pick'em host from the first screen without promising a screen that
+does not exist. It becomes the entry point when Pick'em ships.
+
 ## Search: three surfaces, one backend, and deliberately no FULLTEXT
 
 Search is the bar at the top of Home (expands full-screen IN PLACE — never
@@ -945,6 +976,14 @@ no such floor. A local-only harness renders the app at exact device widths:
 
 Registered inside an `app()->isLocal()` guard, so it does not exist in
 production. Use it rather than trusting a resized window.
+
+**The automated tab produces NO rendering frames at all** — measured:
+`requestAnimationFrame` never fires and `IntersectionObserver` never delivers
+an entry, which also means `scrollTo` with smooth behavior never moves. This
+generalizes the FLIP lesson ("animations do not advance"). Verify
+frame-driven behavior by driving the reactive END state — set the Alpine
+property directly and assert what it toggles — and scroll with
+`behavior: 'instant'`; the trigger itself only fires on a real device.
 
 ## `conferences.abbreviation` is not an abbreviation
 
