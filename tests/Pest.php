@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\TeamGlance;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -11,4 +12,8 @@ use Tests\TestCase;
  */
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
+    // TeamGlance memoizes its cached maps in a STATIC property, which outlives
+    // the per-test application the array cache dies with. Without this reset a
+    // test inherits the previous test's league.
+    ->beforeEach(fn () => TeamGlance::flush())
     ->in('Feature');

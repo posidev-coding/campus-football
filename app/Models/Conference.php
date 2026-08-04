@@ -6,11 +6,12 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Laravel\Scout\Searchable;
 
 #[Fillable(['id', 'name', 'short_name', 'abbreviation', 'logo', 'is_conference'])]
 class Conference extends Model
 {
-    use HasFactory;
+    use HasFactory, Searchable;
 
     public $incrementing = false;
 
@@ -19,6 +20,21 @@ class Conference extends Model
     protected function casts(): array
     {
         return ['is_conference' => 'boolean'];
+    }
+
+    /**
+     * Deliberately NOT `abbreviation` — that column holds ESPN's URL slug
+     * (`big10`, `mwest`), which nobody types. `short_name` is what a person
+     * calls a conference.
+     *
+     * @return array<string, string|null>
+     */
+    public function toSearchableArray(): array
+    {
+        return [
+            'name' => $this->name,
+            'short_name' => $this->short_name,
+        ];
     }
 
     public function seasons(): HasMany

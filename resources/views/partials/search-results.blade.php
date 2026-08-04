@@ -2,21 +2,25 @@
     Search results, shared by the Home search panel and the /search page — one
     set of rows, so a deep-linked search and an in-place one can never drift.
 
-    Expects: $q (string), plus collections $teams, $players, $conferences.
-    Callers pass their own limits; this only renders what it is given.
+    Expects $q plus collections $teams, $players, $coaches, $conferences and
+    $games. Callers pass their own limits; this only renders what it is given.
+
+    The rows are rich and the groups are ordered by who gets asked for most,
+    but the CONTENT stays factual — search serves Scores and League, so only
+    the empty state speaks in the reader's register.
 --}}
 
 @php
-    $tooShort = App\Support\SearchIndex::tooShort($q);
-    $hasResults = $teams->isNotEmpty() || $players->isNotEmpty() || $conferences->isNotEmpty();
+    $hasResults = $teams->isNotEmpty() || $players->isNotEmpty() || $coaches->isNotEmpty()
+        || $conferences->isNotEmpty() || $games->isNotEmpty();
 @endphp
 
 <div class="flex flex-col gap-4">
-    @if ($tooShort)
+    @if (App\Support\Search::tooShort($q))
         <flux:callout icon="magnifying-glass">
             <flux:callout.heading>Search Campus Football</flux:callout.heading>
             <flux:callout.text>
-                Every team, player and conference. Type at least two characters.
+                Teams, players, coaches, conferences and games. Type at least two characters.
             </flux:callout.text>
         </flux:callout>
     @elseif (! $hasResults)
@@ -33,16 +37,7 @@
             <flux:subheading>Teams</flux:subheading>
 
             @foreach ($teams as $team)
-                <a
-                    href="{{ route('team', $team) }}"
-                    wire:navigate
-                    wire:key="sr-team-{{ $team->id }}"
-                    class="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
-                >
-                    <x-team-logo :team="$team" size="sm" />
-                    <span class="min-w-0 flex-1 truncate text-sm">{{ $team->display_name }}</span>
-                    <flux:icon name="chevron-right" variant="micro" class="shrink-0 text-zinc-400" />
-                </a>
+                <x-search.team-row :team="$team" wire:key="sr-team-{{ $team->id }}" />
             @endforeach
         </div>
     @endif
@@ -52,20 +47,17 @@
             <flux:subheading>Players</flux:subheading>
 
             @foreach ($players as $athlete)
-                <a
-                    href="{{ route('player', $athlete) }}"
-                    wire:navigate
-                    wire:key="sr-player-{{ $athlete->id }}"
-                    class="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
-                >
-                    @if ($athlete->headshot_url)
-                        <img src="{{ $athlete->headshot_url }}" alt="" loading="lazy" class="size-7 shrink-0 rounded-full object-cover">
-                    @else
-                        <flux:icon name="user" variant="micro" class="size-7 shrink-0 rounded-full bg-zinc-100 p-1.5 text-zinc-400 dark:bg-zinc-800" />
-                    @endif
-                    <span class="min-w-0 flex-1 truncate text-sm">{{ $athlete->display_name }}</span>
-                    <flux:icon name="chevron-right" variant="micro" class="shrink-0 text-zinc-400" />
-                </a>
+                <x-search.player-row :athlete="$athlete" wire:key="sr-player-{{ $athlete->id }}" />
+            @endforeach
+        </div>
+    @endif
+
+    @if ($coaches->isNotEmpty())
+        <div class="flex flex-col gap-1">
+            <flux:subheading>Coaches</flux:subheading>
+
+            @foreach ($coaches as $coach)
+                <x-search.coach-row :coach="$coach" wire:key="sr-coach-{{ $coach->id }}" />
             @endforeach
         </div>
     @endif
@@ -75,20 +67,17 @@
             <flux:subheading>Conferences</flux:subheading>
 
             @foreach ($conferences as $conference)
-                <a
-                    href="{{ route('conference', $conference) }}"
-                    wire:navigate
-                    wire:key="sr-conf-{{ $conference->id }}"
-                    class="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
-                >
-                    @if ($conference->logo)
-                        <img src="{{ $conference->logo }}" alt="" loading="lazy" class="size-7 shrink-0 object-contain">
-                    @else
-                        <flux:icon name="trophy" variant="micro" class="size-7 shrink-0 p-1.5 text-zinc-400" />
-                    @endif
-                    <span class="min-w-0 flex-1 truncate text-sm">{{ $conference->name }}</span>
-                    <flux:icon name="chevron-right" variant="micro" class="shrink-0 text-zinc-400" />
-                </a>
+                <x-search.conference-row :conference="$conference" wire:key="sr-conf-{{ $conference->id }}" />
+            @endforeach
+        </div>
+    @endif
+
+    @if ($games->isNotEmpty())
+        <div class="flex flex-col gap-1">
+            <flux:subheading>Games</flux:subheading>
+
+            @foreach ($games as $game)
+                <x-search.game-row :game="$game" wire:key="sr-game-{{ $game->id }}" />
             @endforeach
         </div>
     @endif

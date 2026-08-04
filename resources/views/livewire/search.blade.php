@@ -1,15 +1,17 @@
 <?php
 
-use App\Support\SearchIndex;
+use App\Support\Search;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 /**
  * The ⌘K command palette.
  *
- * Desktop-only: on a phone, Search is a bottom-nav area with its own full
- * screen, which is a better fit for a thumb and a soft keyboard than a modal.
- * Both read the same SearchIndex so the two can never drift apart.
+ * Desktop-only: on a phone, the bar at the top of Home expands into the
+ * full-screen panel instead. All three surfaces read App\Support\Search, so
+ * they can never drift on WHAT is found — this one renders flux:command.item
+ * rows rather than the shared partial because arrow-key navigation is the
+ * point of a palette, and that is what command items provide.
  */
 new class extends Component
 {
@@ -18,19 +20,31 @@ new class extends Component
     #[Computed]
     public function teams()
     {
-        return SearchIndex::teams($this->q);
+        return Search::teams($this->q);
     }
 
     #[Computed]
     public function players()
     {
-        return SearchIndex::players($this->q);
+        return Search::players($this->q);
+    }
+
+    #[Computed]
+    public function coaches()
+    {
+        return Search::coaches($this->q);
     }
 
     #[Computed]
     public function conferences()
     {
-        return SearchIndex::conferences($this->q);
+        return Search::conferences($this->q);
+    }
+
+    #[Computed]
+    public function games()
+    {
+        return Search::games($this->q);
     }
 
     #[Computed]
@@ -38,7 +52,9 @@ new class extends Component
     {
         return $this->teams->isNotEmpty()
             || $this->players->isNotEmpty()
-            || $this->conferences->isNotEmpty();
+            || $this->coaches->isNotEmpty()
+            || $this->conferences->isNotEmpty()
+            || $this->games->isNotEmpty();
     }
 }; ?>
 
@@ -51,7 +67,7 @@ new class extends Component
         <flux:command class="inline-flex max-h-[70vh] flex-col border-none shadow-lg">
             <flux:command.input
                 wire:model.live.debounce.200ms="q"
-                placeholder="Search teams, players, conferences…"
+                placeholder="Search teams, players, coaches, games…"
                 closable
             />
 
@@ -86,6 +102,19 @@ new class extends Component
                     @endforeach
                 @endif
 
+                @if ($this->coaches->isNotEmpty())
+                    <x-search-heading>Coaches</x-search-heading>
+
+                    @foreach ($this->coaches as $coach)
+                        <flux:command.item
+                            href="{{ route('coach', $coach) }}"
+                            wire:navigate
+                            icon="academic-cap"
+                            wire:key="s-coach-{{ $coach->id }}"
+                        >{{ $coach->display_name }}</flux:command.item>
+                    @endforeach
+                @endif
+
                 @if ($this->conferences->isNotEmpty())
                     <x-search-heading>Conferences</x-search-heading>
 
@@ -99,9 +128,22 @@ new class extends Component
                     @endforeach
                 @endif
 
+                @if ($this->games->isNotEmpty())
+                    <x-search-heading>Games</x-search-heading>
+
+                    @foreach ($this->games as $game)
+                        <flux:command.item
+                            href="{{ route('game', $game) }}"
+                            wire:navigate
+                            icon="calendar-days"
+                            wire:key="s-game-{{ $game->id }}"
+                        >{{ $game->name }}</flux:command.item>
+                    @endforeach
+                @endif
+
                 @if (! $this->hasResults)
                     <div class="px-3 py-6 text-center text-sm text-zinc-500">
-                        {{ App\Support\SearchIndex::tooShort($q) ? 'Type at least two characters.' : 'Nothing found for that.' }}
+                        {{ App\Support\Search::tooShort($q) ? 'Type at least two characters.' : 'Nothing found for that.' }}
                     </div>
                 @endif
             </flux:command.items>

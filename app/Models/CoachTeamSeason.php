@@ -18,4 +18,20 @@ class CoachTeamSeason extends Model
     {
         return $this->belongsTo(Team::class);
     }
+
+    /**
+     * "12-2" for the season, or null before the coach sync has filled the
+     * record columns in — a missing attribute reads as null, so this is safe
+     * to call ahead of that migration.
+     */
+    public function record(): ?string
+    {
+        if ($this->wins === null || $this->losses === null) {
+            return null;
+        }
+
+        return $this->ties
+            ? "{$this->wins}-{$this->losses}-{$this->ties}"
+            : "{$this->wins}-{$this->losses}";
+    }
 }

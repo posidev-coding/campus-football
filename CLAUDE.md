@@ -331,11 +331,11 @@ below ~600px. See below.
 ## Navigation is two levels, and they are not the same list
 
     AREAS     the bottom tab bar. A small fixed set of places the app is IN.
-              Home · Scores · League · Search · Account. They do not change as
-              you move around inside one.
+              Home · Scores · League · Account. They do not change as you
+              move around inside one.
     SECTIONS  the scrolling strip at the top, belonging to the CURRENT area.
-              Scores shows Scores · Bowls; League shows Standings · Rankings ·
-              Teams · Stats · Leaders · Recruiting.
+              League shows Standings · Rankings · Teams · Stats · Leaders ·
+              Recruiting. Home and Scores have none.
 
 Both once listed the same nine sections, which made the top strip a second copy
 of the bottom bar. `App\Support\Navigation` is the single source of truth for
@@ -354,13 +354,54 @@ carries a real heading with the scope filter inline beside it.
 Chrome above content went from 97-197px to 32-73px at 390px.
 
 **Below `sm` there is no top bar at all** — 56px reclaimed. That is only safe
-because every header affordance has a tab: brand → Home, search icon → Search,
-avatar → Account. Anything added to the desktop header must get a phone route
-too, or it is unreachable at 390px. Log out and Admin live on the Account screen
-for exactly this reason.
+because every header affordance has a phone equivalent: brand → Home, ⌘K →
+the search bar on Home, avatar → Account. Anything added to the desktop header
+must get a phone route too, or it is unreachable at 390px. Log out and Admin
+live on the Account screen for exactly this reason.
 
-Pick'em gets the sixth tab when it ships; the bar sizes its columns from the
-area count rather than hardcoding five.
+Pick'em gets the fifth tab when it ships — Search gave its tab up for exactly
+that. The bar sizes its columns from the area count rather than hardcoding it.
+
+## Search: three surfaces, one backend, and deliberately no FULLTEXT
+
+Search is the bar at the top of Home (expands full-screen IN PLACE — never
+navigate, because programmatic focus cannot raise the mobile keyboard; only
+the input the user tapped keeps it up), the `/search` deep-link page, and the
+desktop ⌘K palette. All three read `App\Support\Search`, which is Laravel
+Scout on the DATABASE engine — the data is already in our MySQL, so search
+queries source tables and there is no index to sync or drift.
+
+**No MySQL FULLTEXT, and that is a decision, not an omission.** An InnoDB
+full-text index cannot see rows inserted inside an uncommitted transaction —
+which is every row a RefreshDatabase test creates — so a full-text arm passes
+in production while being unprovable in the suite. LIKE strategies test
+honestly. At our sizes only `athletes` (34,836 rows) needs indexes at all:
+its strategy is `SearchUsingPrefix` on `display_name` + `last_name`, riding
+btrees. Everything else contains-matches, which is not a compromise — it is
+required: `games.name` is "Alabama at Georgia" so the away team is
+unreachable by prefix, and `games.note` is the real bowl name where the word
+someone types is rarely the first.
+
+**Relevance is domain knowledge, not text statistics**, and lives in each
+group's `->query()` callback: live > upcoming > finished and nearest-to-now
+for games; active players above departed ones, then latest season; FBS teams
+first; `is_conference` first (only 79 of 118 rows are real conferences);
+current coaches above historical. Ranked teams float by a PHP re-sort of the
+fetched page against `TeamGlance::ranks()` — every ranked team is FBS, so the
+SQL order has already pulled them into the page.
+
+**Result rows are rich but factual** — search serves Scores and League, so
+only the empty state speaks through `Voice`. Rank is a small muted numeral
+BESIDE the team name, never a subtext segment. Hometown gets its own micro
+line, never another `·` segment — it is the first thing truncation eats, and
+only about half of athletes and coaches have one, so every row must read
+right without it.
+
+`App\Support\TeamGlance` holds the cached glance maps (records, standings
+position, conference names, ranks, conference sizes) as PLAIN ARRAYS — one
+query per map over the whole league, never per row. It memoizes in a static
+property on top of the cache, which outlives each test's application;
+`tests/Pest.php` flushes it in `beforeEach`.
 
 ## `games.name` is never the bowl name
 

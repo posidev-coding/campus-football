@@ -27,10 +27,9 @@ Route::livewire('news', 'news')->name('news');
  */
 
 /*
- * Search is a bottom-nav AREA on a phone, so it needs a real screen rather than
- * only the ⌘K palette — a soft keyboard takes half the viewport and a centred
- * dialog inside what is left is a poor place to read results. Both read the
- * same App\Support\SearchIndex.
+ * Search lives in the bar at the top of Home now, not on a tab. This route
+ * survives for deep links and shared URLs — it renders the same shared
+ * partial the Home panel does, backed by the same App\Support\Search.
  */
 Route::livewire('search', 'search-page')->name('search');
 
@@ -38,6 +37,11 @@ Route::livewire('teams', 'teams')->name('teams');
 Route::livewire('teams/{team}', 'team')->name('team');
 Route::livewire('conferences/{conference}', 'conference')->name('conference');
 Route::livewire('players/{athlete}', 'player')->name('player');
+
+// By id, not slug, matching athletes: coaches have no slug column, and the
+// table grows as historical staffs sync, so slugs would be a collision
+// waiting to happen (326 athlete slugs already collide).
+Route::livewire('coaches/{coach}', 'coach')->name('coach');
 Route::livewire('recruiting/{class?}', 'recruiting')->name('recruiting');
 
 /*

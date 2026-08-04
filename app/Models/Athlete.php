@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Laravel\Scout\Attributes\SearchUsingPrefix;
+use Laravel\Scout\Searchable;
 
 /**
  * As with Team, there is deliberately no `team_id` and no `team()` relation.
@@ -19,7 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 ])]
 class Athlete extends Model
 {
-    use HasFactory;
+    use HasFactory, Searchable;
 
     public $incrementing = false;
 
@@ -28,6 +30,26 @@ class Athlete extends Model
     protected function casts(): array
     {
         return ['is_active' => 'boolean'];
+    }
+
+    /**
+     * PREFIX matching, unlike the other searchable models: this is the one
+     * table with real weight (34,836 rows), and a prefix LIKE rides the btree
+     * indexes on both columns where a contains-LIKE would scan everything on
+     * each keystroke. "Geo" finds George; "eorge" deliberately does not.
+     *
+     * `display_name` is "First Last", so it covers typing a full name in
+     * order; `last_name` covers the way rosters are actually read.
+     *
+     * @return array<string, string|null>
+     */
+    #[SearchUsingPrefix(['display_name', 'last_name'])]
+    public function toSearchableArray(): array
+    {
+        return [
+            'display_name' => $this->display_name,
+            'last_name' => $this->last_name,
+        ];
     }
 
     public function seasons(): HasMany

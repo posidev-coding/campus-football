@@ -90,7 +90,7 @@ class Navigation
                 // Teams, players and conferences are all "who's who", so they
                 // keep League lit rather than dropping the tab bar's context.
                 'routes' => [
-                    'standings', 'rankings', 'teams', 'team', 'player',
+                    'standings', 'rankings', 'teams', 'team', 'player', 'coach',
                     'conference', 'stats', 'leaders', 'recruiting',
                 ],
                 'sections' => [

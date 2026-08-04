@@ -215,7 +215,7 @@ describe('search without a tab', function () {
         // searches now, expanding in place so the keyboard stays raised.
         $this->get(route('home'))
             ->assertOk()
-            ->assertSee('Teams, players, conferences');
+            ->assertSee('Teams, players, coaches, games');
     });
 
     it('finds teams, players and conferences from the Home panel', function () {

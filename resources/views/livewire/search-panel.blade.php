@@ -1,6 +1,6 @@
 <?php
 
-use App\Support\SearchIndex;
+use App\Support\Search;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -29,19 +29,31 @@ new class extends Component
     #[Computed]
     public function teams()
     {
-        return SearchIndex::teams($this->q, limit: 8);
+        return Search::teams($this->q, limit: 6);
     }
 
     #[Computed]
     public function players()
     {
-        return SearchIndex::players($this->q, limit: 8);
+        return Search::players($this->q, limit: 6);
+    }
+
+    #[Computed]
+    public function coaches()
+    {
+        return Search::coaches($this->q, limit: 4);
     }
 
     #[Computed]
     public function conferences()
     {
-        return SearchIndex::conferences($this->q, limit: 4);
+        return Search::conferences($this->q, limit: 4);
+    }
+
+    #[Computed]
+    public function games()
+    {
+        return Search::games($this->q, limit: 5);
     }
 }; ?>
 
@@ -64,7 +76,7 @@ new class extends Component
                 wire:model.live.debounce.200ms="q"
                 @focus="open = true"
                 icon="magnifying-glass"
-                placeholder="Teams, players, conferences…"
+                placeholder="Teams, players, coaches, games…"
                 clearable
                 class="flex-1"
             />
@@ -92,7 +104,9 @@ new class extends Component
                 'q' => $q,
                 'teams' => $this->teams,
                 'players' => $this->players,
+                'coaches' => $this->coaches,
                 'conferences' => $this->conferences,
+                'games' => $this->games,
             ])
         </div>
     </div>

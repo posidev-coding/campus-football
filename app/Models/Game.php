@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Laravel\Scout\Searchable;
 
 /**
  * Note the absence of a `$with` property. v3 eager-loaded five relations on
@@ -24,11 +25,28 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 ])]
 class Game extends Model
 {
-    use HasFactory;
+    use HasFactory, Searchable;
 
     public $incrementing = false;
 
     protected $keyType = 'int';
+
+    /**
+     * Contains-LIKE, and that matters here: `name` is "Alabama at Georgia",
+     * so a prefix strategy could never find a game by its AWAY team, and
+     * `note` is the real bowl name — "Rose Bowl Presented by Prudential" —
+     * where the word someone types is rarely the first one.
+     *
+     * @return array<string, string|null>
+     */
+    public function toSearchableArray(): array
+    {
+        return [
+            'name' => $this->name,
+            'short_name' => $this->short_name,
+            'note' => $this->note,
+        ];
+    }
 
     protected function casts(): array
     {
@@ -139,6 +157,17 @@ class Game extends Model
     {
         return $query->where('completed', false)->whereNotNull('status')
             ->whereIn('status', ['in', 'halftime', 'end-period']);
+    }
+
+    public function scopeUpcoming(Builder $query): Builder
+    {
+        return $query->where('completed', false)->where('kickoff_at', '>=', now());
+    }
+
+    public function isInProgress(): bool
+    {
+        return ! $this->completed
+            && in_array($this->status, ['in', 'halftime', 'end-period'], true);
     }
 
     public function winnerTeamId(): ?int

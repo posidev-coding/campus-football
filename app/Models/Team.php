@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Laravel\Scout\Searchable;
 
 /**
  * Note what is absent: there is no `conference_id` column and no `conference()`
@@ -21,7 +22,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 ])]
 class Team extends Model
 {
-    use HasFactory;
+    use HasFactory, Searchable;
 
     /**
      * Above this, a place name is shortened rather than truncated.
@@ -44,6 +45,29 @@ class Team extends Model
     public function getRouteKeyName(): string
     {
         return 'slug';
+    }
+
+    /**
+     * Scout's database engine searches these COLUMNS — the values here are
+     * never stored anywhere. No strategy attributes, so every column matches
+     * anywhere in the string: at 854 rows the scan is nothing, and "bulldogs"
+     * finding Georgia mid-nickname is worth more than an index could save.
+     *
+     * Deliberately not MySQL FULLTEXT: an InnoDB full-text index cannot see
+     * rows inserted inside an uncommitted transaction, which is every row a
+     * RefreshDatabase test creates — the feature would pass in production and
+     * be untestable, which is the wrong way round.
+     *
+     * @return array<string, string|null>
+     */
+    public function toSearchableArray(): array
+    {
+        return [
+            'display_name' => $this->display_name,
+            'location' => $this->location,
+            'nickname' => $this->nickname,
+            'abbreviation' => $this->abbreviation,
+        ];
     }
 
     public function seasons(): HasMany
