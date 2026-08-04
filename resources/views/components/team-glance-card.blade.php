@@ -14,13 +14,15 @@
     ])->filter()->implode(' · ');
 
     $tz = config('cfb.timezone');
+    $palette = $team->palette();
 @endphp
 
 <div
     {{ $attributes->class(['overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800']) }}
     @style([
-        '--team-accent: '.$team->accentColor() => $team->accentColor(),
-        '--team-accent-contrast: '.$team->accentContrast() => $team->accentContrast(),
+        '--team-accent: '.$palette?->surface => $palette,
+        '--team-accent-far: '.$palette?->far => $palette,
+        '--team-accent-contrast: '.$palette?->text => $palette,
     ])
 >
     {{-- The header is the card's link to the team page. The whole card cannot

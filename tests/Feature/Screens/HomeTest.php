@@ -34,11 +34,15 @@ describe('the team swiper', function () {
 
         $this->actingAs($this->user)->get(route('home'))
             ->assertOk()
-            // Gradient surface, neutral logo puck, and text color computed
-            // from the accent — Tennessee orange takes dark text, not white.
+            // Gradient surface, neutral logo puck, and a text color chosen by
+            // real contrast — Tennessee's secondary is pure WHITE, which is
+            // 2.49:1 on their orange, so the card takes near-black instead.
             ->assertSee('team-gradient', escape: false)
             ->assertSee('bg-white shadow-sm ring-1 ring-black/10 dark:bg-zinc-950', escape: false)
             ->assertSee('--team-accent-contrast: #18181b', escape: false)
+            // The gradient's far end comes from PHP, so it can move away from
+            // the text rather than always darkening.
+            ->assertSee('--team-accent-far:', escape: false)
             ->assertSee('border-bottom: 3px solid #FFFFFF', escape: false);
     });
 

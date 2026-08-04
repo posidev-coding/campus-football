@@ -199,6 +199,22 @@ describe('the stats tab', function () {
             ->assertSee('412');
     });
 
+    it('renders the scope toggle as underlined tabs, not a second pill group', function () {
+        /*
+         * The scope filter lives INSIDE the tab the strip above selected, so
+         * rendering both as segmented pills made a child look like a sibling.
+         * Exactly one pill group survives on the page — the tabs.
+         */
+        $html = Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2025)
+            ->set('tab', 'stats')
+            ->html();
+
+        expect(substr_count($html, 'ui-radio-group'))->toBe(2)   // one open + one close tag
+            ->and($html)->toContain('Players')
+            ->toContain('border-zinc-900 text-zinc-900 dark:border-zinc-100');
+    });
+
     it('keeps leaders and team stats out of each other\'s view', function () {
         $leaders = Livewire::test('team', ['team' => $this->team])
             ->set('year', 2025)->set('tab', 'stats');
@@ -212,25 +228,17 @@ describe('the stats tab', function () {
 });
 
 describe('the branded hero', function () {
-    it('prefers the secondary color for text when it reads against the primary', function () {
-        // The school's own pairing beats a computed black or white: maize on
-        // Michigan navy is what the brand actually looks like.
-        $michigan = Team::factory()->make(['color' => '00274C', 'alt_color' => 'FFCB05']);
+    it('sets all three palette variables on the hero', function () {
+        // Surface, far end and text together — the far end must come from PHP
+        // because CSS cannot know which way to move it.
+        $this->team->update(['color' => '154733', 'alt_color' => '000000']);
 
-        expect($michigan->accentContrast())->toBe('#FFCB05');
-    });
+        $palette = $this->team->fresh()->palette();
 
-    it('falls back to black or white when the secondary is tone-on-tone', function () {
-        // Georgia's black on red is barely a contrast at all, so the hero
-        // takes white instead. Same for a team with no secondary.
-        $georgia = Team::factory()->make(['color' => 'BA0C2F', 'alt_color' => '000000']);
-        $maize = Team::factory()->make(['color' => 'FFCB05', 'alt_color' => 'FFCB05']);
-
-        expect($georgia->accentContrast())->toBe('#ffffff')
-            ->and($maize->accentContrast())->toBe('#18181b')
-            ->and(Team::factory()->make(['color' => '002244', 'alt_color' => null])->accentContrast())->toBe('#ffffff')
-            ->and(Team::factory()->make(['color' => null])->accentContrast())->toBeNull()
-            ->and(Team::factory()->make(['color' => 'xyzzy!'])->accentContrast())->toBeNull();
+        Livewire::test('team', ['team' => $this->team])
+            ->assertSee('--team-accent: '.$palette->surface, escape: false)
+            ->assertSee('--team-accent-far: '.$palette->far, escape: false)
+            ->assertSee('--team-accent-contrast: '.$palette->text, escape: false);
     });
 
     it('never seats the logo on the accent surface', function () {

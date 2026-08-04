@@ -36,11 +36,13 @@
        page to render correctly. */
     :root {
         --team-accent: var(--color-zinc-900);
+        --team-accent-far: var(--color-zinc-800);
         --team-accent-contrast: white;
     }
 
     .dark {
         --team-accent: var(--color-zinc-100);
+        --team-accent-far: var(--color-zinc-200);
         --team-accent-contrast: var(--color-zinc-900);
     }
 
@@ -85,18 +87,20 @@
     color: var(--team-accent-contrast);
 }
 
-/* The branded header surface: the accent with a little depth, falling toward
-   its own shadow. Text color comes from --team-accent-contrast, which is
-   COMPUTED per team (Team::accentContrast) — never assume white; maize and
-   gold accents need dark text. Logos never sit directly on this surface: they
-   get a neutral puck (white in light mode, near-black in dark), because a
-   one-color mark in the team's own color vanishes into it. */
+/* The branded header surface: the accent with a little depth.
+
+   All three colors are COMPUTED per team by App\Support\TeamPalette and set as
+   custom properties — never assumed here. The far end of the gradient is
+   deliberately not derived in CSS: it has to move AWAY from the text color
+   (darker under light text, lighter under dark text), which this file cannot
+   know. Hardcoding a darkening step, as this once did, silently made that end
+   the worst case for every team with dark text.
+
+   Logos never sit directly on this surface: they get a neutral puck (white in
+   light mode, near-black in dark), because a one-color mark in the team's own
+   color vanishes into it. */
 @utility team-gradient {
     background-color: var(--team-accent);
-    background-image: linear-gradient(
-        115deg,
-        var(--team-accent) 35%,
-        color-mix(in srgb, var(--team-accent) 78%, black)
-    );
+    background-image: linear-gradient(115deg, var(--team-accent) 35%, var(--team-accent-far));
     color: var(--team-accent-contrast);
 }

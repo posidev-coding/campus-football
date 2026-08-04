@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\TeamPalette;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -41,6 +42,9 @@ class Team extends Model
     public $incrementing = false;
 
     protected $keyType = 'int';
+
+    /** Memoized per instance — every glance card asks for it. */
+    private ?TeamPalette $palette = null;
 
     public function getRouteKeyName(): string
     {
@@ -155,55 +159,16 @@ class Team extends Model
     }
 
     /**
-     * The color that text on the accent surface should be.
+     * The surface, text and gradient colors for this team's branded header,
+     * chosen by real WCAG contrast.
      *
-     * The team's SECONDARY color, when it genuinely reads against the primary
-     * — maize on Michigan navy, white on Tennessee orange — because that is
-     * the pairing the school's own branding puts together, and plain black or
-     * white on a saturated accent often reads worse. When the secondary is
-     * tone-on-tone with the primary (Georgia's black on red), fall back to
-     * black-or-white by YIQ luminance.
-     *
-     * The admission threshold is a YIQ brightness DIFFERENCE of 90, not the
-     * old-guideline 125: hero text is large and bold, and 125 would reject
-     * white-on-orange (a difference of 103) — the classic look this exists to
-     * allow.
+     * Null when the team has no usable color, in which case a caller omits the
+     * custom properties and the neutral defaults in `:root` take over. See
+     * `TeamPalette` for why brightness difference was the wrong measure.
      */
-    public function accentContrast(): ?string
+    public function palette(): ?TeamPalette
     {
-        $accent = self::yiqBrightness($this->color);
-
-        if ($accent === null) {
-            return null;
-        }
-
-        $alt = self::yiqBrightness($this->alt_color);
-
-        if ($alt !== null && abs($alt - $accent) >= 90) {
-            return $this->altAccentColor();
-        }
-
-        return $accent >= 150 ? '#18181b' : '#ffffff';
-    }
-
-    /**
-     * Perceived brightness 0-255, or null for anything that is not a color.
-     */
-    private static function yiqBrightness(?string $color): ?float
-    {
-        $hex = ltrim((string) $color, '#');
-
-        if (strlen($hex) === 3) {
-            $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
-        }
-
-        if (! preg_match('/^[0-9a-fA-F]{6}$/', $hex)) {
-            return null;
-        }
-
-        return (hexdec(substr($hex, 0, 2)) * 299
-            + hexdec(substr($hex, 2, 2)) * 587
-            + hexdec(substr($hex, 4, 2)) * 114) / 1000;
+        return $this->palette ??= TeamPalette::for($this);
     }
 
     /**

@@ -979,11 +979,18 @@ its accessible name is an `aria-label`. The strip scrolls inside its own
 
 Stats answers two different questions and so carries its own toggle:
 
-    Leaders   who on this team is good — headline lines with a full stat
+    Players   who on this team is good — headline lines with a full stat
               line, then per-position groups (Passing, Rushing, Receiving,
               Defense)
     Team      how good the team is — categories bucketed into Offense,
               Defense, Special Teams
+
+**Two levels of navigation get two visual languages.** The tabs are a segmented
+pill group; the scope toggle inside Stats is UNDERLINED tabs, full width at
+390px and natural width from `sm`. Rendering both as segmented pills made a
+filter *within* a tab look like a sibling *of* the tabs. Its rule reaches both
+screen edges by cancelling the container's padding (`-mx-4 px-4`), the same
+trick the scoreboard chrome uses.
 
 Both bucket maps keep an "Other" catch-all, because ESPN adds categories
 without telling anyone and a hardcoded list silently drops them. Reading
@@ -999,20 +1006,53 @@ in the glance-card header and the team-page hero:
 - **The logo rides a neutral puck**: `bg-white` in light mode, `dark:bg-zinc-950`
   in dark — which also matches the logo variant `x-team-logo` picks, since
   ESPN's dark-variant logos are drawn for dark surfaces.
-- **Text color on an accent is COMPUTED, never assumed white.**
-  `Team::accentContrast()` prefers the team's own SECONDARY color when it
-  genuinely reads against the primary — maize on Michigan navy is the pairing
-  the school itself uses, and it beats any computed black or white. It admits
-  the secondary at a YIQ brightness difference of 90, not the old-guideline
-  125, because hero text is large and bold and 125 rejects white-on-orange
-  (a difference of 103). When the secondary is tone-on-tone (Georgia's black
-  on red) it falls back to black-or-white by luminance.
+- **Text color on an accent is COMPUTED, never assumed.** See below.
 
-The branding lives in the surface instead: the `team-gradient` utility (accent
-falling toward its own shadow) and a 3px `alt_color` keyline along the
-header's bottom edge, jersey-piping style. `--team-accent-contrast` is set
-per-surface from `accentContrast()`; the flat `team-accent` utility remains
-for surfaces that carry no logo.
+The branding lives in the surface instead: the `team-gradient` utility and a
+3px `alt_color` keyline along the header's bottom edge, jersey-piping style.
+The flat `team-accent` utility remains for surfaces that carry no logo.
+
+## Brightness difference is not contrast
+
+`App\Support\TeamPalette` picks a branded header's colors by real **WCAG
+contrast ratio**. It replaced a YIQ brightness rule, and the distinction is the
+whole lesson: brightness DIFFERENCE and contrast RATIO are different
+quantities. Auburn's navy and orange differ by 99.8 points of YIQ — past the
+old threshold of 90 — but read at only **4.2:1**, where white on that navy is
+**11.6:1**. Across 136 FBS teams the old rule put text under 4.5:1 on **24** of
+them, including white on Tennessee orange at **2.49:1**.
+
+It returns three colors, and all three must be set as custom properties:
+
+    surface   the brand color, nudged ONLY if nothing readable fits on it
+    text      the secondary when it clears 4.5:1, else white or near-black
+    far       the gradient's far end, moved AWAY from the text
+
+Four things that make it hold:
+
+- **Measure what is RENDERED.** The KPI line is `opacity-90`, so the candidate
+  is composited over the surface at 90% before the ratio is taken. Scoring the
+  opaque color overstates what the reader gets.
+- **The gradient must move away from the text.** It used to darken
+  unconditionally, which quietly made its far end the worst case for every team
+  with dark text. Moving it away means the pure brand color is the worst case
+  and the gradient can only ever help — that change alone rescued 17 of the 24.
+  This is why `far` is computed in PHP: CSS cannot know which way to go.
+- **Prefer the secondary, but only when it reads.** 83 of 136 teams keep their
+  true pairing (Michigan maize-on-navy, LSU gold-on-purple).
+- **Seven mid-tone teams admit no readable text at all**, so the SURFACE shifts
+  by ≤12% until one clears. 129 teams keep their exact brand hex.
+
+**A control ON the accent must draw its colors FROM it.** The follow button is
+hand-rolled rather than a `flux:button`: no fixed variant holds contrast across
+136 team colors. It INVERTS the hero — `background: var(--team-accent-contrast);
+color: var(--team-accent)` — reusing the one pairing already proven readable.
+
+**Verifying that a color was APPLIED is not verifying that it is READABLE.**
+The browser probe that "confirmed" Tennessee checked which variable was set,
+never the ratio, so a 2.49:1 regression passed review twice. Read the computed
+`color` and `background-color` and compute the ratio, and sweep all 136 teams
+rather than spot-checking one.
 
 **A control ON the accent must draw its colors FROM it.** The follow button
 lives in the hero and is hand-rolled rather than a `flux:button`: no fixed

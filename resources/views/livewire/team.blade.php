@@ -294,11 +294,14 @@ new class extends Component
     }
 }; ?>
 
+@php $palette = $team->palette(); @endphp
+
 <div
     class="flex flex-col gap-5"
     @style([
-        '--team-accent: '.$team->accentColor() => $team->accentColor(),
-        '--team-accent-contrast: '.$team->accentContrast() => $team->accentContrast(),
+        '--team-accent: '.$palette?->surface => $palette,
+        '--team-accent-far: '.$palette?->far => $palette,
+        '--team-accent-contrast: '.$palette?->text => $palette,
     ])
 >
     {{-- Team hero, in the team's own color. The logo rides a neutral puck
@@ -428,11 +431,32 @@ new class extends Component
         <div class="flex flex-col gap-4">
             {{-- Two different questions — "who on this team is good?" and "how
                  good is this team?" — so they get a toggle rather than one
-                 long scroll that answers both badly. --}}
-            <flux:radio.group wire:model.live="statsView" variant="segmented" size="sm" class="w-max">
-                <flux:radio value="leaders" label="Leaders" />
-                <flux:radio value="team" label="Team" />
-            </flux:radio.group>
+                 long scroll that answers both badly.
+
+                 Underlined tabs, NOT another segmented pill group: this is a
+                 scope filter INSIDE the tab the strip above already selected,
+                 and rendering both the same way made a child look like a
+                 sibling. Full width at 390px, natural width from `sm`. The
+                 rule runs edge to edge on a phone by cancelling the layout
+                 container's padding, the same trick the scoreboard chrome
+                 uses. --}}
+            <div class="-mx-4 flex border-b border-zinc-200 px-4 sm:mx-0 sm:px-0 dark:border-zinc-800">
+                {{-- "Players", not "Leaders": the scope is who is on the team,
+                     and the leaders are simply how that scope is presented. --}}
+                @foreach (['leaders' => 'Players', 'team' => 'Team'] as $value => $label)
+                    <button
+                        type="button"
+                        wire:click="$set('statsView', '{{ $value }}')"
+                        wire:key="statsview-{{ $value }}"
+                        @if ($statsView === $value) aria-current="page" @endif
+                        @class([
+                            'flex-1 border-b-2 px-2 pb-2.5 text-sm font-medium transition-colors sm:flex-none sm:px-4',
+                            'border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100' => $statsView === $value,
+                            'border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100' => $statsView !== $value,
+                        ])
+                    >{{ $label }}</button>
+                @endforeach
+            </div>
 
             @if ($statsView === 'leaders')
                 @if ($this->leaders->isEmpty())
