@@ -7,6 +7,7 @@ use App\Models\Standing;
 use App\Models\Team;
 use App\Models\TeamLeader;
 use App\Models\TeamSeasonStat;
+use App\Services\CfbCalendar;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -27,10 +28,16 @@ new class extends Component
     #[Url]
     public string $tab = 'overview';
 
-    public function mount(Team $team): void
+    public function mount(Team $team, CfbCalendar $calendar): void
     {
         $this->team = $team;
-        $this->year ??= config('cfb.season');
+        $this->year ??= $calendar->resultsYear();
+    }
+
+    #[Computed]
+    public function latestYear(): int
+    {
+        return app(CfbCalendar::class)->resultsYear();
     }
 
     #[Computed]
@@ -193,7 +200,7 @@ new class extends Component
 
     <div class="flex flex-wrap items-center gap-2">
         <flux:select wire:model.live="year" size="sm" class="w-28">
-            @foreach (range(config('cfb.season'), config('cfb.season') - 4) as $y)
+            @foreach (range($this->latestYear, $this->latestYear - 4) as $y)
                 <flux:select.option :value="$y">{{ $y }}</flux:select.option>
             @endforeach
         </flux:select>

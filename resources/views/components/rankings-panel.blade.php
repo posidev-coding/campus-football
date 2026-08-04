@@ -14,16 +14,10 @@
      * and fail on the second request, not the first.
      */
     $rankings = Cache::remember("panel:rankings:{$poll}:{$limit}", 900, function () use ($poll, $limit) {
-        /*
-         * The most recent season that actually has this poll — not simply the
-         * most recent season. An upcoming season exists in the database well
-         * before any poll is published for it, and selecting on year alone
-         * silently emptied the whole panel.
-         */
-        $season = Season::query()
-            ->whereIn('id', Ranking::where('poll', $poll)->distinct()->pluck('season_id'))
-            ->orderByDesc('year')
-            ->first();
+        // CfbCalendar knows which season actually has this poll — an upcoming
+        // season exists long before a poll is published for it.
+        $year = app(App\Services\CfbCalendar::class)->rankingsYear($poll);
+        $season = Season::where('year', $year)->where('type', Season::REGULAR)->first();
 
         if ($season === null) {
             return [];
@@ -57,9 +51,12 @@
 
 @if ($rankings !== [])
     <section {{ $attributes->class(['flex flex-col rounded-lg border border-zinc-200 dark:border-zinc-800']) }}>
-        <header class="flex items-baseline justify-between border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
+        <header class="flex items-baseline justify-between gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
             <h2 class="text-sm font-semibold">AP Top 25</h2>
-            <span class="text-micro text-zinc-500">Latest poll</span>
+            <a href="{{ route('rankings') }}" wire:navigate
+               class="shrink-0 text-micro text-zinc-500 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100">
+                All polls
+            </a>
         </header>
 
         <ol class="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/60">

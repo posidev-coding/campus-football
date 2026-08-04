@@ -10,6 +10,7 @@ Route::view('/', 'home')->name('home');
  */
 Route::livewire('scoreboard', 'scoreboard')->name('scoreboard');
 Route::livewire('standings', 'standings')->name('standings');
+Route::livewire('rankings', 'rankings')->name('rankings');
 Route::livewire('teams/{team}', 'team')->name('team');
 Route::livewire('players/{athlete}', 'player')->name('player');
 Route::livewire('recruiting/{class?}', 'recruiting')->name('recruiting');

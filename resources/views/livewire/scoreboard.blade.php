@@ -5,6 +5,7 @@ use App\Models\Game;
 use App\Models\Season;
 use App\Models\TeamSeason;
 use App\Models\Week;
+use App\Services\CfbCalendar;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -39,42 +40,17 @@ new class extends Component
     #[Url]
     public string $conference = '';
 
-    public function mount(): void
+    public function mount(CfbCalendar $calendar): void
     {
-        $this->year ??= config('cfb.season');
-        $this->week ??= $this->defaultWeek();
+        // The season that has games, not the one the clock says — in August the
+        // upcoming season exists but has not been played.
+        $this->year ??= $calendar->resultsYear();
+        $this->week ??= $calendar->defaultWeekNumber($this->year);
     }
 
-    /**
-     * Land on a week that actually has games.
-     *
-     * Falling back to the highest week number puts a visitor on an empty
-     * "Nothing on the slate" screen out of season, which is the worst possible
-     * first impression for the app's busiest page. Prefer the week we are
-     * currently inside; otherwise the most recent week with any games in it.
-     */
-    private function defaultWeek(): ?int
+    public function updatedYear(CfbCalendar $calendar): void
     {
-        $season = Season::where('year', $this->year)->where('type', Season::REGULAR)->first();
-
-        if ($season === null) {
-            return null;
-        }
-
-        $current = Week::where('season_id', $season->id)
-            ->where('start_date', '<=', now())
-            ->where('end_date', '>=', now())
-            ->value('number');
-
-        if ($current !== null) {
-            return (int) $current;
-        }
-
-        return Week::query()
-            ->where('weeks.season_id', $season->id)
-            ->whereExists(fn ($q) => $q->selectRaw(1)->from('games')->whereColumn('games.week_id', 'weeks.id'))
-            ->orderByDesc('number')
-            ->value('number');
+        $this->week = $calendar->defaultWeekNumber($this->year);
     }
 
     #[Computed]

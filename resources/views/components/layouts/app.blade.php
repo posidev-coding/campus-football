@@ -39,6 +39,7 @@
                     @foreach ([
                         ['route' => 'scoreboard', 'label' => 'Scores'],
                         ['route' => 'standings', 'label' => 'Standings'],
+                        ['route' => 'rankings', 'label' => 'Rankings'],
                         ['route' => 'recruiting', 'label' => 'Recruiting'],
                     ] as $item)
                         @php $active = request()->routeIs($item['route']); @endphp
@@ -114,7 +115,7 @@
                 <x-nav-tab :href="route('home')" icon="home" label="Home" />
                 <x-nav-tab :href="route('scoreboard')" icon="calendar-days" label="Scores" />
                 <x-nav-tab :href="route('standings')" icon="table-cells" label="Standings" />
-                <x-nav-tab :href="route('recruiting')" icon="academic-cap" label="Recruits" />
+                <x-nav-tab :href="route('rankings')" icon="trophy" label="Rankings" />
             </div>
         </nav>
     </div>

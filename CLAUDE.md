@@ -248,6 +248,26 @@ are in progress or how many people are watching. Respect the tiers in
 Scale-to-zero MySQL means writes are not free: sync only writes rows that
 actually changed (`fill` + `isDirty`), and public reads are cache-first.
 
+## Never hardcode the current season
+
+`App\Services\CfbCalendar` is the single source of truth for where we are in
+the football year. Do not read `config('cfb.season')` in a screen and do not
+select "the latest season" — a season exists in the database months before it
+is played, so both land the user on an empty page.
+
+    $calendar->phase()                 preseason|regular|postseason|offseason
+    $calendar->currentYear()           the season we are in or heading into
+    $calendar->resultsYear()           the latest season that HAS games
+    $calendar->defaultWeekNumber($y)   current week, else last week with games
+    $calendar->rankingsYear($poll)     latest season that has THAT poll
+
+The distinction between `currentYear()` and `resultsYear()` is the important
+one: in August they differ, and conflating them is what empties a dropdown.
+
+Everything derives from date ranges, not from the `is_current` columns on
+seasons and weeks — those exist but the sync never populates them, and a stored
+flag goes stale the moment a scheduled job misses a run.
+
 ## Mobile-first, always
 
 Design at 390px first, then widen. Every breakpoint above base is ADDITIVE —

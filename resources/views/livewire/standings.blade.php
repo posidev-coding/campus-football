@@ -3,6 +3,7 @@
 use App\Models\Conference;
 use App\Models\ConferenceSeason;
 use App\Models\Standing;
+use App\Services\CfbCalendar;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -31,9 +32,9 @@ new class extends Component
     #[Url]
     public string $conference = '';
 
-    public function mount(): void
+    public function mount(CfbCalendar $calendar): void
     {
-        $this->year ??= config('cfb.season');
+        $this->year ??= $calendar->resultsYear();
     }
 
     #[Computed]
