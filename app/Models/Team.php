@@ -125,6 +125,19 @@ class Team extends Model
     }
 
     /**
+     * The mascot — "Mountaineers", "Bulldogs", "Volunteers".
+     *
+     * This is the `name` column, and the method exists because the OBVIOUS
+     * column lies: `teams.nickname` is NOT the nickname. ESPN uses it for a
+     * short location alias — App State's nickname is "App State" and
+     * Georgia's is "Georgia" — while `name` is where the mascot lives.
+     */
+    public function mascotName(): ?string
+    {
+        return $this->name ?: null;
+    }
+
+    /**
      * Hex colors arrive from ESPN without a leading `#`.
      */
     public function accentColor(): ?string

@@ -59,6 +59,16 @@ new class extends Component
     }
 
     /**
+     * Where the team sits in its conference — "6th" — from the same cached
+     * league-wide map search rows read, so this is never a per-page sort.
+     */
+    #[Computed]
+    public function standingPosition(): ?int
+    {
+        return \App\Support\TeamGlance::standingPositions($this->year)[$this->team->id] ?? null;
+    }
+
+    /**
      * Leaders, one row per category, in the order the team page presents them.
      *
      * Read straight from `team_leaders` rather than aggregated from athlete
@@ -227,7 +237,11 @@ new class extends Component
          rather than the accent — a one-color mark in its own color vanishes
          into the surface — and the alt color draws the keyline along the
          hero's bottom edge, jersey-piping style. Text color is computed from
-         the accent's luminance, never assumed white. --}}
+         the accent's luminance, never assumed white.
+
+         The identity is TWO lines, never truncated: the place, then the
+         mascot underneath in a lighter italic — "App State" over
+         "Mountaineers". placeName() already guarantees the first line fits. --}}
     <div
         class="team-gradient -mx-4 -mt-5 flex items-center gap-3 px-4 py-5"
         @style(['border-bottom: 3px solid '.$team->altAccentColor() => $team->altAccentColor()])
@@ -237,27 +251,44 @@ new class extends Component
         </span>
 
         <div class="flex min-w-0 flex-1 flex-col">
-            <span class="truncate text-xl font-bold leading-tight">{{ $team->display_name }}</span>
-            <span class="flex flex-wrap items-center gap-x-1.5 text-sm opacity-90">
-                <x-conference-link :conference="$this->seasonRow?->conference" :year="$year" />
+            <span class="text-xl font-bold leading-tight">{{ $team->placeName() }}</span>
+
+            @if ($team->mascotName())
+                <span class="text-base font-light italic leading-tight opacity-90">{{ $team->mascotName() }}</span>
+            @endif
+
+            {{-- One subtle KPI pair: record, then where that record puts
+                 them — "8-4 (4-4) · 6th in SEC". The position phrase is the
+                 conference link, so the conference page stays one tap away. --}}
+            <span class="flex flex-wrap items-center gap-x-1.5 pt-1 text-sm opacity-90">
                 @if ($this->standing)
-                    <span aria-hidden="true">&middot;</span>
                     <span class="tabular">{{ $this->standing->overallRecord() }} ({{ $this->standing->conferenceRecord() }})</span>
+                    <span aria-hidden="true">&middot;</span>
                 @endif
+
+                <x-conference-link :conference="$this->seasonRow?->conference" :year="$year">
+                    @if ($this->standingPosition !== null && $this->seasonRow?->conference?->short_name)
+                        {{ Illuminate\Support\Number::ordinal($this->standingPosition) }} in {{ $this->seasonRow->conference->short_name }}
+                    @endif
+                </x-conference-link>
             </span>
         </div>
-
-        {{-- Following dispatches the per-team news fetch, which is what fills
-             this team's News tab. --}}
-        <livewire:follow-button :team="$team" :key="'follow-'.$team->id" class="shrink-0" />
     </div>
 
-    <div class="flex flex-wrap items-center gap-2">
-        <flux:select wire:model.live="year" size="sm" class="w-28">
-            @foreach (range($this->latestYear, $this->latestYear - 4) as $y)
-                <flux:select.option :value="$y">{{ $y }}</flux:select.option>
-            @endforeach
-        </flux:select>
+    <div class="flex flex-col gap-3">
+        {{-- The follow button lives on the page surface, not the accent —
+             Flux's variants keep their contrast here, and the hero stays
+             about identity. Following dispatches the per-team news fetch,
+             which is what fills this team's News tab. --}}
+        <div class="flex items-end justify-between gap-3">
+            <flux:select wire:model.live="year" label="Season" size="sm" class="w-28">
+                @foreach (range($this->latestYear, $this->latestYear - 4) as $y)
+                    <flux:select.option :value="$y">{{ $y }}</flux:select.option>
+                @endforeach
+            </flux:select>
+
+            <livewire:follow-button :team="$team" :key="'follow-'.$team->id" class="shrink-0" />
+        </div>
 
         {{-- Scrolls on a phone: five tabs will not fit at 390px, and a
              segmented control that overflows silently clips the last one. --}}

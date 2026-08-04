@@ -946,6 +946,19 @@ So the woff2 is checked into `resources/fonts/` and declared with `local()` at
 weight `'100 900'`. Only the `latin` subset: verified, not assumed — zero of
 34,836 athlete names use a character outside Latin-1.
 
+## `teams.nickname` is not the nickname
+
+Same trap as `conferences.abbreviation`. ESPN uses `nickname` for a short
+LOCATION alias — App State's is "App State", Georgia's is "Georgia" — while
+the mascot lives in `teams.name`: Mountaineers, Bulldogs, Volunteers.
+`Team::mascotName()` reads the right one.
+
+The team hero writes identity as two lines, place over mascot, so a long name
+is never truncated: `placeName()` in bold, then `mascotName()` beneath in a
+lighter italic. Under both, one subtle KPI pair — `8-4 (4-4) · 6th in SEC` —
+where the position phrase IS the conference link, so the conference page stays
+one tap away. `x-conference-link` takes a slot for exactly that.
+
 ## A team logo never sits on the team's color
 
 A one-color mark in the team's own color vanishes into an accent surface —

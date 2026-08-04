@@ -17,9 +17,12 @@
 --}}
 @if (count($sections) > 1)
     <nav
+        {{-- Keyed on `aria-current`, not a parallel data attribute: one
+             source of truth for "this is the current section", and the
+             semantic one, which assistive tech reads as well. --}}
         x-data="{
             center() {
-                this.$refs.strip?.querySelector('[data-current=true]')
+                this.$refs.strip?.querySelector('[aria-current=page]')
                     ?.scrollIntoView({ block: 'nearest', inline: 'center' })
             },
         }"
@@ -32,12 +35,15 @@
             class="flex gap-1 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
             @foreach ($sections as $section)
-                @php $current = request()->routeIs($section['route']); @endphp
+                {{-- A section lights on its detail pages too — a team page
+                     keeps Teams underlined — via the same routes-list idea
+                     the area tabs use. --}}
+                @php $current = request()->routeIs(...($section['routes'] ?? [$section['route']])); @endphp
 
                 <a
                     href="{{ route($section['route']) }}"
                     wire:navigate
-                    data-current="{{ $current ? 'true' : 'false' }}"
+                    @if ($current) aria-current="page" @endif
                     @class([
                         'shrink-0 border-b-2 px-2 py-2.5 text-sm font-medium whitespace-nowrap transition-colors',
                         'border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100' => $current,

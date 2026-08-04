@@ -16,6 +16,13 @@
         'abbr', 'short' => $conference?->short_name ?? $conference?->name,
         default => $conference?->name,
     };
+
+    /*
+     * A caller may phrase the link itself — the team hero says "6th in SEC"
+     * rather than the bare conference name. Whitespace-only slots (an @if
+     * that rendered nothing) fall back to the name.
+     */
+    $custom = trim((string) ($slot ?? ''));
 @endphp
 
 @if ($conference)
@@ -27,7 +34,7 @@
         @if ($logo && $conference->logo)
             <img src="{{ $conference->logo }}" alt="" loading="lazy" class="size-4 shrink-0 object-contain">
         @endif
-        <span class="truncate group-hover:underline">{{ $text }}</span>
+        <span class="truncate group-hover:underline">{{ $custom !== '' ? $custom : $text }}</span>
     </a>
 @else
     <span {{ $attributes->class(['text-zinc-500']) }}>Independent</span>

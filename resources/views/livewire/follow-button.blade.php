@@ -68,12 +68,16 @@ new class extends Component
 }; ?>
 
 <div class="flex flex-col items-end gap-1">
+    {{-- Follow is the invitation, so it gets the fill; Following is a state
+         you can undo, so it recedes to ghost. This sits on the page surface —
+         it was moved out of the accent hero, where no fixed variant could
+         hold its contrast against 136 different team colors. --}}
     @if ($this->following)
-        <flux:button wire:click="unfollow" size="sm" variant="filled" icon="check">
+        <flux:button wire:click="unfollow" size="sm" variant="ghost" icon="check">
             Following
         </flux:button>
     @else
-        <flux:button wire:click="follow" size="sm" variant="ghost" icon="plus">
+        <flux:button wire:click="follow" size="sm" variant="filled" icon="plus">
             Follow
         </flux:button>
     @endif

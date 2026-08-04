@@ -36,7 +36,7 @@ class Navigation
      *     icon: string,
      *     route: string,
      *     routes: list<string>,
-     *     sections: list<array{route:string, label:string}>,
+     *     sections: list<array{route:string, label:string, routes?:list<string>}>,
      *     guest: bool
      * }>
      */
@@ -96,7 +96,10 @@ class Navigation
                 'sections' => [
                     ['route' => 'standings', 'label' => 'Standings'],
                     ['route' => 'rankings', 'label' => 'Rankings'],
-                    ['route' => 'teams', 'label' => 'Teams'],
+                    // `routes` lights the section on detail pages inside it,
+                    // the same way an area's `routes` lights its tab: a team
+                    // page keeps Teams underlined.
+                    ['route' => 'teams', 'label' => 'Teams', 'routes' => ['teams', 'team']],
                     ['route' => 'stats', 'label' => 'Team Stats'],
                     ['route' => 'leaders', 'label' => 'Player Stats'],
                     ['route' => 'recruiting', 'label' => 'Recruiting'],

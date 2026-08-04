@@ -104,6 +104,28 @@ describe('sections', function () {
             ->assertSee('Team Stats');
     });
 
+    it('lights the Teams section on an individual team page', function () {
+        /*
+         * Sections light on their detail pages the same way area tabs do — a
+         * team page keeps Teams underlined in the strip, not just League lit
+         * in the tab bar. Asserted through the underline classes, because
+         * `aria-current` alone also appears on the League area tab.
+         */
+        // The underlined-section classes only ever render on the current
+        // section link.
+        $underlined = 'border-zinc-900 text-zinc-900 dark:border-zinc-100';
+
+        $this->get(route('team', $this->team))
+            ->assertOk()
+            ->assertSeeInOrder([$underlined, 'Teams'], escape: false);
+
+        // Exactly one section is current — the sections have not started
+        // claiming each other's detail pages.
+        $html = $this->get(route('standings'))->assertOk()->content();
+
+        expect(substr_count($html, $underlined))->toBe(1);
+    });
+
     it('renders no strip on Scores, which is the only screen in its area', function () {
         /*
          * A strip with one tab is chrome, not navigation. Bowls and the playoff
