@@ -19,6 +19,17 @@ use Illuminate\Support\Facades\Cache;
 beforeEach(function () {
     Cache::flush();
 
+    /*
+     * All four ESPN season types, with the real ranges verified live. The
+     * labels are misleading and the fixture keeps them verbatim on purpose:
+     * ESPN's "Preseason" is six months (February to kickoff) and its
+     * "Off Season" is an eleven-day bridge after the playoff.
+     */
+    Season::factory()->create([
+        'year' => 2025, 'type' => Season::PRESEASON, 'name' => 'Preseason',
+        'start_date' => '2025-02-01', 'end_date' => '2025-08-23',
+    ]);
+
     $this->regular = Season::factory()->create([
         'year' => 2025, 'type' => Season::REGULAR, 'name' => 'Regular Season',
         'start_date' => '2025-08-23', 'end_date' => '2025-12-13',
@@ -27,6 +38,16 @@ beforeEach(function () {
     $this->postseason = Season::factory()->create([
         'year' => 2025, 'type' => Season::POSTSEASON, 'name' => 'Postseason',
         'start_date' => '2025-12-13', 'end_date' => '2026-01-21',
+    ]);
+
+    $this->offseason = Season::factory()->create([
+        'year' => 2025, 'type' => Season::OFFSEASON, 'name' => 'Off Season',
+        'start_date' => '2026-01-21', 'end_date' => '2026-02-01',
+    ]);
+
+    Season::factory()->create([
+        'year' => 2026, 'type' => Season::PRESEASON, 'name' => 'Preseason',
+        'start_date' => '2026-02-01', 'end_date' => '2026-08-22',
     ]);
 
     $this->next = Season::factory()->create([
@@ -88,9 +109,28 @@ it('reports preseason in the run-up to kickoff', function () {
 });
 
 it('reports offseason in the dead months', function () {
+    // April sits inside ESPN's type 1 "Preseason", which runs from February.
+    // Reporting that label verbatim would tell a user it is preseason in
+    // spring, so type 1 is split by proximity to kickoff.
     $this->travelTo('2026-04-15');
 
     expect($this->calendar->phase())->toBe(SeasonPhase::Offseason);
+});
+
+it('treats ESPN\'s eleven-day "Off Season" bridge as offseason', function () {
+    // Type 4 runs only from the playoff ending to Feb 1.
+    $this->travelTo('2026-01-25');
+
+    expect($this->calendar->phase())->toBe(SeasonPhase::Offseason)
+        ->and($this->calendar->currentYear())->toBe(2025);
+});
+
+it('prefers the type that carries games where ranges touch', function () {
+    // ESPN's ranges abut: one type's end date is the next one's start, so an
+    // instant on a boundary matches two rows.
+    $this->travelTo('2025-08-23 12:00');
+
+    expect($this->calendar->phase())->toBe(SeasonPhase::Regular);
 });
 
 it('separates the chronological season from the season with results', function () {

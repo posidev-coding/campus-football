@@ -42,7 +42,12 @@ class SyncSeason
                 ]
             );
 
-            $this->syncWeeks($season, $year, (int) $type['type']);
+            // Only the types that actually carry a schedule have weeks worth
+            // storing; the six-month "preseason" and eleven-day "offseason" do
+            // not divide into playable weeks.
+            if (in_array((int) $type['type'], [Season::REGULAR, Season::POSTSEASON], true)) {
+                $this->syncWeeks($season, $year, (int) $type['type']);
+            }
 
             $seasons[(int) $type['type']] = $season;
         }
@@ -51,12 +56,25 @@ class SyncSeason
     }
 
     /**
-     * Only the types that carry games. Preseason and offseason exist in the
-     * API but have no schedule worth ingesting.
+     * All four ESPN season types, so the calendar can read real date ranges
+     * rather than infer them.
+     *
+     * The labels are misleading and worth stating plainly, because they are the
+     * opposite of what the names suggest. Verified live for 2025:
+     *
+     *   1 Preseason      2025-02-01 -> 2025-08-23   (six months)
+     *   2 Regular Season 2025-08-23 -> 2025-12-13
+     *   3 Postseason     2025-12-13 -> 2026-01-21
+     *   4 Off Season     2026-01-21 -> 2026-02-01   (eleven days)
+     *
+     * So ESPN's "Preseason" is the whole span most people would call the
+     * offseason, and its "Off Season" is only the short bridge between the
+     * playoff ending and the next cycle starting. We store both verbatim and
+     * translate to human phases in CfbCalendar.
      */
     private function types(int $year): iterable
     {
-        foreach ([Season::REGULAR, Season::POSTSEASON] as $type) {
+        foreach ([Season::PRESEASON, Season::REGULAR, Season::POSTSEASON, Season::OFFSEASON] as $type) {
             $body = $this->espn->core("seasons/{$year}/types/{$type}");
 
             if ($body !== null && isset($body['type'])) {

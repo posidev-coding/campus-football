@@ -35,30 +35,67 @@ use Illuminate\Support\Facades\Cache;
  */
 class CfbCalendar
 {
-    /** How far ahead of kickoff we consider it "preseason" rather than offseason. */
-    private const PRESEASON_WINDOW_DAYS = 60;
+    /**
+     * How close to kickoff ESPN's six-month "preseason" starts feeling like an
+     * actual preseason to a human.
+     */
+    private const PRESEASON_WINDOW_DAYS = 45;
 
     private const CACHE_TTL = 900;
 
+    /**
+     * Translate ESPN's season type into a phase a person would recognise.
+     *
+     * This translation exists because ESPN's type names are misleading.
+     * Verified live for 2025:
+     *
+     *   1 Preseason      2025-02-01 -> 2025-08-23   (six months)
+     *   2 Regular Season 2025-08-23 -> 2025-12-13
+     *   3 Postseason     2025-12-13 -> 2026-01-21
+     *   4 Off Season     2026-01-21 -> 2026-02-01   (eleven days)
+     *
+     * So ESPN's "Preseason" covers what most people call the offseason, and its
+     * "Off Season" is only the short bridge after the playoff. Reporting either
+     * label verbatim would tell a user it is "preseason" in March.
+     *
+     * Type 1 is therefore split by proximity to kickoff: close in, it really is
+     * preseason; months out, it is the offseason.
+     */
     public function phase(?CarbonImmutable $at = null): SeasonPhase
     {
         $at ??= $this->now();
 
         $season = $this->seasonContaining($at);
 
-        if ($season !== null) {
-            return $season->type === Season::POSTSEASON
-                ? SeasonPhase::Postseason
-                : SeasonPhase::Regular;
+        if ($season === null) {
+            return SeasonPhase::Offseason;
         }
 
-        $next = $this->nextSeason($at);
+        return match ($season->type) {
+            Season::REGULAR => SeasonPhase::Regular,
+            Season::POSTSEASON => SeasonPhase::Postseason,
+            Season::OFFSEASON => SeasonPhase::Offseason,
+            Season::PRESEASON => $this->splitPreseason($at, $season),
+            default => SeasonPhase::Offseason,
+        };
+    }
 
-        if ($next?->start_date !== null && $at->diffInDays($next->start_date, false) <= self::PRESEASON_WINDOW_DAYS) {
-            return SeasonPhase::Preseason;
+    /**
+     * ESPN's type 1 spans February to kickoff. Only its tail is a preseason in
+     * any meaningful sense.
+     */
+    private function splitPreseason(CarbonImmutable $at, Season $preseason): SeasonPhase
+    {
+        // Its end date IS the next regular season's kickoff.
+        $kickoff = $preseason->end_date;
+
+        if ($kickoff === null) {
+            return SeasonPhase::Offseason;
         }
 
-        return SeasonPhase::Offseason;
+        return $at->diffInDays($kickoff, false) <= self::PRESEASON_WINDOW_DAYS
+            ? SeasonPhase::Preseason
+            : SeasonPhase::Offseason;
     }
 
     /**
@@ -207,9 +244,19 @@ class CfbCalendar
             ->whereNotNull('end_date')
             ->where('start_date', '<=', $at)
             ->where('end_date', '>=', $at)
-            // A postseason overlaps the tail of its regular season in ESPN's
-            // own dates, and the postseason is the more specific answer.
-            ->orderByDesc('type')
+            /*
+             * ESPN's ranges touch at their boundaries — one type's end date is
+             * the next one's start — so an instant on a boundary matches two
+             * rows. Prefer the types that carry games, then the short offseason
+             * bridge, and only then the six-month preseason, which is the
+             * vaguest answer of the four.
+             */
+            ->orderByRaw('FIELD(type, ?, ?, ?, ?)', [
+                Season::REGULAR,
+                Season::POSTSEASON,
+                Season::OFFSEASON,
+                Season::PRESEASON,
+            ])
             ->first();
     }
 

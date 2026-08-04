@@ -255,6 +255,20 @@ the football year. Do not read `config('cfb.season')` in a screen and do not
 select "the latest season" — a season exists in the database months before it
 is played, so both land the user on an empty page.
 
+ESPN's four season types are all synced, and their names are MISLEADING —
+verified live, do not trust the labels:
+
+    1 Preseason      2025-02-01 -> 2025-08-23   six months
+    2 Regular Season 2025-08-23 -> 2025-12-13
+    3 Postseason     2025-12-13 -> 2026-01-21
+    4 Off Season     2026-01-21 -> 2026-02-01   eleven days
+
+So ESPN's "Preseason" covers what a person calls the offseason, and its
+"Off Season" is only the bridge between the playoff and the next cycle.
+`SeasonPhase` is our own vocabulary; type 1 is split by proximity to kickoff so
+the app never claims it is preseason in March. Ranges abut, so an instant on a
+boundary matches two rows — containment prefers the types that carry games.
+
     $calendar->phase()                 preseason|regular|postseason|offseason
     $calendar->currentYear()           the season we are in or heading into
     $calendar->resultsYear()           the latest season that HAS games
