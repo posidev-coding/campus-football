@@ -16,12 +16,22 @@ beforeEach(function () {
     Team::factory()->create(['id' => 61, 'abbreviation' => 'UGA']);
     Team::factory()->create(['id' => 333, 'abbreviation' => 'BAMA']);
 
+    /*
+     * Kickoff pinned deliberately. The factory default is
+     * `dateTimeBetween('-4 months', '+1 month')` — random — so this shared
+     * fixture landed on an upcoming Saturday roughly one run in seven and was
+     * then counted by the "only fetches predictors for upcoming Saturday games"
+     * test below, which expects exactly one match. A midweek date well outside
+     * the 10-day window keeps it out of every slate-eligible query.
+     */
     $this->game = Game::factory()->create([
         'id' => 999,
         'season_id' => $this->season->id,
         'home_team_id' => 61,
         'away_team_id' => 333,
         'completed' => false,
+        'kickoff_at' => now()->addMonths(3)->next('Wednesday')->setTime(19, 0),
+        'kickoff_day' => 'Wed',
     ]);
 });
 

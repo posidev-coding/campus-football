@@ -388,6 +388,41 @@ There is no `/bowls` route. Note the consequence, which is deliberate but worth
 knowing: Scores has no season selector, so **historical** bowls are reachable
 only through a team's schedule or a direct game URL, not by browsing.
 
+## A filter that cannot mean anything must be disabled, not silently remapped
+
+`Scope::teamIds('top25')` falls back to FBS when a season has no poll — which is
+the normal state all summer, since the preseason AP does not land until August.
+On its own that made the scoreboard read "Top 25" while showing all 138 FBS
+teams.
+
+So `Scope::hasRankings()` drives two things: the option renders disabled with
+"No poll yet" beside it, and `Scope::defaultFor()` opens the screen on FBS. The
+fallback stays as a backstop for a URL carrying `scope=top25`, because an empty
+Top 25 showing "Nothing on the slate" as a visitor's first screen is worse.
+
+Disabled options are rendered as plain divs, NOT `flux:menu.item` — menu items
+are focusable and selectable, so a disabled one still lands under the keyboard.
+
+## Sticky offsets are measured, not hardcoded
+
+The scoreboard's title and week strip stick as one block, and day headings stick
+below it. That offset comes from Alpine reading `offsetHeight` into
+`--scores-chrome`, because the strip's height varies with font and the title
+wraps at narrow widths — a guessed constant leaves a gap or an overlap.
+
+Sticky headings need an OPAQUE background. `bg-white/90` with `backdrop-blur`
+softens what scrolls behind but does not stop it competing, and cards sliding
+under a day heading were genuinely hard to read.
+
+## Beware a random factory date in a shared fixture
+
+`GameFactory` defaults `kickoff_at` to `dateTimeBetween('-4 months', '+1 month')`.
+A `beforeEach` game with that default landed on an upcoming Saturday about one
+run in seven, and was then counted by a sibling test asserting exactly one
+slate-eligible game. It passed under `--filter` and failed in the full suite,
+because the faker sequence differs. Pin the date on any fixture a
+slate-eligible or date-window query might pick up.
+
 ## Athletes route by id, not slug
 
 326 athlete slugs collide (`xavier-williams` ×5, `cam-smith` ×5). `Athlete` has

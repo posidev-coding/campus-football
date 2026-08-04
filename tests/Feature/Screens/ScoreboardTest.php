@@ -9,6 +9,7 @@ use App\Models\TeamSeason;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Scope;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -100,8 +101,19 @@ it('scopes games through season-scoped conference membership', function () {
         ->assertDontSee('Some Independent');
 });
 
-it('defaults to Top 25 and lists FBS second', function () {
-    // Opening on every game in the country is not a useful first screen.
+it('defaults to Top 25 when a poll exists, and lists FBS second', function () {
+    // Opening on every game in the country is not a useful first screen — but
+    // only once there is a poll to open on. This fixture has none until the
+    // ranking below, which is the summer state the default has to survive.
+    expect(Livewire::test('scoreboard')->get('scope'))->toBe(Scope::FBS);
+
+    Ranking::create([
+        'season_id' => $this->season->id, 'week_id' => $this->week->id,
+        'poll' => 'ap', 'team_id' => 61, 'rank' => 1, 'record' => '5-0',
+    ]);
+
+    Cache::flush();
+
     expect(Livewire::test('scoreboard')->get('scope'))->toBe(Scope::TOP_25);
 
     $options = Scope::options(2025);
@@ -269,5 +281,92 @@ describe('postseason in the week scroller', function () {
             ->set('scope', Scope::FBS)
             ->call('selectWeek', $this->bowlWeek->id, 'bowls')
             ->assertSee('Union Home Mortgage Gasparilla Bowl');
+    });
+});
+
+describe('scope availability', function () {
+    it('disables Top 25 and defaults to FBS when the season has no poll', function () {
+        /*
+         * The normal state all summer — the preseason AP poll does not land
+         * until August. Previously the filter offered Top 25, resolved it to
+         * every FBS team, and displayed "Top 25" over 138 teams' worth of
+         * games. Greying it out says the filter exists and is not available
+         * yet.
+         */
+        $unpolled = Season::factory()->create([
+            'year' => 2027, 'type' => Season::REGULAR,
+            'start_date' => '2027-08-28', 'end_date' => '2027-12-12',
+        ]);
+
+        TeamSeason::create(['team_id' => 61, 'season_year' => 2027, 'classification' => 'FBS']);
+
+        expect(Scope::hasRankings(2027))->toBeFalse()
+            ->and(Scope::defaultFor(2027))->toBe(Scope::FBS);
+
+        $top25 = collect(Scope::options(2027))->firstWhere('value', Scope::TOP_25);
+
+        expect($top25['disabled'])->toBeTrue();
+    });
+
+    it('enables Top 25 once a poll exists', function () {
+        Ranking::create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'poll' => 'ap', 'team_id' => 61, 'rank' => 1, 'record' => '5-0',
+        ]);
+
+        expect(Scope::hasRankings(2025))->toBeTrue()
+            ->and(Scope::defaultFor(2025))->toBe(Scope::TOP_25)
+            ->and(collect(Scope::options(2025))->firstWhere('value', Scope::TOP_25)['disabled'])
+            ->toBeFalse();
+    });
+
+    it('renders a disabled Top 25 as non-selectable, with a reason', function () {
+        // Not a menu item: those are focusable and selectable, so a disabled one
+        // would still land under the keyboard.
+        $this->get(route('scoreboard'))
+            ->assertOk()
+            ->assertSee('aria-disabled="true"', escape: false)
+            ->assertSee('No poll yet');
+    });
+});
+
+describe('sticky chrome', function () {
+    it('sticks the heading and week strip together', function () {
+        // They travel as one block so the reader always knows which week they
+        // are scrolling through.
+        $this->get(route('scoreboard'))
+            ->assertOk()
+            ->assertSee('sticky top-0 z-20', escape: false)
+            // Clears the layout header, which only exists from sm upward.
+            ->assertSee('sm:top-14', escape: false);
+    });
+
+    beforeEach(function () {
+        // Day headings only exist when there are games to head.
+        Game::factory()->finished()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+        ]);
+    });
+
+    it('offsets day headings below that block by its measured height', function () {
+        /*
+         * Measured at runtime rather than hardcoded: the strip's height depends
+         * on the font, and the title wraps at narrow widths. A guessed constant
+         * leaves either a gap or an overlap.
+         */
+        $this->get(route('scoreboard'))
+            ->assertOk()
+            ->assertSee('--scores-chrome', escape: false)
+            ->assertSee('top: var(--scores-chrome', escape: false);
+    });
+
+    it('gives day headings an opaque background', function () {
+        // A translucent heading with cards sliding under it was hard to read;
+        // backdrop-blur softens what is behind but does not stop it competing.
+        $response = $this->get(route('scoreboard'))->assertOk();
+
+        $response->assertSee('bg-white px-4 py-1.5 dark:bg-zinc-950', escape: false)
+            ->assertDontSee('bg-white/90', escape: false);
     });
 });

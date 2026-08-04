@@ -53,9 +53,23 @@ class Scope
                  * "the leading rusher among 25 teams" and read as if it were
                  * the national leader.
                  */
-                $options = $top25
-                    ? [['value' => self::TOP_25, 'label' => 'Top 25']]
-                    : [];
+                $options = [];
+
+                if ($top25) {
+                    /*
+                     * Offered but DISABLED when the season has no poll yet,
+                     * which is the normal state all summer — the preseason AP
+                     * poll does not land until August. Showing it as selectable
+                     * and quietly resolving it to FBS is worse than greying it
+                     * out: the filter would read "Top 25" while displaying all
+                     * 138 teams.
+                     */
+                    $options[] = [
+                        'value' => self::TOP_25,
+                        'label' => 'Top 25',
+                        'disabled' => ! self::hasRankings($year),
+                    ];
+                }
 
                 $options[] = ['value' => self::FBS, 'label' => 'FBS'];
 
@@ -70,7 +84,9 @@ class Scope
                     ];
                 }
 
-                return $options;
+                // One shape for every option, so a caller never has to guess
+                // whether the key is there.
+                return array_map(fn (array $o) => $o + ['disabled' => false], $options);
             }
         );
     }
@@ -103,6 +119,25 @@ class Scope
     }
 
     /**
+     * Does this season have a poll to rank against yet?
+     */
+    public static function hasRankings(int $year): bool
+    {
+        return self::rankedTeamIds($year) !== [];
+    }
+
+    /**
+     * The scope a screen should open on.
+     *
+     * Top 25 where a poll exists, FBS otherwise — so the scoreboard never
+     * starts on a filter that cannot mean anything.
+     */
+    public static function defaultFor(int $year): string
+    {
+        return self::hasRankings($year) ? self::TOP_25 : self::FBS;
+    }
+
+    /**
      * The team ids a scope resolves to, or null for "no team restriction".
      *
      * Null is meaningful and is not the same as an empty array: null means do
@@ -117,11 +152,11 @@ class Scope
             $ranked = self::rankedTeamIds($year);
 
             /*
-             * No poll for this season yet — which is the normal state of things
-             * all summer, since the preseason AP poll does not land until
-             * August. Falling through to FBS matters: an empty Top 25 would
-             * filter every game out and show "Nothing on the slate" as the
-             * first thing a visitor ever sees.
+             * Still falls through to FBS rather than filtering everything out,
+             * as a backstop for a URL carrying `scope=top25` into a season with
+             * no poll. The UI disables the option so this should not normally
+             * be reachable — an empty Top 25 showing "Nothing on the slate" as
+             * a visitor's first screen would be the worse failure.
              */
             return $ranked === [] ? self::teamIds(self::FBS, $year) : $ranked;
         }

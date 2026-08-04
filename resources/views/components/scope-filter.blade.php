@@ -13,12 +13,13 @@
 @endphp
 
 {{--
-    The section title with its scope selector sitting underneath, the way ESPN
-    stacks "NCAA Football" over "Top 25 ⌄". Keeping them together means the
-    filter reads as a qualifier on the heading rather than as a stray control.
+    The scope selector, as ESPN stacks "Top 25 ⌄" under its section title.
 
-    Options are Top 25 first (the default — opening on 800 teams' worth of games
-    is not a useful first screen), then FBS, then the conferences by short_name.
+    An option can be DISABLED — Top 25 is, until the season has a poll, which is
+    the normal state all summer. Greying it out rather than hiding it says the
+    filter exists and is not available yet; hiding it would look like the app
+    lost a feature, and leaving it selectable meant the control read "Top 25"
+    while quietly showing all 138 FBS teams.
 --}}
 <div {{ $attributes->class(['flex flex-col gap-0.5']) }}>
     @if ($title)
@@ -36,11 +37,24 @@
 
         <flux:menu>
             @foreach ($options as $option)
-                <flux:menu.item
-                    wire:click="$set('{{ $model }}', '{{ $option['value'] }}')"
-                    wire:key="scope-{{ $option['value'] }}"
-                    @class(['font-semibold' => $selected === $option['value']])
-                >{{ $option['label'] }}</flux:menu.item>
+                @if ($option['disabled'])
+                    {{-- Not a menu.item: those are focusable and selectable, so
+                         a disabled one still lands under the keyboard. --}}
+                    <div
+                        class="flex cursor-not-allowed items-center justify-between gap-3 px-2 py-1.5 text-sm text-zinc-400 dark:text-zinc-600"
+                        aria-disabled="true"
+                        wire:key="scope-{{ $option['value'] }}"
+                    >
+                        {{ $option['label'] }}
+                        <span class="text-micro">No poll yet</span>
+                    </div>
+                @else
+                    <flux:menu.item
+                        wire:click="$set('{{ $model }}', '{{ $option['value'] }}')"
+                        wire:key="scope-{{ $option['value'] }}"
+                        @class(['font-semibold' => $selected === $option['value']])
+                    >{{ $option['label'] }}</flux:menu.item>
+                @endif
             @endforeach
         </flux:menu>
     </flux:dropdown>

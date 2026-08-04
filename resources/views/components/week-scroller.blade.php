@@ -2,6 +2,10 @@
     'weeks' => [],
     'selected' => null,
     'bracket' => '',
+    // Whether to break out of the parent's horizontal padding. False when the
+    // scroller sits inside a container that already bleeds, which is the case
+    // on the scoreboard's sticky block — two negative margins would double up.
+    'bleed' => true,
 ])
 
 {{--
@@ -27,12 +31,18 @@
             },
         }"
         x-init="$nextTick(() => center())"
-        {{ $attributes->class(['-mx-4 border-b border-zinc-200 dark:border-zinc-800']) }}
+        {{ $attributes->class([
+            'border-b border-zinc-200 dark:border-zinc-800',
+            '-mx-4' => $bleed,
+        ]) }}
     >
         {{-- Scrolls within itself so the page body never scrolls sideways. --}}
         <div
             x-ref="strip"
-            class="flex snap-x snap-mandatory gap-1 overflow-x-auto scroll-smooth px-4 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            @class([
+                'flex snap-x snap-mandatory gap-1 overflow-x-auto scroll-smooth pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+                'px-4' => $bleed,
+            ])
         >
             @foreach ($weeks as $week)
                 @php

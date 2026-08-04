@@ -42,7 +42,7 @@ new class extends Component
     public string $bracket = '';
 
     #[Url]
-    public string $scope = Scope::TOP_25;
+    public string $scope = '';
 
     public function mount(CfbCalendar $calendar): void
     {
@@ -52,6 +52,14 @@ new class extends Component
             $this->week = $entry['week_id'] ?? null;
             $this->bracket = $entry['bracket'] ?? '';
         }
+
+        /*
+         * Top 25 where a poll exists, FBS otherwise. All summer there is no
+         * poll — the preseason AP does not land until August — and defaulting
+         * to Top 25 anyway meant the filter read "Top 25" while resolving to
+         * every FBS team.
+         */
+        $this->scope = $this->scope ?: Scope::defaultFor($this->year());
     }
 
     /**
@@ -137,31 +145,65 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-3">
+<div
+    x-data="{
+        /*
+         * Day headings stick BELOW the title and week strip, so they need that
+         * block's height. Measured rather than hardcoded: the strip's height
+         * depends on the font and the title wraps at narrow widths, and a
+         * guessed constant leaves either a gap or an overlap.
+         */
+        sync() {
+            const h = this.$refs.chrome?.offsetHeight ?? 0
+            this.$el.style.setProperty('--scores-chrome', h + 'px')
+        },
+    }"
+    x-init="sync(); $nextTick(() => sync())"
+    x-on:resize.window="sync()"
+    class="flex flex-col gap-3"
+>
     {{-- Scores is the only screen in its area, so there is no section strip
          above it — which makes this the one heading in the app that is not a
          repeat of the strip. The scope filter sits inline with it rather than
-         claiming a row of its own. --}}
-    <div class="flex items-center justify-between gap-3">
-        <div class="flex min-w-0 items-center gap-2">
-            <flux:heading size="xl" class="truncate">Scoreboard</flux:heading>
+         claiming a row of its own.
 
-            @if ($this->hasLiveGames)
-                <flux:badge color="red" size="sm" class="shrink-0">Live</flux:badge>
-            @endif
+         Sticky as a single block: the title and the week strip travel together,
+         so the reader always knows which week they are scrolling through. It
+         sits under the layout header at `sm`, where that header exists. --}}
+    <div
+        x-ref="chrome"
+        class="sticky top-0 z-20 -mx-4 flex flex-col gap-3 bg-white px-4 pt-1 pb-0 sm:top-14 dark:bg-zinc-950"
+    >
+        <div class="flex items-center justify-between gap-3">
+            <div class="flex min-w-0 items-center gap-2">
+                <flux:heading size="xl" class="truncate">Scoreboard</flux:heading>
+
+                @if ($this->hasLiveGames)
+                    <flux:badge color="red" size="sm" class="shrink-0">Live</flux:badge>
+                @endif
+            </div>
+
+            <x-scope-filter :year="$this->scopeYear" :selected="$scope" class="shrink-0 items-end" />
         </div>
 
-        <x-scope-filter :year="$this->scopeYear" :selected="$scope" class="shrink-0 items-end" />
+        <x-week-scroller :weeks="$this->weeks" :selected="$week" :bracket="$bracket" :bleed="false" />
     </div>
-
-    <x-week-scroller :weeks="$this->weeks" :selected="$week" :bracket="$bracket" />
 
     {{-- Short-polls our own cache, never ESPN, and only while a game is
          actually in progress. --}}
     <div @if ($this->hasLiveGames) wire:poll.30s.visible @endif class="flex flex-col gap-5">
         @forelse ($this->games as $day => $games)
             <div class="flex flex-col gap-2">
-                <flux:subheading class="sticky top-0 z-10 bg-white/90 py-1 backdrop-blur dark:bg-zinc-950/90">
+                {{-- Fully opaque, not a translucent blur. A half-transparent
+                     heading with game cards sliding under it was genuinely
+                     hard to read — backdrop-blur softens the text behind it
+                     but does not stop it competing. The negative margin lets
+                     the background span the full width so nothing shows
+                     through at the edges. --}}
+                <flux:subheading
+                    class="sticky z-10 -mx-4 bg-white px-4 py-1.5 dark:bg-zinc-950"
+                    style="top: var(--scores-chrome, 0px)"
+                >
                     {{ $day }}
                 </flux:subheading>
 
