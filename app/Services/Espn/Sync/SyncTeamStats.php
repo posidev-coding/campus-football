@@ -4,12 +4,14 @@ namespace App\Services\Espn\Sync;
 
 use App\Models\Athlete;
 use App\Models\AthleteTeamSeason;
+use App\Models\Position;
 use App\Models\Season;
 use App\Models\TeamLeader;
 use App\Models\TeamSeason;
 use App\Models\TeamSeasonStat;
 use App\Services\Espn\EspnClient;
 use App\Services\Espn\RecordParser;
+use Illuminate\Support\Collection;
 
 /**
  * Team season statistics and statistical leaders.
@@ -26,6 +28,9 @@ use App\Services\Espn\RecordParser;
  */
 class SyncTeamStats
 {
+    /** @var Collection<int, int>|null */
+    private ?Collection $knownPositions = null;
+
     public function __construct(private EspnClient $espn) {}
 
     public function handle(int $year, string $classification = 'FBS', int $seasonType = Season::REGULAR): int
@@ -108,6 +113,29 @@ class SyncTeamStats
     }
 
     /**
+     * A position id we actually carry, or null.
+     *
+     * `positions` is populated from current rosters and holds 32 rows, but ESPN
+     * numbers positions up to at least 264 and a historical athlete can name one
+     * we have never seen. Writing it blind fails the foreign key and aborts the
+     * whole season's stats sync — which is exactly what happened to 2022, taking
+     * 136 teams down over one player's position.
+     *
+     * Same rule as unknown teams in the rankings sync: drop the field, keep the
+     * row. A player with no position is still worth having.
+     */
+    private function knownPositionId(int|string|null $id): ?int
+    {
+        if ($id === null) {
+            return null;
+        }
+
+        $this->knownPositions ??= Position::pluck('id')->flip();
+
+        return $this->knownPositions->has((int) $id) ? (int) $id : null;
+    }
+
+    /**
      * Make sure a leader's athlete exists before referencing it.
      *
      * This matters more than it looks. ESPN serves only the CURRENT roster, so
@@ -166,7 +194,7 @@ class SyncTeamStats
             [
                 'team_id' => $teamId,
                 'jersey' => $body['jersey'] ?? null,
-                'position_id' => isset($body['position']['id']) ? (int) $body['position']['id'] : null,
+                'position_id' => $this->knownPositionId($body['position']['id'] ?? null),
                 'experience_class' => $body['experience']['displayValue'] ?? null,
             ]
         );
