@@ -28,8 +28,13 @@ new class extends Component
     #[Url]
     public ?int $year = null;
 
+    /** Schedule leads: it is what someone opening a team page came to see. */
     #[Url]
-    public string $tab = 'overview';
+    public string $tab = 'schedule';
+
+    /** Within Stats: 'leaders' (individual) or 'team'. */
+    #[Url]
+    public string $statsView = 'leaders';
 
     public function mount(Team $team, CfbCalendar $calendar): void
     {
@@ -103,11 +108,34 @@ new class extends Component
         return $this->leaders->whereIn('category', ['passingLeader', 'rushingLeader', 'receivingLeader'])->values();
     }
 
-    /** Everything else, as a compact grid of single numbers. */
+    /**
+     * Individual leaders under the side of the ball they belong to.
+     *
+     * A flat grid of fourteen numbers made a defensive back's tackles sit
+     * beside a quarterback's rating with nothing to say they are different
+     * kinds of fact. Categories not named here fall under "Other" rather than
+     * disappearing, because ESPN adds to this list without telling anyone.
+     *
+     * @return array<string, \Illuminate\Support\Collection>
+     */
     #[Computed]
-    public function statLeaders()
+    public function leaderGroups(): array
     {
-        return $this->leaders->whereNotIn('category', ['passingLeader', 'rushingLeader', 'receivingLeader'])->values();
+        $groups = [
+            'Passing' => ['passingYards', 'passingTouchdowns', 'quarterbackRating'],
+            'Rushing' => ['rushingYards', 'rushingTouchdowns'],
+            'Receiving' => ['receivingYards', 'receivingTouchdowns', 'receptions'],
+            'Defense' => ['totalTackles', 'sacks', 'interceptions'],
+        ];
+
+        $headline = ['passingLeader', 'rushingLeader', 'receivingLeader'];
+        $placed = array_merge($headline, ...array_values($groups));
+
+        $bucketed = collect($groups)
+            ->map(fn (array $categories) => $this->leaders->whereIn('category', $categories)->values())
+            ->put('Other', $this->leaders->whereNotIn('category', $placed)->values());
+
+        return $bucketed->filter(fn ($rows) => $rows->isNotEmpty())->all();
     }
 
     #[Computed]
@@ -117,6 +145,46 @@ new class extends Component
             ->where('season_year', $this->year)
             ->get()
             ->keyBy('category');
+    }
+
+    /**
+     * Team stat categories under the side of the ball they describe.
+     *
+     * ESPN publishes eleven flat categories; read in its order, `defensive`
+     * lands first and `scoring` near the end, so the page opened on tackles
+     * rather than on points. Anything ESPN adds later falls into "Other".
+     *
+     * @return array<string, \Illuminate\Support\Collection>
+     */
+    #[Computed]
+    public function statGroups(): array
+    {
+        $groups = [
+            'Offense' => ['general', 'scoring', 'passing', 'rushing', 'receiving'],
+            'Defense' => ['defensive', 'defensiveInterceptions'],
+            'Special Teams' => ['kicking', 'punting', 'returning'],
+        ];
+
+        $placed = array_merge(...array_values($groups));
+
+        $bucketed = collect($groups)
+            ->map(fn (array $categories) => collect($categories)
+                ->map(fn (string $c) => $this->stats->get($c))
+                ->filter()
+                ->values())
+            ->put('Other', $this->stats->reject(fn ($row, $c) => in_array($c, $placed, true))->values());
+
+        return $bucketed->filter(fn ($rows) => $rows->isNotEmpty())->all();
+    }
+
+    public function statCategoryLabel(string $category): string
+    {
+        return match ($category) {
+            'general' => 'Total Offense',
+            'defensiveInterceptions' => 'Takeaways',
+            'defensive' => 'Defense',
+            default => str($category)->headline()->toString(),
+        };
     }
 
     /**
@@ -254,7 +322,7 @@ new class extends Component
             <span class="text-xl font-bold leading-tight">{{ $team->placeName() }}</span>
 
             @if ($team->mascotName())
-                <span class="text-base font-light italic leading-tight opacity-90">{{ $team->mascotName() }}</span>
+                <span class="text-base font-light leading-tight opacity-90">{{ $team->mascotName() }}</span>
             @endif
 
             {{-- One subtle KPI pair: record, then where that record puts
@@ -273,83 +341,36 @@ new class extends Component
                 </x-conference-link>
             </span>
         </div>
+
+        {{-- Back in the hero, but drawing its own colors from it rather than
+             from a fixed Flux variant — see the component. Following
+             dispatches the per-team news fetch, which fills the News tab. --}}
+        <livewire:follow-button :team="$team" :key="'follow-'.$team->id" class="shrink-0 self-start" />
     </div>
 
-    <div class="flex flex-col gap-3">
-        {{-- The follow button lives on the page surface, not the accent —
-             Flux's variants keep their contrast here, and the hero stays
-             about identity. Following dispatches the per-team news fetch,
-             which is what fills this team's News tab. --}}
-        <div class="flex items-end justify-between gap-3">
-            <flux:select wire:model.live="year" label="Season" size="sm" class="w-28">
-                @foreach (range($this->latestYear, $this->latestYear - 4) as $y)
-                    <flux:select.option :value="$y">{{ $y }}</flux:select.option>
-                @endforeach
-            </flux:select>
-
-            <livewire:follow-button :team="$team" :key="'follow-'.$team->id" class="shrink-0" />
-        </div>
-
-        {{-- Scrolls on a phone: five tabs will not fit at 390px, and a
-             segmented control that overflows silently clips the last one. --}}
-        <div class="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    {{-- Tabs left, season right, on one row. The tab strip scrolls inside its
+         own track — four tabs plus the select will not fit at 390px, and a
+         segmented control that overflows silently clips the last one — while
+         the select stays put as a fixed-width sibling. `min-w-0` is what lets
+         the track actually shrink instead of pushing the select off-screen. --}}
+    <div class="flex items-center justify-between gap-3">
+        <div class="-ml-4 min-w-0 overflow-x-auto pl-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <flux:radio.group wire:model.live="tab" variant="segmented" size="sm" class="w-max">
-                <flux:radio value="overview" label="Overview" />
                 <flux:radio value="schedule" label="Schedule" />
                 <flux:radio value="roster" label="Roster" />
                 <flux:radio value="stats" label="Stats" />
                 <flux:radio value="news" label="News" />
             </flux:radio.group>
         </div>
+
+        {{-- No label: four-digit years in a narrow select are self-evident,
+             and the label was the widest thing on the row. --}}
+        <flux:select wire:model.live="year" size="sm" class="w-24 shrink-0" aria-label="Season">
+            @foreach (range($this->latestYear, $this->latestYear - 4) as $y)
+                <flux:select.option :value="$y">{{ $y }}</flux:select.option>
+            @endforeach
+        </flux:select>
     </div>
-
-    @if ($tab === 'overview')
-        <div class="flex flex-col gap-3">
-            <flux:subheading>Season leaders</flux:subheading>
-
-            @forelse ($this->headlineLeaders as $leader)
-                {{-- Stacks on a phone: the stat line is long enough that keeping
-                     it inline truncated the player's name to "Gunner…". --}}
-                <div class="flex flex-col gap-1.5 rounded-lg border border-zinc-200 p-3 sm:flex-row sm:items-center sm:gap-3 dark:border-zinc-800">
-                    <x-player-link
-                        :athlete="$leader->athlete"
-                        size="md"
-                        :subtitle="\App\Models\TeamLeader::label($leader->category)"
-                        class="min-w-0 sm:flex-1"
-                    />
-
-                    <span class="tabular pl-[3.25rem] text-stat text-zinc-600 sm:shrink-0 sm:pl-0 sm:text-right dark:text-zinc-300">
-                        {{ $leader->display_value }}
-                    </span>
-                </div>
-            @empty
-                <flux:callout icon="chart-bar">
-                    <flux:callout.heading>No leaders yet</flux:callout.heading>
-                    <flux:callout.text>Nothing published for {{ $year }}.</flux:callout.text>
-                </flux:callout>
-            @endforelse
-
-            @if ($this->statLeaders->isNotEmpty())
-                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    @foreach ($this->statLeaders as $leader)
-                        <a
-                            href="{{ route('player', $leader->athlete) }}"
-                            wire:navigate
-                            class="group flex flex-col gap-0.5 rounded-lg border border-zinc-200 p-2.5 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-                        >
-                            <span class="text-micro uppercase tracking-wide text-zinc-500">
-                                {{ \App\Models\TeamLeader::label($leader->category) }}
-                            </span>
-                            <span class="tabular text-base font-semibold">{{ $leader->display_value }}</span>
-                            <span class="truncate text-micro text-zinc-500 group-hover:underline">
-                                {{ $leader->athlete?->display_name }}
-                            </span>
-                        </a>
-                    @endforeach
-                </div>
-            @endif
-        </div>
-    @endif
 
     @if ($tab === 'schedule')
         <div class="flex flex-col gap-2">
@@ -404,36 +425,108 @@ new class extends Component
     @endif
 
     @if ($tab === 'stats')
-        @forelse ($this->stats as $category => $row)
-            <div class="flex flex-col gap-2">
-                <flux:subheading>{{ str($category)->headline() }}</flux:subheading>
+        <div class="flex flex-col gap-4">
+            {{-- Two different questions — "who on this team is good?" and "how
+                 good is this team?" — so they get a toggle rather than one
+                 long scroll that answers both badly. --}}
+            <flux:radio.group wire:model.live="statsView" variant="segmented" size="sm" class="w-max">
+                <flux:radio value="leaders" label="Leaders" />
+                <flux:radio value="team" label="Team" />
+            </flux:radio.group>
 
-                <div class="stat-grid rounded-lg border border-zinc-200 dark:border-zinc-800">
-                    <table class="w-full text-stat">
-                        <tbody>
-                            @foreach ($row->entries() as $stat)
-                                <tr class="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
-                                    <td class="px-3 py-1.5 text-zinc-500">{{ $stat['label'] }}</td>
-                                    <td class="px-3 py-1.5 text-right font-medium">{{ $stat['display'] }}</td>
-                                    {{-- ESPN ranks all 136 FBS teams on every stat it
-                                         publishes, so this comes free with the value. --}}
-                                    <td class="tabular w-14 px-3 py-1.5 text-right text-micro text-zinc-400">
-                                        @if ($stat['rank'])
-                                            {{ \App\Support\Ordinal::of($stat['rank']) }}
-                                        @endif
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        @empty
-            <flux:callout icon="chart-bar">
-                <flux:callout.heading>No statistics</flux:callout.heading>
-                <flux:callout.text>Nothing published for {{ $year }}.</flux:callout.text>
-            </flux:callout>
-        @endforelse
+            @if ($statsView === 'leaders')
+                @if ($this->leaders->isEmpty())
+                    <flux:callout icon="chart-bar">
+                        <flux:callout.heading>No leaders yet</flux:callout.heading>
+                        <flux:callout.text>Nothing published for {{ $year }}.</flux:callout.text>
+                    </flux:callout>
+                @else
+                    {{-- The three headline lines first: a full stat line each,
+                         which is what a reader wants before any breakdown. --}}
+                    @foreach ($this->headlineLeaders as $leader)
+                        {{-- Stacks on a phone: the stat line is long enough
+                             that keeping it inline truncated the player's name
+                             to "Gunner…". --}}
+                        <div class="flex flex-col gap-1.5 rounded-lg border border-zinc-200 p-3 sm:flex-row sm:items-center sm:gap-3 dark:border-zinc-800" wire:key="hl-{{ $leader->category }}">
+                            <x-player-link
+                                :athlete="$leader->athlete"
+                                size="md"
+                                :subtitle="\App\Models\TeamLeader::label($leader->category)"
+                                class="min-w-0 sm:flex-1"
+                            />
+
+                            <span class="tabular pl-[3.25rem] text-stat text-zinc-600 sm:shrink-0 sm:pl-0 sm:text-right dark:text-zinc-300">
+                                {{ $leader->display_value }}
+                            </span>
+                        </div>
+                    @endforeach
+
+                    @foreach ($this->leaderGroups as $group => $rows)
+                        <div class="flex flex-col gap-2" wire:key="lg-{{ $group }}">
+                            <flux:subheading>{{ $group }}</flux:subheading>
+
+                            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                @foreach ($rows as $leader)
+                                    <a
+                                        href="{{ route('player', $leader->athlete) }}"
+                                        wire:navigate
+                                        wire:key="l-{{ $leader->category }}"
+                                        class="group flex flex-col gap-0.5 rounded-lg border border-zinc-200 p-2.5 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+                                    >
+                                        <span class="text-micro uppercase tracking-wide text-zinc-500">
+                                            {{ \App\Models\TeamLeader::label($leader->category) }}
+                                        </span>
+                                        <span class="tabular text-base font-semibold">{{ $leader->display_value }}</span>
+                                        <span class="truncate text-micro text-zinc-500 group-hover:underline">
+                                            {{ $leader->athlete?->display_name }}
+                                        </span>
+                                    </a>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endforeach
+                @endif
+            @else
+                @forelse ($this->statGroups as $group => $rows)
+                    <div class="flex flex-col gap-3" wire:key="sg-{{ $group }}">
+                        <flux:subheading>{{ $group }}</flux:subheading>
+
+                        @foreach ($rows as $row)
+                            <div class="flex flex-col gap-1.5" wire:key="sc-{{ $row->category }}">
+                                <span class="text-micro font-semibold uppercase tracking-wide text-zinc-400">
+                                    {{ $this->statCategoryLabel($row->category) }}
+                                </span>
+
+                                <div class="stat-grid rounded-lg border border-zinc-200 dark:border-zinc-800">
+                                    <table class="w-full text-stat">
+                                        <tbody>
+                                            @foreach ($row->entries() as $stat)
+                                                <tr class="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                                                    <td class="px-3 py-1.5 text-zinc-500">{{ $stat['label'] }}</td>
+                                                    <td class="px-3 py-1.5 text-right font-medium">{{ $stat['display'] }}</td>
+                                                    {{-- ESPN ranks all 136 FBS teams on every stat it
+                                                         publishes, so this comes free with the value. --}}
+                                                    <td class="tabular w-14 px-3 py-1.5 text-right text-micro text-zinc-400">
+                                                        @if ($stat['rank'])
+                                                            {{ \App\Support\Ordinal::of($stat['rank']) }}
+                                                        @endif
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                @empty
+                    <flux:callout icon="chart-bar">
+                        <flux:callout.heading>No statistics</flux:callout.heading>
+                        <flux:callout.text>Nothing published for {{ $year }}.</flux:callout.text>
+                    </flux:callout>
+                @endforelse
+            @endif
+        </div>
     @endif
 
     @if ($tab === 'news')

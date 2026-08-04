@@ -155,17 +155,43 @@ class Team extends Model
     }
 
     /**
-     * Black or white — whichever actually survives on top of the accent.
+     * The color that text on the accent surface should be.
      *
-     * This used to be hardcoded white, which fails the same way the logo did:
-     * white text on Tennessee orange is about 2.4:1, and on a maize or gold
-     * accent it disappears entirely. YIQ luminance with a threshold of 150
-     * sends every light accent to near-black text; Tennessee's #FF8200 sits at
-     * 152 and lands — correctly — on the dark side.
+     * The team's SECONDARY color, when it genuinely reads against the primary
+     * — maize on Michigan navy, white on Tennessee orange — because that is
+     * the pairing the school's own branding puts together, and plain black or
+     * white on a saturated accent often reads worse. When the secondary is
+     * tone-on-tone with the primary (Georgia's black on red), fall back to
+     * black-or-white by YIQ luminance.
+     *
+     * The admission threshold is a YIQ brightness DIFFERENCE of 90, not the
+     * old-guideline 125: hero text is large and bold, and 125 would reject
+     * white-on-orange (a difference of 103) — the classic look this exists to
+     * allow.
      */
     public function accentContrast(): ?string
     {
-        $hex = ltrim((string) $this->color, '#');
+        $accent = self::yiqBrightness($this->color);
+
+        if ($accent === null) {
+            return null;
+        }
+
+        $alt = self::yiqBrightness($this->alt_color);
+
+        if ($alt !== null && abs($alt - $accent) >= 90) {
+            return $this->altAccentColor();
+        }
+
+        return $accent >= 150 ? '#18181b' : '#ffffff';
+    }
+
+    /**
+     * Perceived brightness 0-255, or null for anything that is not a color.
+     */
+    private static function yiqBrightness(?string $color): ?float
+    {
+        $hex = ltrim((string) $color, '#');
 
         if (strlen($hex) === 3) {
             $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
@@ -175,11 +201,9 @@ class Team extends Model
             return null;
         }
 
-        $yiq = (hexdec(substr($hex, 0, 2)) * 299
+        return (hexdec(substr($hex, 0, 2)) * 299
             + hexdec(substr($hex, 2, 2)) * 587
             + hexdec(substr($hex, 4, 2)) * 114) / 1000;
-
-        return $yiq >= 150 ? '#18181b' : '#ffffff';
     }
 
     /**

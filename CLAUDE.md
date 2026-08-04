@@ -954,10 +954,41 @@ the mascot lives in `teams.name`: Mountaineers, Bulldogs, Volunteers.
 `Team::mascotName()` reads the right one.
 
 The team hero writes identity as two lines, place over mascot, so a long name
-is never truncated: `placeName()` in bold, then `mascotName()` beneath in a
-lighter italic. Under both, one subtle KPI pair — `8-4 (4-4) · 6th in SEC` —
+is never truncated: `placeName()` in bold, then `mascotName()` beneath, lighter
+but NOT italic. Under both, one subtle KPI pair — `8-4 (4-4) · 6th in SEC` —
 where the position phrase IS the conference link, so the conference page stays
 one tap away. `x-conference-link` takes a slot for exactly that.
+
+**Livewire's `<!--[if BLOCK]-->` markers ride inside a slot's string.** Casting
+a slot to a string to test whether it is empty, then echoing it through `{{ }}`,
+ESCAPES those markers into visible text on the page. Strip them first. A test
+must assert the absence of the ESCAPED form (`&lt;!--[if`) — the raw markers
+are legitimate comments on every Livewire page — and `assertSee` matches
+straight through the junk, which is how it shipped.
+
+## The team page: four tabs, schedule first
+
+    Schedule · Roster · Stats · News
+
+Schedule leads because it is what someone opening a team page came for. There
+is no Overview — its only content was the leaders, which belong under Stats.
+The season select sits inline to the RIGHT of the tab strip, unlabeled (four
+digit years are self-evident, and the label was the widest thing on the row);
+its accessible name is an `aria-label`. The strip scrolls inside its own
+`min-w-0` track so it shrinks rather than pushing the select off-screen.
+
+Stats answers two different questions and so carries its own toggle:
+
+    Leaders   who on this team is good — headline lines with a full stat
+              line, then per-position groups (Passing, Rushing, Receiving,
+              Defense)
+    Team      how good the team is — categories bucketed into Offense,
+              Defense, Special Teams
+
+Both bucket maps keep an "Other" catch-all, because ESPN adds categories
+without telling anyone and a hardcoded list silently drops them. Reading
+ESPN's own order put `defensive` first and `scoring` near the end, so the
+screen opened on tackles rather than points.
 
 ## A team logo never sits on the team's color
 
@@ -969,15 +1000,27 @@ in the glance-card header and the team-page hero:
   in dark — which also matches the logo variant `x-team-logo` picks, since
   ESPN's dark-variant logos are drawn for dark surfaces.
 - **Text color on an accent is COMPUTED, never assumed white.**
-  `Team::accentContrast()` runs YIQ luminance with a threshold of 150: maize
-  and gold take near-black text, and Tennessee's #FF8200 sits at 152 — the
-  dark side, correctly, because white on that orange is about 2.4:1.
+  `Team::accentContrast()` prefers the team's own SECONDARY color when it
+  genuinely reads against the primary — maize on Michigan navy is the pairing
+  the school itself uses, and it beats any computed black or white. It admits
+  the secondary at a YIQ brightness difference of 90, not the old-guideline
+  125, because hero text is large and bold and 125 rejects white-on-orange
+  (a difference of 103). When the secondary is tone-on-tone (Georgia's black
+  on red) it falls back to black-or-white by luminance.
 
 The branding lives in the surface instead: the `team-gradient` utility (accent
 falling toward its own shadow) and a 3px `alt_color` keyline along the
 header's bottom edge, jersey-piping style. `--team-accent-contrast` is set
 per-surface from `accentContrast()`; the flat `team-accent` utility remains
 for surfaces that carry no logo.
+
+**A control ON the accent must draw its colors FROM it.** The follow button
+lives in the hero and is hand-rolled rather than a `flux:button`: no fixed
+variant holds contrast across 136 team colors. Follow INVERTS the hero —
+`background: var(--team-accent-contrast); color: var(--team-accent)` — so it
+reuses the one pairing the header already proved readable, and Following
+recedes to an outline in `currentColor`. Same rule for the limit message
+beside it: `opacity-90` on the inherited color, never a fixed amber.
 
 ## A game card names the PLACE, not the team
 

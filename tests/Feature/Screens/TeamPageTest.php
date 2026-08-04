@@ -3,11 +3,14 @@
 use App\Models\Athlete;
 use App\Models\AthleteTeamSeason;
 use App\Models\Conference;
+use App\Models\Game;
 use App\Models\Position;
+use App\Models\Season;
 use App\Models\Standing;
 use App\Models\Team;
 use App\Models\TeamLeader;
 use App\Models\TeamSeason;
+use App\Models\TeamSeasonStat;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -79,6 +82,7 @@ it('shows season leaders with their stat line', function () {
 
     Livewire::test('team', ['team' => $this->team])
         ->set('year', 2025)
+        ->set('tab', 'stats')
         ->assertSee('Passing')
         ->assertSee('Gunner Stockton')
         ->assertSee('2691 YDS');
@@ -95,6 +99,7 @@ it('orders leaders by the published category order, not insertion order', functi
 
     Livewire::test('team', ['team' => $this->team])
         ->set('year', 2025)
+        ->set('tab', 'stats')
         ->assertSeeInOrder(['Passing', 'Tackles']);
 });
 
@@ -119,22 +124,111 @@ it('says which season the roster belongs to when it is not the one selected', fu
 it('shows empty states rather than erroring for a season with no data', function () {
     Livewire::test('team', ['team' => $this->team])
         ->set('year', 2019)
+        ->set('tab', 'stats')
         ->assertOk()
         ->assertSee('No leaders yet');
 });
 
-describe('the branded hero', function () {
-    it('computes the text color from the accent instead of assuming white', function () {
-        // White text on a light accent is the same failure as an orange logo
-        // on an orange surface. Maize must get near-black text.
-        $maize = Team::factory()->create(['slug' => 'michigan-wolverines', 'color' => 'FFCB05']);
-        $navy = Team::factory()->create(['slug' => 'navy-team', 'color' => '002244']);
+describe('the tabs', function () {
+    it('opens on the schedule', function () {
+        // What someone opening a team page came to see. Overview is gone —
+        // its only content was the leaders, which now live under Stats.
+        $game = Game::factory()->create([
+            'season_id' => Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR])->id,
+            'home_team_id' => 61, 'away_team_id' => null,
+            'kickoff_at' => '2025-09-06 19:30:00',
+        ]);
 
-        expect($maize->accentContrast())->toBe('#18181b')
-            ->and($navy->accentContrast())->toBe('#ffffff')
-            // Tennessee orange sits at YIQ 152 — the dark side, correctly:
-            // white on #FF8200 is about 2.4:1.
-            ->and(Team::factory()->make(['color' => 'FF8200'])->accentContrast())->toBe('#18181b')
+        Livewire::test('team', ['team' => $this->team])
+            ->assertSet('tab', 'schedule')
+            ->assertSeeInOrder(['Schedule', 'Roster', 'Stats', 'News'])
+            ->assertSee(route('game', $game), escape: false);
+    });
+
+    it('floats an unlabeled season select to the right of the tabs', function () {
+        // One row: tabs left, season right. The visible "Season" label is
+        // gone — four-digit years speak for themselves and the label was the
+        // widest thing on the row — so the accessible name carries it.
+        Livewire::test('team', ['team' => $this->team])
+            ->assertSee('aria-label="Season"', escape: false)
+            ->assertDontSee('>Season<', escape: false)
+            ->set('year', 2023)
+            ->assertSet('year', 2023);
+    });
+});
+
+describe('the stats tab', function () {
+    beforeEach(function () {
+        foreach ([
+            'passingYards' => '2691',
+            'totalTackles' => '96',
+            'receptions' => '54',
+        ] as $category => $value) {
+            TeamLeader::create([
+                'team_id' => 61, 'season_year' => 2025, 'category' => $category,
+                'athlete_id' => $this->qb->id, 'rank' => 1, 'display_value' => $value,
+            ]);
+        }
+
+        // `stats` is KEYED by ESPN's stat name, not a list.
+        TeamSeasonStat::create([
+            'team_id' => 61, 'season_year' => 2025, 'season_type' => 2, 'category' => 'defensive',
+            'stats' => ['sacks' => ['display' => '34', 'value' => 34, 'rank' => 12, 'label' => 'Sacks']],
+        ]);
+        TeamSeasonStat::create([
+            'team_id' => 61, 'season_year' => 2025, 'season_type' => 2, 'category' => 'scoring',
+            'stats' => ['points' => ['display' => '412', 'value' => 412, 'rank' => 8, 'label' => 'Points']],
+        ]);
+    });
+
+    it('groups individual leaders by position type', function () {
+        Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2025)
+            ->set('tab', 'stats')
+            ->assertSeeInOrder(['Passing', 'Receiving', 'Defense']);
+    });
+
+    it('toggles to team stats, offense before defense', function () {
+        // ESPN publishes these flat and alphabetically-ish, so `defensive`
+        // came first and the page opened on tackles rather than points.
+        Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2025)
+            ->set('tab', 'stats')
+            ->set('statsView', 'team')
+            ->assertSeeInOrder(['Offense', 'Scoring', 'Defense'])
+            ->assertSee('412');
+    });
+
+    it('keeps leaders and team stats out of each other\'s view', function () {
+        $leaders = Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2025)->set('tab', 'stats');
+
+        $leaders->assertSee('2691')->assertDontSee('412');
+
+        $leaders->set('statsView', 'team')
+            ->assertSee('412')
+            ->assertDontSee('2691');
+    });
+});
+
+describe('the branded hero', function () {
+    it('prefers the secondary color for text when it reads against the primary', function () {
+        // The school's own pairing beats a computed black or white: maize on
+        // Michigan navy is what the brand actually looks like.
+        $michigan = Team::factory()->make(['color' => '00274C', 'alt_color' => 'FFCB05']);
+
+        expect($michigan->accentContrast())->toBe('#FFCB05');
+    });
+
+    it('falls back to black or white when the secondary is tone-on-tone', function () {
+        // Georgia's black on red is barely a contrast at all, so the hero
+        // takes white instead. Same for a team with no secondary.
+        $georgia = Team::factory()->make(['color' => 'BA0C2F', 'alt_color' => '000000']);
+        $maize = Team::factory()->make(['color' => 'FFCB05', 'alt_color' => 'FFCB05']);
+
+        expect($georgia->accentContrast())->toBe('#ffffff')
+            ->and($maize->accentContrast())->toBe('#18181b')
+            ->and(Team::factory()->make(['color' => '002244', 'alt_color' => null])->accentContrast())->toBe('#ffffff')
             ->and(Team::factory()->make(['color' => null])->accentContrast())->toBeNull()
             ->and(Team::factory()->make(['color' => 'xyzzy!'])->accentContrast())->toBeNull();
     });
@@ -143,6 +237,8 @@ describe('the branded hero', function () {
         // The logo rides a neutral puck — white in light mode, near-black in
         // dark — because a one-color mark in the team's own color vanishes
         // into an accent background.
+        $this->team->update(['color' => '154733', 'alt_color' => '000000']);
+
         Livewire::test('team', ['team' => $this->team])
             ->assertSee('team-gradient', escape: false)
             ->assertSee('bg-white shadow-md ring-1 ring-black/10 dark:bg-zinc-950', escape: false)
@@ -167,22 +263,26 @@ describe('the hero identity', function () {
         $html = Livewire::test('team', ['team' => $this->team])->html();
 
         expect($html)->toContain('App State')
-            ->toContain('font-light italic')
+            // Lighter, but NOT italic — italics read as an aside here.
+            ->toContain('text-base font-light leading-tight')
+            ->not->toContain('font-light italic')
             ->toContain('Mountaineers');
 
-        // The mascot line renders in the lighter italic, after the place.
+        // The mascot line renders after the place.
         expect(strpos($html, 'App State</span>'))->toBeLessThan(strpos($html, 'Mountaineers</span>'));
     });
 
-    it('moves the follow button below the hero and labels the season filter', function () {
-        $this->team->update(['name' => 'Bulldogs', 'location' => 'Georgia']);
-
-        // Reading order is the regression: identity in the hero, then the
-        // labelled season filter, then Follow — which now sits on the page
-        // surface where Flux's variants keep their contrast, instead of on
-        // 136 different accent colors.
+    it('keeps the follow button in the hero, drawing the hero\'s own colors', function () {
+        /*
+         * Back on the accent, but styled FROM it — the fill is the hero's
+         * text color and the label is the accent, so the pairing is the one
+         * the header already proved readable. A fixed Flux variant could not
+         * hold contrast across 136 team colors, which is what moved it off
+         * the hero in the first place.
+         */
         Livewire::test('team', ['team' => $this->team])
-            ->assertSeeInOrder(['Bulldogs', 'Season', 'Follow']);
+            ->assertSee('background-color: var(--team-accent-contrast); color: var(--team-accent)', escape: false)
+            ->assertSee('Follow');
     });
 });
 

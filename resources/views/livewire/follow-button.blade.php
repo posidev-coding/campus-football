@@ -8,7 +8,7 @@ use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 /**
- * Follow / unfollow a team.
+ * Follow / unfollow a team, styled for the accent hero it lives on.
  *
  * Following is what triggers the per-team news fetch, so this is the control
  * that makes a team's News tab fill in.
@@ -68,21 +68,39 @@ new class extends Component
 }; ?>
 
 <div class="flex flex-col items-end gap-1">
-    {{-- Follow is the invitation, so it gets the fill; Following is a state
-         you can undo, so it recedes to ghost. This sits on the page surface —
-         it was moved out of the accent hero, where no fixed variant could
-         hold its contrast against 136 different team colors. --}}
+    {{-- Hand-rolled rather than flux:button: this sits on the team's accent,
+         and no fixed variant holds its contrast against 136 different colors.
+         Follow INVERTS the hero — the hero's text color as the surface, the
+         accent as the label — so the pairing is always the same one the
+         header already proved readable. Following recedes to an outline in
+         the hero's own text color. --}}
     @if ($this->following)
-        <flux:button wire:click="unfollow" size="sm" variant="ghost" icon="check">
+        <button
+            type="button"
+            wire:click="unfollow"
+            wire:loading.attr="disabled"
+            class="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-medium ring-1 ring-current/50 transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-50"
+        >
+            <flux:icon name="check" variant="micro" />
             Following
-        </flux:button>
+        </button>
     @else
-        <flux:button wire:click="follow" size="sm" variant="filled" icon="plus">
+        <button
+            type="button"
+            wire:click="follow"
+            wire:loading.attr="disabled"
+            class="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-semibold shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-50"
+            style="background-color: var(--team-accent-contrast); color: var(--team-accent);"
+        >
+            <flux:icon name="plus" variant="micro" />
             Follow
-        </flux:button>
+        </button>
     @endif
 
     @if ($error)
-        <p class="max-w-48 text-right text-micro text-amber-600 dark:text-amber-500">{{ $error }}</p>
+        {{-- Current color, not a fixed amber: this renders on an arbitrary
+             team accent, and the hero's text color is the one pairing already
+             proven readable there. --}}
+        <p class="max-w-48 text-right text-micro opacity-90">{{ $error }}</p>
     @endif
 </div>
