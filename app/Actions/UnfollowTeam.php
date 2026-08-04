@@ -16,5 +16,16 @@ class UnfollowTeam
     public function handle(User $user, Team $team): void
     {
         $user->followedTeams()->detach($team->id);
+
+        /*
+         * The favorite is one OF the followed teams, so unfollowing it has to
+         * clear it too. Left set, `favorite_team_id` would point at a team the
+         * user no longer follows — their news would still lead the home page
+         * and their games would still float to the top of the scoreboard, with
+         * nothing on the account screen to explain why or turn it off.
+         */
+        if ($user->favorite_team_id === $team->id) {
+            $user->forceFill(['favorite_team_id' => null])->save();
+        }
     }
 }

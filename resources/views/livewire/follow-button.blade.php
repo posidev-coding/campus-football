@@ -2,6 +2,7 @@
 
 use App\Actions\FollowTeam;
 use App\Actions\UnfollowTeam;
+use App\Exceptions\FollowLimitReached;
 use App\Models\Team;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -16,6 +17,11 @@ new class extends Component
 {
     public Team $team;
 
+    /**
+     * Set when the user is already following as many teams as they may.
+     */
+    public string $error = '';
+
     public function follow(FollowTeam $action): void
     {
         // Guests get sent to log in rather than a silent no-op.
@@ -25,7 +31,17 @@ new class extends Component
             return;
         }
 
-        $action->handle(auth()->user(), $this->team);
+        $this->error = '';
+
+        try {
+            $action->handle(auth()->user(), $this->team);
+        } catch (FollowLimitReached $e) {
+            // Said out loud, next to the button they just pressed. A follow
+            // that silently does nothing looks like a broken button.
+            $this->error = $e->getMessage();
+
+            return;
+        }
 
         unset($this->following);
     }
@@ -35,6 +51,8 @@ new class extends Component
         if (! auth()->check()) {
             return;
         }
+
+        $this->error = '';
 
         $action->handle(auth()->user(), $this->team);
 
@@ -49,7 +67,7 @@ new class extends Component
     }
 }; ?>
 
-<div>
+<div class="flex flex-col items-end gap-1">
     @if ($this->following)
         <flux:button wire:click="unfollow" size="sm" variant="filled" icon="check">
             Following
@@ -58,5 +76,9 @@ new class extends Component
         <flux:button wire:click="follow" size="sm" variant="ghost" icon="plus">
             Follow
         </flux:button>
+    @endif
+
+    @if ($error)
+        <p class="max-w-48 text-right text-micro text-amber-600 dark:text-amber-500">{{ $error }}</p>
     @endif
 </div>

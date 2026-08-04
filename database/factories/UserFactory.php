@@ -25,7 +25,24 @@ class UserFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => fake()->name(),
+            'first_name' => fake()->firstName(),
+            'last_name' => fake()->lastName(),
+            /*
+             * Unique, because the column is — a collision surfaces as a
+             * confusing constraint violation in whatever test ran second rather
+             * than as a factory problem.
+             *
+             * And built to pass the app's OWN rule: `fake()->userName()` emits
+             * dots and capitals, so a fixture using it produced a user the
+             * validation would reject. That failed intermittently, on the runs
+             * where faker happened to pick a name with a dot in it.
+             */
+            'handle' => Str::of(fake()->unique()->userName())
+                ->lower()
+                ->replaceMatches('/[^a-z0-9_]/', '')
+                ->padRight(3, 'x')
+                ->limit(20, '')
+                ->toString(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),

@@ -1,16 +1,23 @@
 <?php
 
+use App\Enums\ContentRating;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
 new #[Layout('components.layouts.auth')] class extends Component
 {
-    public string $name = '';
+    public string $first_name = '';
+
+    public string $last_name = '';
+
+    public string $handle = '';
 
     public string $email = '';
 
@@ -18,12 +25,34 @@ new #[Layout('components.layouts.auth')] class extends Component
 
     public string $password_confirmation = '';
 
+    /**
+     * Pre-selected, not blank. This is a preference with a sensible middle, and
+     * an unset radio group would make it feel like a required decision the user
+     * has to research before they can sign up.
+     */
+    public string $content_rating = 'pg13';
+
     public function register(): void
     {
         $validated = $this->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
+            /*
+             * Lowercased and constrained to the characters a handle can be
+             * typed and @-mentioned with. `unique` is backed by a unique index
+             * on a case-insensitive collation, so two people cannot end up as
+             * `@taylor` and `@Taylor`.
+             */
+            'handle' => [
+                'required', 'string', 'min:3', 'max:20',
+                'regex:/^[a-z0-9_]+$/',
+                'unique:'.User::class,
+            ],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
             'password' => ['required', 'string', 'confirmed', Rules\Password::defaults()],
+            'content_rating' => ['required', Rule::enum(ContentRating::class)],
+        ], [
+            'handle.regex' => 'Handles use lowercase letters, numbers and underscores.',
         ]);
 
         $validated['password'] = Hash::make($validated['password']);
@@ -33,6 +62,14 @@ new #[Layout('components.layouts.auth')] class extends Component
         Auth::login($user);
 
         $this->redirectIntended(default: route('home', absolute: false), navigate: true);
+    }
+
+    /**
+     * Typing a capital should not become a validation error to read and fix.
+     */
+    public function updatedHandle(): void
+    {
+        $this->handle = Str::of($this->handle)->lower()->replaceMatches('/[^a-z0-9_]/', '')->substr(0, 20)->toString();
     }
 }; ?>
 
@@ -45,16 +82,47 @@ new #[Layout('components.layouts.auth')] class extends Component
     <x-auth-session-status class="text-center" :status="session('status')" />
 
     <form wire:submit="register" class="flex flex-col gap-6">
+        <div class="flex gap-3">
+            <flux:input
+                wire:model="first_name"
+                label="First name"
+                type="text"
+                name="first_name"
+                required
+                autofocus
+                autocomplete="given-name"
+                class="flex-1"
+            />
+
+            <flux:input
+                wire:model="last_name"
+                label="Last name"
+                type="text"
+                name="last_name"
+                required
+                autocomplete="family-name"
+                class="flex-1"
+            />
+        </div>
+
+        {{-- "Handle" rather than "username": it is what the sport's own corner
+             of the internet calls it, and it sets the expectation that this is
+             the name you are shouted at by, not a login credential. --}}
         <flux:input
-            wire:model="name"
-            label="Name"
+            wire:model="handle"
+            x-mask:dynamic="$input.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20)"
+            label="Handle"
             type="text"
-            name="name"
+            name="handle"
             required
-            autofocus
-            autocomplete="name"
-            placeholder="What your friends call you"
-        />
+            autocomplete="username"
+            placeholder="dawgpound99"
+            description="How you show up on leaderboards and in group chat."
+        >
+            <x-slot name="iconLeading">
+                <span class="ps-3 text-sm text-zinc-400">&#64;</span>
+            </x-slot>
+        </flux:input>
 
         <flux:input
             wire:model="email"
@@ -85,6 +153,38 @@ new #[Layout('components.layouts.auth')] class extends Component
             autocomplete="new-password"
             viewable
         />
+
+        {{-- Asked at registration rather than buried in settings, because it
+             changes the voice of the product from the first screen — and
+             because a person who would have wanted PG should never have to see
+             the alternative first to discover the setting exists. --}}
+        <flux:radio.group
+            wire:model="content_rating"
+            label="Trash talk"
+            description="We roast your picks, your team and your record — never you. This sets how hard."
+            variant="cards"
+            class="flex-col"
+        >
+            @foreach (ContentRating::cases() as $rating)
+                {{-- Three parts, in the order they are read: the rating is the
+                     shorthand people scan for, the sub-label says what it means
+                     here, and the description says what it actually changes. --}}
+                {{-- `label` AND the slot: the cards variant nests its
+                     description inside an `if ($label)` branch, so passing only
+                     a slot silently drops the description. The slot still wins
+                     for what is displayed. --}}
+                <flux:radio
+                    :value="$rating->value"
+                    :label="$rating->label()"
+                    :description="$rating->description()"
+                >
+                    <span class="flex items-baseline gap-2">
+                        <span class="font-medium">{{ $rating->label() }}</span>
+                        <span class="text-sm text-zinc-500">{{ $rating->subLabel() }}</span>
+                    </span>
+                </flux:radio>
+            @endforeach
+        </flux:radio.group>
 
         <flux:button variant="primary" type="submit" class="w-full">
             Create account

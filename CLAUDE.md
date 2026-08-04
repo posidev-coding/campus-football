@@ -388,6 +388,315 @@ There is no `/bowls` route. Note the consequence, which is deliberate but worth
 knowing: Scores has no season selector, so **historical** bowls are reachable
 only through a team's schedule or a direct game URL, not by browsing.
 
+## An unannounced fixture has a NEGATIVE team id
+
+ESPN publishes every bowl and playoff game months ahead as "TBD at TBD", and it
+does not use a null competitor to say so — it sends a real competitor whose team
+id is **-1** (home) and **-2** (away), named "TBD". Conference championships are
+the same until their standings resolve.
+
+`games.home_team_id` is `mediumint unsigned` with a foreign key, so storing that
+verbatim **throws**. Map any non-positive id to null: the column is nullable and
+`x-team-link` already renders a null team as "TBD", so the fixture keeps its
+date, venue and bowl name and only the matchup is blank — which is exactly what
+the schedule is at that point. Same rule as the box-score pseudo-athletes: ESPN
+uses non-positive ids for things that are not real entities.
+
+**What made this expensive was the lack of isolation.** The throw aborted the
+whole scoreboard request, so every event behind it in the payload was lost —
+the 2026 season silently stopped at the first conference championship on Dec 4
+and not one of its 43 bowl and playoff games was ever stored. The per-event
+`try/catch` in `SyncGames::range()` is what stops one bad game costing a season;
+treat a loop over a payload the same way the job fan-out treats a loop over
+teams.
+
+**A scope filter must not swallow them.** `Scope::teamIds()` matches on teams, so
+a TBD fixture matches nothing and the entire postseason vanishes for the eleven
+months when the date and venue are the only things on offer. The scoreboard adds
+`orWhere(home IS NULL AND away IS NULL)` — a fixture with no teams cannot be
+excluded on the basis of its teams. That is an escape hatch for UNANNOUNCED
+games only; a real matchup outside the scope still filters out.
+
+## Reordering needs a FLIP, and it must use `animate()`
+
+The followed-teams list puts the pinned team first, so pinning a lower row
+reorders it. Order is not an animatable CSS property, so a Tailwind transition
+cannot do this on its own — the list just snaps.
+
+The fix is a FLIP: record each row's offset BEFORE the click goes out (capture
+phase, so nothing has moved yet), then once Livewire has reordered the DOM, put
+each row back where it was and let it travel to where it now belongs.
+
+Two things that bit, both from Livewire's morph:
+
+- **Consume the captured positions.** The MutationObserver fires more than once
+  per update. A second pass measures a row that is already mid-flight, reads a
+  delta of zero, and returns early — leaving the row frozen at its full offset.
+- **Use `element.animate()`, not a transform cleared on the next frame.** The
+  morph can replace a row between setting the transform and the frame that
+  clears it, so the cleanup runs against a detached node and the transform is
+  stranded in the inline style forever. `animate()` leaves no inline style at
+  all, so there is nothing to strand.
+
+Verify the END state, not the tween — animations do not advance in an automated
+tab (`currentTime` stays 0). Call `getAnimations().forEach(a => a.finish())` and
+assert the transforms are `none` and no `style` attribute survives.
+
+## The voice: `ContentRating` drives copy, and it is not decoration
+
+This app is meant to be **fun, funny, and a bit of a wind-up**. That is a
+product requirement, not a coat of paint applied at the end. A pick'em app that
+reads like a spreadsheet has already lost to the group chat it is competing
+with.
+
+So `$user->content_rating` is not just a flag for generated taunts — it is the
+register the whole interface speaks in. **Wherever there is copy with a
+personality budget, write all three versions when you write the screen**, not
+later: descriptions, subtext, empty states, button labels, confirmations,
+tooltips, error messages, instructional text, notifications.
+
+    PG     Mild           clean, still warm — never limp
+    PG-13  Locker Room    the default; how the group chat actually talks
+    R      Anything Goes  unfiltered, for the people who asked for it
+
+### Where it applies, and where it must not
+
+    LOUD   Account · Pick'em · Gamification · Groups · Notifications
+           Anything about YOU, your picks, your record, your rivals.
+
+    PURE   Scores · League (standings, rankings, stats, leaders, teams,
+           players, recruiting, news)
+           Someone checking a score wants the score. A joke between a reader
+           and a fact is friction, and it makes the data look less trustworthy
+           — which is the one thing this app cannot afford, given three
+           rebuilds went wrong on data.
+
+The line is not "serious vs silly", it is **whose content it is**. A scoreboard
+reports what happened. A pick'em screen is talking TO somebody about what they
+did, and that is where the voice belongs. Chrome that frames factual screens —
+an empty state, an onboarding hint — can still carry personality; the facts
+themselves stay untouched.
+
+### Rules the voice does not get to break
+
+- **Roast the pick, the team, the record — never the person.** Already stated
+  on the enum, and it is what keeps this funny instead of a liability. It is
+  also what keeps the mobile build inside its App Store age rating.
+- **PG is not "the boring one".** If the PG variant reads like documentation
+  while PG-13 is the only one with jokes, PG has been written as a punishment.
+  Every level should feel like it was written on purpose.
+- **Never let the joke eat the instruction.** If a user cannot tell what a
+  control does after reading the funny version, the funny version is wrong.
+- **Fall DOWN the ladder, never up.** `ContentRating::includes()` already
+  encodes this: an R user can be shown PG copy, a PG user must never see PG-13.
+  Missing copy at a level resolves downward.
+
+### The resolver
+
+`App\Support\Voice::line($key, $replace, $for)`. Copy lives in one map so all
+three variants of a line sit side by side — which is how you catch PG being
+written as a punishment. Resolution walks `includes()` in reverse and takes the
+first level that exists, so a line defining only `pg` is safe to add and a line
+defining only `r` never reaches anyone who did not ask for it. Unknown key
+returns `''`, never the key.
+
+Account is done and is the reference implementation. Note what was deliberately
+left alone there:
+
+- **the search placeholder** — an affordance, read every time the field is
+  empty; the AT-LIMIT message beside it does speak, because that one is about
+  something the user just did
+- **the handle format rule** — "lowercase letters, numbers and underscores" is
+  where a joke would eat the instruction
+- **field labels and section headings** — people navigate by them
+
+**Copy does not belong in exceptions.** `FollowLimitReached` carries a
+developer message for logs; what the user reads comes from `Voice`, because a
+string baked into an exception can only ever speak in one register.
+
+## Identity: first/last name, a handle, and a content rating
+
+Registration collects **first and last name separately**, a **handle**, and a
+**content rating**; all four are editable from Account. There is no `name`
+column — `$user->name` is an accessor over the two halves, which is why nothing
+that printed a user had to change.
+
+**Handle, not username.** It is the sport's own vernacular, and it sets the
+expectation that this is the name you are shouted at by rather than a login
+credential. Unique, and case-insensitively so: the column's
+`utf8mb4_unicode_ci` collation makes the unique index reject `@Taylor` when
+`@taylor` exists, which is the confusion a handle is for preventing. On edit the
+rule needs `Rule::unique(...)->ignore($user->id)` or saving any other field
+fails against your own row.
+
+**Mask the handle on the CLIENT, validate on the server.** Livewire will not
+overwrite a focused input — that is what stops it clobbering your typing — so a
+server-side clean leaves the visible text disagreeing with the stored value
+until blur. `x-mask:dynamic` corrects the character as it is typed; the rule
+stays as the guarantee.
+
+**`ContentRating` replaced `TrashTalkIntensity`** — the same axis with borrowed
+vocabulary, because "Mild / Locker Room / No Holds Barred" needed explaining and
+PG / PG-13 / R does not. The old names survive as SUB-labels, except the top
+tier: "No Holds Barred" is wrestling jargon and is now "Anything Goes". Values
+were remapped in place by the migration so nobody's setting reset. Default is
+PG-13, pre-selected at registration rather than blank — an unset radio group
+reads as a decision you must research before you are allowed to sign up.
+
+Two Flux details this turned up:
+
+- **`flux:radio` in the `cards` variant nests its description inside an
+  `if ($label)` branch.** Passing only a slot silently drops the description;
+  pass `label` AND the slot, and the slot still wins for display.
+- **Factories must satisfy the app's own rules.** `fake()->userName()` emits
+  dots and capitals, so fixtures built a user the handle validation rejects —
+  failing only on the runs where faker picked a name with a dot in it.
+
+## Prefer Bootstrap Icons
+
+Reach for [Bootstrap Icons](https://icons.getbootstrap.com) first. They are
+16px FILLED paths — no stroke — so they sit lighter than Lucide's 2px outlines,
+which read as heavy next to everything else on a dense screen.
+
+`php artisan flux:icon` imports from Lucide ONLY. Bootstrap ones are added by
+hand, which is fine because a Flux icon is just a Blade file in
+`resources/views/flux/icon/` following a small contract — see
+`pin-angle.blade.php` for the shape. Credit the source in a comment; Bootstrap
+Icons are MIT.
+
+Two things that shape how they are used:
+
+- **`variant` controls SIZE only.** Bootstrap ships outline and filled as
+  separate icons, not variants of one, so a filled state selects a different
+  component (`pin-angle-fill`) rather than passing `variant="solid"`.
+- **Pass them as a CHILD, never through `icon="..."`.** That prop resolves
+  against Flux's own set and falls back silently when the name is not in it, so
+  a button renders a stroked 24px glyph while `flux:icon.pin-angle` on its own
+  renders the Bootstrap one. As a child it is unambiguous, and its colour can be
+  set directly instead of being fought past the button's own `text-*`.
+
+Heroicons stay in place where they are already used and where the set has a good
+match — this is a preference for new work, not a migration.
+
+## "Pinned" is the word; `favorite_team_id` is the column
+
+One team leads the home page and floats to the top of the scoreboard. The UI
+calls that **pinned**, with a pin icon — the schema still calls it
+`favorite_team_id`, and the relation is still `favoriteTeam()`, because both are
+referenced across the app and renaming them buys nothing. Nothing a user reads
+says "favorite" or "primary"; both were tried and dropped.
+
+The mark is Bootstrap's `pin-angle` / `pin-angle-fill` in blue. Heroicons has no
+plain pin — only `map-pin`, which reads as a LOCATION and is actively wrong in
+an app full of venues.
+
+## One card for teams, and never two searchable listboxes on a screen
+
+Account has a single "Your teams" card: a search that follows, a list, and a pin
+on each row (pressed again, it unpins).
+
+It was two cards, and the split caused a real bug. Choosing it was its
+own `flux:select variant="listbox" searchable` over EVERY FBS team, sitting on
+the same screen as the follow search. **Picking a team to follow silently
+rewrote the pinned team** — the two listboxes shared option values and
+cross-wired, so an add wrote to both bound properties. It looked like teams were
+vanishing from the follow list, and the tell was the survivor pattern: the
+pinned team plus whichever team was picked last.
+
+Promoting from the list the user already has removes the whole class of problem:
+
+- one searchable listbox on the screen, so nothing to collide with
+- pinning cannot pull in a new team, so it can never hit the follow cap — the
+  old picker could select an unfollowed team and had to be refused at five
+- `togglePin` still guards that the team is followed, because it is a public
+  Livewire method and the client can call it with any id
+
+**Unfollowing the pinned team clears it.** Otherwise `favorite_team_id` points at a
+team the user no longer follows, and their news keeps leading the home page and
+their games keep floating up the scoreboard with nothing on the account screen
+to explain it or turn it off.
+
+## Appearance lives on Account, and Flux owns the mechanism
+
+Light / Dark / System is a segmented `flux:radio.group` bound to
+`x-model="$flux.appearance"`. Flux's store already does the four things a
+hand-rolled toggle gets wrong: writes `.dark` on `<html>`, persists the choice,
+honours the OS setting under "System", and keeps listening for OS changes after
+load rather than freezing at page render. `@fluxAppearance` must stay in BOTH
+layouts for it.
+
+It sits **in Account's sticky heading**, floated right as three icon-only
+segments — the labels were the widest thing on the screen and said less than the
+icons do. Account for the same reason Log out and Admin are there: below `sm`
+there is no header, so a control that only exists in the desktop avatar dropdown
+is unreachable on a phone.
+
+That heading is sticky on the same offsets as the scoreboard's chrome —
+`-mt-5` to cancel the container's `py-5`, and `sm:top-[calc(var(--spacing)*14+1px)]`
+for the header's `h-14` plus its border — so it rests exactly where it sticks
+rather than drifting on the first scroll.
+
+The choice is per-BROWSER, not per-account — it is in localStorage, not on
+`users`. Fine for now; syncing across devices would need a column and a write on
+every toggle.
+
+**`theme-color` has to be kept in step.** It was hardcoded `#09090b`, so picking
+Light left a phone's address bar black. An `x-effect` in `<body>` re-tints it
+from `$flux.dark`. It cannot go on the meta tag itself — Alpine only initialises
+inside `<body>`, so `x-data` in `<head>` is never picked up.
+
+## American spelling, everywhere
+
+**Favorite, not favourite.** This is an American football app; British spellings
+read as a mistake in it. The rule covers UI copy, comments, PHPDoc, variable and
+method names, tests and this file — not just what a user sees.
+
+The database column was always `favorite_team_id`, so a stray "favourite" in a
+comment sitting next to it was the tell. Same for color/colour, center/centre,
+canceled/cancelled.
+
+## Float followed teams by PARTITIONING, never by a second query
+
+A signed-in viewer's teams are lifted to the top of the scoreboard out of the
+games the scope already admitted — one pass over one result set, not a separate
+fetch per team.
+
+That is what makes the rule hold without anybody writing the rule: pick Top 25
+while your team is unranked and their game was never in the set to be lifted out
+of, so it does not appear. Fetching it separately and re-checking the scope
+afterwards is the same behavior held together by a condition that has to be kept
+in step with `Scope` forever.
+
+**All followed teams float, favorite first**, then the rest in the order they
+were followed. Four things the presentation has to get right:
+
+- **First team to want a game claims it.** Two followed teams playing each other
+  is one game, shown once under whichever of them ranks higher — walking the
+  teams in priority order and marking each game claimed is what prevents the
+  same card appearing under both.
+- **Move it, do not copy it.** A pinned game is removed from its day group. A
+  card appearing twice reads as a duplicate fixture, not as a favorite.
+- **Carry the date on the pinned heading.** Lifted out of the chronology a card
+  only says "7:30pm", so the heading reads `Tennessee · Saturday, Sep 12`.
+- **Union the favorite with the followed list**, do not assume it is in there.
+  `SetFavoriteTeam` follows the team too, but a row written before that was true
+  would drop the viewer's own team off the top of their own scoreboard.
+
+The empty state must check BOTH halves. A week whose only in-scope games belong
+to the viewer's teams leaves the day groups empty, and keying the callout on
+those alone prints "Nothing on the slate" directly above their game.
+
+**Follows are capped at `User::MAX_FOLLOWED_TEAMS` (5), and the favorite is one
+of the five** — a followed team that also leads the home page, not a slot beside
+them. Past a handful the pinned block stops being a shortcut and becomes the
+slate again, and each follow also commits us to syncing that team's news.
+
+`FollowTeam` throws `FollowLimitReached` rather than silently declining, because
+a write that quietly does nothing gives you a button that looks like it worked
+and a news tab that never fills in. It checks "already following?" BEFORE the
+cap, or a user sitting at exactly five could not press Follow on a team they
+already follow.
+
 ## A filter that cannot mean anything must be disabled, not silently remapped
 
 `Scope::teamIds('top25')` falls back to FBS when a season has no poll — which is
@@ -406,13 +715,107 @@ are focusable and selectable, so a disabled one still lands under the keyboard.
 ## Sticky offsets are measured, not hardcoded
 
 The scoreboard's title and week strip stick as one block, and day headings stick
-below it. That offset comes from Alpine reading `offsetHeight` into
+below it. That offset comes from Alpine measuring the block into
 `--scores-chrome`, because the strip's height varies with font and the title
 wraps at narrow widths — a guessed constant leaves a gap or an overlap.
 
-Sticky headings need an OPAQUE background. `bg-white/90` with `backdrop-blur`
-softens what scrolls behind but does not stop it competing, and cards sliding
-under a day heading were genuinely hard to read.
+Three things that measurement has to get right, each one already paid for:
+
+**Height alone is not the offset.** The chrome is `top-0` at base but
+`sm:top-14`, clearing the layout header that only exists from `sm` up. Its
+resting bottom edge is `offsetHeight + getComputedStyle(el).top`. Measuring
+height alone parked every day heading 56px too high from `sm` up, behind the
+chrome instead of below it.
+
+**Write it to `document.documentElement`, never to the component root.** The
+server HTML carries no `style` attribute there, so Livewire's morph treats an
+inline one as drift and strips it. Picking a different week wiped the variable,
+`top` fell back to 0, and the headings stuck underneath the chrome. Livewire
+never morphs `<html>`.
+
+**Observe, don't just init.** A `ResizeObserver` catches the changes a window
+resize never sees — the webfont swapping in, the title wrapping, the strip
+gaining or losing the postseason pills. A window `resize` listener catches the
+reverse: crossing `sm` changes the chrome's `top` without changing its height.
+
+## A sticky block should have nothing to travel through
+
+"The heading drifts up slightly when you scroll" is a sticky element resting
+BELOW where it sticks. It scrolls normally until it closes that gap. Three
+sources, all of them removed on the scoreboard:
+
+- the layout container's `py-5` — cancelled with `-mt-5` on the sticky block,
+  the same way `-mx-4` already cancelled its `px-4`
+- the block's own `pt-1` — spacing moved INSIDE as `pt-3`, so it belongs to the
+  chrome and travels with it instead of scrolling away
+- **one pixel of header border.** `h-14` plus `border-b` is 57px, not 56, so a
+  flat `sm:top-14` left exactly 1px of drift. The offset is
+  `sm:top-[calc(var(--spacing)*14+1px)]`
+
+Below `sm` that header can be genuinely EMPTY — Scores is a single-screen area,
+so the bar is `sm:flex` and the strip renders nothing, leaving an unconditional
+`border-b` as a 1px rule floating at the top of the screen. It is now
+`sm:border-b`, plus `border-b` at base only when sections exist.
+
+Prefer `sticky` with zero travel over `fixed`. They look identical, but `fixed`
+leaves the flow and drops the page underneath it — needing a spacer the exact
+height of a block whose height is variable, which is what `--scores-chrome`
+exists to measure in the first place.
+
+## `truncate` cannot clip a box that is free to grow
+
+The symptom does not look like a text problem. The page scrolls sideways, and
+because the tab bar is `fixed` and the screen chrome is `sticky` — both of which
+pin to the VIEWPORT, not to the content — they stay put while everything else
+travels underneath them. It reads as the nav losing its positioning and the
+screen coming apart on both axes.
+
+The cause is always the same shape. A flex or grid ITEM keeps its automatic
+minimum size, which is its **min-content width**. `truncate` sets
+`white-space: nowrap`, and the min-content width of unwrappable text is the
+whole string. So the item grows to fit the text rather than clipping it, and
+truncation never gets a constrained box to work against.
+
+**`min-w-0` on the item is what makes `truncate` work at all.** Three live
+instances, all found by measuring rather than reading:
+
+    game card        404px in a 343px track   longest CFP bowl name
+    recruit row      516px in a 343px track   high school + hometown
+    conference head   select pushed off-screen  long conference name
+
+It surfaces where the longest strings are, so the postseason and a team's
+hometown find it before anything else does.
+
+Check for it with the document, never the eye — an element's
+`getBoundingClientRect()` still reports its full width inside an
+`overflow-x: auto` container, so a `stat-grid` table reads as an overflow when
+it is behaving exactly as intended. The real test is whether the document
+actually scrolls:
+
+    scrollTo({left: 999}); window.scrollX === 0
+
+## An opaque background does not win a z-index tie
+
+Sticky headings need an OPAQUE background — `bg-white/90` with `backdrop-blur`
+softens what scrolls behind but does not stop it competing. That was necessary
+and NOT sufficient, and the second half looks identical to the first: team names
+painting over the heading reads as "the background is gone".
+
+A game card's inner wrapper is `relative` with `z-index: auto`, which opens **no
+stacking context**. So the team rows' `relative z-10` stays in the ROOT context,
+ties with the day heading's `z-10`, and wins on tree order because cards come
+later in the document.
+
+The ladder, and the rule behind it — app chrome is always above anything a
+screen sticks to its own viewport:
+
+    40   layout header, bottom tab bar      app chrome
+    30   scoreboard title + week strip      screen chrome
+    20   day headings
+    10   game card contents
+
+`position: relative` with `z-index: auto` creating no stacking context is the
+part that surprises. Check for it before assuming a paint order is safe.
 
 ## Beware a random factory date in a shared fixture
 
@@ -447,6 +850,49 @@ selects stack full-width; the custom `@utility team-accent` and `stat-grid` were
 absent entirely because nothing used them at the previous build.
 
     npm run build     # after any new utility class, always
+
+## Naming a font in `@theme` does not load it
+
+`--font-sans` sat in `app.css` naming a family that was never fetched, so the
+whole app rendered in system-ui and looked merely "a bit off" rather than
+broken. `@vite` does NOT emit font faces; the layout needs `@fonts`, in BOTH
+`layouts/app` and `layouts/auth`.
+
+The face is Archivo, self-hosted as a real VARIABLE font — one 35 KB file whose
+`font-weight: 100 900` covers `font-thin` through `font-black`. Two dead ends
+before that, both worth not repeating:
+
+- **bunny/google css2 have no variable Archivo.** `wght@100..900` is accepted
+  and silently returns the same nine static cuts, so a full range would be
+  eighteen downloads.
+- **`fontsource()` cannot resolve a variable package.** It matches subset files
+  by `-{subset}-{weight}-{style}`, which never matches
+  `archivo-latin-wght-normal` whose weight parses as the string "100 900". It
+  throws at build time.
+
+So the woff2 is checked into `resources/fonts/` and declared with `local()` at
+weight `'100 900'`. Only the `latin` subset: verified, not assumed — zero of
+34,836 athlete names use a character outside Latin-1.
+
+## A game card names the PLACE, not the team
+
+`Team::placeName()` — "North Carolina", never "North Carolina Tar Heels". A card
+is scanned rather than read, and the nickname is decoration sitting in front of
+the word the reader is looking for.
+
+Past 16 characters it falls back to `short_display_name`, ESPN's own shortening
+(FIU, Jax State, Mississippi St, N Illinois). That is 4 of 136 FBS teams; for
+103 the two columns are already identical, so the substitution is invisible
+wherever it is not needed.
+
+**It is not breakpoint-gated, and must not be.** A card is roughly 334px inside
+at 390px single-column but only ~276px when it goes two-up at `sm` — so the
+phone is the WIDEST case, and a `sm:` swap would put the short name where there
+is most room and the long one where there is least. The threshold is sized to
+the two-up card's ~144px name column.
+
+`location` must be in every constrained eager load feeding a game card
+(scoreboard, home, team, conference, game) — the usual missing-column trap.
 
 ## Verifying responsive layout
 

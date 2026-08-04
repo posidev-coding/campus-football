@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Exceptions\FollowLimitReached;
 use App\Jobs\SyncTeamNews;
 use App\Models\Team;
 use App\Models\User;
@@ -17,8 +18,23 @@ use App\Models\User;
  */
 class FollowTeam
 {
+    /**
+     * @throws FollowLimitReached when the user already follows the maximum
+     */
     public function handle(User $user, Team $team): void
     {
+        // Checked BEFORE the limit, not after. Re-following a team you already
+        // follow is a no-op, so it must not be rejected for being over the cap
+        // — a user sitting at exactly the limit would otherwise be unable to
+        // press follow on a team they are already following.
+        if ($user->followedTeams()->whereKey($team->id)->exists()) {
+            return;
+        }
+
+        if ($user->followedTeams()->count() >= User::MAX_FOLLOWED_TEAMS) {
+            throw new FollowLimitReached;
+        }
+
         // syncWithoutDetaching, so following twice is a no-op rather than a
         // unique-constraint violation.
         $user->followedTeams()->syncWithoutDetaching([$team->id]);

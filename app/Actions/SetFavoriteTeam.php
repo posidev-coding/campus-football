@@ -8,7 +8,7 @@ use App\Models\User;
 /**
  * Choose the one team whose news leads the home page.
  *
- * A favourite implies a follow — nobody picks a favourite team and then expects
+ * A favorite implies a follow — nobody picks a favorite team and then expects
  * not to be following it — so this goes through FollowTeam and inherits the
  * news dispatch rather than duplicating it.
  */

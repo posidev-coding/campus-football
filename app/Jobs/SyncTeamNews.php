@@ -11,7 +11,7 @@ use Illuminate\Foundation\Queue\Queueable;
 /**
  * Fetch one team's news feed.
  *
- * Dispatched when somebody follows a team or makes it their favourite, because
+ * Dispatched when somebody follows a team or makes it their favorite, because
  * that is the moment a team's history becomes worth having. ESPN's per-team
  * feed is a genuinely different set from the national one — measured live,
  * Alabama's feed carried 25 articles we did not already hold and Miami's 19 —

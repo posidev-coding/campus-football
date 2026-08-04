@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
-use App\Enums\TrashTalkIntensity;
+use App\Enums\ContentRating;
 use Database\Factories\UserFactory;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -21,7 +22,10 @@ use Laravel\Sanctum\HasApiTokens;
  * `admin` is deliberately absent from Fillable — it is a privilege escalation
  * vector the moment it reaches a mass-assignment path from a request.
  */
-#[Fillable(['name', 'email', 'password', 'avatar', 'timezone', 'trash_talk_intensity', 'favorite_team_id'])]
+#[Fillable([
+    'first_name', 'last_name', 'handle', 'email', 'password',
+    'avatar', 'timezone', 'content_rating', 'favorite_team_id',
+])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 {
@@ -30,7 +34,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 
     /**
      * Mirrors the database defaults so a newly-created model is usable before
-     * it is refreshed from the database. Without this, `$user->trash_talk_intensity`
+     * it is refreshed from the database. Without this, `$user->content_rating`
      * is null on the instance returned by `create()` even though the column has
      * a default, and any caller treating it as an enum fatals.
      *
@@ -39,7 +43,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     protected $attributes = [
         'admin' => false,
         'timezone' => 'America/New_York',
-        'trash_talk_intensity' => TrashTalkIntensity::LockerRoom->value,
+        'content_rating' => ContentRating::Pg13->value,
     ];
 
     /**
@@ -54,9 +58,20 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'onboarded_at' => 'datetime',
             'password' => 'hashed',
             'admin' => 'boolean',
-            'trash_talk_intensity' => TrashTalkIntensity::class,
+            'content_rating' => ContentRating::class,
         ];
     }
+
+    /**
+     * How many teams one user may follow.
+     *
+     * The favorite counts as one of them — it is a followed team that also
+     * leads the home page, not a separate slot. Capped because followed teams
+     * float above the scoreboard's day groups: past a handful the pinned block
+     * stops being a shortcut and becomes the slate all over again, and every
+     * follow also commits us to syncing that team's news feed.
+     */
+    public const MAX_FOLLOWED_TEAMS = 5;
 
     /**
      * The one team whose news leads this user's home page.
@@ -101,6 +116,18 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     /**
      * Initials for the avatar fallback.
      */
+    /**
+     * Full name, assembled rather than stored.
+     *
+     * Registration collects the two halves separately, but plenty of places
+     * just want to print a person — so `$user->name` still works and nothing
+     * that used it had to change.
+     */
+    protected function name(): Attribute
+    {
+        return Attribute::get(fn (): string => trim($this->first_name.' '.$this->last_name));
+    }
+
     public function initials(): string
     {
         return Str::of($this->name)
