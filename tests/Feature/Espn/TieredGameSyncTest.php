@@ -1,11 +1,13 @@
 <?php
 
+use App\Jobs\FetchGameSummary;
 use App\Models\Game;
 use App\Models\Season;
 use App\Models\Team;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGames;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 
 /*
  * The sync tiers exist so the scheduler can spend the minimum that keeps data
@@ -60,11 +62,60 @@ function fakeScoreboard(array $events): void
 }
 
 it('syncs a week in a single request', function () {
+    /*
+     * Queue faked deliberately. A finished game now dispatches its own summary
+     * fetch, and the test suite runs on the `sync` driver — so without this the
+     * job would execute INLINE and this would count its request too. In
+     * production the queue is redis and the dispatch is asynchronous, which is
+     * the whole point: the live tier's one-request budget is preserved.
+     */
+    Queue::fake();
+
     fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]);
 
     expect(app(SyncGames::class)->week($this->week))->toBe(1);
 
     Http::assertSentCount(1);
+});
+
+it('queues a box score the moment a game finishes', function () {
+    /*
+     * The day-to-day win. A nightly sweep meant an 11pm Saturday final had no
+     * box score until 05:00 Sunday — exactly the window people want to look at
+     * it. The live tier already detects the transition, so this costs one
+     * queued job per game per season rather than a scan.
+     */
+    Queue::fake();
+
+    fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]);
+    app(SyncGames::class)->week($this->week);
+
+    Queue::assertPushed(FetchGameSummary::class, fn ($job) => $job->gameId === 401);
+});
+
+it('does not re-queue a box score for a game that was already final', function () {
+    // Only the TRANSITION matters. Re-reading a finished game every minute for
+    // the rest of the day must not queue the same fetch over and over.
+    Queue::fake();
+
+    fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]);
+    app(SyncGames::class)->week($this->week);
+    app(SyncGames::class)->week($this->week);
+
+    Queue::assertPushed(FetchGameSummary::class, 1);
+});
+
+it('does not queue a box score for a game still in progress', function () {
+    Queue::fake();
+
+    $event = scoreboardEvent(401, '2025-09-27T19:30Z', 14, 10);
+    $event['status']['type']['completed'] = false;
+    $event['status']['type']['state'] = 'in';
+
+    fakeScoreboard([$event]);
+    app(SyncGames::class)->week($this->week);
+
+    Queue::assertNotPushed(FetchGameSummary::class);
 });
 
 it('writes nothing on a re-sync when no game has changed', function () {

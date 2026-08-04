@@ -489,6 +489,48 @@ also week 1, so keying on number collides it with the season opener. And week
 date ranges ABUT — week 1 ends the day week 2 starts — so subtract a day before
 displaying a range.
 
+## Fan out for isolation and latency, not for throughput
+
+Steady-state load is about **1,600 requests a week** — under seven minutes of
+request time against a 240/min ceiling. Parallelism buys essentially nothing
+day to day. Running an army of workers would idle six days out of seven.
+
+What queueing actually buys, and why every fan-out here exists:
+
+    ISOLATION   one team failing must not take the other 135. Not
+                hypothetical — a single historical athlete with an unknown
+                position id aborted the whole 2022 stats backfill.
+    LATENCY     SyncGames dispatches FetchGameSummary the moment a game flips
+                to completed, so a Saturday 11pm final has its box score in
+                about a minute instead of at 05:00 the next morning.
+    MEMORY      one payload per job instead of a thousand in one process.
+
+So: **size workers for the one real burst** — Saturday evening, ~60 finals
+arriving together — and let them scale to zero the rest of the week. Managed
+queues are the right fit precisely because they do that.
+
+### What must NOT be decomposed
+
+    cfb:games --tier=live    ONE request covers every live game. Splitting it
+                             per-game takes a Saturday from 1 req/min to ~50.
+                             This is the v3 failure the design exists to avoid.
+    national leaders         already one request for 1,300 rows
+    news (general feed)      already one request
+
+Decomposing something that is already a single request is strictly worse. Fan
+out by natural unit only where the unit count is high: per game (~960/season),
+per team (136), per week (17), per conference (11).
+
+## Don't re-sync what cannot have changed
+
+`SyncRankings::season()` re-read all 18 weeks on every scheduled run — ~126
+requests, twice a week, to learn ONE new week of polls. Published rankings never
+change retroactively. The schedule calls `current()` (6 requests); `season()`
+survives for backfills only.
+
+Worth checking the same question of any sweep before scheduling it: what new
+information does this run actually obtain?
+
 ## `queue:work --memory` is useless below PHP's own limit
 
 Ordering matters and getting it wrong looks like the guard simply not working:

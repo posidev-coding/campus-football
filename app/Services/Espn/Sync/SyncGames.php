@@ -2,6 +2,7 @@
 
 namespace App\Services\Espn\Sync;
 
+use App\Jobs\FetchGameSummary;
 use App\Models\Game;
 use App\Models\Season;
 use App\Models\Venue;
@@ -343,8 +344,31 @@ class SyncGames
          */
         $changed = ! $game->exists || $game->isDirty();
 
+        /*
+         * Did this pass just finish the game?
+         *
+         * Read BEFORE save, while `completed` is still dirty — afterwards the
+         * original and current values match and the transition is invisible.
+         */
+        $justFinished = $game->isDirty('completed') && $game->completed;
+
         if ($changed) {
             $game->save();
+        }
+
+        /*
+         * Box scores land minutes after the whistle, not the next morning.
+         *
+         * A nightly sweep meant an 11pm Saturday final had no box score until
+         * 05:00 Sunday — the window in which people most want to look at it.
+         * The live tier already detects the transition, so this costs one
+         * queued job per game per season rather than a scan.
+         *
+         * Unique per game, so a game flapping between states cannot queue the
+         * same fetch twice.
+         */
+        if ($justFinished) {
+            FetchGameSummary::dispatch($game->id);
         }
 
         /*

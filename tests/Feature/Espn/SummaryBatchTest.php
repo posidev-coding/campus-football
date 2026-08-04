@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\FetchGameSummary;
+use App\Jobs\Middleware\ThrottleEspn;
 use App\Models\Game;
 use App\Models\GameSummary;
 use App\Models\Season;
@@ -10,6 +11,7 @@ use App\Services\Espn\Sync\SyncGameSummary;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
 
 beforeEach(function () {
     $this->season = Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
@@ -152,4 +154,50 @@ it('still supports an in-process run for one game', function () {
 
     Queue::assertNothingPushed();
     expect(GameSummary::whereKey($this->games->first()->id)->exists())->toBeTrue();
+});
+
+it('releases the worker instead of sleeping when the allowance is spent', function () {
+    /*
+     * The prerequisite for any fan-out. EspnClient's own throttle BLOCKS —
+     * `while (tooManyAttempts) usleep(250ms)` — which is right for a
+     * synchronous caller with nowhere to defer to and actively harmful on a
+     * queue: Laravel's RateLimiter is a FIXED WINDOW, so once the minute is
+     * spent every worker spins for up to 60s, jobs hit their 60s timeout
+     * mid-wait, and throughput goes DOWN as workers are added.
+     */
+    $limit = (int) config('espn.http.rate_limit');
+
+    RateLimiter::clear('espn-api');
+
+    for ($i = 0; $i < $limit; $i++) {
+        RateLimiter::hit('espn-api', 60);
+    }
+
+    $job = Mockery::mock(FetchGameSummary::class)->makePartial();
+    $job->shouldReceive('release')->once()->with(Mockery::type('int'));
+
+    $reached = false;
+
+    (new ThrottleEspn)->handle($job, function () use (&$reached) {
+        $reached = true;
+    });
+
+    expect($reached)->toBeFalse();
+
+    RateLimiter::clear('espn-api');
+});
+
+it('passes the job straight through when there is allowance left', function () {
+    RateLimiter::clear('espn-api');
+
+    $job = Mockery::mock(FetchGameSummary::class)->makePartial();
+    $job->shouldNotReceive('release');
+
+    $reached = false;
+
+    (new ThrottleEspn)->handle($job, function () use (&$reached) {
+        $reached = true;
+    });
+
+    expect($reached)->toBeTrue();
 });

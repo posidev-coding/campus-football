@@ -62,10 +62,15 @@ Schedule::command('cfb:games --tier=recent')
     ->withoutOverlapping();
 
 /*
- * Rankings: one request returns all five polls for a week, so this is the
- * cheapest feed in the app. Polls drop Sunday afternoon and Tuesday evening.
+ * Rankings. Polls drop Sunday afternoon and Tuesday evening.
+ *
+ * The CURRENT week only — 6 requests. The full-season variant re-reads all 18
+ * weeks, which was ~126 requests twice a week to learn one new week of polls.
+ * Published rankings never change retroactively, so re-syncing week 3 in
+ * November is pure waste and a pointless write pass against a scale-to-zero
+ * database. `cfb:sync --only=rankings` still exists for a backfill.
  */
-Schedule::command('cfb:sync --only=rankings')
+Schedule::command('cfb:sync --only=rankings-current')
     ->days([ScheduleClass::SUNDAY, ScheduleClass::TUESDAY])
     ->at('19:00')
     ->timezone($tz)
@@ -182,6 +187,12 @@ Schedule::call(fn () => app(SyncNews::class)->followed())
  * process stays free, and memory is bounded by the worker rather than growing
  * across a run. The shared rate limiter keeps the fan-out from raising upstream
  * load.
+ *
+ * A SAFETY NET, not the main path. SyncGames dispatches a summary the moment a
+ * game flips to completed, so a Saturday 11pm final has its box score within
+ * about a minute rather than at 05:00 the next morning. This catches anything
+ * that job dropped — a failed fetch, a game finished while the live tier was
+ * outside its window.
  */
 Schedule::command('cfb:summaries --missing --limit=150')
     ->dailyAt('05:00')

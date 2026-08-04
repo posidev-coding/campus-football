@@ -22,7 +22,7 @@ class SyncSeasonCommand extends Command
 {
     protected $signature = 'cfb:sync
         {--year= : Season year (defaults to CFB_SEASON)}
-        {--only= : One step: seasons|conferences|teams|games|rankings|predictors|recruiting|injuries|standings|compute|reconcile|leaders|athletes|news}';
+        {--only= : One step: seasons|conferences|teams|games|rankings|rankings-current|predictors|recruiting|injuries|standings|compute|reconcile|leaders|athletes|news}';
 
     protected $description = 'Sync a season of reference data from ESPN';
 
@@ -47,7 +47,7 @@ class SyncSeasonCommand extends Command
         $year = (int) ($this->option('year') ?: config('cfb.season'));
         $only = $this->option('only');
 
-        if ($only !== null && ! in_array($only, self::STEPS, true)) {
+        if ($only !== null && ! in_array($only, [...self::STEPS, 'rankings-current'], true)) {
             $this->error("Unknown step [{$only}]. Expected one of: ".implode(', ', self::STEPS));
 
             return self::FAILURE;
@@ -83,6 +83,8 @@ class SyncSeasonCommand extends Command
             'teams' => app(SyncTeams::class)->handle($year),
             'games' => app(SyncGames::class)->season($year),
             'rankings' => app(SyncRankings::class)->season($year),
+            // The weekly schedule uses this: one week, not all eighteen.
+            'rankings-current' => app(SyncRankings::class)->current($year),
             'predictors' => app(SyncPredictors::class)->upcoming(),
             'recruiting' => app(SyncRecruiting::class)->handle($year),
             'injuries' => app(SyncInjuries::class)->handle($year),

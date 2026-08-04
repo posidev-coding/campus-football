@@ -7,6 +7,7 @@ use App\Models\Ranking;
 use App\Models\Season;
 use App\Models\Team;
 use App\Models\Week;
+use App\Services\CfbCalendar;
 use App\Services\Espn\EspnClient;
 use App\Services\Espn\RecordParser;
 use Illuminate\Support\Facades\DB;
@@ -63,6 +64,39 @@ class SyncRankings
         }
 
         return $synced;
+    }
+
+    /**
+     * The current week's polls only.
+     *
+     * What the weekly schedule should call. `season()` re-reads all 18 weeks
+     * every run — about 126 requests, twice a week, to learn ONE new week of
+     * polls. Published rankings never change retroactively, so re-syncing week
+     * 3 in November is 125 wasted requests and a pointless write pass against a
+     * scale-to-zero database.
+     *
+     * Falls back to the latest week that has games, so an off-day run still
+     * refreshes something meaningful rather than nothing.
+     */
+    public function current(?int $year = null): int
+    {
+        $calendar = app(CfbCalendar::class);
+        $year ??= $calendar->currentYear();
+
+        $week = $calendar->week();
+
+        if ($week === null) {
+            $weekId = $calendar->defaultWeekId($year);
+            $week = $weekId ? Week::find($weekId) : null;
+        }
+
+        if ($week === null) {
+            return 0;
+        }
+
+        $type = Season::whereKey($week->season_id)->value('type') ?? Season::REGULAR;
+
+        return $this->week($year, $week, $type);
     }
 
     /**

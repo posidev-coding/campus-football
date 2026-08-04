@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Middleware\ThrottleEspn;
 use App\Models\Game;
 use App\Services\Espn\Sync\SyncGameSummary;
 use Illuminate\Bus\Batchable;
@@ -66,6 +67,20 @@ class FetchGameSummary implements ShouldBeUnique, ShouldQueue
     public function backoff(): array
     {
         return [10, 60];
+    }
+
+    /**
+     * Release rather than sleep when the ESPN allowance is spent.
+     *
+     * Without this, a worker that finds the limiter full sits in a usleep loop
+     * until the fixed window rolls — up to a minute — and hits its own 60s
+     * timeout mid-wait. Throughput would go DOWN as workers were added.
+     *
+     * @return list<object>
+     */
+    public function middleware(): array
+    {
+        return [new ThrottleEspn];
     }
 
     public function handle(SyncGameSummary $sync): void
