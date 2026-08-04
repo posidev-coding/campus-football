@@ -1,34 +1,40 @@
 @props([
-    'poll' => 'ap',
+    'poll' => null,
     'limit' => 25,
 ])
 
 @php
+    use App\Enums\Poll;
     use App\Models\Ranking;
     use App\Models\Season;
     use Illuminate\Support\Facades\Cache;
+
+    // CFP once the committee has released one, AP until then.
+    $calendar = app(App\Services\CfbCalendar::class);
+    $pollKey = $poll ?? $calendar->defaultPoll()->value;
+    $pollLabel = (Poll::tryFrom($pollKey) ?? Poll::Ap)->label();
 
     /*
      * The right rail's anchor. Cached as plain arrays rather than models —
      * Eloquent collections round-trip through Redis as __PHP_Incomplete_Class
      * and fail on the second request, not the first.
      */
-    $rankings = Cache::remember("panel:rankings:{$poll}:{$limit}", 900, function () use ($poll, $limit) {
+    $rankings = Cache::remember("panel:rankings:{$pollKey}:{$limit}", 900, function () use ($pollKey, $limit) {
         // CfbCalendar knows which season actually has this poll — an upcoming
         // season exists long before a poll is published for it.
-        $year = app(App\Services\CfbCalendar::class)->rankingsYear($poll);
+        $year = app(App\Services\CfbCalendar::class)->rankingsYear($pollKey);
         $season = Season::where('year', $year)->where('type', Season::REGULAR)->first();
 
         if ($season === null) {
             return [];
         }
 
-        $latestWeek = Ranking::where('season_id', $season->id)->where('poll', $poll)->max('week_id');
+        $latestWeek = Ranking::where('season_id', $season->id)->where('poll', $pollKey)->max('week_id');
 
         return Ranking::query()
             ->with('team:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark')
             ->where('season_id', $season->id)
-            ->where('poll', $poll)
+            ->where('poll', $pollKey)
             ->when($latestWeek, fn ($q) => $q->where('week_id', $latestWeek))
             ->orderBy('rank')
             ->limit($limit)
@@ -52,7 +58,7 @@
 @if ($rankings !== [])
     <section {{ $attributes->class(['flex flex-col rounded-lg border border-zinc-200 dark:border-zinc-800']) }}>
         <header class="flex items-baseline justify-between gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
-            <h2 class="text-sm font-semibold">AP Top 25</h2>
+            <h2 class="text-sm font-semibold">{{ $pollLabel }}</h2>
             <a href="{{ route('rankings') }}" wire:navigate
                class="shrink-0 text-micro text-zinc-500 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100">
                 All polls

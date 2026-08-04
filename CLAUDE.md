@@ -274,6 +274,30 @@ boundary matches two rows — containment prefers the types that carry games.
     $calendar->resultsYear()           the latest season that HAS games
     $calendar->defaultWeekNumber($y)   current week, else last week with games
     $calendar->rankingsYear($poll)     latest season that has THAT poll
+    $calendar->defaultPoll($year)      CFP once it exists, AP until then
+    $calendar->availablePolls($year)   polls with rows, majors first
+    $calendar->rankingReleases($y,$p)  every release, newest first
+
+## Rankings come from the CORE api, not the site one
+
+The site rankings endpoint NEVER returns the CFP rankings — asking it for week
+16 gives the same five polls as week 1, and its `type=` parameter is silently
+ignored. Only `core/seasons/{y}/types/{t}/weeks/{w}/rankings` exposes them.
+
+Poll keys are derived from ESPN's numeric ranking id, never its `type` field:
+AFCA Division II (11) and Division III (12) both report `type: "afca"`, which
+merged two polls into one key.
+
+Poll availability is real business logic, verified live for 2025:
+
+    AP / Coaches   preseason poll, weeks 2-16, then final rankings
+    CFP            weeks 11-16 only
+    CFP Seedings   week 16 only, 12 teams
+    divisional     drop out entirely by week 16
+
+A "release" is a (season type, week) pair, not a week number — the preseason
+poll and the final rankings are both "week 1" of their own season type, so a
+selector keyed on number alone collides them.
 
 The distinction between `currentYear()` and `resultsYear()` is the important
 one: in August they differ, and conflating them is what empties a dropdown.

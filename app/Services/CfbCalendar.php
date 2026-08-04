@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Poll;
 use App\Enums\SeasonPhase;
 use App\Models\Game;
 use App\Models\Ranking;
@@ -191,6 +192,61 @@ class CfbCalendar
     }
 
     /**
+     * Which poll a rankings screen should open on.
+     *
+     * The CFP committee's rankings are what everyone actually argues about, but
+     * they do not exist until week 11 — so AP leads until the first CFP poll of
+     * the season appears, and CFP takes over from that moment on. Verified live
+     * against 2025: week 10 has five polls, week 11 has six.
+     */
+    public function defaultPoll(?int $year = null): Poll
+    {
+        $year ??= $this->rankingsYear(Poll::Ap->value);
+
+        return Cache::remember("calendar:default-poll:{$year}", self::CACHE_TTL, function () use ($year) {
+            $seasonIds = Season::where('year', $year)->pluck('id');
+
+            $hasCfp = $seasonIds->isNotEmpty() && Ranking::whereIn('season_id', $seasonIds)
+                ->where('poll', Poll::Cfp->value)
+                ->exists();
+
+            return $hasCfp ? Poll::Cfp : Poll::Ap;
+        });
+    }
+
+    /**
+     * Polls that actually have rows for a season, in presentation order.
+     *
+     * @return list<Poll>
+     */
+    public function availablePolls(?int $year = null): array
+    {
+        $year ??= $this->rankingsYear(Poll::Ap->value);
+
+        return Cache::remember("calendar:polls:{$year}", self::CACHE_TTL, function () use ($year) {
+            // Spans season types — the preseason poll and final rankings live
+            // outside the regular season.
+            $seasonIds = Season::where('year', $year)->pluck('id');
+
+            if ($seasonIds->isEmpty()) {
+                return [];
+            }
+
+            $present = Ranking::whereIn('season_id', $seasonIds)->distinct()->pluck('poll')->all();
+
+            // Major polls first, in their own order, then anything else.
+            $ordered = collect(Poll::major())
+                ->filter(fn (Poll $p) => in_array($p->value, $present, true));
+
+            $rest = collect(Poll::cases())
+                ->reject(fn (Poll $p) => in_array($p, Poll::major(), true))
+                ->filter(fn (Poll $p) => in_array($p->value, $present, true));
+
+            return $ordered->concat($rest)->values()->all();
+        });
+    }
+
+    /**
      * The most recent season year that has the given poll published.
      *
      * A season exists in the database months before any poll appears for it, so
@@ -208,19 +264,66 @@ class CfbCalendar
         });
     }
 
-    /** The latest week number that has the given poll, for a season. */
-    public function latestRankingsWeek(int $year, string $poll = 'ap'): ?int
+    /**
+     * Every poll release for a season, newest first.
+     *
+     * A release is a (season type, week) pair rather than a week number, because
+     * the polls span three season types and the numbers restart in each:
+     *
+     *   type 1 week 1    the preseason poll
+     *   type 2 weeks 2-16
+     *   type 3 week 1    the final rankings
+     *
+     * Keying a selector on week number alone would collide the preseason poll
+     * with the final rankings, both of which are "week 1".
+     *
+     * @return list<array{week_id:int, label:string}>
+     */
+    public function rankingReleases(int $year, string $poll): array
     {
-        $season = Season::where('year', $year)->where('type', Season::REGULAR)->first();
+        return Cache::remember("calendar:releases:{$year}:{$poll}", self::CACHE_TTL, function () use ($year, $poll) {
+            $seasons = Season::where('year', $year)
+                ->whereIn('type', [Season::PRESEASON, Season::REGULAR, Season::POSTSEASON])
+                ->get()
+                ->keyBy('id');
 
-        if ($season === null) {
-            return null;
-        }
+            if ($seasons->isEmpty()) {
+                return [];
+            }
 
-        return Week::query()
-            ->whereIn('id', Ranking::where('season_id', $season->id)->where('poll', $poll)->distinct()->pluck('week_id'))
-            ->orderByDesc('number')
-            ->value('number');
+            $weekIds = Ranking::whereIn('season_id', $seasons->keys())
+                ->where('poll', $poll)
+                ->distinct()
+                ->pluck('week_id');
+
+            return Week::whereIn('id', $weekIds)
+                ->get()
+                ->map(fn (Week $w) => [
+                    'week_id' => $w->id,
+                    'type' => $seasons[$w->season_id]->type ?? Season::REGULAR,
+                    'number' => $w->number,
+                    'label' => $this->releaseLabel($seasons[$w->season_id]->type ?? Season::REGULAR, $w),
+                ])
+                ->sortByDesc(fn (array $r) => [$r['type'], $r['number']])
+                ->map(fn (array $r) => ['week_id' => $r['week_id'], 'label' => $r['label']])
+                ->values()
+                ->all();
+        });
+    }
+
+    /** The most recent poll release for a season, as a week id. */
+    public function latestRankingRelease(int $year, string $poll): ?int
+    {
+        return $this->rankingReleases($year, $poll)[0]['week_id'] ?? null;
+    }
+
+    private function releaseLabel(int $seasonType, Week $week): string
+    {
+        return match ($seasonType) {
+            Season::PRESEASON => 'Preseason',
+            Season::POSTSEASON => 'Final Rankings',
+            default => $week->name ?? "Week {$week->number}",
+        };
     }
 
     /**

@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Poll;
 use App\Enums\SeasonPhase;
 use App\Models\Game;
 use App\Models\Ranking;
@@ -176,7 +177,63 @@ it('picks the most recent season that actually has the poll', function () {
 
     // 2026 exists and is chronologically later, but has no poll.
     expect($this->calendar->rankingsYear('ap'))->toBe(2025)
-        ->and($this->calendar->latestRankingsWeek(2025, 'ap'))->toBe(1);
+        ->and($this->calendar->latestRankingRelease(2025, 'ap'))->toBe($week->id);
+});
+
+it('defaults to AP until the CFP committee releases one', function () {
+    $team = Team::factory()->create();
+    $week = Week::where('season_id', $this->regular->id)->where('number', 5)->sole();
+
+    Ranking::create([
+        'season_id' => $this->regular->id, 'week_id' => $week->id,
+        'poll' => 'ap', 'team_id' => $team->id, 'rank' => 1,
+    ]);
+
+    expect($this->calendar->defaultPoll(2025))->toBe(Poll::Ap);
+});
+
+it('switches the default to CFP once one exists', function () {
+    // The committee does not publish until week 11; from that release on, the
+    // CFP poll is the one people actually argue about.
+    $team = Team::factory()->create();
+    $week11 = Week::where('season_id', $this->regular->id)->where('number', 11)->sole();
+
+    Ranking::create([
+        'season_id' => $this->regular->id, 'week_id' => $week11->id,
+        'poll' => 'cfp', 'team_id' => $team->id, 'rank' => 1,
+    ]);
+
+    expect($this->calendar->defaultPoll(2025))->toBe(Poll::Cfp);
+});
+
+it('labels releases across all three season types', function () {
+    $team = Team::factory()->create();
+
+    $preWeek = Week::create([
+        'season_id' => Season::where('year', 2025)->where('type', Season::PRESEASON)->sole()->id,
+        'number' => 1, 'name' => 'Week 1',
+        'start_date' => '2025-08-01', 'end_date' => '2025-08-22',
+    ]);
+    $postWeek = Week::create([
+        'season_id' => $this->postseason->id, 'number' => 1, 'name' => 'Bowls',
+        'start_date' => '2025-12-14', 'end_date' => '2026-01-20',
+    ]);
+    $wk5 = Week::where('season_id', $this->regular->id)->where('number', 5)->sole();
+
+    foreach ([[$preWeek, Season::where('year', 2025)->where('type', Season::PRESEASON)->sole()->id],
+        [$wk5, $this->regular->id],
+        [$postWeek, $this->postseason->id]] as [$w, $seasonId]) {
+        Ranking::create([
+            'season_id' => $seasonId, 'week_id' => $w->id,
+            'poll' => 'ap', 'team_id' => $team->id, 'rank' => 1,
+        ]);
+    }
+
+    $labels = collect($this->calendar->rankingReleases(2025, 'ap'))->pluck('label')->all();
+
+    // Newest first, and week 1 of the preseason must not collide with week 1
+    // of the postseason.
+    expect($labels)->toBe(['Final Rankings', 'Week 5', 'Preseason']);
 });
 
 it('labels the current week during play', function () {

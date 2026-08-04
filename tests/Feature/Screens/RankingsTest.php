@@ -24,7 +24,7 @@ beforeEach(function () {
     $this->indiana = Team::factory()->create(['id' => 84, 'slug' => 'indiana-hoosiers', 'display_name' => 'Indiana Hoosiers']);
     $this->miami = Team::factory()->create(['id' => 2390, 'slug' => 'miami-hurricanes', 'display_name' => 'Miami Hurricanes']);
 
-    foreach ([['ap', 1, 66], ['usa', 1, 62]] as [$poll, $rank, $votes]) {
+    foreach ([['ap', 1, 66], ['coaches', 1, 62]] as [$poll, $rank, $votes]) {
         Ranking::create([
             'season_id' => $this->season->id, 'week_id' => $this->week16->id,
             'poll' => $poll, 'team_id' => $this->indiana->id, 'rank' => $rank,
@@ -43,32 +43,47 @@ it('renders rankings for guests', function () {
     $this->get(route('rankings'))->assertOk();
 });
 
-it('defaults to the latest season and week that actually have a poll', function () {
+it('defaults to the latest season and release that actually have a poll', function () {
     // 2026 exists and is chronologically later, but has no poll at all.
     Livewire::test('rankings')
         ->assertSet('year', 2025)
-        ->assertSet('week', 16)
+        ->assertSet('release', $this->week16->id)
         ->assertSee('Indiana Hoosiers');
 });
 
-it('switches poll and re-resolves the week', function () {
+it('switches poll and re-resolves the release', function () {
     // Polls do not all run the same weeks — the CFP poll only starts in
-    // November — so changing poll has to re-resolve, not keep a stale week.
+    // week 11 — so changing poll has to re-resolve, not keep a stale release.
     Livewire::test('rankings')
-        ->set('poll', 'usa')
-        ->assertSet('week', 16)
+        ->set('poll', 'coaches')
+        ->assertSet('release', $this->week16->id)
         ->assertSee('62 first')
         ->assertDontSee('66 first');
 });
 
-it('lets a user pick an earlier week', function () {
+it('defaults to AP before the CFP committee publishes', function () {
+    Livewire::test('rankings')->assertSet('poll', 'ap');
+});
+
+it('defaults to CFP once a CFP poll exists for the season', function () {
+    Ranking::create([
+        'season_id' => $this->season->id, 'week_id' => $this->week16->id,
+        'poll' => 'cfp', 'team_id' => $this->miami->id, 'rank' => 1, 'record' => '13-3',
+    ]);
+
+    Livewire::test('rankings')
+        ->assertSet('poll', 'cfp')
+        ->assertSee('Miami Hurricanes');
+});
+
+it('lets a user pick an earlier release', function () {
     Ranking::create([
         'season_id' => $this->season->id, 'week_id' => $this->week15->id,
         'poll' => 'ap', 'team_id' => $this->miami->id, 'rank' => 1, 'record' => '12-3',
     ]);
 
     Livewire::test('rankings')
-        ->set('week', 15)
+        ->set('release', $this->week15->id)
         ->assertSee('Miami Hurricanes')
         ->assertDontSee('Indiana Hoosiers');
 });
@@ -87,9 +102,9 @@ it('links every ranked team', function () {
 it('only offers polls that have data', function () {
     Livewire::test('rankings')
         ->assertSee('AP Top 25')
-        ->assertSee('Coaches')
-        // No CFP rows exist, so it must not be offered.
-        ->assertDontSee('>CFP<', escape: false);
+        ->assertSee('Coaches Poll')
+        // No CFP rows exist for this season, so it must not be offered.
+        ->assertDontSee('CFP Rankings');
 });
 
 it('shows an empty state rather than erroring for a season with no poll', function () {

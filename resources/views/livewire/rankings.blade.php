@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\Poll;
 use App\Models\Ranking;
 use App\Models\Season;
 use App\Models\Week;
@@ -19,18 +20,21 @@ use Livewire\Component;
 new class extends Component
 {
     #[Url]
-    public string $poll = 'ap';
+    public string $poll = '';
 
     #[Url]
     public ?int $year = null;
 
+    /** A week id, not a number — releases span three season types. */
     #[Url]
-    public ?int $week = null;
+    public ?int $release = null;
 
     public function mount(CfbCalendar $calendar): void
     {
+        // CFP once it exists for the season, AP until then.
+        $this->poll = $this->poll ?: $calendar->defaultPoll()->value;
         $this->year ??= $calendar->rankingsYear($this->poll);
-        $this->week ??= $calendar->latestRankingsWeek($this->year, $this->poll);
+        $this->release ??= $calendar->latestRankingRelease($this->year, $this->poll);
     }
 
     /**
@@ -40,34 +44,24 @@ new class extends Component
     public function updatedPoll(CfbCalendar $calendar): void
     {
         $this->year = $calendar->rankingsYear($this->poll);
-        $this->week = $calendar->latestRankingsWeek($this->year, $this->poll);
+        $this->release = $calendar->latestRankingRelease($this->year, $this->poll);
     }
 
     public function updatedYear(CfbCalendar $calendar): void
     {
-        $this->week = $calendar->latestRankingsWeek($this->year, $this->poll);
+        $this->release = $calendar->latestRankingRelease($this->year, $this->poll);
     }
 
-    /** Polls that actually have rows, labelled. @return array<string,string> */
+    /**
+     * Polls with rows for this season, majors first.
+     *
+     * @return array<string,string>
+     */
     #[Computed]
     public function polls(): array
     {
-        $available = Cache::remember(
-            'rankings:polls',
-            3600,
-            fn () => Ranking::query()->distinct()->pluck('poll')->all()
-        );
-
-        $labels = [
-            'ap' => 'AP Top 25',
-            'usa' => 'Coaches',
-            'cfp' => 'CFP',
-            'fcs' => 'FCS Coaches',
-            'afca' => 'AFCA Div II',
-        ];
-
-        return collect($available)
-            ->mapWithKeys(fn (string $p) => [$p => $labels[$p] ?? str($p)->upper()->toString()])
+        return collect(app(CfbCalendar::class)->availablePolls($this->year))
+            ->mapWithKeys(fn (Poll $p) => [$p->value => $p->label()])
             ->all();
     }
 
@@ -88,42 +82,34 @@ new class extends Component
         );
     }
 
-    /** @return list<array{number:int, name:string}> */
+    /**
+     * Poll releases for this season, newest first — spanning the preseason
+     * poll, the weekly polls, and the final rankings.
+     *
+     * @return list<array{week_id:int, label:string}>
+     */
     #[Computed]
-    public function weeks(): array
+    public function releases(): array
     {
-        $season = Season::where('year', $this->year)->where('type', Season::REGULAR)->first();
-
-        if ($season === null) {
-            return [];
-        }
-
-        return Cache::remember(
-            "rankings:weeks:{$season->id}:{$this->poll}",
-            3600,
-            fn () => Week::query()
-                ->whereIn('id', Ranking::where('season_id', $season->id)->where('poll', $this->poll)->distinct()->pluck('week_id'))
-                ->orderByDesc('number')
-                ->get(['number', 'name'])
-                ->map(fn (Week $w) => ['number' => $w->number, 'name' => $w->name ?? "Week {$w->number}"])
-                ->all()
-        );
+        return app(CfbCalendar::class)->rankingReleases($this->year, $this->poll);
     }
 
     #[Computed]
     public function rankings()
     {
-        $season = Season::where('year', $this->year)->where('type', Season::REGULAR)->first();
+        // Spans season types: the preseason poll and the final rankings live
+        // outside the regular season.
+        $seasonIds = Season::where('year', $this->year)->pluck('id');
 
-        if ($season === null) {
+        if ($seasonIds->isEmpty()) {
             return collect();
         }
 
         return Ranking::query()
             ->with('team:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark')
-            ->where('season_id', $season->id)
+            ->whereIn('season_id', $seasonIds)
             ->where('poll', $this->poll)
-            ->when($this->week, fn ($q) => $q->whereHas('week', fn ($w) => $w->where('number', $this->week)))
+            ->when($this->release, fn ($q) => $q->where('week_id', $this->release))
             ->orderBy('rank')
             ->get();
     }
@@ -145,9 +131,9 @@ new class extends Component
             @endforeach
         </flux:select>
 
-        <flux:select wire:model.live="week" size="sm" class="min-w-32 flex-1">
-            @foreach ($this->weeks as $w)
-                <flux:select.option :value="$w['number']">{{ $w['name'] }}</flux:select.option>
+        <flux:select wire:model.live="release" size="sm" class="min-w-36 flex-1">
+            @foreach ($this->releases as $r)
+                <flux:select.option :value="$r['week_id']">{{ $r['label'] }}</flux:select.option>
             @endforeach
         </flux:select>
     </div>

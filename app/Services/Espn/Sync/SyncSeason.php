@@ -42,12 +42,14 @@ class SyncSeason
                 ]
             );
 
-            // Only the types that actually carry a schedule have weeks worth
-            // storing; the six-month "preseason" and eleven-day "offseason" do
-            // not divide into playable weeks.
-            if (in_array((int) $type['type'], [Season::REGULAR, Season::POSTSEASON], true)) {
-                $this->syncWeeks($season, $year, (int) $type['type']);
-            }
+            /*
+             * Weeks for every type that has them. Preseason and postseason
+             * each have exactly one, and they are not decorative: the AP and
+             * Coaches preseason poll hangs off type 1 week 1, and the final
+             * rankings off type 3 week 1. Without them those two polls cannot
+             * be stored at all.
+             */
+            $this->syncWeeks($season, $year, (int) $type['type']);
 
             $seasons[(int) $type['type']] = $season;
         }
