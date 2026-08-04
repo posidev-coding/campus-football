@@ -8,7 +8,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Laravel\Scout\Searchable;
 
-#[Fillable(['id', 'first_name', 'last_name', 'display_name'])]
+#[Fillable([
+    'id', 'first_name', 'last_name', 'display_name', 'headshot_url',
+    'date_of_birth', 'birth_city', 'birth_state', 'birth_country',
+    'experience_years', 'career_wins', 'career_losses', 'career_ties',
+])]
 class Coach extends Model
 {
     use Searchable;
@@ -16,6 +20,11 @@ class Coach extends Model
     public $incrementing = false;
 
     protected $keyType = 'int';
+
+    protected function casts(): array
+    {
+        return ['date_of_birth' => 'date'];
+    }
 
     public function seasons(): HasMany
     {

@@ -141,6 +141,20 @@ Schedule::command('cfb:players --only=stats')
     ->when($inSeason)
     ->withoutOverlapping();
 
+/*
+ * Coach records. `--current` touches only each coach's LATEST season — career
+ * history never changes retroactively, the same reasoning that stopped the
+ * rankings sync re-reading eighteen weeks to learn one. Weekly during the
+ * season keeps tenure records one game behind at worst; the full backfill is
+ * `cfb:coaches --missing`, run once. Queued job per coach, so the scheduler
+ * process stays free and one bad coach cannot abort the rest.
+ */
+Schedule::command('cfb:coaches --current')
+    ->weeklyOn(ScheduleClass::TUESDAY, '07:00')
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
 Schedule::command('cfb:sync --only=injuries')
     ->days([ScheduleClass::THURSDAY, ScheduleClass::FRIDAY])
     ->at('12:00')

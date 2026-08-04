@@ -1022,6 +1022,29 @@ Two shapes in that payload to respect:
   (sack yardage charged to the team). `athletes.id` is unsigned, so inserting one
   fails outright. Skip `id <= 0`.
 
+## Coaches: the roster names them, the coach sync makes them people
+
+The roster feed delivers a coach as a name and nothing else. Everything else
+comes from the core API's per-coach document — birthplace, career record, and
+`coachSeasons[]` refs whose URLs carry the season years. Each season document
+in turn carries `team.$ref` with the TEAM ID IN THE URL, so a coach's moves
+between schools (Riley: Oklahoma 2017-2021, USC 2022-, verified live) parse
+out of refs without resolving them — a coach costs 2 + 2N requests, not 2 + 3N.
+
+- **There is no coach headshot endpoint.** `players/full/{id}.png` resolves
+  only where a coach's id matches their old player id (Smart yes, Riley no).
+  One HEAD against the CDN — not the API, so not against the rate ceiling —
+  stored only on 200. Every surface must look right without one.
+- **ESPN writes coach birthplaces with FULL state names** ("Montgomery,
+  Alabama") while athletes carry codes ("TX"). `SyncCoaches` normalizes to
+  the two-letter form on write so a search list never shows both formats.
+- A season whose record 404s stores the tenure row WITHOUT a record — skip,
+  never default. A season whose team we do not know stores nothing.
+- Coach pages route by ID, matching athletes — no slug column, and 326
+  athlete slugs already collide.
+- The schedule runs `cfb:coaches --current` weekly in season: only the
+  latest season changes, because published career history never does.
+
 ## News: clamped, rolling, and only one of its filters works
 
 - `limit` is **clamped to 50** however much you ask for. There is no pagination
@@ -1230,4 +1253,5 @@ php artisan cfb:sync --year=2025 [--only=step]    # reference data + standings
 php artisan cfb:games --tier=live|today|current|recent|season
 php artisan cfb:players [--only=rosters|stats] [--team=61]
 php artisan cfb:summaries --missing [--year=2025] # box scores, 1 req/game
+php artisan cfb:coaches [--missing|--current]     # careers + tenures, 2+2N req/coach
 ```
