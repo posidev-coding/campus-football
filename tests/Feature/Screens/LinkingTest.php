@@ -42,8 +42,15 @@ beforeEach(function () {
     }
 });
 
-it('links both teams from a game card on the scoreboard', function () {
-    Game::factory()->finished(31, 17)->create([
+it('sends a game card to the GAME, with team names as plain text', function () {
+    /*
+     * One destination per card. A reader tapping a game card wants the game
+     * summary far more often than an opponent's team page, so the whole card
+     * is the game link and the teams are one more tap away ON the game
+     * screen. The team names must therefore render without hrefs — an inner
+     * link would both steal the tap and nest an anchor in an anchor.
+     */
+    $game = Game::factory()->finished(31, 17)->create([
         'season_id' => $this->season->id,
         'week_id' => $this->week->id,
         'home_team_id' => 61,
@@ -53,6 +60,25 @@ it('links both teams from a game card on the scoreboard', function () {
     Livewire::test('scoreboard')
         ->set('scope', 'fbs')
         ->set('week', $this->week->id)
+        ->assertSee(route('game', $game), escape: false)
+        ->assertDontSee(route('team', $this->georgia), escape: false)
+        ->assertDontSee(route('team', $this->alabama), escape: false)
+        // The names still render — as text.
+        ->assertSee($this->georgia->placeName())
+        ->assertSee($this->alabama->placeName());
+});
+
+it('links both teams from the game page itself', function () {
+    // The team links the card gave up live here instead.
+    $game = Game::factory()->finished(31, 17)->create([
+        'season_id' => $this->season->id,
+        'week_id' => $this->week->id,
+        'home_team_id' => 61,
+        'away_team_id' => 333,
+    ]);
+
+    $this->get(route('game', $game))
+        ->assertOk()
         ->assertSee(route('team', $this->georgia), escape: false)
         ->assertSee(route('team', $this->alabama), escape: false);
 });

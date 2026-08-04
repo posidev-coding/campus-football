@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\HeaderStyle;
 use App\Support\TeamPalette;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -19,7 +20,7 @@ use Laravel\Scout\Searchable;
  */
 #[Fillable([
     'id', 'slug', 'location', 'name', 'nickname', 'abbreviation',
-    'display_name', 'short_display_name', 'color', 'alt_color', 'logo', 'logo_dark',
+    'display_name', 'short_display_name', 'color', 'alt_color', 'header_style', 'logo', 'logo_dark',
 ])]
 class Team extends Model
 {
@@ -49,6 +50,11 @@ class Team extends Model
     public function getRouteKeyName(): string
     {
         return 'slug';
+    }
+
+    protected function casts(): array
+    {
+        return ['header_style' => HeaderStyle::class];
     }
 
     /**

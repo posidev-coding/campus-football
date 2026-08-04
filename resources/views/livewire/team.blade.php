@@ -302,6 +302,7 @@ new class extends Component
         '--team-accent: '.$palette?->surface => $palette,
         '--team-accent-far: '.$palette?->far => $palette,
         '--team-accent-contrast: '.$palette?->text => $palette,
+        '--team-keyline: '.$team->altAccentColor() => $team->altAccentColor(),
     ])
 >
     {{-- Team hero, in the team's own color. The logo rides a neutral puck
@@ -313,25 +314,24 @@ new class extends Component
          The identity is TWO lines, never truncated: the place, then the
          mascot underneath in a lighter italic — "App State" over
          "Mountaineers". placeName() already guarantees the first line fits. --}}
-    <div
-        class="team-gradient -mx-4 -mt-5 flex items-center gap-3 px-4 py-5"
-        @style(['border-bottom: 3px solid '.$team->altAccentColor() => $team->altAccentColor()])
-    >
-        <span class="flex size-20 shrink-0 items-center justify-center rounded-full bg-white shadow-md ring-1 ring-black/10 dark:bg-zinc-950 dark:ring-white/15">
+    <div class="team-gradient team-keyline -mx-4 -mt-5 flex items-center gap-3 px-4 py-5">
+        {{-- The puck disappears in dark mode: the surface underneath is
+             already neutral, and x-team-logo swaps in the dark-mode mark. --}}
+        <span class="flex size-20 shrink-0 items-center justify-center rounded-full bg-white shadow-md ring-1 ring-black/10 dark:bg-transparent dark:shadow-none dark:ring-0">
             <x-team-logo :team="$team" size="xl" />
         </span>
 
-        <div class="flex min-w-0 flex-1 flex-col">
+        <div @class(['flex min-w-0 flex-1 flex-col', 'team-text-shadow' => $palette?->shadow])>
             <span class="text-xl font-bold leading-tight">{{ $team->placeName() }}</span>
 
             @if ($team->mascotName())
-                <span class="text-base font-light leading-tight opacity-90">{{ $team->mascotName() }}</span>
+                <span class="text-base font-light leading-tight dark:text-zinc-400">{{ $team->mascotName() }}</span>
             @endif
 
             {{-- One subtle KPI pair: record, then where that record puts
                  them — "8-4 (4-4) · 6th in SEC". The position phrase is the
                  conference link, so the conference page stays one tap away. --}}
-            <span class="flex flex-wrap items-center gap-x-1.5 pt-1 text-sm opacity-90">
+            <span class="flex flex-wrap items-center gap-x-1.5 pt-1 text-sm dark:text-zinc-400">
                 @if ($this->standing)
                     <span class="tabular">{{ $this->standing->overallRecord() }} ({{ $this->standing->conferenceRecord() }})</span>
                     <span aria-hidden="true">&middot;</span>

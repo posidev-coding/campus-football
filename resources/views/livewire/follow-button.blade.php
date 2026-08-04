@@ -85,12 +85,14 @@ new class extends Component
             Following
         </button>
     @else
+        {{-- `team-invert` in CSS rather than an inline style: an inline style
+             cannot be dark-gated, and in dark mode this is simply a light
+             neutral button on the dark page. --}}
         <button
             type="button"
             wire:click="follow"
             wire:loading.attr="disabled"
-            class="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-semibold shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-50"
-            style="background-color: var(--team-accent-contrast); color: var(--team-accent);"
+            class="team-invert flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-semibold shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-50"
         >
             <flux:icon name="plus" variant="micro" />
             Follow

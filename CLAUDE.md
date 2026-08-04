@@ -1012,47 +1012,67 @@ The branding lives in the surface instead: the `team-gradient` utility and a
 3px `alt_color` keyline along the header's bottom edge, jersey-piping style.
 The flat `team-accent` utility remains for surfaces that carry no logo.
 
-## Brightness difference is not contrast
+## Legibility is the floor, not the target
 
-`App\Support\TeamPalette` picks a branded header's colors by real **WCAG
-contrast ratio**. It replaced a YIQ brightness rule, and the distinction is the
-whole lesson: brightness DIFFERENCE and contrast RATIO are different
-quantities. Auburn's navy and orange differ by 99.8 points of YIQ — past the
-old threshold of 90 — but read at only **4.2:1**, where white on that navy is
-**11.6:1**. Across 136 FBS teams the old rule put text under 4.5:1 on **24** of
-them, including white on Tennessee orange at **2.49:1**.
+`App\Support\TeamPalette` picks a branded header's colors, and it took three
+passes to learn what the rule actually is. A YIQ brightness rule chose
+Auburn's orange on navy — **brightness difference is not contrast** (99.8
+points of YIQ, 4.2:1 of ratio, with white available at 11.6:1). A strict
+WCAG-4.5 rule then chose near-black on Tennessee orange — perfectly legible,
+and wrong to every fan who has seen a jersey, because white-on-orange at
+2.49:1 IS Tennessee. **No purely ratio-driven picker can produce a school's
+actual branding.** The target is what the fan expects; the ratio is the floor.
 
-It returns three colors, and all three must be set as custom properties:
+The ladder, applied in light mode only:
 
-    surface   the brand color, nudged ONLY if nothing readable fits on it
-    text      the secondary when it clears 4.5:1, else white or near-black
-    far       the gradient's far end, moved AWAY from the text
+    0. teams.header_style set        -> the admin picked; render it
+    1. secondary vs primary >= 7.0   -> SECONDARY as text (Michigan maize,
+                                        Colorado gold). A secondary must EARN
+                                        text duty; Auburn's 4.2:1 does not.
+    2. white vs primary     >= 4.5   -> white, the sports default (92 teams)
+    3. white vs primary     >= 2.2   -> white + subtle dark text-shadow, the
+                                        ESPN treatment (14 mid-tone brands:
+                                        Tennessee, Clemson, Miami...)
+    4. white vs secondary   >= 4.5   -> SECONDARY as the surface (Arizona
+                                        State goes maroon)
+    5. darken primary                -> last resort; zero FBS teams today
 
-Four things that make it hold:
+Near-black text exists ONLY behind the explicit `dark-text` override. The
+gradient far end still moves AWAY from the text (computed in PHP — CSS cannot
+know which way), and `--team-accent`, `--team-accent-far`,
+`--team-accent-contrast` and `--team-keyline` are all set per surface.
 
-- **Measure what is RENDERED.** The KPI line is `opacity-90`, so the candidate
-  is composited over the surface at 90% before the ratio is taken. Scoring the
-  opaque color overstates what the reader gets.
-- **The gradient must move away from the text.** It used to darken
-  unconditionally, which quietly made its far end the worst case for every team
-  with dark text. Moving it away means the pure brand color is the worst case
-  and the gradient can only ever help — that change alone rescued 17 of the 24.
-  This is why `far` is computed in PHP: CSS cannot know which way to go.
-- **Prefer the secondary, but only when it reads.** 83 of 136 teams keep their
-  true pairing (Michigan maize-on-navy, LSU gold-on-purple).
-- **Seven mid-tone teams admit no readable text at all**, so the SURFACE shifts
-  by ≤12% until one clears. 129 teams keep their exact brand hex.
+**`teams.header_style` is the admin override** — a Filament "Team Branding"
+page with presets only (Auto / white / secondary-text / secondary-surface /
+dark-text), because the last few percent of taste cannot be computed and a
+preset cannot be configured unreadable. It is not in the sync payload, so
+ESPN can never clobber a curated choice.
 
-**A control ON the accent must draw its colors FROM it.** The follow button is
-hand-rolled rather than a `flux:button`: no fixed variant holds contrast across
-136 team colors. It INVERTS the hero — `background: var(--team-accent-contrast);
-color: var(--team-accent)` — reusing the one pairing already proven readable.
+**Dark mode is NEUTRAL — the palette is a light-mode concern.** Under `.dark`
+the `team-gradient`, `team-invert`, `team-keyline` and `team-text-shadow`
+utilities un-brand themselves: page-dark surface, no gradient, no logo puck,
+no keyline, zinc text, neutral buttons, and `x-team-logo`'s dark-mode mark
+sits directly on the page. A brand color block on a dark theme was the harder
+half of every contrast fight, so it no longer exists.
+
+**A control ON the accent must draw its colors FROM it** — the follow button
+uses the `team-invert` utility (the hero's text color as fill, the accent as
+label), in CSS rather than an inline style precisely so dark mode can
+neutralize it.
 
 **Verifying that a color was APPLIED is not verifying that it is READABLE.**
 The browser probe that "confirmed" Tennessee checked which variable was set,
 never the ratio, so a 2.49:1 regression passed review twice. Read the computed
 `color` and `background-color` and compute the ratio, and sweep all 136 teams
 rather than spot-checking one.
+
+## A game card goes to the GAME
+
+The whole card is one link to the game page; team names inside it are plain
+text (`x-team-link :link="false"`), and every row above the overlay anchor is
+`pointer-events-none` so taps fall through. A reader tapping a game card wants
+the game summary far more often than an opponent's team page — teams are one
+more tap away on the Game screen, which is where the team links live.
 
 **A control ON the accent must draw its colors FROM it.** The follow button
 lives in the hero and is hand-rolled rather than a `flux:button`: no fixed

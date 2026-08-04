@@ -2,55 +2,57 @@
 
 namespace App\Support;
 
+use App\Enums\HeaderStyle;
 use App\Models\Team;
 
 /**
- * The three colors a branded team surface needs, chosen by real contrast.
+ * The colors a branded team header renders in — chosen brand-first, with
+ * legibility as the floor rather than the target.
  *
- * This replaces a YIQ brightness rule that was not a contrast measure at all.
- * Brightness DIFFERENCE and contrast RATIO are different quantities: Auburn's
- * navy and orange differ by 99.8 points of YIQ brightness — comfortably past
- * the old threshold of 90 — while their actual WCAG ratio is 4.2:1, against
- * 11.6:1 for plain white on the same navy. Measured across all 136 FBS teams,
- * the old rule put text under 4.5:1 on 24 of them.
+ * This is the third pass at the rule, and each predecessor failed in an
+ * instructive way. A YIQ brightness rule put Auburn's orange on navy at
+ * 4.2:1 — brightness difference is not contrast. A strict WCAG-4.5 rule then
+ * chose near-black on Tennessee orange — perfectly legible, and wrong to
+ * every fan who has ever seen a jersey, because white-on-orange at 2.49:1 IS
+ * Tennessee. No purely ratio-driven picker can produce the school's actual
+ * branding, so the ladder starts from what sports branding actually does:
  *
- * Three values come out, and the caller sets all three as custom properties:
+ *   0. teams.header_style set          -> the admin picked; render that
+ *   1. secondary vs primary >= 7.0     -> primary surface, SECONDARY text
+ *                                         (Michigan maize, Colorado gold)
+ *   2. white vs primary     >= 4.5     -> white text, the sports default
+ *   3. white vs primary     >= 2.2     -> white text plus a subtle dark
+ *                                         shadow — the ESPN treatment for
+ *                                         mid-tone brands like Tennessee
+ *   4. white vs secondary   >= 4.5     -> SECONDARY as the surface
+ *                                         (Arizona State goes maroon)
+ *   5. darken until white   >= 4.5     -> last resort; zero FBS teams today
  *
- *   surface   the brand color, nudged ONLY if nothing else can be read on it
- *   text      the secondary color when it is genuinely readable, else white
- *             or near-black
- *   far       the gradient's far end, moved AWAY from the text
+ * Near-black text exists only behind the explicit dark-text override — the
+ * algorithm never chooses it.
  *
- * That last one is why the gradient is safe. It used to darken unconditionally,
- * which quietly made the darkened end the worst case for dark text; moving it
- * away from whatever the text is means the pure brand color is the worst case
- * and the gradient can only ever help. That change alone rescues 17 of the 24.
- *
- * 129 of 136 teams keep their exact brand hex. The other seven have mid-tone
- * primaries — bright oranges, mid greens — where NO text color reaches the bar,
- * so the surface itself shifts by at most 12%, which reads as the same color.
+ * All of this is LIGHT MODE ONLY. In dark mode the chrome un-brands itself to
+ * the neutral page surface (see the `.dark &` blocks in app.css), so the
+ * palette never has to reconcile a brand color with a dark theme.
  */
 final class TeamPalette
 {
-    /**
-     * WCAG AA for normal-size text. The binding constraint is the small
-     * record/standing line, not the large team name, which would only need 3:1.
-     */
-    private const MIN_CONTRAST = 4.5;
+    /** A secondary must EARN text duty; weak pairings fall back to white. */
+    private const SECONDARY_TEXT_MIN = 7.0;
 
-    /**
-     * Text on these surfaces renders at `opacity-90`, so contrast is measured
-     * through that — scoring the opaque color overstates what a reader gets.
-     */
-    private const TEXT_OPACITY = 0.90;
+    /** Comfortable white — no help needed. */
+    private const WHITE_COMFORT = 4.5;
+
+    /** Below this even the shadow treatment cannot honestly carry white. */
+    private const WHITE_FLOOR = 2.2;
 
     /** How far the gradient's far end travels away from the text. */
     private const GRADIENT_SHIFT = 0.22;
 
-    /** Surface correction, stepped until the text clears MIN_CONTRAST. */
+    /** Surface correction for the last-resort rung. */
     private const NUDGE_STEP = 0.02;
 
-    private const NUDGE_MAX_STEPS = 40;
+    private const NUDGE_MAX_STEPS = 50;
 
     private const WHITE = '#ffffff';
 
@@ -60,11 +62,12 @@ final class TeamPalette
         public readonly string $surface,
         public readonly string $far,
         public readonly string $text,
+        public readonly bool $shadow = false,
     ) {}
 
     /**
-     * Null when the team has no usable color — callers then omit the custom
-     * properties entirely and the neutral defaults in `:root` take over.
+     * Null when the team has no usable primary color — callers then omit the
+     * custom properties and the neutral defaults in `:root` take over.
      */
     public static function for(Team $team): ?self
     {
@@ -76,20 +79,20 @@ final class TeamPalette
 
         $secondary = self::rgb($team->alt_color);
 
-        [$surface, $text] = self::resolve($primary, $secondary);
+        $override = $team->header_style instanceof HeaderStyle
+            ? $team->header_style
+            : HeaderStyle::tryFrom((string) $team->header_style);
 
-        return new self(
-            surface: self::hex($surface),
-            far: self::hex(self::shiftAwayFrom($surface, $text, self::GRADIENT_SHIFT)),
-            text: self::hex($text),
-        );
+        return $override !== null
+            ? self::fromOverride($override, $primary, $secondary)
+            : self::fromLadder($primary, $secondary);
     }
 
     /**
      * The WCAG 2.x contrast ratio between two colors, 1.0 to 21.0.
      *
      * Public because the tests assert through it: a test that only checked
-     * WHICH color was chosen would have passed for Auburn's unreadable orange.
+     * WHICH color was chosen has already let one unreadable header ship.
      */
     public static function contrast(string $a, string $b): float
     {
@@ -104,87 +107,91 @@ final class TeamPalette
     }
 
     /**
-     * Pick the surface and the text together.
-     *
-     * The secondary color wins whenever it is genuinely readable, because the
-     * school's own pairing beats anything computed — maize on Michigan navy is
-     * what Michigan actually looks like. Only when it is not readable does this
-     * fall back to a neutral, and only when NO candidate is readable does the
-     * surface move.
-     *
      * @param  array{int, int, int}  $primary
      * @param  array{int, int, int}|null  $secondary
-     * @return array{array{int, int, int}, array{int, int, int}}
      */
-    private static function resolve(array $primary, ?array $secondary): array
+    private static function fromLadder(array $primary, ?array $secondary): self
     {
+        $white = self::rgb(self::WHITE);
+
+        if ($secondary !== null && self::ratio($secondary, $primary) >= self::SECONDARY_TEXT_MIN) {
+            return self::assemble($primary, $secondary);
+        }
+
+        $whiteOnPrimary = self::ratio($white, $primary);
+
+        if ($whiteOnPrimary >= self::WHITE_COMFORT) {
+            return self::assemble($primary, $white);
+        }
+
+        if ($whiteOnPrimary >= self::WHITE_FLOOR) {
+            return self::assemble($primary, $white, shadow: true);
+        }
+
+        if ($secondary !== null && self::ratio($white, $secondary) >= self::WHITE_COMFORT) {
+            return self::assemble($secondary, $white);
+        }
+
+        // Last resort: walk the primary darker until white reads. Terminates
+        // by construction — white on pure black is 21:1.
         $surface = $primary;
 
-        for ($step = 0; $step <= self::NUDGE_MAX_STEPS; $step++) {
-            // Step 0 is the untouched brand color. Past that, try darker then
-            // lighter at a widening distance and take the first that works.
-            foreach ($step === 0 ? [$primary] : [
-                self::mix($primary, [0, 0, 0], $step * self::NUDGE_STEP),
-                self::mix($primary, [255, 255, 255], $step * self::NUDGE_STEP),
-            ] as $candidate) {
-                $text = self::bestTextOn($candidate, $secondary);
+        for ($step = 1; $step <= self::NUDGE_MAX_STEPS; $step++) {
+            $surface = self::mix($primary, [0, 0, 0], $step * self::NUDGE_STEP);
 
-                if ($text !== null) {
-                    return [$candidate, $text];
-                }
-
-                $surface = $candidate;
+            if (self::ratio($white, $surface) >= self::WHITE_COMFORT) {
+                break;
             }
         }
 
-        // Unreachable in practice — pure black reads white at 21:1 — but a
-        // loop that can exit without an answer must still return one.
-        return [$surface, self::rgb(self::WHITE)];
+        return self::assemble($surface, $white);
     }
 
     /**
-     * The best readable text for a surface, or null when nothing clears the bar.
+     * An admin's preset, rendered without judgement — except that a preset
+     * needing a secondary falls back to the ladder when the team has none.
      *
-     * @param  array{int, int, int}  $surface
+     * @param  array{int, int, int}  $primary
      * @param  array{int, int, int}|null  $secondary
-     * @return array{int, int, int}|null
      */
-    private static function bestTextOn(array $surface, ?array $secondary): ?array
+    private static function fromOverride(HeaderStyle $style, array $primary, ?array $secondary): self
     {
-        if ($secondary !== null && self::readable($secondary, $surface)) {
-            return $secondary;
-        }
+        $white = self::rgb(self::WHITE);
 
-        $neutrals = [self::rgb(self::WHITE), self::rgb(self::NEAR_BLACK)];
-
-        usort($neutrals, fn (array $a, array $b) => self::scoreOn($b, $surface) <=> self::scoreOn($a, $surface));
-
-        return self::readable($neutrals[0], $surface) ? $neutrals[0] : null;
+        return match ($style) {
+            HeaderStyle::White => self::assemble(
+                $primary,
+                $white,
+                shadow: self::ratio($white, $primary) < self::WHITE_COMFORT,
+            ),
+            HeaderStyle::SecondaryText => $secondary !== null
+                ? self::assemble($primary, $secondary)
+                : self::fromLadder($primary, null),
+            HeaderStyle::SecondarySurface => $secondary !== null
+                ? self::assemble($secondary, $white, shadow: self::ratio($white, $secondary) < self::WHITE_COMFORT)
+                : self::fromLadder($primary, null),
+            HeaderStyle::DarkText => self::assemble($primary, self::rgb(self::NEAR_BLACK)),
+        };
     }
 
     /**
-     * @param  array{int, int, int}  $text
      * @param  array{int, int, int}  $surface
-     */
-    private static function readable(array $text, array $surface): bool
-    {
-        return self::scoreOn($text, $surface) >= self::MIN_CONTRAST;
-    }
-
-    /**
-     * Contrast as actually rendered — through the text's own opacity.
-     *
      * @param  array{int, int, int}  $text
-     * @param  array{int, int, int}  $surface
      */
-    private static function scoreOn(array $text, array $surface): float
+    private static function assemble(array $surface, array $text, bool $shadow = false): self
     {
-        return self::ratio(self::mix($surface, $text, self::TEXT_OPACITY), $surface);
+        return new self(
+            surface: self::hex($surface),
+            far: self::hex(self::shiftAwayFrom($surface, $text, self::GRADIENT_SHIFT)),
+            text: self::hex($text),
+            shadow: $shadow,
+        );
     }
 
     /**
      * Move a color away from another one — toward black if the other is light,
-     * toward white if it is dark.
+     * toward white if it is dark. This is why the gradient can only ever help:
+     * the pure brand color is always its worst case.
      *
      * @param  array{int, int, int}  $color
      * @param  array{int, int, int}  $from
@@ -229,7 +236,8 @@ final class TeamPalette
 
     /**
      * WCAG relative luminance — the real sRGB gamma curve, not a YIQ
-     * approximation. The approximation is what this class exists to replace.
+     * approximation. The approximation is what the first version of this rule
+     * shipped with, and why Auburn was unreadable.
      *
      * @param  array{int, int, int}  $rgb
      */

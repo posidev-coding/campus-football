@@ -1,115 +1,117 @@
 <?php
 
+use App\Enums\HeaderStyle;
 use App\Models\Team;
 use App\Support\TeamPalette;
 
 /**
- * The header palette is chosen by real WCAG contrast, and these tests assert
- * the RATIO rather than only which color won — a test that checked the choice
- * alone passed happily while Auburn rendered orange-on-navy at 4.2:1.
+ * Brand-first, legibility as the floor. These tests assert RATIOS as well as
+ * choices — a test that only checked which color won has already let one
+ * unreadable header ship — and they name the two teams whose headers went
+ * wrong in earlier versions of this rule, so neither can regress quietly.
  */
 const AA = 4.5;
+const WHITE_FLOOR = 2.2;
 
-function palette(string $color, ?string $alt = null): TeamPalette
+function palette(string $color, ?string $alt = null, ?HeaderStyle $style = null): TeamPalette
 {
-    return TeamPalette::for(Team::factory()->make(['color' => $color, 'alt_color' => $alt]));
+    return TeamPalette::for(Team::factory()->make([
+        'color' => $color,
+        'alt_color' => $alt,
+        'header_style' => $style,
+    ]));
 }
 
-describe('the choice', function () {
-    it('keeps the brand pairing when the secondary genuinely reads', function () {
-        // Maize on navy is what Michigan actually looks like; no computed
-        // black or white improves on it.
-        $michigan = palette('00274c', 'ffcb05');
+describe('the ladder', function () {
+    it('gives Tennessee white on orange — never dark text', function () {
+        /*
+         * The case this rework exists for. White on Tennessee orange is
+         * 2.49:1, below every WCAG bar — and it is Tennessee, on every
+         * jersey. A strict 4.5 rule chose near-black here: legible, and
+         * wrong to every fan. White stays, and the shadow flag carries the
+         * legibility the ratio alone cannot.
+         */
+        $tennessee = palette('ff8200', 'ffffff');
 
-        expect($michigan->text)->toBe('#ffcb05')
-            ->and(TeamPalette::contrast($michigan->text, $michigan->surface))->toBeGreaterThan(AA);
+        expect($tennessee->text)->toBe('#ffffff')
+            ->and($tennessee->shadow)->toBeTrue()
+            ->and($tennessee->surface)->toBe('#ff8200')
+            ->and(TeamPalette::contrast('#ffffff', '#ff8200'))->toBeGreaterThan(WHITE_FLOOR);
     });
 
-    it('rejects a secondary that does not read, however far apart they look', function () {
-        /*
-         * Auburn, the reported bug. Navy and orange differ by 99.8 points of
-         * YIQ brightness — past the old threshold of 90 — but only 4.2:1 of
-         * actual contrast, while white on that navy is 11.6:1.
-         */
+    it('gives Auburn white on navy — never its 4.2:1 orange', function () {
+        // The other named regression: a brightness rule chose the secondary
+        // here because the two colors LOOK far apart.
         $auburn = palette('002b5c', 'f26522');
 
-        expect(TeamPalette::contrast('#f26522', '#002b5c'))->toBeLessThan(AA)
+        expect(TeamPalette::contrast('#f26522', '#002b5c'))->toBeLessThan(7.0)
             ->and($auburn->text)->toBe('#ffffff')
+            ->and($auburn->shadow)->toBeFalse()
             ->and(TeamPalette::contrast($auburn->text, $auburn->surface))->toBeGreaterThan(10.0);
     });
 
-    it('rejects a pure white secondary on a light primary', function () {
-        // Tennessee. Its secondary IS white, which the brightness rule waved
-        // through at 2.49:1 — the regression that shipped and was verified as
-        // correct because the probe only checked which color was applied.
-        $tennessee = palette('ff8200', 'ffffff');
+    it('keeps a secondary as text only when it EARNS it at 7:1', function () {
+        // Michigan maize on navy: 9.9:1, comfortably on-brand.
+        $michigan = palette('00274c', 'ffcb05');
 
-        expect(TeamPalette::contrast('#ffffff', '#ff8200'))->toBeLessThan(3.0)
-            ->and($tennessee->text)->toBe('#18181b')
-            ->and(TeamPalette::contrast($tennessee->text, $tennessee->surface))->toBeGreaterThan(AA);
+        expect($michigan->text)->toBe('#ffcb05')
+            ->and(TeamPalette::contrast($michigan->text, $michigan->surface))->toBeGreaterThan(7.0);
+
+        // Colorado gold-and-black IS black text on a gold surface.
+        expect(palette('cfb87c', '000000')->text)->toBe('#000000');
     });
 
-    it('falls back to a neutral when the secondary is tone-on-tone', function () {
-        // Georgia's secondary is near-black on red — barely a contrast at all.
-        $georgia = palette('ba0c2f', '2c2a29');
+    it('swaps to the secondary as SURFACE when the primary is too light for white', function () {
+        // Arizona State: white dies on maize (1.57:1), so the header goes
+        // maroon — which is what ASU's own web headers do.
+        $asu = palette('ffc627', '8c1d40');
 
-        expect($georgia->text)->toBe('#ffffff');
+        expect($asu->surface)->toBe('#8c1d40')
+            ->and($asu->text)->toBe('#ffffff')
+            ->and(TeamPalette::contrast($asu->text, $asu->surface))->toBeGreaterThanOrEqual(AA);
     });
 
-    it('reads every real FBS pairing at AA', function (string $team, string $color, ?string $alt) {
-        $palette = palette($color, $alt);
+    it('darkens the primary as the last resort', function () {
+        // A light primary and no usable secondary: nothing readable exists,
+        // so the surface walks darker until white clears. No FBS team needs
+        // this today; FCS and Division II colors are not so tidy.
+        $palette = palette('ffc627', null);
 
-        expect(TeamPalette::contrast($palette->text, $palette->surface))
-            ->toBeGreaterThanOrEqual(AA, "{$team} is unreadable");
-    })->with([
-        ['Auburn', '002b5c', 'f26522'],
-        ['Tennessee', 'ff8200', 'ffffff'],
-        ['Michigan', '00274c', 'ffcb05'],
-        ['Georgia', 'ba0c2f', '2c2a29'],
-        ['LSU', '461d76', 'fdd023'],
-        ['App State', '000000', 'ffcd00'],
-        ['Navy', '00225b', 'b5a67c'],
-        ['Arizona State', 'ffc627', '8c1d40'],
-        ['Miami', 'f47423', '035131'],
-        ['Ohio State', 'ba0c2f', 'a8adb4'],
-        ['Clemson', 'f56600', 'ffffff'],
-        ['Oregon', '00934b', 'fff41b'],
-        ['Nebraska', 'e31937', 'ffffff'],
-        ['North Carolina', '7bafd4', '13294b'],
-    ]);
-});
-
-describe('the surface', function () {
-    it('leaves a brand color untouched when something readable sits on it', function () {
-        expect(palette('002b5c', 'f26522')->surface)->toBe('#002b5c')
-            ->and(palette('00274c', 'ffcb05')->surface)->toBe('#00274c');
+        expect($palette->text)->toBe('#ffffff')
+            ->and($palette->surface)->not->toBe('#ffc627')
+            ->and(TeamPalette::contrast($palette->text, $palette->surface))->toBeGreaterThanOrEqual(AA);
     });
 
-    it('nudges only when no text color can be read on the brand color', function () {
-        // Nebraska's mid-tone red: white and near-black both land under AA on
-        // it, so the surface itself shifts until one clears.
-        $nebraska = palette('e31937', 'ffffff');
-
-        expect($nebraska->surface)->not->toBe('#e31937')
-            ->and(TeamPalette::contrast($nebraska->text, $nebraska->surface))->toBeGreaterThanOrEqual(AA);
-    });
-
-    it('keeps a nudge small enough to read as the same color', function () {
-        $nebraska = palette('e31937', 'ffffff');
-
-        // Well inside a 12% shift on every channel.
-        foreach ([[0xE3, 1], [0x19, 3], [0x37, 5]] as [$original, $offset]) {
-            $shifted = hexdec(substr(ltrim($nebraska->surface, '#'), $offset - 1, 2));
-            expect(abs($shifted - $original))->toBeLessThan(40);
+    it('never chooses dark text on its own', function () {
+        // Near-black exists only behind the explicit override. Sweep a spread
+        // of primaries; none may come out with dark text unless the SECONDARY
+        // is itself dark (the Colorado case), which is a brand choice.
+        foreach (['ff8200', 'ffc627', 'b3a369', '7bafd4', 'e31937', 'f56600'] as $primary) {
+            expect(palette($primary, null)->text)->toBe('#ffffff', "#{$primary} chose non-white text");
         }
     });
 });
 
-describe('the gradient', function () {
-    it('moves the far end away from the text, never blindly darker', function () {
-        $lightText = palette('002b5c', 'f26522');   // white text on navy
-        $darkText = palette('ff8200', 'ffffff');    // near-black text on orange
+describe('the override', function () {
+    it('renders each admin preset', function () {
+        expect(palette('00274c', 'ffcb05', HeaderStyle::White)->text)->toBe('#ffffff')
+            ->and(palette('002b5c', 'f26522', HeaderStyle::SecondaryText)->text)->toBe('#f26522')
+            ->and(palette('ffc627', '8c1d40', HeaderStyle::SecondarySurface)->surface)->toBe('#8c1d40')
+            ->and(palette('ff8200', 'ffffff', HeaderStyle::DarkText)->text)->toBe('#18181b');
+    });
 
+    it('flags the shadow when an override puts white below comfort', function () {
+        expect(palette('ff8200', 'ffffff', HeaderStyle::White)->shadow)->toBeTrue()
+            ->and(palette('002b5c', 'f26522', HeaderStyle::White)->shadow)->toBeFalse();
+    });
+
+    it('falls back to the ladder when a preset needs a secondary the team lacks', function () {
+        expect(palette('002b5c', null, HeaderStyle::SecondaryText)->text)->toBe('#ffffff');
+    });
+});
+
+describe('the gradient', function () {
+    it('moves the far end away from the text', function () {
         $luminance = function (string $hex): float {
             $hex = ltrim($hex, '#');
             $channel = function (int $v): float {
@@ -123,12 +125,11 @@ describe('the gradient', function () {
                 + 0.0722 * $channel((int) hexdec(substr($hex, 4, 2)));
         };
 
-        // Light text: the far end darkens, as it always used to.
-        expect($luminance($lightText->far))->toBeLessThan($luminance($lightText->surface));
+        $lightText = palette('002b5c', 'f26522');                       // white on navy
+        $darkText = palette('cfb87c', '000000');                        // black on gold
 
-        // Dark text: it LIGHTENS. Darkening here is what quietly made the far
-        // end the worst case for every team with dark text.
-        expect($luminance($darkText->far))->toBeGreaterThan($luminance($darkText->surface));
+        expect($luminance($lightText->far))->toBeLessThan($luminance($lightText->surface))
+            ->and($luminance($darkText->far))->toBeGreaterThan($luminance($darkText->surface));
     });
 });
 
@@ -138,11 +139,11 @@ describe('robustness', function () {
             ->and(TeamPalette::for(Team::factory()->make(['color' => 'xyzzy!'])))->toBeNull();
     });
 
-    it('always finds a readable combination, for any color at all', function () {
+    it('always lands readable or shadowed-white, for any colors at all', function () {
         /*
-         * The invariant, over generated input rather than today's 136 teams.
-         * This is what proves the nudge loop terminates and the guarantee is
-         * total — a table of real teams only ever proves the table.
+         * The invariant over generated input: every outcome either clears AA
+         * outright, or is white in the 2.2-4.5 band with the shadow flagged.
+         * A table of real teams only ever proves the table.
          */
         mt_srand(20260804);
 
@@ -151,9 +152,14 @@ describe('robustness', function () {
             $alt = sprintf('%06x', mt_rand(0, 0xFFFFFF));
 
             $palette = palette($color, $alt);
+            $ratio = TeamPalette::contrast($palette->text, $palette->surface);
 
-            expect(TeamPalette::contrast($palette->text, $palette->surface))
-                ->toBeGreaterThanOrEqual(AA, "#{$color} on #{$alt} came out unreadable");
+            if ($palette->shadow) {
+                expect($palette->text)->toBe('#ffffff', "#{$color}/#{$alt} shadowed a non-white text")
+                    ->and($ratio)->toBeGreaterThanOrEqual(WHITE_FLOOR, "#{$color}/#{$alt} shadowed below the floor");
+            } else {
+                expect($ratio)->toBeGreaterThanOrEqual(AA, "#{$color}/#{$alt} came out unreadable");
+            }
         }
     });
 });

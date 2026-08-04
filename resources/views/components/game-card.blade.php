@@ -68,10 +68,11 @@
     </div>
 
     {{--
-        The matchup links to the game page. The team names inside it are their
-        own links to their own routes, so this wraps only the score block and
-        sits BEHIND them in the layout rather than around them — a link nested
-        inside a link is invalid HTML and the inner one stops working.
+        The WHOLE card goes to the game page — one destination, one tap.
+        Team names render as plain text (`:link="false"`), because a reader
+        tapping a game card wants the game; the teams are one more tap away
+        on the Game screen itself. Everything above the overlay is
+        `pointer-events-none` so every tap falls through to the anchor.
     --}}
     <div class="relative flex flex-col gap-1.5 px-3 py-2.5">
         <a
@@ -88,7 +89,7 @@
         @foreach ($sides as $side)
             @php $lost = $final && $winner !== null && $winner !== $side['team']?->id; @endphp
 
-            <div class="relative z-10 flex items-center gap-2">
+            <div class="pointer-events-none relative z-10 flex items-center gap-2">
                 {{-- Place only, no nickname. A card is scanned, not read: the
                      reader is looking for "North Carolina", and "Tar Heels" is
                      nine characters of decoration in front of the next team's
@@ -98,6 +99,7 @@
                     :rank="$side['rank']"
                     :record="$side['record']"
                     :muted="$lost"
+                    :link="false"
                     label="location"
                     class="flex-1"
                 />

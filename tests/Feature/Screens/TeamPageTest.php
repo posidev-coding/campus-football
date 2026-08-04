@@ -249,15 +249,28 @@ describe('the branded hero', function () {
 
         Livewire::test('team', ['team' => $this->team])
             ->assertSee('team-gradient', escape: false)
-            ->assertSee('bg-white shadow-md ring-1 ring-black/10 dark:bg-zinc-950', escape: false)
+            // White puck in light mode; in dark the header is neutral, so the
+            // puck disappears entirely rather than going dark itself.
+            ->assertSee('bg-white shadow-md ring-1 ring-black/10 dark:bg-transparent', escape: false)
             ->assertSee('--team-accent-contrast: #ffffff', escape: false);
     });
 
     it('draws the alt color as a keyline when the team has one', function () {
+        // Via the team-keyline utility and its variable, not an inline
+        // border — an inline style cannot be switched off in dark mode.
         $this->team->update(['alt_color' => 'BA0C2F']);
 
         Livewire::test('team', ['team' => $this->team])
-            ->assertSee('border-bottom: 3px solid #BA0C2F', escape: false);
+            ->assertSee('--team-keyline: #BA0C2F', escape: false)
+            ->assertSee('team-keyline', escape: false);
+    });
+
+    it('goes neutral in dark mode: no puck chrome, no branded button', function () {
+        // The classes carry the dark behavior; the CSS utilities un-brand the
+        // surface itself under `.dark`.
+        Livewire::test('team', ['team' => $this->team])
+            ->assertSee('dark:bg-transparent dark:shadow-none dark:ring-0', escape: false)
+            ->assertSee('team-invert', escape: false);
     });
 });
 
@@ -282,14 +295,13 @@ describe('the hero identity', function () {
 
     it('keeps the follow button in the hero, drawing the hero\'s own colors', function () {
         /*
-         * Back on the accent, but styled FROM it — the fill is the hero's
-         * text color and the label is the accent, so the pairing is the one
-         * the header already proved readable. A fixed Flux variant could not
-         * hold contrast across 136 team colors, which is what moved it off
-         * the hero in the first place.
+         * On the accent, but styled FROM it via the team-invert utility — the
+         * fill is the hero's text color and the label is the accent, the one
+         * pairing the header already proved readable. A utility rather than
+         * an inline style so dark mode can neutralize it.
          */
         Livewire::test('team', ['team' => $this->team])
-            ->assertSee('background-color: var(--team-accent-contrast); color: var(--team-accent)', escape: false)
+            ->assertSee('team-invert', escape: false)
             ->assertSee('Follow');
     });
 });

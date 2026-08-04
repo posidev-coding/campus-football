@@ -6,6 +6,9 @@
     'record' => null,
     'muted' => false,
     'logo' => true,
+    // `false` renders the identical row as a SPAN — for surfaces like the
+    // game card that are themselves one link to somewhere else.
+    'link' => true,
 ])
 
 @php
@@ -37,9 +40,11 @@
 @endphp
 
 @if ($team)
-    <a
-        href="{{ route('team', $team) }}"
-        wire:navigate
+    <{{ $link ? 'a' : 'span' }}
+        @if ($link)
+            href="{{ route('team', $team) }}"
+            wire:navigate
+        @endif
         {{ $attributes->class([
             'group flex min-w-0 items-center gap-2',
             'opacity-45' => $muted,
@@ -62,7 +67,7 @@
         @endif
 
         {{ $slot }}
-    </a>
+    </{{ $link ? 'a' : 'span' }}>
 @else
     {{-- An unfilled slot, not an error. Every bowl and playoff game is
          published TBD-vs-TBD months ahead, so this is what most of the
