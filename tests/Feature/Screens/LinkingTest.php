@@ -141,3 +141,20 @@ it('gives guests navigation at phone width', function () {
         ->assertSee(route('standings'), escape: false)
         ->assertSee(route('recruiting'), escape: false);
 });
+
+it('keeps the right rail additive rather than load-bearing', function () {
+    // The rail is desktop-only decoration. Its markup is hidden below lg, so
+    // nothing reachable only from the rail may exist — a phone user must still
+    // get to everything.
+    $response = $this->get(route('scoreboard'));
+
+    $response->assertOk()
+        ->assertSee('lg:flex', escape: false)   // rail is gated on lg
+        ->assertSee('sm:hidden', escape: false); // bottom nav retires at sm
+});
+
+it('caps content width at a laptop rather than stretching', function () {
+    $this->get(route('scoreboard'))
+        ->assertOk()
+        ->assertSee('max-w-7xl', escape: false);
+});

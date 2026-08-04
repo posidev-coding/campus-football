@@ -133,6 +133,7 @@ new class extends Component
     </div>
 
     @if ($view === 'players')
+        <div class="grid gap-2 xl:grid-cols-2">
         @forelse ($this->prospects as $recruit)
             <div class="flex items-center gap-3 rounded-lg border border-zinc-200 p-2.5 dark:border-zinc-800"
                  wire:key="r-{{ $recruit->id }}">
@@ -163,11 +164,12 @@ new class extends Component
                 @endif
             </div>
         @empty
-            <flux:callout icon="academic-cap">
+            <flux:callout icon="academic-cap" class="xl:col-span-2">
                 <flux:callout.heading>No prospects</flux:callout.heading>
                 <flux:callout.text>Nothing ingested for the {{ $class }} class yet.</flux:callout.text>
             </flux:callout>
         @endforelse
+        </div>
     @else
         <div class="stat-grid rounded-lg border border-zinc-200 dark:border-zinc-800">
             <table class="w-full text-stat">

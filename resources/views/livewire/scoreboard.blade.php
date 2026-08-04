@@ -227,7 +227,7 @@ new class extends Component
                         {{ $day }}
                     </flux:subheading>
 
-                    <div class="grid gap-2 sm:grid-cols-2">
+                    <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                         @foreach ($games as $game)
                             <x-game-card :game="$game" wire:key="game-{{ $game->id }}" />
                         @endforeach

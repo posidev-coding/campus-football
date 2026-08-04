@@ -248,6 +248,28 @@ are in progress or how many people are watching. Respect the tiers in
 Scale-to-zero MySQL means writes are not free: sync only writes rows that
 actually changed (`fill` + `isDirty`), and public reads are cache-first.
 
+## Mobile-first, always
+
+Design at 390px first, then widen. Every breakpoint above base is ADDITIVE —
+it may add a column, a rail, or a label, but it must never be the only place
+something is reachable. The bottom nav was once `@auth`-gated while the header
+links were `sm:hidden`, which left a signed-out visitor on a phone with no
+navigation at all; that is the failure mode to avoid.
+
+    base   single column, bottom nav, header nav hidden
+    sm     header nav appears, bottom nav retires, cards go two-up
+    lg     right rail appears ALONGSIDE content, never instead of it
+    xl     third card column
+    max    max-w-7xl (1280px), about a 14" laptop
+
+Capped deliberately: past ~1280px line lengths stop being readable and the page
+reads as a spreadsheet stretched across a monitor. Desktop should feel like a
+traditional sports site — persistent section nav, dense multi-column content,
+a standing right rail — not like a phone layout centred in whitespace.
+
+Verify with the device harness rather than a resized window; Chrome will not go
+below ~600px. See below.
+
 ## Rebuild assets after touching Blade
 
 Tailwind 4 only emits utilities it finds in source. Adding a class to a Blade
