@@ -34,7 +34,7 @@ beforeEach(function () {
         'conference_id' => 8, 'season_year' => 2025, 'classification' => 'FBS',
     ]);
 
-    $this->georgia = Team::factory()->create(['id' => 61, 'slug' => 'georgia-bulldogs', 'display_name' => 'Georgia Bulldogs']);
+    $this->georgia = Team::factory()->create(['id' => 61, 'slug' => 'georgia-bulldogs', 'location' => 'Georgia', 'display_name' => 'Georgia Bulldogs']);
     $this->fcsTeam = Team::factory()->create(['id' => 2000, 'slug' => 'small-college', 'display_name' => 'Small College']);
 
     TeamSeason::create(['team_id' => 61, 'season_year' => 2025, 'conference_id' => 8, 'classification' => 'FBS']);
@@ -180,7 +180,7 @@ describe('conference page', function () {
 
         Livewire::test('conference', ['conference' => $this->sec])
             ->set('year', 2025)
-            ->assertSee('Georgia Bulldogs')
+            ->assertSee('Georgia')
             ->assertSee('7-1')
             ->assertSee('W9');
     });

@@ -17,8 +17,8 @@ beforeEach(function () {
     Conference::factory()->create(['id' => 8, 'name' => 'SEC', 'is_conference' => true]);
     ConferenceSeason::create(['conference_id' => 8, 'season_year' => 2025, 'classification' => 'FBS']);
 
-    Team::factory()->create(['id' => 61, 'display_name' => 'Georgia Bulldogs']);
-    Team::factory()->create(['id' => 333, 'display_name' => 'Alabama Crimson Tide']);
+    Team::factory()->create(['id' => 61, 'location' => 'Georgia', 'display_name' => 'Georgia Bulldogs']);
+    Team::factory()->create(['id' => 333, 'location' => 'Alabama', 'display_name' => 'Alabama Crimson Tide']);
 
     Standing::create([
         'season_year' => 2025, 'conference_id' => 8, 'team_id' => 61,
@@ -42,7 +42,7 @@ it('renders standings for guests', function () {
 it('shows conference and overall records', function () {
     Livewire::test('standings')
         ->set('year', 2025)
-        ->assertSee('Georgia Bulldogs')
+        ->assertSee('Georgia')
         ->assertSee('7-1')
         ->assertSee('12-1')
         ->assertSee('W9');
@@ -51,7 +51,7 @@ it('shows conference and overall records', function () {
 it('orders by conference record', function () {
     Livewire::test('standings')
         ->set('year', 2025)
-        ->assertSeeInOrder(['Georgia Bulldogs', 'Alabama Crimson Tide']);
+        ->assertSeeInOrder(['Georgia', 'Alabama']);
 });
 
 it('shows the authoritative ESPN source, not the computed cross-check', function () {

@@ -21,8 +21,19 @@ beforeEach(function () {
     $this->week15 = Week::create(['season_id' => $this->season->id, 'number' => 15, 'name' => 'Week 15', 'start_date' => '2025-12-01', 'end_date' => '2025-12-07']);
     $this->week16 = Week::create(['season_id' => $this->season->id, 'number' => 16, 'name' => 'Week 16', 'start_date' => '2025-12-08', 'end_date' => '2025-12-14']);
 
-    $this->indiana = Team::factory()->create(['id' => 84, 'slug' => 'indiana-hoosiers', 'display_name' => 'Indiana Hoosiers']);
-    $this->miami = Team::factory()->create(['id' => 2390, 'slug' => 'miami-hurricanes', 'display_name' => 'Miami Hurricanes']);
+    /*
+     * `location` pinned alongside the display name. The factory generates a
+     * random city for it, so overriding the display name alone leaves a team
+     * whose two names disagree — and every table here renders placeName().
+     */
+    $this->indiana = Team::factory()->create([
+        'id' => 84, 'slug' => 'indiana-hoosiers',
+        'location' => 'Indiana', 'display_name' => 'Indiana Hoosiers',
+    ]);
+    $this->miami = Team::factory()->create([
+        'id' => 2390, 'slug' => 'miami-hurricanes',
+        'location' => 'Miami', 'display_name' => 'Miami Hurricanes',
+    ]);
 
     foreach ([['ap', 1, 66], ['coaches', 1, 62]] as [$poll, $rank, $votes]) {
         Ranking::create([
@@ -48,7 +59,7 @@ it('defaults to the latest season and release that actually have a poll', functi
     Livewire::test('rankings')
         ->assertSet('year', 2025)
         ->assertSet('release', $this->week16->id)
-        ->assertSee('Indiana Hoosiers');
+        ->assertSee('Indiana');
 });
 
 it('switches poll and re-resolves the release', function () {
@@ -79,7 +90,7 @@ it('defaults to CFP once a CFP poll exists for the season', function () {
 
     Livewire::test('rankings')
         ->assertSet('poll', 'cfp')
-        ->assertSee('Miami Hurricanes');
+        ->assertSee('Miami');
 });
 
 it('lets a user pick an earlier release', function () {
@@ -90,8 +101,8 @@ it('lets a user pick an earlier release', function () {
 
     Livewire::test('rankings')
         ->set('release', $this->week15->id)
-        ->assertSee('Miami Hurricanes')
-        ->assertDontSee('Indiana Hoosiers');
+        ->assertSee('Miami')
+        ->assertDontSee('Indiana');
 });
 
 it('shows movement relative to the previous poll', function () {
@@ -161,6 +172,22 @@ describe('the table', function () {
             ->not->toContain('>66 first');
     });
 
+    it('names the place, never the mascot', function () {
+        /*
+         * "Indiana", not "Indiana Hoosiers". A ranked list is scanned rather
+         * than read, and the mascot is decoration in front of the word the
+         * reader is looking for — the same call the game card already makes.
+         * It is also what buys the room to fit the table on a phone without
+         * wrapping or scrolling.
+         */
+        $html = Livewire::test('rankings')->html();
+
+        expect($html)
+            ->toContain('>Indiana</span>')
+            ->not->toContain('Hoosiers')
+            ->not->toContain('Hurricanes');
+    });
+
     it('drops the points column entirely', function () {
         // Cut deliberately: points are the poll's arithmetic, not what a reader
         // came for, and the column cost width the team name wanted at 390px.
@@ -186,7 +213,7 @@ describe('the movement column appears only when it can mean something', function
 
         Livewire::test('rankings')
             ->assertSet('poll', 'cfp')
-            ->assertSee('Miami Hurricanes')
+            ->assertSee('Miami')
             ->assertDontSee('first-place votes')
             // Movement survives, because this release has a previous rank.
             ->assertSee('Movement since the last poll');
@@ -254,7 +281,7 @@ describe('the release strip', function () {
         Livewire::test('rankings')
             ->call('selectWeek', $this->week15->id, '')
             ->assertSet('release', $this->week15->id)
-            ->assertSee('Miami Hurricanes')
-            ->assertDontSee('Indiana Hoosiers');
+            ->assertSee('Miami')
+            ->assertDontSee('Indiana');
     });
 });

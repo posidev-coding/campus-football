@@ -150,7 +150,11 @@ new class extends Component
         }
 
         return Ranking::query()
-            ->with('team:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark')
+            // `location` is not optional here: the table renders placeName(),
+            // and leaving the column out of a constrained eager load makes
+            // every team silently fall back to its display name — which reads
+            // as a design decision rather than a missing column.
+            ->with('team:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark')
             ->whereIn('season_id', $seasonIds)
             ->where('poll', $this->poll)
             ->when($this->release, fn ($q) => $q->where('week_id', $this->release))
@@ -199,7 +203,11 @@ new class extends Component
             without needing to.
         --}}
         <div class="stat-grid rounded-lg border border-zinc-200 dark:border-zinc-800">
-            <table class="w-full min-w-xs text-stat">
+            {{-- `whitespace-nowrap` for the same reason as Standings: a record
+                 column sized to its header is narrower than "13-0", and a
+                 wrapped record makes one row taller than its neighbours. The
+                 team cell overrides it with `truncate`. --}}
+            <table class="w-full text-stat whitespace-nowrap">
                 <thead>
                     <tr class="border-b border-zinc-200 text-micro tracking-wide text-zinc-500 uppercase dark:border-zinc-800">
                         <th scope="col" class="px-3 py-2 text-right font-medium">
@@ -244,7 +252,14 @@ new class extends Component
                             --}}
                             <td class="w-full max-w-0 px-2 py-2">
                                 <div class="flex min-w-0 items-center gap-2">
-                                    <x-team-link :team="$entry->team" class="min-w-0 flex-1" />
+                                    {{-- The place, not the mascot: "Ohio
+                                         State", never "Ohio State Buckeyes". A
+                                         ranked list is scanned rather than
+                                         read, and the mascot is decoration
+                                         sitting in front of the word the reader
+                                         is looking for — the same call the game
+                                         card already makes. --}}
+                                    <x-team-link :team="$entry->team" label="location" class="min-w-0 flex-1" />
 
                                     @if ($entry->first_place_votes > 0)
                                         {{--

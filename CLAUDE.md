@@ -1083,9 +1083,28 @@ the cell be told its size instead of asking for one, and `w-full` hands it
 whatever the fixed numeric columns leave. Rankings went from an 18px inner
 scroll at 390px to fitting exactly, with full team names and no ellipsis.
 
-Reach for it before dropping a column or shortening a name: on Rankings both
-`placeName()` and a `min-w-*` scroll were tried first, and neither was needed
-once the team cell could absorb the slack.
+Three more things a dense table needs, all measured on Standings at 390px,
+where six columns had been forced into a `min-w-md` horizontal scroll:
+
+- **The HEADERS set the column widths, not the values.** "Overall" claimed 69px
+  for a value needing 30. Abbreviate them and keep the full word as `sr-only`,
+  so nothing is lost to a screen reader.
+- **`whitespace-nowrap` on the TABLE.** Abbreviating a header makes its column
+  narrower than a four-character record, so "13-0" wrapped to two lines and made
+  the top three rows of every conference 6px taller than the rest — which reads
+  as a rendering glitch, not as a wrap. The team cell overrides it with
+  `truncate`; that is the one place text may be cut instead of wrapped.
+- **`px-1.5` on the numeric columns.** Worth 24px across five of them.
+
+Together: the team column went 108px to 158px and the names that no longer fit
+went from 90 of 136 to 4, each clipping by a pixel or three.
+
+**Say the PLACE, not the mascot, in any dense table** — "Ohio State", never
+"Ohio State Buckeyes". `x-team-link label="location"` and `Team::placeName()`,
+the same call the game card makes. It is the single biggest saving available,
+and a table is scanned rather than read. Remember `location` in the constrained
+eager load: omit it and every team silently falls back to its display name,
+which reads as a design decision rather than a missing column.
 
 ## An opaque background does not win a z-index tie
 

@@ -51,7 +51,8 @@ new class extends Component
     {
         return Standing::query()
             ->fromEspn()
-            ->with('team:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark')
+            // `location` because the standings table renders placeName().
+            ->with('team:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark')
             ->where('season_year', $this->year)
             ->where('conference_id', $this->conference->id)
             ->inStandingsOrder()
@@ -168,24 +169,38 @@ new class extends Component
     <div class="flex flex-col gap-2">
         <flux:subheading>Standings</flux:subheading>
 
+        {{-- No `min-w-*`, and the team cell absorbs the slack — same as the
+             Standings screen, which this table is a narrower copy of. --}}
         <div class="stat-grid rounded-lg border border-zinc-200 dark:border-zinc-800">
-            <table class="w-full min-w-md text-stat">
+            <table class="w-full text-stat whitespace-nowrap">
                 <thead>
                     <tr class="border-b border-zinc-200 text-micro uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
-                        <th class="px-3 py-2 text-left font-medium">Team</th>
-                        <th class="px-2 py-2 text-right font-medium">Conf</th>
-                        <th class="px-2 py-2 text-right font-medium">Overall</th>
-                        <th class="px-3 py-2 text-right font-medium">Strk</th>
+                        {{-- Abbreviated for the same reason as the Standings
+                             screen: the headers, not the values, were setting
+                             the column widths at 390px. --}}
+                        <th scope="col" class="px-2 py-2 text-left font-medium">Team</th>
+                        <th scope="col" class="px-1.5 py-2 text-right font-medium">
+                            <span aria-hidden="true">Conf</span>
+                            <span class="sr-only">Conference record</span>
+                        </th>
+                        <th scope="col" class="px-1.5 py-2 text-right font-medium">
+                            <span aria-hidden="true">Ovr</span>
+                            <span class="sr-only">Overall record</span>
+                        </th>
+                        <th scope="col" class="px-2 py-2 text-right font-medium">
+                            <span aria-hidden="true">Strk</span>
+                            <span class="sr-only">Streak</span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse ($this->standings as $row)
                         <tr class="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60"
                             wire:key="standing-{{ $row->team_id }}">
-                            <td class="px-3 py-2"><x-team-link :team="$row->team" /></td>
-                            <td class="tabular px-2 py-2 text-right font-semibold">{{ $row->conferenceRecord() }}</td>
-                            <td class="tabular px-2 py-2 text-right text-zinc-500">{{ $row->overallRecord() }}</td>
-                            <td class="px-3 py-2 text-right">
+                            <td class="w-full max-w-0 px-2 py-2"><x-team-link :team="$row->team" label="location" /></td>
+                            <td class="tabular px-1.5 py-2 text-right font-semibold">{{ $row->conferenceRecord() }}</td>
+                            <td class="tabular px-1.5 py-2 text-right text-zinc-500">{{ $row->overallRecord() }}</td>
+                            <td class="px-2 py-2 text-right">
                                 @if ($row->streak)
                                     <span class="{{ str_starts_with($row->streak, 'W') ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400' }}">
                                         {{ $row->streak }}
