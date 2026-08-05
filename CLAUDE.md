@@ -274,7 +274,8 @@ boundary matches two rows — containment prefers the types that carry games.
     $calendar->resultsYear()           the latest season that HAS games
     $calendar->defaultWeekNumber($y)   current week, else last week with games
     $calendar->rankingsYear($poll)     latest season that has THAT poll
-    $calendar->defaultPoll($year)      CFP once it exists, AP until then
+    $calendar->pollYear()              latest season with ANY major poll
+    $calendar->defaultPoll($year)      first major poll that HAS rows
     $calendar->availablePolls($year)   polls with rows, majors first
     $calendar->rankingReleases($y,$p)  every release, newest first
 
@@ -298,6 +299,26 @@ Poll availability is real business logic, verified live for 2025:
 A "release" is a (season type, week) pair, not a week number — the preseason
 poll and the final rankings are both "week 1" of their own season type, so a
 selector keyed on number alone collides them.
+
+**Coaches lands BEFORE AP, and the default has to follow.** Verified live on
+2026-08-05: the only poll ESPN published for the entire 2026 season was the AFCA
+Coaches preseason (ranking id 2, `type: usa`) at type 1 week 1 — no AP at all.
+So `defaultPoll()` returns the first MAJOR poll that actually has rows, in
+`Poll::major()` order (CFP, AP, Coaches), rather than "CFP else AP". Naming a
+poll with no rows opens the screen empty while a real published ranking sits
+one option away in the dropdown — the same failure as a Top 25 filter with no
+poll behind it.
+
+Its year cannot come from `rankingsYear('ap')` either, which is circular: in
+August that answers LAST season, so every screen defaulting through it opens on
+the wrong year. `pollYear()` asks about any major poll instead.
+
+**A preseason poll needs its WEEK row to exist first.** `SyncRankings::season()`
+loops the weeks we hold, so with no type 1 week 1 in `weeks` it never asks for
+the preseason poll and reports 0 records while ESPN is serving 25. ESPN
+publishes that week only when the poll is near, so the seasons step has to run
+again before rankings — `cfb:sync --only=seasons` then `--only=rankings`. Worth
+remembering every August; nothing about the failure points at weeks.
 
 The distinction between `currentYear()` and `resultsYear()` is the important
 one: in August they differ, and conflating them is what empties a dropdown.

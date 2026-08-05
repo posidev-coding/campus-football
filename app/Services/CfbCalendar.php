@@ -232,23 +232,70 @@ class CfbCalendar
     /**
      * Which poll a rankings screen should open on.
      *
-     * The CFP committee's rankings are what everyone actually argues about, but
-     * they do not exist until week 11 — so AP leads until the first CFP poll of
-     * the season appears, and CFP takes over from that moment on. Verified live
-     * against 2025: week 10 has five polls, week 11 has six.
+     * The first MAJOR poll that actually has rows, in `Poll::major()` order —
+     * CFP, then AP, then Coaches. That ordering is the whole business rule:
+     *
+     *   - the CFP committee's rankings are what everyone argues about, but do
+     *     not exist until week 11 (verified live against 2025: week 10 has five
+     *     polls, week 11 has six)
+     *   - AP leads until then
+     *   - and BEFORE AP's own preseason poll lands, Coaches leads
+     *
+     * That last rung is not hypothetical. Verified live for 2026 on Aug 5: the
+     * only poll ESPN publishes for the whole season is the AFCA Coaches
+     * preseason (ranking id 2, `type: usa`) at type 1 week 1. AP has nothing.
+     * Returning AP there names a poll with no rows, so the screen opens empty
+     * while a real, published ranking sits one option away in the dropdown —
+     * the same "filter that cannot mean anything" failure as a Top 25 with no
+     * poll behind it.
+     *
+     * AP remains the fallback when a season has NO major poll at all, because
+     * a screen still has to open on something.
      */
     public function defaultPoll(?int $year = null): Poll
     {
-        $year ??= $this->rankingsYear(Poll::Ap->value);
+        $year ??= $this->pollYear();
 
         return Cache::remember("calendar:default-poll:{$year}", self::CACHE_TTL, function () use ($year) {
             $seasonIds = Season::where('year', $year)->pluck('id');
 
-            $hasCfp = $seasonIds->isNotEmpty() && Ranking::whereIn('season_id', $seasonIds)
-                ->where('poll', Poll::Cfp->value)
-                ->exists();
+            if ($seasonIds->isEmpty()) {
+                return Poll::Ap;
+            }
 
-            return $hasCfp ? Poll::Cfp : Poll::Ap;
+            $present = Ranking::whereIn('season_id', $seasonIds)->distinct()->pluck('poll')->all();
+
+            foreach (Poll::major() as $poll) {
+                if (in_array($poll->value, $present, true)) {
+                    return $poll;
+                }
+            }
+
+            return Poll::Ap;
+        });
+    }
+
+    /**
+     * The latest season carrying ANY major poll.
+     *
+     * `rankingsYear()` answers per POLL, which is right once a poll is chosen
+     * but circular as the default for choosing one: asking it for AP in August
+     * returns LAST season, because this season's AP has not been released yet.
+     * Every screen defaulting through it would then open on 2025 while 2026's
+     * Coaches poll sits unread.
+     */
+    public function pollYear(): int
+    {
+        return Cache::remember('calendar:poll-year', self::CACHE_TTL, function () {
+            $year = Season::query()
+                ->whereIn('id', Ranking::query()
+                    ->whereIn('poll', array_map(fn (Poll $p) => $p->value, Poll::major()))
+                    ->distinct()
+                    ->pluck('season_id'))
+                ->orderByDesc('year')
+                ->value('year');
+
+            return (int) ($year ?? $this->resultsYear());
         });
     }
 
@@ -259,7 +306,7 @@ class CfbCalendar
      */
     public function availablePolls(?int $year = null): array
     {
-        $year ??= $this->rankingsYear(Poll::Ap->value);
+        $year ??= $this->pollYear();
 
         return Cache::remember("calendar:polls:{$year}", self::CACHE_TTL, function () use ($year) {
             // Spans season types — the preseason poll and final rankings live

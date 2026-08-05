@@ -192,6 +192,80 @@ it('defaults to AP until the CFP committee releases one', function () {
     expect($this->calendar->defaultPoll(2025))->toBe(Poll::Ap);
 });
 
+it('leads with Coaches when it is the only poll out yet', function () {
+    /*
+     * Verified live on 2026-08-05: the ONLY poll ESPN publishes for the whole
+     * 2026 season is the AFCA Coaches preseason (ranking id 2, `type: usa`) at
+     * type 1 week 1. AP has nothing.
+     *
+     * Defaulting to AP there names a poll with no rows, so the screen opens
+     * empty while a real, published ranking sits one option away in the
+     * dropdown — the same failure as a Top 25 filter with no poll behind it.
+     */
+    $team = Team::factory()->create();
+    $preseason = Season::where('year', 2025)->where('type', Season::PRESEASON)->sole();
+
+    $week = Week::create([
+        'season_id' => $preseason->id, 'number' => 1, 'name' => 'Week 1',
+        'start_date' => '2025-08-01', 'end_date' => '2025-08-22',
+    ]);
+
+    Ranking::create([
+        'season_id' => $preseason->id, 'week_id' => $week->id,
+        'poll' => 'coaches', 'team_id' => $team->id, 'rank' => 1,
+    ]);
+
+    expect($this->calendar->defaultPoll(2025))->toBe(Poll::Coaches);
+
+    // And AP takes the lead back the moment its own poll lands.
+    Cache::flush();
+
+    Ranking::create([
+        'season_id' => $preseason->id, 'week_id' => $week->id,
+        'poll' => 'ap', 'team_id' => $team->id, 'rank' => 1,
+    ]);
+
+    expect($this->calendar->defaultPoll(2025))->toBe(Poll::Ap);
+});
+
+it('picks the poll year from ANY major poll, not from AP alone', function () {
+    /*
+     * `rankingsYear()` answers per poll, which is right once a poll is chosen
+     * and circular as the default for choosing one: asking it for AP in August
+     * returns LAST season, because this season's AP has not been released. The
+     * screen would then open on 2025 while 2026's Coaches poll sat unread.
+     */
+    $team = Team::factory()->create();
+
+    // Last season finished with a full AP.
+    $lastWeek = Week::where('season_id', $this->regular->id)->where('number', 15)->sole();
+
+    Ranking::create([
+        'season_id' => $this->regular->id, 'week_id' => $lastWeek->id,
+        'poll' => 'ap', 'team_id' => $team->id, 'rank' => 1,
+    ]);
+
+    // The new season has only its Coaches preseason poll. Its preseason row is
+    // already in the fixture — this is the August the whole test is about.
+    $next = Season::where('year', 2026)->where('type', Season::PRESEASON)->sole();
+
+    $nextWeek = Week::create([
+        'season_id' => $next->id, 'number' => 1, 'name' => 'Week 1',
+        'start_date' => '2026-08-01', 'end_date' => '2026-08-22',
+    ]);
+
+    Ranking::create([
+        'season_id' => $next->id, 'week_id' => $nextWeek->id,
+        'poll' => 'coaches', 'team_id' => $team->id, 'rank' => 1,
+    ]);
+
+    expect($this->calendar->pollYear())->toBe(2026)
+        // AP alone still answers 2025, which is exactly why it cannot be the
+        // question the default is built on.
+        ->and($this->calendar->rankingsYear('ap'))->toBe(2025)
+        ->and($this->calendar->defaultPoll())->toBe(Poll::Coaches);
+});
+
 it('switches the default to CFP once one exists', function () {
     // The committee does not publish until week 11; from that release on, the
     // CFP poll is the one people actually argue about.
