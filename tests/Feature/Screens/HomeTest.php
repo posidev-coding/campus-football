@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\ReorderFollowedTeams;
 use App\Jobs\SyncTeamNews;
 use App\Models\Article;
 use App\Models\Game;
@@ -376,5 +377,24 @@ describe('quick add', function () {
         Livewire::actingAs($this->newcomer)->test('home')->call('addTeam', 2633);
 
         Queue::assertPushed(SyncTeamNews::class, fn ($job) => $job->teamId === 2633);
+    });
+});
+
+describe('order follows the user', function () {
+    it('reorders the swipe order when the account list is reordered', function () {
+        // The account list is the single source of order — Home does not sort,
+        // it just renders what the pivot's position gives it.
+        $before = $this->actingAs($this->user)->get(route('home'))->content();
+
+        expect(strpos($before, 'wire:key="glance-2633"'))
+            ->toBeLessThan(strpos($before, 'wire:key="glance-96"'));
+
+        app(ReorderFollowedTeams::class)->handle($this->user, [96, 2633]);
+        TeamGlance::flush();
+
+        $after = $this->actingAs($this->user->fresh())->get(route('home'))->content();
+
+        expect(strpos($after, 'wire:key="glance-96"'))
+            ->toBeLessThan(strpos($after, 'wire:key="glance-2633"'));
     });
 });

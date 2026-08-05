@@ -78,6 +78,53 @@ class Voice
             'r' => 'Room for :remaining more. Add a rival you enjoy watching suffer.',
         ],
 
+        /*
+         * The onboarding card speaks to a GUEST as often as a signed-in user,
+         * and a guest has no content rating — `line()` falls back to PG-13,
+         * which is the right register for a first impression anyway.
+         */
+        'onboarding.heading' => [
+            'pg' => "Let's make this yours",
+            'pg13' => 'Right now, this page is nobody\'s',
+            'r' => 'This page belongs to nobody. Embarrassing for everyone.',
+        ],
+
+        'onboarding.body' => [
+            'pg' => 'Add your team and their record, form and next game land right here.',
+            'pg13' => 'Add your team — record, form, next game, and every reason to complain about them.',
+            'r' => 'Add your team. Record, form, next game, and a full season of grievances.',
+        ],
+
+        'onboarding.dismissed' => [
+            'pg' => 'No problem — you can add teams any time from your account.',
+            'pg13' => "Fine. It'll be in your account when you change your mind.",
+            'r' => "Suit yourself. It's in your account when you come crawling back.",
+        ],
+
+        'onboarding.name' => [
+            'pg' => 'First, what should we call you?',
+            'pg13' => "Let's start easy. What do we call you?",
+            'r' => "Let's start easy. What do we call you?",
+        ],
+
+        'onboarding.rating' => [
+            'pg' => 'How much grief should this app give you?',
+            'pg13' => 'How much grief can you take?',
+            'r' => 'How much grief can you take? Be honest.',
+        ],
+
+        'onboarding.credentials' => [
+            'pg' => 'Last step — somewhere to save all this.',
+            'pg13' => 'Last one. We need somewhere to keep your record.',
+            'r' => 'Last one. Somewhere to file your terrible opinions.',
+        ],
+
+        'onboarding.done' => [
+            'pg' => "You're set. Your page is waiting.",
+            'pg13' => "You're set. Go see what they've done now.",
+            'r' => "You're set. Go see what they've done now.",
+        ],
+
         'home.pickem' => [
             'pg' => "Groups, weekly picks and bragging rights with your friends. It's on the way.",
             'pg13' => "Groups, weekly slates, and a season-long paper trail of everyone's bad calls. It's coming.",

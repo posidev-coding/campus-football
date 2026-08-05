@@ -365,8 +365,8 @@ that. The bar sizes its columns from the area count rather than hardcoding it.
 ## Home is the user's teams, swiped
 
 One at-a-glance card per followed team — record, standing, form pills, live
-or next game, last result — pinned favorite first, in the same priority order
-the scoreboard floats. Native `scroll-snap` IS the animation: no JS tween, no
+or next game, last result — in the order the user set on Account, the same
+order the scoreboard floats them in. Native `scroll-snap` IS the animation: no JS tween, no
 library; momentum scrolling is what feels buttery. An IntersectionObserver
 sets the active index; the dots and the per-team news lists key off the same
 `glances` array index, so they cannot disagree about which team is showing.
@@ -669,43 +669,101 @@ Two things that shape how they are used:
 Heroicons stay in place where they are already used and where the set has a good
 match — this is a preference for new work, not a migration.
 
-## "Pinned" is the word; `favorite_team_id` is the column
+## Follows are an ORDERED list; there is no favorite
 
-One team leads the home page and floats to the top of the scoreboard. The UI
-calls that **pinned**, with a pin icon — the schema still calls it
-`favorite_team_id`, and the relation is still `favoriteTeam()`, because both are
-referenced across the app and renaming them buys nothing. Nothing a user reads
-says "favorite" or "primary"; both were tried and dropped.
+A user follows up to `User::MAX_FOLLOWED_TEAMS` (5) teams and controls their
+order. That order drives everything — the Home swipe order, the scoreboard
+float order, whose news leads. **Position 1 is what "favorite" used to mean.**
 
-The mark is Bootstrap's `pin-angle` / `pin-angle-fill` in blue. Heroicons has no
-plain pin — only `map-pin`, which reads as a LOCATION and is actively wrong in
-an app full of venues.
+`users.favorite_team_id` is gone, and the reason is worth keeping: singling
+out one team forced every surface to RECONCILE it with the follow list. The
+scoreboard had to union the favorite in, because a row written before
+`SetFavoriteTeam` existed might not be followed; `UnfollowTeam` had to null
+the column or leave a ghost team leading the home page. An ordered list makes
+all of that unrepresentable.
+
+    FollowTeam            appends at max(position) + 1 — a new follow never
+                          outranks the teams already there
+    UnfollowTeam          deletes, then REINDEXES to 1..N. Sparse positions
+                          still sort correctly, which is what makes leaving
+                          gaps easy; the cost lands on every later writer
+    ReorderFollowedTeams  handle() validates the submitted list is EXACTLY
+                          the user's followed set — it is reachable from a
+                          public Livewire method
+
+**`game_odds.favorite_team_id` is a different column.** It is the BETTING
+favorite, written by `SyncOdds`. Anyone grepping "favorite" will hit it;
+`OddsAndPredictorsTest` passing unchanged is the proof the right one went.
+
+**`wire:sort` reports ONE item and its new index, not the whole list**, and
+that index is 0-based (Sortable's `newIndex` — verified in
+`vendor/livewire/livewire/dist/livewire.esm.js`, the sort of thing that
+produces an off-by-one rather than an error). `ReorderFollowedTeams::place()`
+rebuilds the full order from it so the drag path gets the same validation as
+the keyboard path. Drag is not keyboard-reachable, so the up/down buttons are
+not optional.
+
+## Onboarding is one blue button, then four small screens
+
+Home's getting-started card is the front door: guests see `Get started` and
+step through name → handle → trash talk → email+password; signed-in users see
+`Add your team` and go straight to the picker. Both land in the same
+full-screen overlay (`livewire/onboarding.blade.php`, `fixed inset-0 z-50`
+over app chrome at z-40) rather than navigating — the same reason the search
+panel expands in place.
+
+- **Credentials come LAST**, which is a conversion choice and a security one:
+  an abandoned signup has no password or email to leave anywhere.
+- **The device draft (`localStorage['cfb.signup']`) stores only the first
+  three screens.** Two independent protections, because either alone can be
+  undone by a later edit: an explicit allowlist of the three fields, AND no
+  save handler on the credentials screen at all. Verify by READING storage,
+  not by reading the code.
+- **The draft saves from the ELEMENT that fired, never from `$wire`.** These
+  bindings are deferred, so `$wire.handle` is still empty while the user types
+  into it — saving from component state wrote a step behind.
+- **Every step needs its own `wire:key`.** Without one Livewire morphs step
+  one's input into step two's — same tag, same position — and the reused node
+  kept its old binding long enough for a keystroke to land on the previous
+  field. Found in the browser: typing a handle wrote to `first_name`.
+- **`register()` does a FULL redirect** to `home?start=team`, not
+  `navigate: true`: registering flips the whole page's auth state and every
+  `@auth` region has to re-render. The redirect also means nothing client-side
+  runs afterwards, which is why an authenticated load clears the draft.
+- **Dismissal reuses `onboarded_at`** (guests: a session flag). Adding a team
+  stamps it too, so the prompt cannot return on a page that now has their team.
+
+## The pin mark, and where it still lives
+
+Bootstrap's `pin-angle-fill` in blue marks the team a user ranked FIRST on the
+scoreboard's floated block — not every followed team, which the reader can
+already see from position. Heroicons has no plain pin, only `map-pin`, which
+reads as a LOCATION and is actively wrong in an app full of venues.
+
+The pin no longer means "favorite" — that concept is gone (see the ordered
+list above) — and Account uses drag handles rather than pins to say the same
+thing.
 
 ## One card for teams, and never two searchable listboxes on a screen
 
-Account has a single "Your teams" card: a search that follows, a list, and a pin
-on each row (pressed again, it unpins).
+Account has a single "Your teams" card: a search that follows, and a list with
+a drag handle plus up/down buttons on each row.
 
-It was two cards, and the split caused a real bug. Choosing it was its
-own `flux:select variant="listbox" searchable` over EVERY FBS team, sitting on
-the same screen as the follow search. **Picking a team to follow silently
-rewrote the pinned team** — the two listboxes shared option values and
-cross-wired, so an add wrote to both bound properties. It looked like teams were
-vanishing from the follow list, and the tell was the survivor pattern: the
-pinned team plus whichever team was picked last.
+It was two cards, and the split caused a real bug. Choosing the lead team was
+its own `flux:select variant="listbox" searchable` over EVERY FBS team, sitting
+on the same screen as the follow search. **Picking a team to follow silently
+rewrote the other selection** — the two listboxes shared option values and
+cross-wired, so an add wrote to both bound properties. It looked like teams
+were vanishing from the follow list, and the tell was the survivor pattern.
 
-Promoting from the list the user already has removes the whole class of problem:
+Reordering the list the user already has removes the whole class of problem:
+one searchable listbox on the screen, so nothing to collide with, and ranking
+cannot pull in a new team so it can never hit the follow cap.
+`ReorderFollowedTeams` still validates membership, because it is reachable
+from a public Livewire method and the client can send any ids.
 
-- one searchable listbox on the screen, so nothing to collide with
-- pinning cannot pull in a new team, so it can never hit the follow cap — the
-  old picker could select an unfollowed team and had to be refused at five
-- `togglePin` still guards that the team is followed, because it is a public
-  Livewire method and the client can call it with any id
-
-**Unfollowing the pinned team clears it.** Otherwise `favorite_team_id` points at a
-team the user no longer follows, and their news keeps leading the home page and
-their games keep floating up the scoreboard with nothing on the account screen
-to explain it or turn it off.
+Both pickers — this one and Home's quick add — read `TeamGlance::fbsTeams()`,
+so they cannot drift or pay for the query twice.
 
 ## Appearance lives on Account, and Flux owns the mechanism
 
@@ -742,8 +800,8 @@ inside `<body>`, so `x-data` in `<head>` is never picked up.
 read as a mistake in it. The rule covers UI copy, comments, PHPDoc, variable and
 method names, tests and this file — not just what a user sees.
 
-The database column was always `favorite_team_id`, so a stray "favourite" in a
-comment sitting next to it was the tell. Same for color/colour, center/centre,
+The word still appears in `game_odds.favorite_team_id` (the betting favorite),
+so a stray "favourite" in a comment sitting next to it was the tell. Same for color/colour, center/centre,
 canceled/cancelled.
 
 ## Float followed teams by PARTITIONING, never by a second query
@@ -758,29 +816,28 @@ of, so it does not appear. Fetching it separately and re-checking the scope
 afterwards is the same behavior held together by a condition that has to be kept
 in step with `Scope` forever.
 
-**All followed teams float, favorite first**, then the rest in the order they
-were followed. Four things the presentation has to get right:
+**All followed teams float, in the user's own order.** Four things the
+presentation has to get right:
 
 - **First team to want a game claims it.** Two followed teams playing each other
   is one game, shown once under whichever of them ranks higher — walking the
   teams in priority order and marking each game claimed is what prevents the
   same card appearing under both.
 - **Move it, do not copy it.** A pinned game is removed from its day group. A
-  card appearing twice reads as a duplicate fixture, not as a favorite.
+  card appearing twice reads as a duplicate fixture, not as a ranking.
 - **Carry the date on the pinned heading.** Lifted out of the chronology a card
   only says "7:30pm", so the heading reads `Tennessee · Saturday, Sep 12`.
-- **Union the favorite with the followed list**, do not assume it is in there.
-  `SetFavoriteTeam` follows the team too, but a row written before that was true
-  would drop the viewer's own team off the top of their own scoreboard.
+- **No union, and none needed.** This once had to merge a separate favorite
+  into the followed set, because a favorite lived outside the list and could
+  disagree with it. An ordered list cannot, which is the point of the change.
 
 The empty state must check BOTH halves. A week whose only in-scope games belong
 to the viewer's teams leaves the day groups empty, and keying the callout on
 those alone prints "Nothing on the slate" directly above their game.
 
-**Follows are capped at `User::MAX_FOLLOWED_TEAMS` (5), and the favorite is one
-of the five** — a followed team that also leads the home page, not a slot beside
-them. Past a handful the pinned block stops being a shortcut and becomes the
-slate again, and each follow also commits us to syncing that team's news.
+**Follows are capped at `User::MAX_FOLLOWED_TEAMS` (5).** Past a handful the
+pinned block stops being a shortcut and becomes the slate again, and each
+follow also commits us to syncing that team's news.
 
 `FollowTeam` throws `FollowLimitReached` rather than silently declining, because
 a write that quietly does nothing gives you a button that looks like it worked

@@ -17,7 +17,7 @@ use Livewire\Component;
  *
  * Signed out it is a national view: what is on, who is ranked, what happened.
  * Signed in it opens on the user's OWN teams — one at-a-glance card per
- * followed team, pinned favorite first, swiped horizontally — because a fan
+ * followed team in the order they chose, swiped horizontally — because a fan
  * opens a football app to find out about their teams before the other 130.
  *
  * Data is loaded once per CONCERN across all followed teams, never per card:
@@ -31,6 +31,40 @@ new class extends Component
     private const TEAM_COLUMNS = 'id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark';
 
     /**
+     * The getting-started card, shown only when there is nothing to show and
+     * they have not waved it away.
+     *
+     * A guest's dismissal lives in the session, which lapses naturally; a
+     * signed-in user's is `onboarded_at`, already on `users` and until now
+     * unused. Adding a team stamps it too, so the prompt cannot come back on
+     * a page that has their team on it.
+     */
+    #[Computed]
+    public function showOnboardingCta(): bool
+    {
+        $user = auth()->user();
+
+        if ($user === null) {
+            return ! session('onboarding.dismissed', false);
+        }
+
+        return $this->followedTeams->isEmpty() && ! $user->hasOnboarded();
+    }
+
+    public function dismissOnboarding(): void
+    {
+        $user = auth()->user();
+
+        if ($user === null) {
+            session(['onboarding.dismissed' => true]);
+        } elseif (! $user->hasOnboarded()) {
+            $user->forceFill(['onboarded_at' => now()])->save();
+        }
+
+        unset($this->showOnboardingCta);
+    }
+
+    /**
      * Everything the page renders from the follow list is stale once a team
      * lands, whether it came from the swiper's own slot or the onboarding
      * overlay next door.
@@ -41,6 +75,7 @@ new class extends Component
         unset(
             $this->followedTeams, $this->glances, $this->newsByTeam,
             $this->followable, $this->teamMatches, $this->canFollowMore, $this->hasLiveGame,
+            $this->showOnboardingCta,
         );
     }
 
@@ -280,11 +315,20 @@ new class extends Component
          takes over and the bar retires. --}}
     <livewire:search-panel />
 
+    {{-- The guided flow. Rendered for everyone: a guest steps through account
+         creation and lands in the same picker a signed-in user opens straight
+         into. It is inert until something dispatches `start-onboarding`. --}}
+    <livewire:onboarding />
+
+    {{-- One blue button is the whole front door at zero teams. The swiper's
+         own quiet slot takes over once they have at least one — that is a
+         convenience for someone already onboarded, not a prompt. --}}
+    @if ($this->showOnboardingCta)
+        <x-onboarding-cta :guest="! auth()->check()" />
+    @endif
+
     @auth
-        {{-- Renders with zero teams too: the swiper then holds a single empty
-             slot, which IS the onboarding. A separate "go to Account" callout
-             sent people away from the page they were trying to fill. --}}
-        @if ($this->glances !== [] || $this->canFollowMore)
+        @if ($this->glances !== [])
             {{--
                 The team swiper. Native scroll-snap IS the animation: no JS
                 tween, no library — momentum scrolling is what makes it feel
