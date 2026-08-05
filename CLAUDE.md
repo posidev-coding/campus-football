@@ -420,15 +420,26 @@ the input the user tapped keeps it up), the `/search` deep-link page, and the
 desktop ⌘K palette.
 
 That bar STICKS at `top-0` — below `sm` there is no header, so the top of the
-screen is the top of the viewport and the offset needs no measuring. It stays
-NEUTRAL: `bg-white` / `dark:bg-zinc-950`, the page's exact background, so it
-reads as part of the screen rather than a second piece of chrome arguing with
-the tab bar. Opaque, not tinted — team names painting through would look like
-the background had failed. It cancels the container's padding and re-applies
-it inside (`-mx-4 px-4`, `-mt-5 pt-5`) so it has nothing to travel through,
-and `pb-3 -mb-3` gives content somewhere to disappear without disturbing
-Home's `gap-6`. That last pair also nets the wrapper to zero flow height while
-the panel is open, so the fixed overlay leaves no residual gap behind it. All three read `App\Support\Search`, which is Laravel
+screen is the top of the viewport and the offset needs no measuring. It cancels
+the container's padding and re-applies it inside (`-mx-4 px-4`, `-mt-5 pt-5`)
+so it has nothing to travel through, and `pb-3 -mb-3` gives content somewhere
+to disappear without disturbing Home's `gap-6`. That last pair also nets the
+wrapper to zero flow height while the panel is open, so the fixed overlay
+leaves no residual gap behind it.
+
+**It wears the layout header's own surface**, verbatim: `bg-white/85` with
+`backdrop-blur` and a zinc `border-b`. Below `sm` that header is hidden, so on
+a phone this bar IS the header — matching it makes them one object at two
+widths instead of two pieces of chrome with different ideas, and gives Home a
+formal top edge. Verified at both widths: at 390 the bar is 73px and the header
+is 0px with no rule; at 768 exactly the reverse, with identical computed
+background, blur and border color. Neutral throughout — the separation comes
+from the rule and the blur, never from a tint or a brand color.
+
+Translucency is safe HERE and was not on the scoreboard's day headings, which
+is worth keeping straight: this sits at z-30, above card contents at z-10, so
+it wins on z-index and the blur is decoration. A day heading tied at z-10 and
+lost on tree order, and no amount of opacity fixed that. All three read `App\Support\Search`, which is Laravel
 Scout on the DATABASE engine — the data is already in our MySQL, so search
 queries source tables and there is no index to sync or drift.
 

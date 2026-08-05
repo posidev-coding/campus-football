@@ -62,24 +62,30 @@ new class extends Component
     far Home has been scrolled — below `sm` there is no header for it to sit
     under, so `top-0` is the real top of the viewport.
 
-    Neutral on purpose: the background matches the page exactly (`bg-white` /
-    `dark:bg-zinc-950`) rather than tinting or blurring, so the bar reads as
-    part of the screen rather than a second piece of chrome competing with the
-    tab bar. It must be OPAQUE — a translucent background lets team names paint
-    through it, which reads as the background having failed.
+    It carries the SAME surface as the layout header — `bg-white/85` with a
+    backdrop blur and a zinc bottom rule — because below `sm` that header is
+    hidden and this bar is what a phone has instead. Matching it makes the two
+    one object at two widths rather than two pieces of chrome with different
+    ideas; the rule is what separates the screen from the bar, and the blur is
+    what says something is passing underneath. Neutral throughout: no tint, no
+    brand color, nothing that competes with the tab bar for attention.
+
+    Translucency is safe here only because the stacking order is right. The
+    scoreboard's day headings taught that an opaque background does not win a
+    z-index tie — this sits at z-30, above card contents at z-10 and below app
+    chrome at z-40, so it wins on z-index and the blur is decoration rather
+    than the thing holding the layer together.
 
     Sticky offsets have to have nothing to travel through, so the container's
     own padding is cancelled and re-applied INSIDE the sticky box: `-mx-4 px-4`
     to reach both screen edges, `-mt-5 pt-5` so the space above travels with the
     bar instead of scrolling away. `pb-3 -mb-3` gives content a gap to disappear
     into without changing Home's `gap-6` rhythm.
-
-    z-30 is screen chrome: above the cards (z-10) and below the tab bar (z-40).
 --}}
 <div
     x-data="{ open: false }"
     @keydown.escape.window="if (open) { open = false; $wire.clear(); document.activeElement?.blur() }"
-    class="sticky top-0 z-30 -mx-4 -mt-5 -mb-3 bg-white px-4 pt-5 pb-3 sm:hidden dark:bg-zinc-950"
+    class="sticky top-0 z-30 -mx-4 -mt-5 -mb-3 border-b border-zinc-200 bg-white/85 px-4 pt-5 pb-3 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/85"
 >
     {{-- One wrapper that is either a row in Home's flow or the whole viewport.
          Toggling classes on the SAME element keeps the input mounted and

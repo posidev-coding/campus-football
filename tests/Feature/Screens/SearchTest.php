@@ -245,29 +245,37 @@ describe('the shared surfaces', function () {
         Http::assertNothingSent();
     });
 
-    it('keeps the bar within reach, opaque and unbranded', function () {
+    it('gives the phone the same header the desktop has', function () {
         /*
-         * Sticky rather than a row that scrolls away: search is one tap away
-         * however far Home has been scrolled. Three things the offset has to
-         * get right, each one already paid for elsewhere:
+         * Sticky rather than a row that scrolls away, and dressed as chrome
+         * rather than as content. Three things it has to get right:
          *
-         *   - OPAQUE. A translucent background lets team names paint through,
-         *     which reads as the background having failed rather than as a
-         *     stacking problem.
+         *   - THE SAME SURFACE AS THE LAYOUT HEADER. Below `sm` that header is
+         *     hidden and this bar is what a phone has instead; a different
+         *     rule or a different tint would read as a second piece of chrome.
          *   - NOTHING TO TRAVEL THROUGH. The container's `px-4 py-5` is
          *     cancelled and re-applied inside, or the bar drifts up on the
          *     first scroll while it closes that gap.
          *   - z-30 is screen chrome: above cards (z-10), below the tab bar
-         *     (z-40), which must always cover it.
+         *     (z-40), which must always cover it. The translucency is only
+         *     safe because that order is right.
+         *
+         * Asserted as one literal class list rather than as separate contains:
+         * Flux's own input markup carries translucent surfaces, so a whole-tree
+         * search for `bg-white/` finds those instead of this bar.
          */
-        $html = Livewire::test('search-panel')->html();
+        $bar = 'class="sticky top-0 z-30 -mx-4 -mt-5 -mb-3 border-b border-zinc-200 bg-white/85 px-4 pt-5 pb-3 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/85"';
 
-        // Asserted as one literal class list rather than as separate contains:
-        // Flux's own input markup carries translucent surfaces of its own, so a
-        // whole-tree search for `bg-white/` finds those instead of this bar.
-        expect($html)->toContain(
-            'class="sticky top-0 z-30 -mx-4 -mt-5 -mb-3 bg-white px-4 pt-5 pb-3 sm:hidden dark:bg-zinc-950"'
-        );
+        expect(Livewire::test('search-panel')->html())->toContain($bar);
+
+        // The rule and the surface are the layout header's own, verbatim. If
+        // the header restyles, this fails rather than quietly drifting apart.
+        $header = file_get_contents(resource_path('views/components/layouts/app.blade.php'));
+
+        foreach (['border-zinc-200', 'bg-white/85', 'backdrop-blur', 'dark:border-zinc-800', 'dark:bg-zinc-950/85'] as $token) {
+            expect($header)->toContain($token)
+                ->and($bar)->toContain($token);
+        }
     });
 
     it('lights the League tab on a coach page', function () {
