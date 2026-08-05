@@ -1,7 +1,7 @@
 <?php
 
 use App\Actions\FollowTeam;
-use App\Actions\SetFavoriteTeam;
+use App\Actions\ReorderFollowedTeams;
 use App\Actions\UnfollowTeam;
 use App\Enums\ContentRating;
 use App\Exceptions\FollowLimitReached;
@@ -20,9 +20,12 @@ use Livewire\Component;
 /**
  * Account settings, and the teams a user cares about.
  *
- * Choosing a favorite or following a team dispatches that team's news fetch —
- * see FollowTeam — so this screen is what populates a user's home page and the
- * team's News tab.
+ * Following a team dispatches that team's news fetch — see FollowTeam — so
+ * this screen is what populates a user's home page and the team's News tab.
+ *
+ * The ORDER of the list is the model: it drives the Home swipe order, the
+ * scoreboard float order, and whose news leads. There is no separate favorite
+ * anymore; position 1 is what that meant.
  */
 new class extends Component
 {
@@ -48,18 +51,6 @@ new class extends Component
     /** Set when adding a team would exceed the follow limit. */
     public string $followError = '';
 
-    /**
-     * Pin a team the user already follows, or unpin it.
-     *
-     * "Pinned" is the user-facing word for what the schema calls
-     * `favorite_team_id`: the one team whose news leads the home page and whose
-     * games sit at the top of the scoreboard. The column keeps its name — it is
-     * referenced across the app — but nothing says "favorite" to a reader.
-     *
-     * The same control both ways, so there is no separate "none" option to hunt
-     * for. Because the team is always one they already follow, this can never
-     * hit the follow cap.
-     */
     public function mount(): void
     {
         $this->fillProfileForm();
@@ -118,17 +109,27 @@ new class extends Component
         $this->handle = Str::of($this->handle)->lower()->replaceMatches('/[^a-z0-9_]/', '')->substr(0, 20)->toString();
     }
 
-    public function togglePin(int $teamId, SetFavoriteTeam $action): void
+    /**
+     * The drag path. `wire:sort` reports ONE item and its new index, not the
+     * whole list, and the index is 0-based.
+     */
+    public function reorder(int $teamId, int $position, ReorderFollowedTeams $action): void
     {
-        $user = auth()->user();
+        $action->place(auth()->user(), $teamId, $position);
 
-        if (! $user->followedTeams()->whereKey($teamId)->exists()) {
-            return;
-        }
+        unset($this->followed);
+    }
 
-        $action->handle($user, $user->favorite_team_id === $teamId ? null : Team::find($teamId));
+    /**
+     * The keyboard path to the same outcome. A drag handle is unreachable
+     * without a pointer, and the order is the only way to say which team
+     * leads — so it cannot be pointer-only.
+     */
+    public function move(int $teamId, int $offset, ReorderFollowedTeams $action): void
+    {
+        $action->move(auth()->user(), $teamId, $offset);
 
-        unset($this->followed, $this->followable);
+        unset($this->followed);
     }
 
     public function follow(int $teamId, FollowTeam $action): void
@@ -448,104 +449,61 @@ new class extends Component
             <p class="text-micro text-amber-600 dark:text-amber-500">{{ $followError }}</p>
         @endif
 
-    {{-- Rows slide to their new positions when the pin moves.
+    {{-- Drag to reorder. `wire:sort` is Livewire's own — it brings SortableJS
+         and its 150ms shuffle, so the hand-rolled FLIP that used to animate a
+         pin moving is gone with the pin.
 
-         A FLIP: record every row's offset before the click goes out, and once
-         Livewire has re-ordered the DOM, put each row back where it was with a
-         transform and let a transition carry it to where it now belongs. CSS
-         alone cannot do this — reordering is not an animatable property, so
-         without the transform the list simply snaps.
+         Its handler reports ONE item and its new index, not the whole list,
+         and that index is 0-based (Sortable's `newIndex`). `place()` rebuilds
+         the full order from it so the drag path gets the same membership
+         validation as the keyboard path. --}}
+    <div wire:sort="reorder($item, $position)" class="flex flex-col gap-3">
+        @foreach ($this->followed as $team)
+            <div
+                wire:sort:item="{{ $team->id }}"
+                wire:key="followed-{{ $team->id }}"
+                class="flex items-center gap-2 rounded-lg bg-white dark:bg-zinc-900"
+            >
+                {{-- The handle is what makes the ROW draggable without
+                     capturing taps on the links inside it. --}}
+                <span
+                    wire:sort:handle
+                    class="shrink-0 cursor-grab touch-none p-1 text-zinc-300 active:cursor-grabbing dark:text-zinc-600"
+                    aria-hidden="true"
+                >
+                    <flux:icon name="bars-3" variant="micro" />
+                </span>
 
-         Positions are captured on the CAPTURE phase, which is what makes them
-         "before": the click has not reached the button yet, so nothing has
-         moved. --}}
-    <div
-        x-data="{
-            before: {},
-            capture() {
-                this.before = {}
-                this.$el.querySelectorAll('[data-row]').forEach((row) => {
-                    this.before[row.dataset.row] = row.getBoundingClientRect().top
-                })
-            },
-            play() {
-                // Consumed, not just read. Livewire's morph fires the observer
-                // more than once per update, and a second pass would measure a
-                // row that is already mid-flight.
-                const before = this.before
-                this.before = {}
+                <span class="tabular w-4 shrink-0 text-micro font-semibold text-zinc-400">{{ $loop->iteration }}</span>
 
-                if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+                <x-team-link :team="$team" size="sm" class="min-w-0 flex-1" />
 
-                this.$el.querySelectorAll('[data-row]').forEach((row) => {
-                    const was = before[row.dataset.row]
-
-                    if (was === undefined) return
-
-                    const delta = was - row.getBoundingClientRect().top
-
-                    if (! delta) return
-
-                    /*
-                     * animate() rather than setting a transform and clearing it
-                     * on the next frame. That two-step version got STUCK: the
-                     * morph can replace a row between the two, so the cleanup
-                     * ran against a detached node and the row froze at its full
-                     * offset. This leaves no inline style behind at all, so
-                     * there is nothing to strand.
-                     */
-                    row.animate(
-                        [{ transform: `translateY(${delta}px)` }, { transform: 'translateY(0)' }],
-                        { duration: 300, easing: 'cubic-bezier(0.2, 0, 0, 1)' },
-                    )
-                })
-            },
-        }"
-        x-on:click.capture="capture()"
-        x-init="new MutationObserver(() => play()).observe($el, { childList: true })"
-        class="flex flex-col gap-3"
-    >
-        @forelse ($this->followed as $team)
-            @php $pinned = auth()->user()->favorite_team_id === $team->id; @endphp
-
-            <div class="flex items-center gap-2" data-row="{{ $team->id }}" wire:key="followed-{{ $team->id }}">
-                {{-- The same control both ways: press to pin, press again to
-                     unpin. Bootstrap ships outline and filled as two separate
-                     icons, so the state swaps the component — a genuinely
-                     filled pin, not the same glyph recoloured, which means no
-                     separate badge repeating what the icon already says.
-
-                     Passed as a CHILD, not through `icon="..."`. That prop
-                     resolves against Flux's own icon set and silently falls
-                     back when the name is not in it — the button rendered a
-                     24px stroked glyph while `flux:icon.pin-angle` on its own
-                     rendered the 16px Bootstrap one. As a child the component
-                     is unambiguous, and its colour can be set directly rather
-                     than fought past the button's own `text-*`.
-
-                     Always `ghost`. The filled and coloured pin carries the
-                     state on its own; a chip behind it added a second, weaker
-                     signal saying the same thing.
-
-                     `aria-pressed` is what makes it a toggle to a screen reader;
-                     without it both states announce as the same button. --}}
+                {{-- The keyboard path to the same outcome. A drag handle is
+                     unreachable without a pointer, and the order is the only
+                     way to say which team leads — so it cannot be
+                     pointer-only. Hidden from pointer users at `sm` and up
+                     would be worse, not better: they are small and quiet. --}}
                 <flux:button
-                    wire:click="togglePin({{ $team->id }})"
+                    wire:click="move({{ $team->id }}, -1)"
                     size="xs"
                     square
                     variant="ghost"
                     class="shrink-0"
-                    :aria-pressed="$pinned ? 'true' : 'false'"
-                    aria-label="{{ $pinned ? 'Unpin '.$team->display_name : 'Pin '.$team->display_name.' to your home page' }}"
-                >
-                    @if ($pinned)
-                        <flux:icon.pin-angle-fill variant="micro" class="text-blue-500" />
-                    @else
-                        <flux:icon.pin-angle variant="micro" class="text-zinc-400" />
-                    @endif
-                </flux:button>
+                    :disabled="$loop->first"
+                    aria-label="Move {{ $team->display_name }} up"
+                    icon="chevron-up"
+                />
 
-                <x-team-link :team="$team" size="sm" class="min-w-0 flex-1" />
+                <flux:button
+                    wire:click="move({{ $team->id }}, 1)"
+                    size="xs"
+                    square
+                    variant="ghost"
+                    class="shrink-0"
+                    :disabled="$loop->last"
+                    aria-label="Move {{ $team->display_name }} down"
+                    icon="chevron-down"
+                />
 
                 <flux:button
                     wire:click="unfollow({{ $team->id }})"
@@ -556,11 +514,13 @@ new class extends Component
                     aria-label="Unfollow {{ $team->display_name }}"
                 />
             </div>
-        @empty
+        @endforeach
+
+        @if ($this->followed->isEmpty())
             <flux:text class="text-sm text-zinc-500">
                 {{ Voice::line('teams.empty') }}
             </flux:text>
-        @endforelse
+        @endif
     </div>
     </flux:card>
 

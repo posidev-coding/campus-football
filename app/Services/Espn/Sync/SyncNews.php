@@ -65,9 +65,10 @@ class SyncNews
      */
     public function followed(): int
     {
-        $teamIds = DB::table('team_follows')->distinct()->pluck('team_id')
-            ->merge(DB::table('users')->whereNotNull('favorite_team_id')->distinct()->pluck('favorite_team_id'))
-            ->unique();
+        // One source. This used to union in `users.favorite_team_id` as well,
+        // because a favorite was not guaranteed to be followed; now a favorite
+        // IS simply the first followed team, so the pivot covers everyone.
+        $teamIds = DB::table('team_follows')->distinct()->pluck('team_id');
 
         $synced = 0;
 

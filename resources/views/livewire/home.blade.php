@@ -1,18 +1,15 @@
 <?php
 
-use App\Actions\FollowTeam;
-use App\Actions\SetFavoriteTeam;
-use App\Exceptions\FollowLimitReached;
+use App\Livewire\Concerns\PicksTeams;
 use App\Models\Article;
 use App\Models\Game;
 use App\Models\Season;
 use App\Models\Team;
-use App\Models\User;
 use App\Services\CfbCalendar;
 use App\Support\Scope;
 use App\Support\TeamGlance;
-use App\Support\Voice;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 /**
@@ -29,104 +26,36 @@ use Livewire\Component;
  */
 new class extends Component
 {
+    use PicksTeams;
+
     private const TEAM_COLUMNS = 'id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark';
 
-    /** Quick add: the query typed into the empty slot at the end of the swiper. */
-    public string $teamQuery = '';
-
-    public string $followError = '';
-
     /**
-     * Follow a team without leaving Home.
-     *
-     * The first team a user follows also becomes their FAVORITE. Nobody
-     * picking their one and only team expects it not to lead the page, and
-     * making them go to Account to say so again is a second trip for a
-     * decision they have already made. `SetFavoriteTeam` follows as part of
-     * setting, so this is one action either way.
+     * Everything the page renders from the follow list is stale once a team
+     * lands, whether it came from the swiper's own slot or the onboarding
+     * overlay next door.
      */
-    public function addTeam(int $teamId, FollowTeam $follow, SetFavoriteTeam $favorite): void
+    #[On('team-followed')]
+    public function refreshTeams(): void
     {
-        $user = auth()->user();
-        $team = Team::find($teamId);
-
-        $this->followError = '';
-
-        if ($user === null || $team === null) {
-            return;
-        }
-
-        $isFirst = $user->followedTeams()->count() === 0;
-
-        try {
-            $isFirst
-                ? $favorite->handle($user, $team)
-                : $follow->handle($user, $team);
-        } catch (FollowLimitReached $e) {
-            // Left in place on failure so the user can see what they reached
-            // for beside the reason it did not land.
-            $this->followError = Voice::line('follow.limit', ['max' => $e->limit]);
-
-            return;
-        }
-
-        $this->teamQuery = '';
-
         unset(
             $this->followedTeams, $this->glances, $this->newsByTeam,
             $this->followable, $this->teamMatches, $this->canFollowMore, $this->hasLiveGame,
         );
     }
 
-    /** Room for another team, which is what puts the empty slot in the swiper. */
-    #[Computed]
-    public function canFollowMore(): bool
+    protected function afterTeamAdded(Team $team): void
     {
-        return auth()->check()
-            && $this->followedTeams->count() < User::MAX_FOLLOWED_TEAMS;
+        $this->refreshTeams();
     }
 
     /**
-     * FBS teams they are not already following.
+     * The viewer's teams, in the order they chose on Account.
      *
-     * @return list<array{id:int, name:string}>
-     */
-    #[Computed]
-    public function followable(): array
-    {
-        $already = $this->followedTeams->pluck('id')->all();
-
-        return collect(TeamGlance::fbsTeams())
-            ->reject(fn (array $team) => in_array($team['id'], $already, true))
-            ->values()
-            ->all();
-    }
-
-    /**
-     * Matches for the typed query, capped — an unbounded list inside a
-     * scroll-snap card would push the whole slate off the screen.
-     *
-     * @return list<array{id:int, name:string}>
-     */
-    #[Computed]
-    public function teamMatches(): array
-    {
-        $query = trim($this->teamQuery);
-
-        if ($query === '') {
-            return [];
-        }
-
-        return collect($this->followable)
-            ->filter(fn (array $team) => str_contains(mb_strtolower($team['name']), mb_strtolower($query)))
-            ->take(5)
-            ->values()
-            ->all();
-    }
-
-    /**
-     * The viewer's teams, favorite first, then follow order — the same
-     * priority the scoreboard floats them in.
+     * One `get()` and nothing else: `followedTeams()` orders by the pivot's
+     * position, so the swipe order IS the user's order. This used to sort a
+     * favorite to the front and union it in if it was somehow not followed —
+     * both of which stopped being possible the moment order became the model.
      */
     #[Computed]
     public function followedTeams()
@@ -137,25 +66,10 @@ new class extends Component
             return collect();
         }
 
-        $columns = ['teams.id', 'slug', 'location', 'display_name', 'short_display_name', 'abbreviation', 'color', 'alt_color', 'logo', 'logo_dark'];
-
-        $followed = $user->followedTeams()
-            ->orderByPivot('created_at')
-            ->orderBy('teams.display_name')
-            ->get($columns);
-
-        $favorite = $user->favorite_team_id;
-
-        // Union, not just a sort — a follow row written before SetFavoriteTeam
-        // guaranteed one would otherwise drop the user's own team.
-        if ($favorite !== null && ! $followed->contains('id', $favorite)) {
-            $followed->push(Team::select($columns)->find($favorite));
-        }
-
-        return $followed
-            ->filter()
-            ->sortBy(fn (Team $team) => $team->id === $favorite ? 0 : 1)
-            ->values();
+        return $user->followedTeams()->get([
+            'teams.id', 'slug', 'location', 'display_name', 'short_display_name',
+            'abbreviation', 'color', 'alt_color', 'logo', 'logo_dark',
+        ]);
     }
 
     /**

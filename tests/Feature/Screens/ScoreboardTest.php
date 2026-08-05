@@ -1,7 +1,7 @@
 <?php
 
 use App\Actions\FollowTeam;
-use App\Actions\SetFavoriteTeam;
+use App\Actions\ReorderFollowedTeams;
 use App\Models\Conference;
 use App\Models\Game;
 use App\Models\Ranking;
@@ -14,6 +14,7 @@ use App\Services\CfbCalendar;
 use App\Support\Scope;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -551,9 +552,12 @@ describe('horizontal overflow', function () {
     });
 });
 
-describe('favorite team floats to the top', function () {
+describe('followed teams float to the top', function () {
     beforeEach(function () {
-        $this->fan = User::factory()->create(['favorite_team_id' => 61]);
+        Queue::fake();
+
+        $this->fan = User::factory()->create();
+        app(FollowTeam::class)->handle($this->fan, Team::find(61));
 
         // Georgia plays Saturday; two other games sit ahead of it on Thursday,
         // so an unfloated card would be third and below a day heading.
@@ -615,7 +619,7 @@ describe('favorite team floats to the top', function () {
 
     it('does NOT show their game when the scope excludes them', function () {
         /*
-         * The rule that matters. An unranked favorite under a Top 25 filter
+         * The rule that matters. An unranked followed team under a Top 25 filter
          * stays hidden — floating is a reordering of what the scope already
          * admitted, never a way past it.
          */
@@ -679,19 +683,19 @@ describe('all followed teams float', function () {
         }
 
         $this->fan = User::factory()->create();
-        // Followed in this order; Tennessee is made the favorite afterwards, so
-        // the ordering under test is priority, not follow order.
+        // Followed Alabama first, then reordered Tennessee to the top — so the
+        // ordering under test is the USER'S order, not follow order.
         foreach ([$this->tide, $this->vols] as $team) {
             app(FollowTeam::class)->handle($this->fan, $team);
         }
-        app(SetFavoriteTeam::class)->handle($this->fan, $this->vols);
+        app(ReorderFollowedTeams::class)->handle($this->fan, [$this->vols->id, $this->tide->id]);
 
         $this->slate = fn () => $this->actingAs($this->fan)
             ->get(route('scoreboard', ['week' => $this->week->id, 'scope' => Scope::FBS]))
             ->getContent();
     });
 
-    it('floats a followed team that is not the favorite', function () {
+    it('floats a followed team that is not the one they ranked first', function () {
         Game::factory()->finished()->create([
             'season_id' => $this->season->id, 'week_id' => $this->week->id,
             'home_team_id' => 334, 'away_team_id' => 77,
@@ -704,7 +708,7 @@ describe('all followed teams float', function () {
             ->toContain('Alabama Crimson');
     });
 
-    it('puts the favorite above the other followed teams', function () {
+    it('puts the team they ranked first above the others', function () {
         Game::factory()->finished()->create([
             'season_id' => $this->season->id, 'week_id' => $this->week->id,
             'home_team_id' => 334, 'away_team_id' => 77,
@@ -723,7 +727,7 @@ describe('all followed teams float', function () {
         expect(strpos($html, 'Tennessee'))->toBeLessThan(strpos($html, 'Alabama Crimson'));
     });
 
-    it('shows a game between two followed teams once, under the favorite', function () {
+    it('shows a game between two followed teams once, under the higher-ranked one', function () {
         /*
          * Both teams want this game. Walking them in priority order and marking
          * each game claimed is what stops the same card rendering twice — which
@@ -742,7 +746,7 @@ describe('all followed teams float', function () {
             ->and(substr($html, strpos($html, 'data-pinned="true"'), 2000))->toContain('Tennessee');
     });
 
-    it('still respects the scope for every followed team, not just the favorite', function () {
+    it('still respects the scope for every followed team', function () {
         /*
          * BOTH sides out of scope, which is the case worth testing. Moving only
          * Alabama proves nothing: a game shows when EITHER team is in scope, so

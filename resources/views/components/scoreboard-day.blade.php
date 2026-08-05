@@ -6,18 +6,18 @@
     // kickoff time — "3:30pm" does not tell you which day.
     'meta' => null,
     'pinned' => false,
-    // The pin marks the ONE pinned team, not every followed team. Marking all
-    // of them would spend the only ranking signal the block has on saying
+    // Marks the team the user ranked FIRST, not every followed team. Marking
+    // all of them would spend the only ranking signal the block has on saying
     // "followed", which the reader can already see from the position.
-    'favorite' => false,
+    'lead' => false,
 ])
 
 {{--
     One day's worth of the slate: a sticky heading and the cards under it.
 
-    Shared by the ordinary day groups and by the pinned favorite-team group, so
-    the two cannot drift apart — the sticky offset, the opaque background and
-    the z-index are decided once here rather than per caller.
+    Shared by the ordinary day groups and by the pinned followed-team groups,
+    so the two cannot drift apart — the sticky offset, the opaque background
+    and the z-index are decided once here rather than per caller.
 --}}
 <div
     {{ $attributes->class(['flex flex-col gap-2']) }}
@@ -40,7 +40,7 @@
         class="sticky z-20 -mx-4 flex min-w-0 items-center gap-1.5 bg-white px-4 py-1.5 dark:bg-zinc-950"
         style="top: var(--scores-chrome, 0px)"
     >
-        @if ($favorite)
+        @if ($lead)
             <flux:icon.pin-angle-fill variant="micro" class="shrink-0 text-blue-500" />
         @endif
 

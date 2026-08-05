@@ -112,7 +112,7 @@ new class extends Component
      * scope would be the same behaviour held together by a condition somebody
      * has to remember to keep in step with `Scope`.
      *
-     * @return array{pinned: list<array{team: Team, day: string, games: Illuminate\Support\Collection, favorite: bool}>, days: Illuminate\Support\Collection}
+     * @return array{pinned: list<array{team: Team, day: string, games: Illuminate\Support\Collection, lead: bool}>, days: Illuminate\Support\Collection}
      */
     #[Computed]
     public function slate(): array
@@ -123,7 +123,6 @@ new class extends Component
 
         $games = $this->scopedGames();
         $teams = $this->pinnedTeams();
-        $favorite = auth()->user()?->favorite_team_id;
 
         if ($teams->isEmpty()) {
             return ['pinned' => [], 'days' => $byDay($games)];
@@ -133,12 +132,12 @@ new class extends Component
         $claimed = [];
 
         /*
-         * Walked in priority order — favorite first — and each game is claimed
-         * by the FIRST team that wants it. That is what keeps a game between
-         * two followed teams appearing once, under the one the viewer cares
-         * about more, rather than twice under both.
+         * Walked in the user's own order, and each game is claimed by the
+         * FIRST team that wants it. That is what keeps a game between two
+         * followed teams appearing once, under the one they ranked higher,
+         * rather than twice under both.
          */
-        foreach ($teams as $team) {
+        foreach ($teams as $index => $team) {
             $theirs = $games->filter(fn (Game $game) => ! isset($claimed[$game->id])
                 && ($game->home_team_id === $team->id || $game->away_team_id === $team->id));
 
@@ -154,7 +153,7 @@ new class extends Component
                     'team' => $team,
                     'day' => $day,
                     'games' => $dayGames,
-                    'favorite' => $team->id === $favorite,
+                    'lead' => $index === 0,
                 ];
             }
         }
@@ -166,13 +165,12 @@ new class extends Component
     }
 
     /**
-     * The viewer's teams, favorite first, then everyone else they follow.
+     * The viewer's teams, in the order they set on Account.
      *
-     * The favorite leads because it is the one team they would look for before
-     * any other; the rest follow in the order they were followed. Setting a
-     * favorite also follows it (see SetFavoriteTeam), but this unions the two
-     * anyway rather than trusting that invariant to hold for every row that
-     * already exists.
+     * One query and no reconciliation. This used to sort a favorite to the
+     * front and UNION it in when it was somehow not followed — a guard that
+     * existed only because a favorite lived outside the follow list and could
+     * disagree with it. An ordered list cannot.
      *
      * @return Illuminate\Support\Collection<int, Team>
      */
@@ -184,33 +182,8 @@ new class extends Component
             return collect();
         }
 
-        $columns = ['teams.id', 'location', 'display_name', 'short_display_name'];
-
-        $followed = $user->followedTeams()
-            ->orderByPivot('created_at')
-            // Deterministic tiebreak. Several follows written in the same
-            // second — which is exactly what onboarding will do — otherwise
-            // come back in whatever order MySQL feels like, and the pinned
-            // block reshuffles itself between page loads.
-            ->orderBy('teams.display_name')
-            ->get($columns);
-
-        $favorite = $user->favorite_team_id;
-
-        // Union, not just a sort. Setting a favorite follows it too, but a row
-        // written before that was true — or by a future caller that skips the
-        // action — would otherwise drop the viewer's own team off the top of
-        // their scoreboard, which is the one thing this feature exists to do.
-        if ($favorite !== null && ! $followed->contains('id', $favorite)) {
-            $followed->push(Team::select($columns)->find($favorite));
-        }
-
-        return $followed
-            ->filter()
-            // PHP's sort is stable, so the followed order survives inside the
-            // second group.
-            ->sortBy(fn (Team $team) => $team->id === $favorite ? 0 : 1)
-            ->values();
+        return $user->followedTeams()
+            ->get(['teams.id', 'location', 'display_name', 'short_display_name']);
     }
 
     #[Computed]
@@ -219,7 +192,7 @@ new class extends Component
         return $this->slate()['days'];
     }
 
-    /** @return list<array{team: Team, day: string, games: Illuminate\Support\Collection, favorite: bool}> */
+    /** @return list<array{team: Team, day: string, games: Illuminate\Support\Collection, lead: bool}> */
     #[Computed]
     public function pinned(): array
     {
@@ -380,9 +353,9 @@ new class extends Component
     {{-- Short-polls our own cache, never ESPN, and only while a game is
          actually in progress. --}}
     <div @if ($this->hasLiveGames) wire:poll.30s.visible @endif class="flex flex-col gap-5">
-        {{-- The viewer's teams first, favorite at the top. These games were
-             lifted OUT of the day groups below, so they appear once, not twice
-             — floating a game is moving it, not copying it.
+        {{-- The viewer's teams first, in the order they set on Account. These
+             games were lifted OUT of the day groups below, so they appear
+             once, not twice — floating a game is moving it, not copying it.
 
              There is no scope check here on purpose. These come from the same
              filtered set as everything else, so a team the scope excluded never
@@ -393,7 +366,7 @@ new class extends Component
                 :meta="$group['day']"
                 :games="$group['games']"
                 pinned
-                :favorite="$group['favorite']"
+                :lead="$group['lead']"
                 wire:key="pinned-{{ $group['team']->id }}-{{ $loop->index }}"
             />
         @endforeach

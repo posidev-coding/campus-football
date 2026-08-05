@@ -35,9 +35,14 @@ class FollowTeam
             throw new FollowLimitReached;
         }
 
+        // Appended at the end of the ordered list. A new follow is never
+        // assumed to be more important than the teams already there — the user
+        // reorders on Account if they disagree.
+        $next = (int) $user->followedTeams()->max('position') + 1;
+
         // syncWithoutDetaching, so following twice is a no-op rather than a
         // unique-constraint violation.
-        $user->followedTeams()->syncWithoutDetaching([$team->id]);
+        $user->followedTeams()->syncWithoutDetaching([$team->id => ['position' => $next]]);
 
         $this->warmNews($team);
     }

@@ -11,7 +11,6 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -24,7 +23,7 @@ use Laravel\Sanctum\HasApiTokens;
  */
 #[Fillable([
     'first_name', 'last_name', 'handle', 'email', 'password',
-    'avatar', 'timezone', 'content_rating', 'favorite_team_id',
+    'avatar', 'timezone', 'content_rating',
 ])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser, MustVerifyEmail
@@ -65,32 +64,32 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     /**
      * How many teams one user may follow.
      *
-     * The favorite counts as one of them — it is a followed team that also
-     * leads the home page, not a separate slot. Capped because followed teams
-     * float above the scoreboard's day groups: past a handful the pinned block
-     * stops being a shortcut and becomes the slate all over again, and every
-     * follow also commits us to syncing that team's news feed.
+     * Capped because followed teams float above the scoreboard's day groups:
+     * past a handful the pinned block stops being a shortcut and becomes the
+     * slate all over again, and every follow also commits us to syncing that
+     * team's news feed.
      */
     public const MAX_FOLLOWED_TEAMS = 5;
 
     /**
-     * The one team whose news leads this user's home page.
-     */
-    public function favoriteTeam(): BelongsTo
-    {
-        return $this->belongsTo(Team::class, 'favorite_team_id');
-    }
-
-    /**
-     * Teams this user follows.
+     * Teams this user follows, in the order THEY chose.
      *
      * A pivot rather than v3's JSON column, so the per-team news sync can ask
      * "which teams does anyone follow" as an indexed query rather than by
      * scanning every user row and decoding JSON.
+     *
+     * The order is the whole model now — it drives the Home swipe order, the
+     * scoreboard float order, and whose news leads. There is deliberately no
+     * `favoriteTeam()` anymore: singling out one team meant every surface had
+     * to reconcile it with this list, including a union to cover the case
+     * where the favorite was somehow not followed. Position 1 is the favorite.
      */
     public function followedTeams(): BelongsToMany
     {
-        return $this->belongsToMany(Team::class, 'team_follows')->withTimestamps();
+        return $this->belongsToMany(Team::class, 'team_follows')
+            ->withPivot('position')
+            ->withTimestamps()
+            ->orderByPivot('position');
     }
 
     public function isAdmin(): bool

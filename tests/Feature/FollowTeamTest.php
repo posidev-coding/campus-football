@@ -1,7 +1,7 @@
 <?php
 
 use App\Actions\FollowTeam;
-use App\Actions\SetFavoriteTeam;
+use App\Actions\ReorderFollowedTeams;
 use App\Actions\UnfollowTeam;
 use App\Enums\ContentRating;
 use App\Exceptions\FollowLimitReached;
@@ -96,25 +96,17 @@ it('keeps the job timeout below the queue retry_after', function () {
     expect($checked)->toBeGreaterThan(0);
 });
 
-it('setting a favorite team also follows and fetches', function () {
-    // Nobody picks a favorite team and then expects not to be following it.
+it('appends a new follow to the end of the list', function () {
+    // A new follow is never assumed to outrank the teams already there.
     Queue::fake();
 
-    app(SetFavoriteTeam::class)->handle($this->user, $this->team);
+    $second = Team::factory()->create();
 
-    expect($this->user->fresh()->favorite_team_id)->toBe(61)
-        ->and($this->user->followedTeams()->whereKey(61)->exists())->toBeTrue();
+    app(FollowTeam::class)->handle($this->user, $this->team);
+    app(FollowTeam::class)->handle($this->user, $second);
 
-    Queue::assertPushed(SyncTeamNews::class);
-});
-
-it('clearing a favorite team does not dispatch', function () {
-    Queue::fake();
-
-    app(SetFavoriteTeam::class)->handle($this->user, null);
-
-    expect($this->user->fresh()->favorite_team_id)->toBeNull();
-    Queue::assertNotPushed(SyncTeamNews::class);
+    expect($this->user->followedTeams()->pluck('teams.id')->all())->toBe([61, $second->id])
+        ->and($this->user->followedTeams()->pluck('position')->all())->toBe([1, 2]);
 });
 
 it('unfollowing keeps the articles', function () {
@@ -249,14 +241,19 @@ describe('follow limit', function () {
         expect($this->user->followedTeams()->count())->toBe(User::MAX_FOLLOWED_TEAMS);
     });
 
-    it('counts the favorite as one of the five, not beside them', function () {
-        // A favorite IS a followed team. Setting one at the cap has to fail
-        // rather than quietly leave a favorite that is not followed.
-        Team::factory()->count(User::MAX_FOLLOWED_TEAMS)->create()
-            ->each(fn (Team $t) => app(FollowTeam::class)->handle($this->user, $t));
+    it('reindexes to 1..N when a team is unfollowed, leaving no gap', function () {
+        /*
+         * Sparse positions still SORT correctly, which is what makes this easy
+         * to leave broken. The cost lands on every later writer: appending
+         * reads `max + 1` and would skip a number, and a reorder that assumes
+         * contiguity would silently disagree with the database.
+         */
+        $teams = Team::factory()->count(4)->create();
+        $teams->each(fn (Team $t) => app(FollowTeam::class)->handle($this->user, $t));
 
-        expect(fn () => app(SetFavoriteTeam::class)->handle($this->user, Team::factory()->create()))
-            ->toThrow(FollowLimitReached::class);
+        app(UnfollowTeam::class)->handle($this->user, $teams[1]);
+
+        expect($this->user->followedTeams()->pluck('position')->all())->toBe([1, 2, 3]);
     });
 
     it('frees a slot when a team is unfollowed', function () {
@@ -386,68 +383,73 @@ describe('following from the account screen', function () {
     });
 });
 
-describe('pinned team', function () {
-    it('pins a followed team', function () {
-        app(FollowTeam::class)->handle($this->user, $this->team);
+describe('ordering', function () {
+    beforeEach(function () {
+        Queue::fake();
 
-        Livewire::actingAs($this->user)
-            ->test('account')
-            ->call('togglePin', $this->team->id);
-
-        expect($this->user->fresh()->favorite_team_id)->toBe($this->team->id);
+        $this->teams = collect([$this->team])->merge(Team::factory()->count(2)->create());
+        $this->teams->each(fn (Team $t) => app(FollowTeam::class)->handle($this->user, $t));
     });
 
-    it('unpins when pressed again — the same control both ways', function () {
-        app(SetFavoriteTeam::class)->handle($this->user, $this->team);
+    it('reorders to exactly the submitted order', function () {
+        $reversed = $this->teams->pluck('id')->reverse()->values()->all();
 
-        Livewire::actingAs($this->user)
-            ->test('account')
-            ->call('togglePin', $this->team->id);
+        app(ReorderFollowedTeams::class)->handle($this->user, $reversed);
 
-        expect($this->user->fresh()->favorite_team_id)->toBeNull();
+        expect($this->user->followedTeams()->pluck('teams.id')->all())->toBe($reversed)
+            ->and($this->user->followedTeams()->pluck('position')->all())->toBe([1, 2, 3]);
     });
 
-    it('refuses a team the user does not follow', function () {
+    it('refuses a list that is not exactly what the user follows', function () {
         /*
-         * Merging the cards is what makes this cheap to guarantee: the control
-         * only exists on rows the user already follows, so pinning can never
-         * pull in a new team and can never hit the follow cap. The guard is
-         * here because `togglePin` is a public Livewire method and the client
-         * can call it with any id.
+         * Reachable from a public Livewire method, so the client can send
+         * anything: a team they do not follow (which would silently attach
+         * it), or a short list (which would strand the rest at a stale
+         * position). Rejecting outright beats applying half a bad order.
          */
+        $original = $this->user->followedTeams()->pluck('teams.id')->all();
         $stranger = Team::factory()->create();
 
-        Livewire::actingAs($this->user)
-            ->test('account')
-            ->call('togglePin', $stranger->id);
+        $action = app(ReorderFollowedTeams::class);
 
-        expect($this->user->fresh()->favorite_team_id)->toBeNull()
-            ->and($this->user->followedTeams()->count())->toBe(0);
+        $action->handle($this->user, [$stranger->id, ...$original]);      // an extra
+        $action->handle($this->user, array_slice($original, 0, 2));       // one missing
+        $action->handle($this->user, [$original[0], $original[0], $original[1]]); // a repeat
+
+        expect($this->user->followedTeams()->pluck('teams.id')->all())->toBe($original)
+            ->and($this->user->followedTeams()->count())->toBe(3);
     });
 
-    it('unpins when that team is unfollowed', function () {
-        /*
-         * Otherwise `favorite_team_id` points at a team the user no longer
-         * follows: their news would still lead the home page and their games
-         * would still float to the top of the scoreboard, with nothing on the
-         * account screen to explain it or turn it off.
-         */
-        app(SetFavoriteTeam::class)->handle($this->user, $this->team);
+    it('moves one team a single place for the keyboard path', function () {
+        [$first, $second, $third] = $this->teams->pluck('id')->all();
 
-        app(UnfollowTeam::class)->handle($this->user, $this->team);
+        app(ReorderFollowedTeams::class)->move($this->user, $third, -1);
 
-        expect($this->user->fresh()->favorite_team_id)->toBeNull();
+        expect($this->user->followedTeams()->pluck('teams.id')->all())->toBe([$first, $third, $second]);
     });
 
-    it('leaves the pin alone when a different team is unfollowed', function () {
-        $other = Team::factory()->create();
+    it('ignores a move off either end rather than wrapping', function () {
+        $original = $this->user->followedTeams()->pluck('teams.id')->all();
 
-        app(SetFavoriteTeam::class)->handle($this->user, $this->team);
-        app(FollowTeam::class)->handle($this->user, $other);
+        app(ReorderFollowedTeams::class)->move($this->user, $original[0], -1);
+        app(ReorderFollowedTeams::class)->move($this->user, $original[2], 1);
 
-        app(UnfollowTeam::class)->handle($this->user, $other);
+        expect($this->user->followedTeams()->pluck('teams.id')->all())->toBe($original);
+    });
 
-        expect($this->user->fresh()->favorite_team_id)->toBe($this->team->id);
+    it('drives the order the account screen renders', function () {
+        $reversed = $this->teams->pluck('id')->reverse()->values()->all();
+
+        $html = Livewire::actingAs($this->user)->test('account')->html();
+
+        // Reorder, then confirm the rendered order followed.
+        app(ReorderFollowedTeams::class)->handle($this->user, $reversed);
+
+        $after = Livewire::actingAs($this->user)->test('account')->html();
+
+        expect(strpos($after, 'wire:key="followed-'.$reversed[0].'"'))
+            ->toBeLessThan(strpos($after, 'wire:key="followed-'.$reversed[2].'"'))
+            ->and($html)->not->toBe($after);
     });
 });
 

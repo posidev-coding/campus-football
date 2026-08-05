@@ -30,8 +30,9 @@ beforeEach(function () {
         'display_name' => 'Kentucky Wildcats', 'short_display_name' => 'Kentucky',
     ]);
 
-    $this->user = User::factory()->create(['favorite_team_id' => 2633]);
-    $this->user->followedTeams()->attach([2633, 96]);
+    $this->user = User::factory()->create();
+    // Attached with explicit positions: order is the model now.
+    $this->user->followedTeams()->attach([2633 => ['position' => 1], 96 => ['position' => 2]]);
 });
 
 describe('the team swiper', function () {
@@ -303,12 +304,9 @@ describe('quick add', function () {
         }
     });
 
-    it('makes the first team added the favorite, without a trip to Account', function () {
-        /*
-         * Nobody picks their one and only team and then expects it not to
-         * lead the page. Making them say so twice is a second trip for a
-         * decision already made.
-         */
+    it('puts the first team added at the top of the list', function () {
+        // Being first IS what "favorite" used to mean, so there is no separate
+        // decision to make and nothing to set afterwards.
         Queue::fake();
 
         Livewire::actingAs($this->newcomer)
@@ -316,23 +314,17 @@ describe('quick add', function () {
             ->set('teamQuery', 'Tennessee')
             ->call('addTeam', 2633);
 
-        $user = $this->newcomer->fresh();
-
-        expect($user->favorite_team_id)->toBe(2633)
-            ->and($user->followedTeams()->whereKey(2633)->exists())->toBeTrue();
+        expect($this->newcomer->followedTeams()->pluck('teams.id')->all())->toBe([2633])
+            ->and($this->newcomer->followedTeams()->first()->pivot->position)->toBe(1);
     });
 
-    it('leaves the favorite alone when adding a second team', function () {
+    it('appends a second team below the first rather than displacing it', function () {
         Queue::fake();
 
-        $this->newcomer->forceFill(['favorite_team_id' => 2633])->save();
-        $this->newcomer->followedTeams()->attach(2633);
+        Livewire::actingAs($this->newcomer)->test('home')->call('addTeam', 2633);
+        Livewire::actingAs($this->newcomer)->test('home')->call('addTeam', 96);
 
-        Livewire::actingAs($this->newcomer)
-            ->test('home')
-            ->call('addTeam', 96);
-
-        expect($this->newcomer->fresh()->favorite_team_id)->toBe(2633);
+        expect($this->newcomer->followedTeams()->pluck('teams.id')->all())->toBe([2633, 96]);
     });
 
     it('clears the query and shows the new team as a card', function () {
