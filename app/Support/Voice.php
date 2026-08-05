@@ -90,9 +90,9 @@ class Voice
         ],
 
         'onboarding.body' => [
-            'pg' => 'Follow up to five teams for their records, trends and upcoming games.',
-            'pg13' => 'Follow up to five teams. Records, trends, next games — and plenty to yell about.',
-            'r' => 'Follow up to five teams. Records, trends, next games, and a season of grievances.',
+            'pg' => 'Follow up to five teams. Records, trends, next games at a glance — all on one screen.',
+            'pg13' => 'Follow up to five teams. Records, trends, next games at a glance — and plenty to yell about.',
+            'r' => 'Follow up to five teams. Records, trends, next games at a glance, and a season of grievances.',
         ],
 
         'onboarding.dismissed' => [
