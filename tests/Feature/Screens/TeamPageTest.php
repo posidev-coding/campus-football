@@ -350,3 +350,70 @@ describe('the hero KPI line', function () {
             ->assertDontSee(' in SEC');
     });
 });
+
+describe('the season it opens on', function () {
+    it('opens on the season being played or approached, not the last one finished', function () {
+        /*
+         * The August trap. From February to kickoff the upcoming season is
+         * fully scheduled but unplayed, so resultsYear() still points at last
+         * season — and a team page defaulting to it showed a finished
+         * schedule while the real one sat one row away in the database.
+         */
+        $upcoming = Season::factory()->create([
+            'year' => 2026, 'type' => Season::REGULAR,
+            'start_date' => '2026-08-29', 'end_date' => '2026-12-12',
+        ]);
+
+        Game::factory()->create([
+            'season_id' => $upcoming->id,
+            'home_team_id' => 61,
+            'kickoff_at' => '2026-08-29 19:00:00',
+            'completed' => false,
+        ]);
+
+        expect(Livewire::test('team', ['team' => $this->team])->get('year'))->toBe(2026);
+    });
+
+    it('offers the upcoming season in the selector at all', function () {
+        // latestYear() fed the select the same wrong value, so the current
+        // year was not merely un-defaulted — it was unreachable.
+        $upcoming = Season::factory()->create([
+            'year' => 2026, 'type' => Season::REGULAR,
+            'start_date' => '2026-08-29', 'end_date' => '2026-12-12',
+        ]);
+        Game::factory()->create([
+            'season_id' => $upcoming->id, 'home_team_id' => 61,
+            'kickoff_at' => '2026-08-29 19:00:00', 'completed' => false,
+        ]);
+
+        Livewire::test('team', ['team' => $this->team])
+            ->assertSee('value="2026"', escape: false);
+    });
+
+    it('shows last season\'s stats, labelled, before the new one kicks off', function () {
+        // An empty Stats tab for a season that has not started is a worse
+        // answer than last season's numbers under a label — the same call the
+        // roster already makes.
+        TeamSeasonStat::create([
+            'team_id' => 61, 'season_year' => 2025, 'season_type' => 2, 'category' => 'scoring',
+            'stats' => ['points' => ['display' => '430', 'value' => 430, 'rank' => 8, 'label' => 'Points']],
+        ]);
+
+        $upcoming = Season::factory()->create([
+            'year' => 2026, 'type' => Season::REGULAR,
+            'start_date' => '2026-08-29', 'end_date' => '2026-12-12',
+        ]);
+        Game::factory()->create([
+            'season_id' => $upcoming->id, 'home_team_id' => 61,
+            'kickoff_at' => '2026-08-29 19:00:00', 'completed' => false,
+        ]);
+
+        Livewire::test('team', ['team' => $this->team])
+            ->set('tab', 'stats')
+            ->set('statsView', 'team')
+            // escape: false — literal template text, so the apostrophe is raw
+            // in the DOM rather than the &#039; assertSee would look for.
+            ->assertSee("2026 hasn't kicked off yet, so these are 2025 numbers", escape: false)
+            ->assertSee('430');
+    });
+});

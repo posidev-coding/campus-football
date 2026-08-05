@@ -1238,6 +1238,21 @@ Two different questions, and conflating them empties a screen:
 
 In August they differ. A scoreboard on `resultsYear()` shows last season's bowls.
 
+**A screen that lets you PICK a season must feed the selector the same
+question it defaults on.** The team page defaulted with `resultsYear()` and
+built its year dropdown from it too, so from February to kickoff it showed a
+finished schedule and did not even OFFER the season 946 already-synced games
+were sitting in. It opens on `scoreboardYear()` now.
+
+**Where the data genuinely does not exist yet, fall back and SAY SO.** Stats,
+standings and leaders only exist once games are played, so the team page's
+Stats tab shows the most recent season that has them under a label —
+"2026 hasn't kicked off yet, so these are 2025 numbers" — rather than an
+empty state for a season that has not started. That is the same call
+`rosterYear()` already makes for ESPN's current-roster-only limitation, and
+it is the right shape for any preseason screen: schedule and roster are real
+now, results are not.
+
 Likewise a week selector must key on **week id**: the postseason's "Bowls" is
 also week 1, so keying on number collides it with the season opener. And week
 date ranges ABUT — week 1 ends the day week 2 starts — so subtract a day before

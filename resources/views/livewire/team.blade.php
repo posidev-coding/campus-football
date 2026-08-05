@@ -36,16 +36,50 @@ new class extends Component
     #[Url]
     public string $statsView = 'leaders';
 
+    /**
+     * Opens on the season we are IN or heading into, not the last one played.
+     *
+     * `resultsYear()` is the wrong question here and the difference only shows
+     * up in the summer: from February to late August the upcoming season is
+     * fully scheduled but unplayed, so a team page defaulting to results
+     * showed last year's finished schedule and — because `latestYear()` fed
+     * the select the same value — did not even OFFER the current year.
+     */
     public function mount(Team $team, CfbCalendar $calendar): void
     {
         $this->team = $team;
-        $this->year ??= $calendar->resultsYear();
+        $this->year ??= $calendar->scoreboardYear();
     }
 
     #[Computed]
     public function latestYear(): int
     {
-        return app(CfbCalendar::class)->resultsYear();
+        return app(CfbCalendar::class)->scoreboardYear();
+    }
+
+    /**
+     * Which season's statistics we can actually show.
+     *
+     * Same shape as `rosterYear()` below, and for the same reason: stats only
+     * exist once games have been played, so a page opened on the upcoming
+     * season has none. Showing last season's numbers under a label beats an
+     * empty screen — nobody visiting in August wants to be told there are no
+     * stats for a season that has not started.
+     */
+    #[Computed]
+    public function statsYear(): int
+    {
+        $hasStats = TeamSeasonStat::where('team_id', $this->team->id)
+            ->where('season_year', $this->year)
+            ->exists();
+
+        if ($hasStats) {
+            return $this->year;
+        }
+
+        return (int) (TeamSeasonStat::where('team_id', $this->team->id)->max('season_year')
+            ?? TeamLeader::where('team_id', $this->team->id)->max('season_year')
+            ?? $this->year);
     }
 
     #[Computed]
@@ -84,7 +118,7 @@ new class extends Component
     {
         $rows = TeamLeader::with('athlete:id,display_name,headshot_url')
             ->where('team_id', $this->team->id)
-            ->where('season_year', $this->year)
+            ->where('season_year', $this->statsYear)
             ->where('rank', 1)
             ->get()
             ->keyBy('category');
@@ -142,7 +176,7 @@ new class extends Component
     public function stats()
     {
         return TeamSeasonStat::where('team_id', $this->team->id)
-            ->where('season_year', $this->year)
+            ->where('season_year', $this->statsYear)
             ->get()
             ->keyBy('category');
     }
@@ -429,6 +463,17 @@ new class extends Component
 
     @if ($tab === 'stats')
         <div class="flex flex-col gap-4">
+            {{-- Stats only exist once games have been played, so a page opened
+                 on the upcoming season falls back to the last season that has
+                 them — labelled, the same way the roster does. --}}
+            @if ($this->statsYear !== $year)
+                <flux:callout icon="information-circle" variant="secondary">
+                    <flux:callout.text>
+                        {{ $year }} hasn't kicked off yet, so these are {{ $this->statsYear }} numbers.
+                    </flux:callout.text>
+                </flux:callout>
+            @endif
+
             {{-- Two different questions — "who on this team is good?" and "how
                  good is this team?" — so they get a toggle rather than one
                  long scroll that answers both badly.
