@@ -170,21 +170,54 @@ new class extends Component
     }
 
     /**
-     * The most recent slate, scoped to ranked teams — the games worth leading
-     * with rather than all 80 of them.
+     * The week worth leading with, on the season we are actually in.
+     *
+     * `scoreboardYear()`, not `resultsYear()`: results stay on the last
+     * season PLAYED, so all summer this section served 2025's bowl games —
+     * finished, months old, under a "Top 25" heading. Same trap the team
+     * page's schedule fell into.
+     */
+    #[Computed]
+    public function week(): ?\App\Models\Week
+    {
+        $calendar = app(CfbCalendar::class);
+
+        return \App\Models\Week::find($calendar->defaultWeekId($calendar->scoreboardYear()));
+    }
+
+    /**
+     * Whether the season has a poll to filter by at all.
+     *
+     * The preseason AP does not land until mid-August, and `Scope::teamIds`
+     * silently falls back to all of FBS without one — which would put a "Top
+     * 25 games" heading over six arbitrary openers.
+     */
+    #[Computed]
+    public function hasPoll(): bool
+    {
+        return Scope::hasRankings(app(CfbCalendar::class)->scoreboardYear());
+    }
+
+    /**
+     * Six games: the ranked ones when a poll exists, else the best matchups
+     * ESPN projects.
+     *
+     * `matchupQuality` is the right signal for unplayed games — `gameQuality`
+     * is retrospective and absent before kickoff — and 76 of week one's 99
+     * games carry one, so it beats "whichever six kick off first".
      */
     #[Computed]
     public function games()
     {
-        $calendar = app(CfbCalendar::class);
-        $year = $calendar->resultsYear();
-        $weekId = $calendar->defaultWeekId($year);
+        $week = $this->week;
 
-        if ($weekId === null) {
+        if ($week === null) {
             return collect();
         }
 
-        $ranked = Scope::teamIds(Scope::TOP_25, $year) ?? [];
+        $ranked = $this->hasPoll
+            ? (Scope::teamIds(Scope::TOP_25, app(CfbCalendar::class)->scoreboardYear()) ?? [])
+            : [];
 
         return Game::query()
             ->with([
@@ -193,11 +226,21 @@ new class extends Component
                 'venue:id,name',
                 'odds',
             ])
-            ->where('week_id', $weekId)
+            ->where('week_id', $week->id)
             ->when($ranked !== [], fn ($q) => $q->where(fn ($w) => $w
                 ->whereIn('home_team_id', $ranked)
                 ->orWhereIn('away_team_id', $ranked)))
-            ->orderBy('kickoff_at')
+            ->when(
+                $ranked !== [],
+                fn ($q) => $q->orderBy('kickoff_at'),
+                // No poll: lead with the matchups worth watching. NULLs last,
+                // so games ESPN has not modelled do not outrank ones it has.
+                fn ($q) => $q
+                    ->leftJoin('game_predictors as gp', 'gp.game_id', '=', 'games.id')
+                    ->select('games.*')
+                    ->orderByRaw('gp.matchup_quality IS NULL, gp.matchup_quality DESC')
+                    ->orderBy('games.kickoff_at'),
+            )
             ->limit(6)
             ->get();
     }
@@ -334,15 +377,23 @@ new class extends Component
     @if ($this->games->isNotEmpty())
         <section class="flex flex-col gap-2">
             <div class="flex items-baseline justify-between gap-2">
-                <flux:subheading>Top 25 games</flux:subheading>
+                {{-- Honest about what the six games are. Without a poll there
+                     is no Top 25 to filter by, so calling them that would be
+                     the same lie the scope filter is disabled to avoid — they
+                     are the week's best projected matchups instead. --}}
+                <flux:subheading>
+                    {{ $this->hasPoll ? 'Top 25 games' : 'Best of '.($this->week?->name ?? 'the week') }}
+                </flux:subheading>
                 <a href="{{ route('scoreboard') }}" wire:navigate class="text-micro text-zinc-500 hover:underline">
                     All scores
                 </a>
             </div>
 
             <div class="grid gap-2 sm:grid-cols-2">
+                {{-- Dated: this grid is a flat six across a Thursday-to-Saturday
+                     week, with no day headings to say which is which. --}}
                 @foreach ($this->games as $game)
-                    <x-game-card :game="$game" wire:key="home-game-{{ $game->id }}" />
+                    <x-game-card :game="$game" date wire:key="home-game-{{ $game->id }}" />
                 @endforeach
             </div>
         </section>

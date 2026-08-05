@@ -2,9 +2,11 @@
 
 use App\Models\Article;
 use App\Models\Game;
+use App\Models\GamePredictor;
 use App\Models\Season;
 use App\Models\Team;
 use App\Models\User;
+use App\Models\Week;
 use App\Support\TeamGlance;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -190,5 +192,94 @@ describe('the pick'."'".'em teaser', function () {
 
     it('shows guests the same promise', function () {
         $this->get(route('home'))->assertOk()->assertSee('Coming soon');
+    });
+});
+
+describe('the featured games', function () {
+    beforeEach(function () {
+        $this->upcoming = Season::factory()->create([
+            'year' => 2026, 'type' => Season::REGULAR,
+            'start_date' => '2026-08-29', 'end_date' => '2026-12-12',
+        ]);
+        $this->week1 = Week::create([
+            'season_id' => $this->upcoming->id, 'number' => 1, 'name' => 'Week 1',
+            'start_date' => '2026-08-29', 'end_date' => '2026-09-07',
+        ]);
+    });
+
+    it('leads with the season being played, not last season\'s bowls', function () {
+        /*
+         * `resultsYear()` stays on the last season PLAYED, so all summer this
+         * section served finished bowl games under a "Top 25" heading. The
+         * same trap the team page's schedule fell into.
+         */
+        $bowlSeason = Season::factory()->create(['year' => 2025, 'type' => Season::POSTSEASON]);
+        $bowlWeek = Week::create([
+            'season_id' => $bowlSeason->id, 'number' => 1, 'name' => 'Bowls',
+            'start_date' => '2025-12-13', 'end_date' => '2026-01-21',
+        ]);
+        Game::factory()->finished()->create([
+            'season_id' => $bowlSeason->id, 'week_id' => $bowlWeek->id,
+            'home_team_id' => 2633, 'away_team_id' => 96,
+            'name' => 'Stale Bowl Game', 'kickoff_at' => '2025-12-30 20:00:00',
+        ]);
+
+        $opener = Game::factory()->create([
+            'season_id' => $this->upcoming->id, 'week_id' => $this->week1->id,
+            'home_team_id' => 2633, 'away_team_id' => 96,
+            'kickoff_at' => '2026-09-05 19:30:00', 'completed' => false,
+        ]);
+
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee(route('game', $opener), escape: false)
+            ->assertDontSee('Stale Bowl Game');
+    });
+
+    it('does not call six openers the Top 25 when no poll exists yet', function () {
+        // Scope::teamIds falls back to all of FBS without a poll, so the
+        // heading has to say what these games actually are.
+        Game::factory()->create([
+            'season_id' => $this->upcoming->id, 'week_id' => $this->week1->id,
+            'home_team_id' => 2633, 'away_team_id' => 96,
+            'kickoff_at' => '2026-09-05 19:30:00', 'completed' => false,
+        ]);
+
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee('Best of Week 1')
+            ->assertDontSee('Top 25 games');
+    });
+
+    it('dates the featured games, which span a whole week with no day headings', function () {
+        Game::factory()->create([
+            'season_id' => $this->upcoming->id, 'week_id' => $this->week1->id,
+            'home_team_id' => 2633, 'away_team_id' => 96,
+            'kickoff_at' => '2026-09-06 00:30:00', 'completed' => false,
+        ]);
+
+        // 00:30 UTC is still the 5th in ET.
+        $this->get(route('home'))->assertOk()->assertSee('9/5');
+    });
+
+    it('ranks by projected matchup quality when there is no poll', function () {
+        $dull = Game::factory()->create([
+            'season_id' => $this->upcoming->id, 'week_id' => $this->week1->id,
+            'home_team_id' => 2633, 'away_team_id' => null,
+            'kickoff_at' => '2026-09-05 12:00:00', 'completed' => false,
+        ]);
+        $marquee = Game::factory()->create([
+            'season_id' => $this->upcoming->id, 'week_id' => $this->week1->id,
+            'home_team_id' => 96, 'away_team_id' => null,
+            'kickoff_at' => '2026-09-05 20:00:00', 'completed' => false,
+        ]);
+
+        GamePredictor::create(['game_id' => $dull->id, 'matchup_quality' => 20.5]);
+        GamePredictor::create(['game_id' => $marquee->id, 'matchup_quality' => 88.0]);
+
+        // Kicks off LATER but is the better game, so it leads.
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSeeInOrder([route('game', $marquee), route('game', $dull)], escape: false);
     });
 });
