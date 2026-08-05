@@ -221,7 +221,18 @@ describe('the featured games', function () {
          * section served finished bowl games under a "Top 25" heading. The
          * same trap the team page's schedule fell into.
          */
-        $bowlSeason = Season::factory()->create(['year' => 2025, 'type' => Season::POSTSEASON]);
+        /*
+         * Dates pinned, not left to the factory. `CfbCalendar` resolves the
+         * current season from date RANGES and never from the `year` column, so
+         * a 2025 row carrying some other year's dates becomes "the season we
+         * are heading into" and pulls the whole page back a season. The factory
+         * derives these correctly now; pinning them here says which dates this
+         * test actually depends on.
+         */
+        $bowlSeason = Season::factory()->create([
+            'year' => 2025, 'type' => Season::POSTSEASON,
+            'start_date' => '2025-12-13', 'end_date' => '2026-01-21',
+        ]);
         $bowlWeek = Week::create([
             'season_id' => $bowlSeason->id, 'number' => 1, 'name' => 'Bowls',
             'start_date' => '2025-12-13', 'end_date' => '2026-01-21',

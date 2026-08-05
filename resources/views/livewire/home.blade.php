@@ -341,33 +341,57 @@ new class extends Component
             --}}
             <section
                 @if ($this->hasLiveGame) wire:poll.30s.visible @endif
-                x-data="{ active: 0 }"
+                x-data="{
+                    active: 0,
+
+                    /*
+                     * Re-observed on every childList change, not captured once:
+                     * quick-add inserts a card mid-session, and an observer built
+                     * from a one-time snapshot would never watch it — the dots
+                     * would stop tracking the swipe the moment the feature was
+                     * used. IntersectionObserver ignores a repeat observe(), so
+                     * this stays idempotent.
+                     */
+                    trackCards() {
+                        const io = new IntersectionObserver((entries) => {
+                            entries.forEach(e => {
+                                if (e.isIntersecting) this.active = [...this.$refs.track.children].indexOf(e.target)
+                            })
+                        }, { root: this.$refs.track, threshold: 0.6 })
+
+                        const watch = () => [...this.$refs.track.children].forEach(c => io.observe(c))
+
+                        watch()
+                        new MutationObserver(watch).observe(this.$refs.track, { childList: true })
+                    },
+                }"
                 class="flex flex-col gap-3"
             >
                 <h2 class="sr-only">Your teams</h2>
 
+                {{--
+                    The observer lives in `x-data` above and is only CALLED from
+                    here, and that split is load-bearing rather than tidiness.
+
+                    Alpine compiles an expression as `__self.result = <expr>`,
+                    and only wraps it in an IIFE when the expression STARTS with
+                    `let`/`const` (verified in the vendored bundle). This body
+                    opened with a block comment, so the heuristic missed it,
+                    `result = const io = …` was a SyntaxError, and the whole
+                    `x-init` silently never ran — no observer, `active` frozen
+                    at 0, dots that never moved. Nothing visibly errors; the
+                    feature is just inert.
+
+                    A method body has no such constraint, and an object literal
+                    can carry the comment. `x-init` stays HERE rather than on
+                    the section because `$refs.track` has to exist when it runs:
+                    Alpine walks the tree top-down, so a parent's `x-init` fires
+                    before its children register their refs. On this element the
+                    ref is its own, and `ref` is ordered before `init`.
+                --}}
                 <div
                     x-ref="track"
-                    x-init="
-                        /*
-                         * Re-observed on every childList change, not captured
-                         * once: quick-add inserts a card mid-session, and an
-                         * observer built from a one-time snapshot would never
-                         * watch it — the dots would stop tracking the swipe
-                         * the moment the feature was used. IntersectionObserver
-                         * ignores a repeat observe(), so this stays idempotent.
-                         */
-                        const io = new IntersectionObserver((entries) => {
-                            entries.forEach(e => {
-                                if (e.isIntersecting) active = [...$refs.track.children].indexOf(e.target)
-                            })
-                        }, { root: $refs.track, threshold: 0.6 })
-
-                        const watch = () => [...$refs.track.children].forEach(c => io.observe(c))
-
-                        watch()
-                        new MutationObserver(watch).observe($refs.track, { childList: true })
-                    "
+                    x-init="trackCards()"
                     class="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 [scrollbar-width:none] motion-safe:scroll-smooth [&::-webkit-scrollbar]:hidden"
                 >
                     @foreach ($this->glances as $glance)

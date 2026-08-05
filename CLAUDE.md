@@ -1032,6 +1032,34 @@ slate-eligible game. It passed under `--filter` and failed in the full suite,
 because the faker sequence differs. Pin the date on any fixture a
 slate-eligible or date-window query might pick up.
 
+**Worse: a factory that derives one column from another in `definition()`.**
+`SeasonFactory` built its dates from the random faker year, so
+`Season::factory()->create(['year' => 2025])` kept some OTHER year's dates. The
+calendar reads date ranges and never the `year` column, so that row became "the
+season we are heading into" and pulled `scoreboardYear()` back a year — Home
+served last season's bowls about one run in twelve. Derive in `configure()`'s
+`afterMaking`, which runs AFTER overrides are applied, and leave anything the
+caller pinned alone.
+
+## An Alpine expression that starts with a comment never runs
+
+Alpine compiles a directive as `__self.result = <expr>` and only wraps it in an
+IIFE when the expression STARTS with `let`/`const` (the regex is in the
+vendored bundle). Home's swiper opened its `x-init` with a block comment, so
+the heuristic missed it, `result = const io = …` was a SyntaxError, and the
+whole directive silently never ran: no IntersectionObserver, `active` frozen at
+0, dots that never tracked a swipe.
+
+Nothing throws where you are looking — the feature is not broken, it is INERT.
+Put any multi-statement body in an `x-data` METHOD, where declarations and
+comments are both legal, and leave a plain call in `x-init`.
+`AlpineExpressionsTest` sweeps every `x-init`/`x-effect` in the views for the
+shape.
+
+Keep the call on the element that owns the `x-ref` it needs. Alpine walks the
+tree top-down, so a parent's `x-init` fires before its children register their
+refs; on the element itself, `ref` is ordered before `init`.
+
 ## Athletes route by id, not slug
 
 326 athlete slugs collide (`xavier-williams` ×5, `cam-smith` ×5). `Athlete` has

@@ -312,3 +312,38 @@ it('orders results year by year, not by season id', function () {
 
     expect($this->calendar->resultsYear())->toBe(2025);
 });
+
+it('never builds a season whose dates disagree with its year', function () {
+    /*
+     * The calendar reads date RANGES and never the `year` column, so a row
+     * where the two disagree is not a cosmetic problem — it becomes "the
+     * season we are heading into" and pulls every default year in the app back
+     * with it.
+     *
+     * SeasonFactory used to compute its dates in `definition()` from the random
+     * faker year, so overriding only `year` left the old dates in place. Home's
+     * featured games served last season's bowls about one run in twelve: often
+     * enough to see, rare enough to blame on anything but the fixture.
+     *
+     * Every type is checked, because the postseason is the one that crosses
+     * into the next calendar year and so is the easiest to get wrong.
+     */
+    foreach ([Season::PRESEASON, Season::REGULAR, Season::POSTSEASON, Season::OFFSEASON] as $type) {
+        $season = Season::factory()->create(['year' => 2031, 'type' => $type]);
+
+        expect($season->start_date->year)->toBeGreaterThanOrEqual(2031)
+            ->and($season->start_date->year)->toBeLessThanOrEqual(2032)
+            ->and($season->end_date->year)->toBeGreaterThanOrEqual(2031)
+            ->and($season->end_date->year)->toBeLessThanOrEqual(2032)
+            ->and($season->end_date->gt($season->start_date))->toBeTrue()
+            ->and($season->name)->toContain('2031');
+    }
+
+    // And an explicitly pinned range is still left exactly as given.
+    $pinned = Season::factory()->create([
+        'year' => 2032, 'type' => Season::REGULAR,
+        'start_date' => '2032-01-01', 'end_date' => '2032-01-02',
+    ]);
+
+    expect($pinned->start_date->toDateString())->toBe('2032-01-01');
+});
