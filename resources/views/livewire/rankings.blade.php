@@ -53,6 +53,50 @@ new class extends Component
     }
 
     /**
+     * Pick a release from the strip.
+     *
+     * Named to match the scoreboard's handler, and taking the same second
+     * argument, because both screens drive the SAME `x-week-scroller` and its
+     * `wire:click` is baked in. The bracket is meaningless here — it exists so
+     * the postseason can be shown as two pills over one week id — so it is
+     * accepted and ignored rather than making the component configurable.
+     */
+    public function selectWeek(int $weekId, string $bracket = ''): void
+    {
+        $this->release = $weekId;
+    }
+
+    /**
+     * The releases, shaped for the strip.
+     *
+     * No `range`: a poll is published on a day, not across a week, so the
+     * scroller's second line is left off.
+     *
+     * @return list<array{week_id:int, label:string}>
+     */
+    #[Computed]
+    public function releaseStrip(): array
+    {
+        return $this->releases;
+    }
+
+    /**
+     * Whether this release has anything to have moved FROM.
+     *
+     * Not cosmetic, and measured: a preseason poll carries no `previous_rank`
+     * on any row, and neither does `cfp-seedings` — so a fixed column set
+     * prints twenty-five consecutive "NR"s, a column saying nothing
+     * twenty-five times, on this screen's own default view all summer.
+     *
+     * Derived from the collection already fetched, so it costs no query.
+     */
+    #[Computed]
+    public function showsMovement(): bool
+    {
+        return $this->rankings->contains(fn (Ranking $r) => $r->previous_rank !== null);
+    }
+
+    /**
      * Polls with rows for this season, majors first.
      *
      * @return array<string,string>
@@ -119,7 +163,7 @@ new class extends Component
     <h1 class="sr-only">Rankings</h1>
 
     <div class="flex flex-wrap gap-2">
-        <flux:select wire:model.live="poll" size="sm" class="min-w-36">
+        <flux:select wire:model.live="poll" size="sm" class="min-w-36 flex-1">
             @foreach ($this->polls as $value => $label)
                 <flux:select.option :value="$value">{{ $label }}</flux:select.option>
             @endforeach
@@ -130,51 +174,134 @@ new class extends Component
                 <flux:select.option :value="$y">{{ $y }}</flux:select.option>
             @endforeach
         </flux:select>
-
-        <flux:select wire:model.live="release" size="sm" class="min-w-36 flex-1">
-            @foreach ($this->releases as $r)
-                <flux:select.option :value="$r['week_id']">{{ $r['label'] }}</flux:select.option>
-            @endforeach
-        </flux:select>
     </div>
 
-    @forelse ($this->rankings as $entry)
-        @php $movement = $entry->previous_rank ? $entry->previous_rank - $entry->rank : 0; @endphp
+    {{--
+        The release picker, promoted out of a third dropdown into the same strip
+        Scores uses — the season's polls visible by swiping rather than hidden
+        behind a select.
 
-        <div class="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800"
-             wire:key="rank-{{ $entry->id }}">
-            <span class="tabular w-6 shrink-0 text-right text-base font-bold">{{ $entry->rank }}</span>
+        Deliberately the SAME component, so the active pill is filled exactly as
+        it is on Scores. Two horizontal strips in one app should not speak two
+        visual languages for the same idea.
+    --}}
+    <x-week-scroller :weeks="$this->releaseStrip" :selected="$release" class="-mt-1" />
 
-            <x-team-link :team="$entry->team" size="sm" class="min-w-0 flex-1" />
+    @if ($this->rankings->isNotEmpty())
+        {{--
+            A table, not twenty-five cards. This is the one League screen whose
+            content is purely tabular, and it borrows Standings' markup verbatim
+            so the two read as one system rather than two takes on a list.
 
-            <span class="tabular hidden shrink-0 text-stat text-zinc-500 sm:block">{{ $entry->record }}</span>
+            Scrolls inside its own container, so the page body never scrolls
+            sideways on a phone — and because the columns below are conditional,
+            the two narrow cases (a preseason poll, a CFP release) fit 390px
+            without needing to.
+        --}}
+        <div class="stat-grid rounded-lg border border-zinc-200 dark:border-zinc-800">
+            <table class="w-full min-w-xs text-stat">
+                <thead>
+                    <tr class="border-b border-zinc-200 text-micro tracking-wide text-zinc-500 uppercase dark:border-zinc-800">
+                        <th scope="col" class="px-3 py-2 text-right font-medium">
+                            <span aria-hidden="true">#</span>
+                            <span class="sr-only">Rank</span>
+                        </th>
+                        <th scope="col" class="px-2 py-2 text-left font-medium">Team</th>
+                        <th scope="col" class="px-2 py-2 text-right font-medium">
+                            <span aria-hidden="true">Rec</span>
+                            <span class="sr-only">Record</span>
+                        </th>
 
-            <span class="tabular hidden w-16 shrink-0 text-right text-stat text-zinc-500 sm:block">
-                {{ number_format($entry->points) }}
-            </span>
+                        @if ($this->showsMovement)
+                            <th scope="col" class="px-3 py-2 text-right font-medium">
+                                <span aria-hidden="true">Mov</span>
+                                <span class="sr-only">Movement since the last poll</span>
+                            </th>
+                        @endif
+                    </tr>
+                </thead>
 
-            @if ($entry->first_place_votes > 0)
-                <flux:badge size="sm" color="amber" class="hidden shrink-0 sm:inline-flex">
-                    {{ $entry->first_place_votes }} first
-                </flux:badge>
-            @endif
+                <tbody>
+                    @foreach ($this->rankings as $entry)
+                        @php $movement = $entry->previous_rank ? $entry->previous_rank - $entry->rank : 0; @endphp
 
-            <span class="w-9 shrink-0 text-right text-micro font-medium">
-                @if ($movement > 0)
-                    <span class="text-emerald-600 dark:text-emerald-400">▲{{ $movement }}</span>
-                @elseif ($movement < 0)
-                    <span class="text-red-600 dark:text-red-400">▼{{ abs($movement) }}</span>
-                @elseif ($entry->previous_rank === null)
-                    <span class="text-zinc-400">NR</span>
-                @else
-                    <span class="text-zinc-300 dark:text-zinc-600">—</span>
-                @endif
-            </span>
+                        <tr class="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60"
+                            wire:key="rank-{{ $entry->id }}">
+                            <td class="tabular px-3 py-2 text-right font-bold">{{ $entry->rank }}</td>
+
+                            {{--
+                                The only link in the row, as on Standings.
+
+                                `w-full max-w-0` is what makes the name truncate
+                                instead of the table scrolling. A cell sizes to
+                                its content's min-content width, and `truncate`
+                                sets `nowrap`, so the min-content of a team name
+                                is the WHOLE string — the same trap `min-w-0`
+                                solves for flex items. Zeroing the max width lets
+                                the cell be told its size rather than asking for
+                                one, and `w-full` hands it whatever the numeric
+                                columns leave.
+                            --}}
+                            <td class="w-full max-w-0 px-2 py-2">
+                                <div class="flex min-w-0 items-center gap-2">
+                                    <x-team-link :team="$entry->team" class="min-w-0 flex-1" />
+
+                                    @if ($entry->first_place_votes > 0)
+                                        {{--
+                                            The votes ride WITH the team rather
+                                            than in a column of their own. Only
+                                            a handful of teams in any poll have
+                                            any, so a dedicated column was
+                                            mostly empty and spent width the
+                                            team name wanted.
+
+                                            The count alone — the word "first"
+                                            was saying what the blue chip beside
+                                            the top three teams already says.
+                                            Its meaning is carried for screen
+                                            readers by the `sr-only` text, since
+                                            there is no longer a column header
+                                            to do it.
+
+                                            A plain span rather than
+                                            `flux:badge`: that component's own
+                                            base classes include `inline-flex`,
+                                            which is exactly what silently
+                                            defeated the `hidden sm:inline-flex`
+                                            this replaces.
+                                        --}}
+                                        <span
+                                            title="{{ $entry->first_place_votes }} first-place votes"
+                                            class="tabular inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-micro font-semibold text-blue-700 ring-1 ring-blue-200 ring-inset bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300 dark:ring-blue-900"
+                                        >{{ $entry->first_place_votes }}<span class="sr-only"> first-place votes</span></span>
+                                    @endif
+                                </div>
+                            </td>
+
+                            <td class="tabular px-2 py-2 text-right text-zinc-500">{{ $entry->record }}</td>
+
+                            @if ($this->showsMovement)
+                                <td class="px-3 py-2 text-right text-micro font-medium">
+                                    @if ($movement > 0)
+                                        <span class="text-emerald-600 dark:text-emerald-400">▲{{ $movement }}</span>
+                                    @elseif ($movement < 0)
+                                        <span class="text-red-600 dark:text-red-400">▼{{ abs($movement) }}</span>
+                                    @elseif ($entry->previous_rank === null)
+                                        <span class="text-zinc-400">NR</span>
+                                    @else
+                                        <span class="text-zinc-300 dark:text-zinc-600">—</span>
+                                    @endif
+                                </td>
+                            @endif
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
         </div>
-    @empty
+    @else
         <flux:callout icon="trophy">
             <flux:callout.heading>No poll published</flux:callout.heading>
             <flux:callout.text>Nothing for this poll, season and week.</flux:callout.text>
         </flux:callout>
-    @endforelse
+    @endif
 </div>

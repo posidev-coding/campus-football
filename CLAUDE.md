@@ -340,6 +340,21 @@ it reads `season_id` and `kickoff_at` straight off the row rather than needing
 `week` eager loaded, because a card renders from six screens and requiring each
 to remember a constrained eager load is how a missing column ships.
 
+**A poll's columns are not the same from poll to poll.** Measured over every
+stored row, and it decides what `/rankings` can render:
+
+    ap / coaches    points always, first-place votes on ~10% of rows,
+                    previous_rank on ~85% (a preseason poll has none)
+    cfp             ZERO points, ZERO first-place votes, previous_rank
+    cfp-seedings    zero points, zero votes, and NO previous_rank either
+
+So a fixed column set prints an empty column through the whole playoff race and
+twenty-five consecutive "NR"s all summer. Rankings renders the movement column
+only when some row has a `previous_rank`, decided from the collection it has
+already fetched rather than by another query. First-place votes ride in the team
+cell instead of a column of their own, because only a handful of teams in any
+poll have any and an almost-empty column spends width the team name wants.
+
 **Coaches lands BEFORE AP, and the default has to follow.** Verified live on
 2026-08-05: the only poll ESPN published for the entire 2026 season was the AFCA
 Coaches preseason (ranking id 2, `type: usa`) at type 1 week 1 — no AP at all.
@@ -1060,6 +1075,17 @@ it is behaving exactly as intended. The real test is whether the document
 actually scrolls:
 
     scrollTo({left: 999}); window.scrollX === 0
+
+**In a TABLE the fix is `w-full max-w-0`, not `min-w-0`.** Same cause — a cell
+sizes to its content's min-content width, and `truncate` makes that the whole
+string — but a `<td>` does not respond to `min-w-0`. Zeroing the max width lets
+the cell be told its size instead of asking for one, and `w-full` hands it
+whatever the fixed numeric columns leave. Rankings went from an 18px inner
+scroll at 390px to fitting exactly, with full team names and no ellipsis.
+
+Reach for it before dropping a column or shortening a name: on Rankings both
+`placeName()` and a `min-w-*` scroll were tried first, and neither was needed
+once the team cell could absorb the slack.
 
 ## An opaque background does not win a z-index tie
 

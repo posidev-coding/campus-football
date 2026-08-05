@@ -67,9 +67,17 @@
                         'text-zinc-500 dark:text-zinc-400' => ! $active,
                     ])>{{ $week['label'] }}</span>
 
-                    <span class="text-micro whitespace-nowrap text-zinc-400 dark:text-zinc-500">
-                        {{ $week['range'] }}
-                    </span>
+                    {{-- Optional, so the same strip can carry a poll RELEASE.
+                         A release is published on a day rather than across a
+                         span, so there is no honest range to print — and
+                         leaving the line off keeps seventeen pills scannable
+                         at 390px. Guarded rather than assumed: a missing key
+                         here would throw. --}}
+                    @if ($week['range'] ?? null)
+                        <span class="text-micro whitespace-nowrap text-zinc-400 dark:text-zinc-500">
+                            {{ $week['range'] }}
+                        </span>
+                    @endif
                 </button>
             @endforeach
         </div>
