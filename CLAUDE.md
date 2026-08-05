@@ -393,6 +393,25 @@ The Pick'em teaser card is designed and deliberately INERT — the app should
 read as a pick'em host from the first screen without promising a screen that
 does not exist. It becomes the entry point when Pick'em ships.
 
+**The last card is an empty SLOT until five teams are followed.** Onboarding
+happens in place: a signed-in user with no teams gets a swiper holding one
+add-card, searches, taps, and the slot becomes a real glance card. The
+callout that sent them to Account is gone — it pushed people off the page
+they were trying to fill. **The first team added also becomes the FAVORITE**
+(`SetFavoriteTeam`, which follows as part of setting), because nobody picks
+their one and only team and expects it not to lead the page.
+
+That makes the swiper's card list DYNAMIC, which broke the original
+IntersectionObserver: it captured `[...track.children]` once in `x-init`, so
+a card added mid-session was never observed and the dots stopped tracking the
+swipe. The observer now re-runs `observe()` on every `childList` mutation and
+resolves the index from a live `children` lookup — `IntersectionObserver`
+ignores a repeat `observe()`, so it stays idempotent. Anything that inserts
+into an observed list needs the same treatment.
+
+`TeamGlance::fbsTeams()` is the one FBS picker list, shared by Account's
+follow search and Home's quick add so the two cannot drift.
+
 ## Search: three surfaces, one backend, and deliberately no FULLTEXT
 
 Search is the bar at the top of Home (expands full-screen IN PLACE — never

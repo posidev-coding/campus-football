@@ -181,16 +181,9 @@ new class extends Component
     #[Computed]
     public function teams(): array
     {
-        $year = app(CfbCalendar::class)->scoreboardYear();
-
-        return Cache::remember("account:teams:{$year}", 3600, fn () => Team::query()
-            ->whereIn('id', TeamSeason::where('season_year', $year)
-                ->where('classification', 'FBS')
-                ->pluck('team_id'))
-            ->orderBy('display_name')
-            ->get(['id', 'display_name'])
-            ->map(fn (Team $t) => ['id' => $t->id, 'name' => $t->display_name])
-            ->all());
+        // Shared with Home's quick add, so the two pickers cannot drift and
+        // only one of them pays for the query.
+        return \App\Support\TeamGlance::fbsTeams();
     }
 
     /**

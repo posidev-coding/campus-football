@@ -6,6 +6,7 @@ use App\Models\Conference;
 use App\Models\ConferenceSeason;
 use App\Models\Ranking;
 use App\Models\Standing;
+use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Services\CfbCalendar;
 use Illuminate\Support\Facades\Cache;
@@ -203,6 +204,34 @@ class TeamGlance
                     ]])
                     ->all();
             },
+        );
+    }
+
+    /**
+     * Every FBS team for the season, as `[['id' => 61, 'name' => '…'], …]`.
+     *
+     * The list behind both team pickers — Account's follow search and Home's
+     * quick add — so the two cannot drift and only one of them pays for the
+     * query. Scoped to FBS and to the season we are IN, because a picker of
+     * all 854 teams is not a picker.
+     *
+     * @return list<array{id:int, name:string}>
+     */
+    public static function fbsTeams(?int $year = null): array
+    {
+        $year ??= app(CfbCalendar::class)->scoreboardYear();
+
+        return self::$memo["fbs:{$year}"] ??= Cache::remember(
+            "account:teams:{$year}",
+            self::CACHE_SECONDS,
+            fn () => Team::query()
+                ->whereIn('id', TeamSeason::where('season_year', $year)
+                    ->where('classification', 'FBS')
+                    ->pluck('team_id'))
+                ->orderBy('display_name')
+                ->get(['id', 'display_name'])
+                ->map(fn (Team $t) => ['id' => $t->id, 'name' => $t->display_name])
+                ->all(),
         );
     }
 

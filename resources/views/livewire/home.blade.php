@@ -1,12 +1,17 @@
 <?php
 
+use App\Actions\FollowTeam;
+use App\Actions\SetFavoriteTeam;
+use App\Exceptions\FollowLimitReached;
 use App\Models\Article;
 use App\Models\Game;
 use App\Models\Season;
 use App\Models\Team;
+use App\Models\User;
 use App\Services\CfbCalendar;
 use App\Support\Scope;
 use App\Support\TeamGlance;
+use App\Support\Voice;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -25,6 +30,99 @@ use Livewire\Component;
 new class extends Component
 {
     private const TEAM_COLUMNS = 'id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark';
+
+    /** Quick add: the query typed into the empty slot at the end of the swiper. */
+    public string $teamQuery = '';
+
+    public string $followError = '';
+
+    /**
+     * Follow a team without leaving Home.
+     *
+     * The first team a user follows also becomes their FAVORITE. Nobody
+     * picking their one and only team expects it not to lead the page, and
+     * making them go to Account to say so again is a second trip for a
+     * decision they have already made. `SetFavoriteTeam` follows as part of
+     * setting, so this is one action either way.
+     */
+    public function addTeam(int $teamId, FollowTeam $follow, SetFavoriteTeam $favorite): void
+    {
+        $user = auth()->user();
+        $team = Team::find($teamId);
+
+        $this->followError = '';
+
+        if ($user === null || $team === null) {
+            return;
+        }
+
+        $isFirst = $user->followedTeams()->count() === 0;
+
+        try {
+            $isFirst
+                ? $favorite->handle($user, $team)
+                : $follow->handle($user, $team);
+        } catch (FollowLimitReached $e) {
+            // Left in place on failure so the user can see what they reached
+            // for beside the reason it did not land.
+            $this->followError = Voice::line('follow.limit', ['max' => $e->limit]);
+
+            return;
+        }
+
+        $this->teamQuery = '';
+
+        unset(
+            $this->followedTeams, $this->glances, $this->newsByTeam,
+            $this->followable, $this->teamMatches, $this->canFollowMore, $this->hasLiveGame,
+        );
+    }
+
+    /** Room for another team, which is what puts the empty slot in the swiper. */
+    #[Computed]
+    public function canFollowMore(): bool
+    {
+        return auth()->check()
+            && $this->followedTeams->count() < User::MAX_FOLLOWED_TEAMS;
+    }
+
+    /**
+     * FBS teams they are not already following.
+     *
+     * @return list<array{id:int, name:string}>
+     */
+    #[Computed]
+    public function followable(): array
+    {
+        $already = $this->followedTeams->pluck('id')->all();
+
+        return collect(TeamGlance::fbsTeams())
+            ->reject(fn (array $team) => in_array($team['id'], $already, true))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Matches for the typed query, capped — an unbounded list inside a
+     * scroll-snap card would push the whole slate off the screen.
+     *
+     * @return list<array{id:int, name:string}>
+     */
+    #[Computed]
+    public function teamMatches(): array
+    {
+        $query = trim($this->teamQuery);
+
+        if ($query === '') {
+            return [];
+        }
+
+        return collect($this->followable)
+            ->filter(fn (array $team) => str_contains(mb_strtolower($team['name']), mb_strtolower($query)))
+            ->take(5)
+            ->values()
+            ->all();
+    }
 
     /**
      * The viewer's teams, favorite first, then follow order — the same
@@ -269,7 +367,10 @@ new class extends Component
     <livewire:search-panel />
 
     @auth
-        @if ($this->glances !== [])
+        {{-- Renders with zero teams too: the swiper then holds a single empty
+             slot, which IS the onboarding. A separate "go to Account" callout
+             sent people away from the page they were trying to fill. --}}
+        @if ($this->glances !== [] || $this->canFollowMore)
             {{--
                 The team swiper. Native scroll-snap IS the animation: no JS
                 tween, no library — momentum scrolling is what makes it feel
@@ -290,11 +391,24 @@ new class extends Component
                 <div
                     x-ref="track"
                     x-init="
-                        const cards = [...$refs.track.children]
+                        /*
+                         * Re-observed on every childList change, not captured
+                         * once: quick-add inserts a card mid-session, and an
+                         * observer built from a one-time snapshot would never
+                         * watch it — the dots would stop tracking the swipe
+                         * the moment the feature was used. IntersectionObserver
+                         * ignores a repeat observe(), so this stays idempotent.
+                         */
                         const io = new IntersectionObserver((entries) => {
-                            entries.forEach(e => { if (e.isIntersecting) active = cards.indexOf(e.target) })
+                            entries.forEach(e => {
+                                if (e.isIntersecting) active = [...$refs.track.children].indexOf(e.target)
+                            })
                         }, { root: $refs.track, threshold: 0.6 })
-                        cards.forEach(c => io.observe(c))
+
+                        const watch = () => [...$refs.track.children].forEach(c => io.observe(c))
+
+                        watch()
+                        new MutationObserver(watch).observe($refs.track, { childList: true })
                     "
                     class="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 [scrollbar-width:none] motion-safe:scroll-smooth [&::-webkit-scrollbar]:hidden"
                 >
@@ -305,11 +419,27 @@ new class extends Component
                             wire:key="glance-{{ $glance['team']->id }}"
                         />
                     @endforeach
+
+                    {{-- The empty slot, last: swipe past your teams and there
+                         is always somewhere to add the next one, until five. --}}
+                    @if ($this->canFollowMore)
+                        <x-team-add-card
+                            :first="$this->glances === []"
+                            :remaining="App\Models\User::MAX_FOLLOWED_TEAMS - count($this->glances)"
+                            :query="$teamQuery"
+                            :matches="$this->teamMatches"
+                            :error="$followError"
+                            class="w-full shrink-0 snap-center sm:w-[calc(50%-0.375rem)]"
+                            wire:key="add-slot"
+                        />
+                    @endif
                 </div>
 
-                @if (count($this->glances) > 1)
+                @php $slots = count($this->glances) + ($this->canFollowMore ? 1 : 0); @endphp
+
+                @if ($slots > 1)
                     <div class="flex justify-center gap-1.5">
-                        @foreach ($this->glances as $i => $glance)
+                        @for ($i = 0; $i < $slots; $i++)
                             {{-- scrollIntoView with no behavior option defers
                                  to the track's CSS scroll-behavior, which is
                                  what motion-safe gates. --}}
@@ -318,10 +448,10 @@ new class extends Component
                                 @click="$refs.track.children[{{ $i }}].scrollIntoView({ inline: 'center', block: 'nearest' })"
                                 :class="active === {{ $i }} ? 'bg-zinc-600 dark:bg-zinc-300' : 'bg-zinc-300 dark:bg-zinc-700'"
                                 class="size-1.5 rounded-full transition-colors"
-                                aria-label="Show {{ $glance['team']->placeName() }}"
-                                wire:key="dot-{{ $glance['team']->id }}"
+                                aria-label="{{ isset($this->glances[$i]) ? 'Show '.$this->glances[$i]['team']->placeName() : 'Add a team' }}"
+                                wire:key="dot-{{ $i }}"
                             ></button>
-                        @endforeach
+                        @endfor
                     </div>
                 @endif
 
@@ -354,16 +484,6 @@ new class extends Component
                     </div>
                 @endforeach
             </section>
-        @else
-            {{-- Not an empty state — the page still works below. One quiet
-                 card invites them in, speaking in their register. --}}
-            <flux:callout icon="pin-angle">
-                <flux:callout.heading>Make it yours</flux:callout.heading>
-                <flux:callout.text>{{ App\Support\Voice::line('home.follow_prompt') }}</flux:callout.text>
-                <x-slot:actions>
-                    <flux:button :href="route('account')" wire:navigate size="sm">Follow a team</flux:button>
-                </x-slot:actions>
-            </flux:callout>
         @endif
     @else
         <div class="flex flex-col gap-1">

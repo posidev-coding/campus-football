@@ -1,15 +1,19 @@
 <?php
 
+use App\Jobs\SyncTeamNews;
 use App\Models\Article;
 use App\Models\Game;
 use App\Models\GamePredictor;
 use App\Models\Season;
 use App\Models\Team;
+use App\Models\TeamSeason;
 use App\Models\User;
 use App\Models\Week;
 use App\Support\TeamGlance;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
+use Livewire\Livewire;
 
 beforeEach(function () {
     $this->season = Season::factory()->create([
@@ -171,9 +175,11 @@ describe('without teams', function () {
 
         $this->actingAs($newcomer)->get(route('home'))
             ->assertOk()
-            // The invitation, in the user's register…
-            ->assertSee('Follow a team')
-            ->assertSee(route('account'), escape: false)
+            // The invitation is now the swiper's own empty slot — onboarding
+            // in place, rather than a callout sending them to Account to fill
+            // in the page they are already looking at.
+            ->assertSee('Add your team')
+            ->assertSee('Search FBS teams')
             // …and the page still carries content underneath it.
             ->assertSee('A national story')
             ->assertSee('Latest news');
@@ -281,5 +287,102 @@ describe('the featured games', function () {
         $this->get(route('home'))
             ->assertOk()
             ->assertSeeInOrder([route('game', $marquee), route('game', $dull)], escape: false);
+    });
+});
+
+describe('quick add', function () {
+    beforeEach(function () {
+        $this->newcomer = User::factory()->create();
+
+        // The picker is FBS-for-this-season, so membership rows are what make
+        // a team offerable at all.
+        foreach ([2633, 96] as $id) {
+            TeamSeason::create([
+                'team_id' => $id, 'season_year' => 2026, 'classification' => 'FBS',
+            ]);
+        }
+    });
+
+    it('makes the first team added the favorite, without a trip to Account', function () {
+        /*
+         * Nobody picks their one and only team and then expects it not to
+         * lead the page. Making them say so twice is a second trip for a
+         * decision already made.
+         */
+        Queue::fake();
+
+        Livewire::actingAs($this->newcomer)
+            ->test('home')
+            ->set('teamQuery', 'Tennessee')
+            ->call('addTeam', 2633);
+
+        $user = $this->newcomer->fresh();
+
+        expect($user->favorite_team_id)->toBe(2633)
+            ->and($user->followedTeams()->whereKey(2633)->exists())->toBeTrue();
+    });
+
+    it('leaves the favorite alone when adding a second team', function () {
+        Queue::fake();
+
+        $this->newcomer->forceFill(['favorite_team_id' => 2633])->save();
+        $this->newcomer->followedTeams()->attach(2633);
+
+        Livewire::actingAs($this->newcomer)
+            ->test('home')
+            ->call('addTeam', 96);
+
+        expect($this->newcomer->fresh()->favorite_team_id)->toBe(2633);
+    });
+
+    it('clears the query and shows the new team as a card', function () {
+        Queue::fake();
+
+        Livewire::actingAs($this->newcomer)
+            ->test('home')
+            ->set('teamQuery', 'Tenn')
+            ->call('addTeam', 2633)
+            ->assertSet('teamQuery', '')
+            ->assertSee('wire:key="glance-2633"', escape: false);
+    });
+
+    it('offers a slot until five teams are followed, then stops', function () {
+        Queue::fake();
+
+        $extra = Team::factory()->count(3)->create();
+        foreach ($extra as $team) {
+            TeamSeason::create(['team_id' => $team->id, 'season_year' => 2026, 'classification' => 'FBS']);
+        }
+
+        // Four followed: still room, so the slot is there.
+        $this->user->followedTeams()->attach($extra->take(2)->pluck('id'));
+
+        Livewire::actingAs($this->user)->test('home')->assertSee('Add another');
+
+        // Five: the slot goes away rather than offering a follow that throws.
+        $this->user->followedTeams()->attach($extra->last()->id);
+
+        Livewire::actingAs($this->user)->test('home')
+            ->assertDontSee('Add another')
+            ->assertDontSee('Add your team');
+    });
+
+    it('does not offer teams already followed', function () {
+        $matches = Livewire::actingAs($this->user)
+            ->test('home')
+            ->set('teamQuery', 'Tennessee')
+            ->get('teamMatches');
+
+        expect(collect($matches)->pluck('id'))->not->toContain(2633);
+    });
+
+    it('dispatches the news sync for a quick-added team', function () {
+        // Following is what fills a team's news tab; quick add must not be a
+        // back door that skips it.
+        Queue::fake();
+
+        Livewire::actingAs($this->newcomer)->test('home')->call('addTeam', 2633);
+
+        Queue::assertPushed(SyncTeamNews::class, fn ($job) => $job->teamId === 2633);
     });
 });

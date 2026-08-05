@@ -66,6 +66,18 @@ class Voice
             'r' => 'This page is better with a team on it. Pick yours and their games, news and form take over from here.',
         ],
 
+        'home.first_team' => [
+            'pg' => 'Pick your team and this page fills in — their record, their form, their next game.',
+            'pg13' => 'Pick your team. Record, form, next game — all of it lands right here.',
+            'r' => 'Pick your team. Their record, their form, their next disaster — all of it, right here.',
+        ],
+
+        'home.another_team' => [
+            'pg' => 'Room for :remaining more. Add a rival, or a team you just like watching.',
+            'pg13' => 'Room for :remaining more. Add a rival — someone has to lose.',
+            'r' => 'Room for :remaining more. Add a rival you enjoy watching suffer.',
+        ],
+
         'home.pickem' => [
             'pg' => "Groups, weekly picks and bragging rights with your friends. It's on the way.",
             'pg13' => "Groups, weekly slates, and a season-long paper trail of everyone's bad calls. It's coming.",
