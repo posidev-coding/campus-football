@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\GameRanks;
 use App\Support\TeamGlance;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -12,8 +13,11 @@ use Tests\TestCase;
  */
 pest()->extend(TestCase::class)
     ->use(RefreshDatabase::class)
-    // TeamGlance memoizes its cached maps in a STATIC property, which outlives
-    // the per-test application the array cache dies with. Without this reset a
-    // test inherits the previous test's league.
-    ->beforeEach(fn () => TeamGlance::flush())
+    // TeamGlance and GameRanks memoize their cached maps in STATIC properties,
+    // which outlive the per-test application the array cache dies with.
+    // Without this reset a test inherits the previous test's league.
+    ->beforeEach(function () {
+        TeamGlance::flush();
+        GameRanks::flush();
+    })
     ->in('Feature');

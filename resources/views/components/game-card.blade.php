@@ -13,9 +13,23 @@
     $final = $game->completed;
     $winner = $game->winnerTeamId();
 
+    /*
+     * ESPN's curated rank where it exists, our own poll data where it does not.
+     *
+     * `home_rank`/`away_rank` are ESPN's `curatedRank` and are preferred — but
+     * all 946 of 2026's games carry 99 ("unranked") on both sides even though
+     * the Coaches preseason poll is out and we hold every row of it, and ESPN
+     * does not backfill a schedule when a poll lands. GameRanks fills that gap
+     * from the poll that stood at KICKOFF, so week 1 shows the preseason poll
+     * and a bowl shows the CFP.
+     *
+     * One query per release, shared by every card on the screen.
+     */
+    $ranks = App\Support\GameRanks::forGame($game);
+
     $sides = [
-        ['team' => $game->awayTeam, 'score' => $game->away_score, 'rank' => $game->away_rank, 'record' => $game->away_record],
-        ['team' => $game->homeTeam, 'score' => $game->home_score, 'rank' => $game->home_rank, 'record' => $game->home_record],
+        ['team' => $game->awayTeam, 'score' => $game->away_score, 'rank' => $ranks['away'], 'record' => $game->away_record],
+        ['team' => $game->homeTeam, 'score' => $game->home_score, 'rank' => $ranks['home'], 'record' => $game->home_record],
     ];
 
     /*

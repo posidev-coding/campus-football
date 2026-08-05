@@ -300,6 +300,46 @@ A "release" is a (season type, week) pair, not a week number — the preseason
 poll and the final rankings are both "week 1" of their own season type, so a
 selector keyed on number alone collides them.
 
+## A game card's rank is ESPN's, then ours, and always AS OF KICKOFF
+
+`games.home_rank`/`away_rank` hold ESPN's `curatedRank` and are what a card
+shows whenever they exist — `SyncGames` re-patches them on every pass, so they
+keep up as polls move. Two things about them:
+
+- **99 is ESPN's "unranked" sentinel.** `SyncGames` already maps it to null on
+  write; readers must still guard, because a card printing "#99" is the tell.
+- **They are not always populated.** All 946 of 2026's games carry no rank on
+  either side while the Coaches preseason poll is out and we hold all 25 rows.
+  ESPN does not backfill a schedule when a poll lands — re-fetching week 1
+  still returns 99 — so re-syncing does not fix it.
+
+`App\Support\GameRanks` fills that gap from rankings we already hold:
+
+    1. latest poll release published at or before KICKOFF
+    2. best poll in it — CFP, then AP, then Coaches; else walk back a release
+    3. unranked is null, never 99
+
+Week 1 needs no special case: there is no regular week-1 release, so the latest
+one at or before kickoff IS the preseason poll.
+
+**POSTSEASON releases are excluded deliberately.** ESPN files the AP and Coaches
+"Final Rankings" under postseason week 1, whose range opens Dec 13 — so a bowl
+on Dec 20 would show a poll not published until January. Excluding them leaves
+the last regular-season release, which is the CFP final and is what a bowl card
+should carry.
+
+The two sources agree where both exist: checked against 2025 week 12, ESPN's
+curated value IS the CFP poll (20/8/3/2) rather than AP (19/7/3/2), and all 61
+games of that week render identically either way. Which is why the ladder above
+is CFP-first — it is ESPN's own.
+
+Resolved per GAME, not per side: mixing ESPN's number on one team with ours on
+the other turns a one-rank difference between polls into what looks like a bug.
+Costs one lookup per RELEASE, so a 50-card slate is one query, not fifty — and
+it reads `season_id` and `kickoff_at` straight off the row rather than needing
+`week` eager loaded, because a card renders from six screens and requiring each
+to remember a constrained eager load is how a missing column ships.
+
 **Coaches lands BEFORE AP, and the default has to follow.** Verified live on
 2026-08-05: the only poll ESPN published for the entire 2026 season was the AFCA
 Coaches preseason (ranking id 2, `type: usa`) at type 1 week 1 — no AP at all.
