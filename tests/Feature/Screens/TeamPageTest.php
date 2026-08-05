@@ -11,6 +11,7 @@ use App\Models\Team;
 use App\Models\TeamLeader;
 use App\Models\TeamSeason;
 use App\Models\TeamSeasonStat;
+use App\Models\Week;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -415,5 +416,65 @@ describe('the season it opens on', function () {
             // in the DOM rather than the &#039; assertSee would look for.
             ->assertSee("2026 hasn't kicked off yet, so these are 2025 numbers", escape: false)
             ->assertSee('430');
+    });
+});
+
+describe('schedule dates', function () {
+    it('dates an upcoming game on a team schedule', function () {
+        $upcoming = Season::factory()->create([
+            'year' => 2026, 'type' => Season::REGULAR,
+            'start_date' => '2026-08-29', 'end_date' => '2026-12-12',
+        ]);
+
+        Game::factory()->create([
+            'season_id' => $upcoming->id,
+            'home_team_id' => 61, 'away_team_id' => null,
+            // 00:30 UTC is still the 5th in ET — the date must be read in the
+            // app's timezone, like every other kickoff on the card.
+            'kickoff_at' => '2026-09-06 00:30:00',
+            'completed' => false,
+        ]);
+
+        Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2026)
+            ->assertSee('9/5');
+    });
+
+    it('leaves finished games undated — they say Final instead', function () {
+        $played = Season::factory()->create([
+            'year' => 2025, 'type' => Season::REGULAR,
+            'start_date' => '2025-08-23', 'end_date' => '2025-12-13',
+        ]);
+
+        Game::factory()->finished()->create([
+            'season_id' => $played->id,
+            'home_team_id' => 61, 'away_team_id' => null,
+            'kickoff_at' => '2025-09-06 19:30:00',
+        ]);
+
+        Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2025)
+            ->assertSee('Final')
+            ->assertDontSee('9/6');
+    });
+
+    it('leaves the scoreboard undated, where day headings already say so', function () {
+        // The prop is opt-in precisely so surfaces that group by day do not
+        // repeat the date on every card.
+        $season = Season::factory()->create(['year' => 2026, 'type' => Season::REGULAR]);
+        $week = Week::create([
+            'season_id' => $season->id, 'number' => 2, 'name' => 'Week 2',
+            'start_date' => '2026-09-01', 'end_date' => '2026-09-07',
+        ]);
+        Game::factory()->create([
+            'season_id' => $season->id, 'week_id' => $week->id,
+            'home_team_id' => 61, 'away_team_id' => null,
+            'kickoff_at' => '2026-09-06 00:30:00', 'completed' => false,
+        ]);
+
+        Livewire::test('scoreboard')
+            ->set('scope', 'fbs')
+            ->set('week', $week->id)
+            ->assertDontSee('>9/5<', escape: false);
     });
 });

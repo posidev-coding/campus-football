@@ -1,4 +1,12 @@
-@props(['game', 'odds' => true])
+{{--
+    `date` prepends a short m/d to an UPCOMING game's kickoff line.
+
+    Off by default because most surfaces already carry the date around the
+    card: the scoreboard groups by day heading, and Home shows a single week.
+    A team's schedule is the exception — it is a flat list spanning four
+    months, where "7:30pm" alone says nothing about which Saturday.
+--}}
+@props(['game', 'odds' => true, 'date' => false])
 
 @php
     $live = $game->status === 'in';
@@ -58,7 +66,14 @@
         @elseif ($final)
             <span class="shrink-0 font-medium text-zinc-500">Final</span>
         @else
+            {{-- Scheduled: this branch is upcoming games only — a final says
+                 "Final" and a live game says its clock — so the date lands
+                 exactly where it is useful and nowhere else. --}}
             <span class="shrink-0 text-right font-medium text-zinc-600 dark:text-zinc-400">
+                @if ($date)
+                    <span class="tabular text-zinc-500">{{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('n/j') }}</span>
+                    <span class="text-zinc-400">·</span>
+                @endif
                 {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('g:ia') }}
                 @if ($broadcast)
                     <span class="text-zinc-400">· {{ $broadcast }}</span>

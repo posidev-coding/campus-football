@@ -412,7 +412,9 @@ new class extends Component
     @if ($tab === 'schedule')
         <div class="flex flex-col gap-2">
             @forelse ($this->schedule as $game)
-                <x-game-card :game="$game" wire:key="g-{{ $game->id }}" />
+                {{-- Dated: a season's schedule is a flat four-month list, so
+                     a kickoff time alone does not say which week. --}}
+                <x-game-card :game="$game" date wire:key="g-{{ $game->id }}" />
             @empty
                 <flux:callout icon="calendar-days">
                     <flux:callout.heading>No schedule</flux:callout.heading>
