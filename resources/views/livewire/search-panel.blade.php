@@ -81,11 +81,39 @@ new class extends Component
     to reach both screen edges, `-mt-5 pt-5` so the space above travels with the
     bar instead of scrolling away. `pb-3 -mb-3` gives content a gap to disappear
     into without changing Home's `gap-6` rhythm.
+
+    ── Making it a header is what breaks the panel INSIDE it ──
+
+    Every class that dresses this as chrome also sabotages the `fixed` panel it
+    contains, and each one fails differently:
+
+    - **`backdrop-filter` makes an element the containing block for `fixed`
+      descendants**, exactly like `transform` and `filter`. So `inset-0` on the
+      panel resolved against this 33px bar rather than the viewport, and the
+      full-screen search opened as a 390x32 strip with Home still live
+      underneath. It does not read as a positioning bug; it reads as the panel
+      failing to render.
+    - **`z-30` opens a stacking context that CAPS the panel's `z-50` at 30**,
+      putting it under the tab bar at z-40 — the same ceiling the scoreboard's
+      day headings hit from the other direction.
+    - **`position: sticky` opens one too, at `z-index: auto`, which `relative`
+      does not.** Dropping to `z-auto` therefore fixed nothing: the bar simply
+      became a z-0 context and the panel was capped lower still. Verified with
+      an isolated pair of fixed divs rather than reasoned about — a z-50 child
+      of a `sticky; z-index: auto` wrapper loses to a plain z-40 sibling.
+
+    So all three come off while open. Object syntax rather than a ternary
+    because these classes are also in the static `class` attribute: Alpine's
+    `setClassesFromObject` removes a class whatever put it there, so the server
+    still renders a correctly dressed bar and there is no flash before Alpine
+    boots. Only those three toggle — the padding stays, or the page underneath
+    would shift 32px every time the panel opened.
 --}}
 <div
     x-data="{ open: false }"
     @keydown.escape.window="if (open) { open = false; $wire.clear(); document.activeElement?.blur() }"
     class="sticky top-0 z-30 -mx-4 -mt-5 -mb-3 border-b border-zinc-200 bg-white/85 px-4 pt-5 pb-3 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/85"
+    :class="{ 'sticky z-30 backdrop-blur': ! open }"
 >
     {{-- One wrapper that is either a row in Home's flow or the whole viewport.
          Toggling classes on the SAME element keeps the input mounted and

@@ -439,7 +439,33 @@ from the rule and the blur, never from a tint or a brand color.
 Translucency is safe HERE and was not on the scoreboard's day headings, which
 is worth keeping straight: this sits at z-30, above card contents at z-10, so
 it wins on z-index and the blur is decoration. A day heading tied at z-10 and
-lost on tree order, and no amount of opacity fixed that. All three read `App\Support\Search`, which is Laravel
+lost on tree order, and no amount of opacity fixed that.
+
+**But the panel is a `fixed` child of that bar, and every class that makes the
+bar a header breaks it.** All three come off while it is open
+(`:class="{ 'sticky z-30 backdrop-blur': ! open }"`), and each one fails in its
+own way:
+
+    backdrop-blur   a backdrop-filter is the CONTAINING BLOCK for fixed
+                    descendants, exactly like transform and filter. `inset-0`
+                    resolved against the 33px bar, so full-screen search opened
+                    as a 390x32 strip with Home still live underneath
+    z-30            a stacking context CAPS the panel's z-50 at 30, under the
+                    tab bar at z-40
+    sticky          opens a stacking context at `z-index: auto` as well, which
+                    `relative` does not — so dropping to z-auto fixed nothing
+
+That last one is the surprise, and it REFINES the note above about
+`position: relative` with `z-index: auto` creating no stacking context: sticky
+is not the same, it always creates one. Verified with an isolated pair of fixed
+divs rather than reasoned about — a z-50 child of a `sticky; z-index: auto`
+wrapper loses to a plain z-40 sibling.
+
+Object syntax rather than a ternary, because those classes are also in the
+static `class` attribute: Alpine's `setClassesFromObject` removes a class
+whatever put it there, so the server still renders a dressed bar and there is
+no flash before Alpine boots. Only those three toggle — moving the padding too
+would shift the page 32px on every open. All three read `App\Support\Search`, which is Laravel
 Scout on the DATABASE engine — the data is already in our MySQL, so search
 queries source tables and there is no index to sync or drift.
 

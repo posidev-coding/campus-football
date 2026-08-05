@@ -278,6 +278,28 @@ describe('the shared surfaces', function () {
         }
     });
 
+    it('takes the header chrome off while the panel is open', function () {
+        /*
+         * Every class that dresses the bar as a header sabotages the `fixed`
+         * panel inside it, and they fail differently:
+         *
+         *   backdrop-blur  a backdrop-filter is the CONTAINING BLOCK for fixed
+         *                  descendants, like transform and filter. `inset-0`
+         *                  resolved against the 33px bar, so full-screen search
+         *                  opened as a 390x32 strip with Home live underneath.
+         *   z-30           a stacking context caps the panel's z-50 at 30,
+         *                  under the tab bar at z-40.
+         *   sticky         opens a stacking context at `z-index: auto` too,
+         *                  which `relative` does not — so dropping to z-auto
+         *                  fixed nothing on its own.
+         *
+         * All three have to come off together; any one of them left on is a
+         * different broken panel.
+         */
+        expect(Livewire::test('search-panel')->html())
+            ->toContain(":class=\"{ 'sticky z-30 backdrop-blur': ! open }\"");
+    });
+
     it('lights the League tab on a coach page', function () {
         $coach = Coach::create(['id' => 9, 'display_name' => 'Area Tester', 'last_name' => 'Tester']);
 
