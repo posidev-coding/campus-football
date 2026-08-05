@@ -208,29 +208,41 @@ class TeamGlance
     }
 
     /**
-     * Every FBS team for the season, as `[['id' => 61, 'name' => '…'], …]`.
+     * Every FBS team for the season, with the marks a picker row renders.
      *
      * The list behind both team pickers — Account's follow search and Home's
      * quick add — so the two cannot drift and only one of them pays for the
      * query. Scoped to FBS and to the season we are IN, because a picker of
      * all 854 teams is not a picker.
      *
-     * @return list<array{id:int, name:string}>
+     * Plain arrays, not models: this goes through the cache, and an Eloquent
+     * model round-trips as `__PHP_Incomplete_Class` and fails on the SECOND
+     * request. The logo URLs ride along so a result row can show a mark
+     * without hydrating anything.
+     *
+     * @return list<array{id:int, name:string, logo:?string, logo_dark:?string}>
      */
     public static function fbsTeams(?int $year = null): array
     {
         $year ??= app(CfbCalendar::class)->scoreboardYear();
 
+        // Cache key is versioned: the shape gained logo columns, and a stale
+        // entry from before that would render rows with no mark at all.
         return self::$memo["fbs:{$year}"] ??= Cache::remember(
-            "account:teams:{$year}",
+            "picker:teams:v2:{$year}",
             self::CACHE_SECONDS,
             fn () => Team::query()
                 ->whereIn('id', TeamSeason::where('season_year', $year)
                     ->where('classification', 'FBS')
                     ->pluck('team_id'))
                 ->orderBy('display_name')
-                ->get(['id', 'display_name'])
-                ->map(fn (Team $t) => ['id' => $t->id, 'name' => $t->display_name])
+                ->get(['id', 'display_name', 'logo', 'logo_dark'])
+                ->map(fn (Team $t) => [
+                    'id' => $t->id,
+                    'name' => $t->display_name,
+                    'logo' => $t->logo,
+                    'logo_dark' => $t->logo_dark,
+                ])
                 ->all(),
         );
     }

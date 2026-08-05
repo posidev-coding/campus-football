@@ -67,7 +67,7 @@ describe('the team swiper', function () {
             ->and(strpos($html, 'wire:key="glance-2633"'))->toBeLessThan(strpos($html, 'wire:key="glance-96"'));
     });
 
-    it('derives form from our own box of completed games, oldest to newest', function () {
+    it('derives trends from our own box of completed games, oldest to newest', function () {
         // Three completed games: W, W, L in kickoff order.
         foreach ([
             ['2025-09-06', 30, 10],
@@ -83,7 +83,7 @@ describe('the team swiper', function () {
 
         $html = $this->actingAs($this->user)->get(route('home'))->assertOk()->content();
 
-        preg_match_all('/wire:key="form-2633-\d+"[^>]*>(\w)</', $html, $pills);
+        preg_match_all('/wire:key="trend-2633-\d+"[^>]*>(\w)</', $html, $pills);
 
         expect($pills[1])->toBe(['W', 'W', 'L']);
     });

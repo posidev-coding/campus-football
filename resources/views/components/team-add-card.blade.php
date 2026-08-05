@@ -40,15 +40,11 @@
         @if (trim($query) !== '')
             <div class="flex flex-col gap-1">
                 @forelse ($matches as $match)
-                    <button
-                        type="button"
+                    <x-team-pick-row
+                        :team="$match"
                         wire:click="addTeam({{ $match['id'] }})"
                         wire:key="quickadd-{{ $match['id'] }}"
-                        class="flex items-center justify-between gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-left text-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
-                    >
-                        <span class="min-w-0 truncate">{{ $match['name'] }}</span>
-                        <flux:icon name="plus" variant="micro" class="shrink-0 text-zinc-400" />
-                    </button>
+                    />
                 @empty
                     <p class="px-1 text-micro text-zinc-500">
                         {{ App\Support\Voice::line('teams.no_matches', ['query' => trim($query)]) }}

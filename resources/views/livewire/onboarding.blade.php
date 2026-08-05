@@ -208,7 +208,12 @@ new class extends Component
     }
 }; ?>
 
+{{-- `contents` so this root takes NO space in Home's flex column. Without it
+     the component is an empty flex ITEM, and the parent's `gap-6` opens a
+     24px hole above the first real card — which reads as an unexplained top
+     margin. The overlay inside is `fixed`, so it does not need a box here. --}}
 <div
+    class="contents"
     x-data="{
         open: @js(request()->query('start') === 'team' && auth()->check()),
 
@@ -369,6 +374,10 @@ new class extends Component
                         {{ $this->followedTeams->isEmpty() ? 'Who do you follow?' : Voice::line('onboarding.done') }}
                     </flux:heading>
 
+                    @if ($this->followedTeams->isEmpty())
+                        <flux:subheading>{{ Voice::line('onboarding.picker') }}</flux:subheading>
+                    @endif
+
                     @if ($this->followedTeams->isNotEmpty())
                         <div class="flex flex-col gap-2">
                             @foreach ($this->followedTeams as $team)
@@ -394,15 +403,11 @@ new class extends Component
                             @endif
 
                             @forelse ($this->teamMatches as $match)
-                                <button
-                                    type="button"
+                                <x-team-pick-row
+                                    :team="$match"
                                     wire:click="addTeam({{ $match['id'] }})"
                                     wire:key="pick-{{ $match['id'] }}"
-                                    class="flex items-center justify-between gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-left text-sm transition-colors hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
-                                >
-                                    <span class="min-w-0 truncate">{{ $match['name'] }}</span>
-                                    <flux:icon name="plus" variant="micro" class="shrink-0 text-zinc-400" />
-                                </button>
+                                />
                             @empty
                                 @if (trim($teamQuery) !== '')
                                     <p class="px-1 text-micro text-zinc-500">

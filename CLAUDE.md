@@ -364,7 +364,7 @@ that. The bar sizes its columns from the area count rather than hardcoding it.
 
 ## Home is the user's teams, swiped
 
-One at-a-glance card per followed team — record, standing, form pills, live
+One at-a-glance card per followed team — record, standing, trend pills, live
 or next game, last result — in the order the user set on Account, the same
 order the scoreboard floats them in. Native `scroll-snap` IS the animation: no JS tween, no
 library; momentum scrolling is what feels buttery. An IntersectionObserver
@@ -793,6 +793,16 @@ every toggle.
 Light left a phone's address bar black. An `x-effect` in `<body>` re-tints it
 from `$flux.dark`. It cannot go on the meta tag itself — Alpine only initialises
 inside `<body>`, so `x-data` in `<head>` is never picked up.
+
+## Say TRENDS, not "form"
+
+A team's recent W/L run is **trends** — `x-trend-pills`, `$glance['trend']`.
+"Form" is the soccer word for it and reads as borrowed in an American football
+app, the same instinct as favorite-not-favourite.
+
+While in the neighbourhood: **plural nouns read better in this copy.**
+"Records, trends, next games" beats "record, form, next game" — a season is
+a run of things, not one of each.
 
 ## American spelling, everywhere
 

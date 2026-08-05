@@ -7,7 +7,14 @@
     versus the team picker — but the card is the same, because the promise is
     the same: this page becomes yours.
 --}}
-<div {{ $attributes->class(['rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900']) }}>
+{{-- Deliberately louder than the cards around it: a tinted surface and a blue
+     ring, so the one thing a new user should press does not read as another
+     panel of content. --}}
+<div {{ $attributes->class([
+    'rounded-xl p-4 ring-1',
+    'bg-blue-50 ring-blue-200',
+    'dark:bg-blue-950/40 dark:ring-blue-900',
+]) }}>
     <div class="flex items-start justify-between gap-3">
         <div class="flex min-w-0 flex-col gap-1">
             <flux:heading size="lg">{{ App\Support\Voice::line('onboarding.heading') }}</flux:heading>

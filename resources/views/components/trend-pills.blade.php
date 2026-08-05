@@ -2,8 +2,11 @@
 
 {{--
     A team's recent results as W/L/T pills, OLDEST first so the row reads
-    left-to-right toward now, the way soccer form is written. Each pill links
-    to its game, which is why this cannot sit inside another anchor.
+    left-to-right toward now. Each pill links to its game, which is why this
+    cannot sit inside another anchor.
+
+    Called TRENDS, not "form": form is a soccer word and this is an American
+    football app, the same rule as favorite-not-favourite.
 --}}
 <span {{ $attributes->class(['flex items-center gap-1']) }}>
     @foreach ($games as $game)
@@ -17,7 +20,7 @@
         <a
             href="{{ route('game', $game) }}"
             wire:navigate
-            wire:key="form-{{ $teamId }}-{{ $game->id }}"
+            wire:key="trend-{{ $teamId }}-{{ $game->id }}"
             title="{{ collect([$letter.' '.$ownScore.'-'.$oppScore, $opponent?->placeName()])->filter()->implode(' · ') }}"
             @class([
                 'flex size-5 items-center justify-center rounded-full text-micro font-bold transition-transform hover:scale-110',

@@ -27,7 +27,7 @@
     ])
 >
     {{-- The header is the card's link to the team page. The whole card cannot
-         be one, because the form pills and game lines are links themselves and
+         be one, because the trend pills and game lines are links themselves and
          anchors do not nest.
 
          In light mode the logo sits on a white puck, never on the accent — a
@@ -60,9 +60,9 @@
     </a>
 
     <div class="flex flex-col gap-2.5 px-4 py-3">
-        @if ($glance['form']->isNotEmpty())
+        @if ($glance['trend']->isNotEmpty())
             <div class="flex items-center justify-between gap-2">
-                <x-form-pills :games="$glance['form']" :team-id="$team->id" />
+                <x-trend-pills :games="$glance['trend']" :team-id="$team->id" />
 
                 @if ($glance['record']['streak'] ?? null)
                     <span class="text-micro font-medium text-zinc-500">{{ $glance['record']['streak'] }} streak</span>
@@ -137,7 +137,7 @@
             </a>
         @endif
 
-        @if ($glance['form']->isEmpty() && ! $live && ! $next && ! $last)
+        @if ($glance['trend']->isEmpty() && ! $live && ! $next && ! $last)
             <span class="text-sm text-zinc-500">No games on the schedule yet.</span>
         @endif
     </div>

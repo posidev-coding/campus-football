@@ -61,15 +61,15 @@ class Voice
         ],
 
         'home.follow_prompt' => [
-            'pg' => 'Follow a team and their games, news and form lead this page.',
-            'pg13' => 'Follow a team and this page starts working for you — their games, news and form, front and center.',
-            'r' => 'This page is better with a team on it. Pick yours and their games, news and form take over from here.',
+            'pg' => 'Follow a team and their games, news and trends lead this page.',
+            'pg13' => 'Follow a team and this page starts working for you — games, news and trends, front and center.',
+            'r' => 'This page is better with a team on it. Pick yours and their games, news and trends take over.',
         ],
 
         'home.first_team' => [
-            'pg' => 'Pick your team and this page fills in — their record, their form, their next game.',
-            'pg13' => 'Pick your team. Record, form, next game — all of it lands right here.',
-            'r' => 'Pick your team. Their record, their form, their next disaster — all of it, right here.',
+            'pg' => 'Pick your team and this page fills in — records, trends, next games.',
+            'pg13' => 'Pick your team. Records, trends, next games — all of it lands right here.',
+            'r' => 'Pick your team. Records, trends, and every upcoming disaster — right here.',
         ],
 
         'home.another_team' => [
@@ -84,15 +84,15 @@ class Voice
          * which is the right register for a first impression anyway.
          */
         'onboarding.heading' => [
-            'pg' => "Let's make this yours",
-            'pg13' => 'Right now, this page is nobody\'s',
-            'r' => 'This page belongs to nobody. Embarrassing for everyone.',
+            'pg' => 'Make this page yours',
+            'pg13' => 'Pick a side',
+            'r' => 'Pick a side. Any side.',
         ],
 
         'onboarding.body' => [
-            'pg' => 'Add your team and their record, form and next game land right here.',
-            'pg13' => 'Add your team — record, form, next game, and every reason to complain about them.',
-            'r' => 'Add your team. Record, form, next game, and a full season of grievances.',
+            'pg' => 'Follow up to five teams for their records, trends and upcoming games.',
+            'pg13' => 'Follow up to five teams. Records, trends, next games — and plenty to yell about.',
+            'r' => 'Follow up to five teams. Records, trends, next games, and a season of grievances.',
         ],
 
         'onboarding.dismissed' => [
@@ -102,9 +102,9 @@ class Voice
         ],
 
         'onboarding.name' => [
-            'pg' => 'First, what should we call you?',
-            'pg13' => "Let's start easy. What do we call you?",
-            'r' => "Let's start easy. What do we call you?",
+            'pg' => 'What should we call you?',
+            'pg13' => 'Easy one first — what do we call you?',
+            'r' => 'Easy one first — what do we call you?',
         ],
 
         'onboarding.rating' => [
@@ -114,8 +114,8 @@ class Voice
         ],
 
         'onboarding.credentials' => [
-            'pg' => 'Last step — somewhere to save all this.',
-            'pg13' => 'Last one. We need somewhere to keep your record.',
+            'pg' => 'Last step — somewhere to keep all this.',
+            'pg13' => 'Last one. Somewhere to keep your picks and your records.',
             'r' => 'Last one. Somewhere to file your terrible opinions.',
         ],
 
@@ -123,6 +123,12 @@ class Voice
             'pg' => "You're set. Your page is waiting.",
             'pg13' => "You're set. Go see what they've done now.",
             'r' => "You're set. Go see what they've done now.",
+        ],
+
+        'onboarding.picker' => [
+            'pg' => 'Search for a team to follow. You can add up to five.',
+            'pg13' => 'Search and tap. Up to five — choose your allegiances carefully.',
+            'r' => 'Search and tap. Five slots. Choose your allegiances carefully.',
         ],
 
         'home.pickem' => [

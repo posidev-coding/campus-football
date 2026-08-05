@@ -34,13 +34,27 @@
        inline from teams.color / teams.alt_color; everything else inherits a
        neutral default, so a component never depends on being inside a themed
        page to render correctly. */
+    /* Flux's accent — what `variant="primary"` paints with — ships as
+       zinc-800, i.e. near-black. Every "primary" button in the app was
+       therefore the same colour as the text around it, which is exactly why
+       a call to action did not read as one. Blue, and the same blue the pin
+       mark already uses, so the app has one action colour rather than two. */
     :root {
+        --color-accent: var(--color-blue-600);
+        --color-accent-content: var(--color-blue-600);
+        --color-accent-foreground: var(--color-white);
+
         --team-accent: var(--color-zinc-900);
         --team-accent-far: var(--color-zinc-800);
         --team-accent-contrast: white;
     }
 
     .dark {
+        /* A touch lighter on a dark surface, where blue-600 goes muddy. */
+        --color-accent: var(--color-blue-500);
+        --color-accent-content: var(--color-blue-400);
+        --color-accent-foreground: var(--color-white);
+
         --team-accent: var(--color-zinc-100);
         --team-accent-far: var(--color-zinc-200);
         --team-accent-contrast: var(--color-zinc-900);

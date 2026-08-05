@@ -1,10 +1,14 @@
 <?php
 
 use App\Jobs\SyncTeamNews;
+use App\Models\Game;
+use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\User;
+use App\Support\TeamGlance;
 use Illuminate\Auth\Events\Registered;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -22,6 +26,23 @@ beforeEach(function () {
     foreach ([2633, 96] as $id) {
         TeamSeason::create(['team_id' => $id, 'season_year' => 2026, 'classification' => 'FBS']);
     }
+
+    /*
+     * A real season with a schedule, so `scoreboardYear()` resolves to 2026.
+     * Without it the picker list falls back to `config('cfb.season')`, finds
+     * no FBS membership for that year, and comes back EMPTY — the search then
+     * matches nothing and every picker assertion quietly tests an empty list.
+     */
+    $season = Season::factory()->create([
+        'year' => 2026, 'type' => Season::REGULAR,
+        'start_date' => '2026-08-29', 'end_date' => '2026-12-12',
+    ]);
+
+    Game::factory()->create([
+        'season_id' => $season->id,
+        'home_team_id' => 2633, 'away_team_id' => 96,
+        'kickoff_at' => '2026-09-05 19:30:00', 'completed' => false,
+    ]);
 });
 
 describe('the call to action', function () {
@@ -289,5 +310,45 @@ describe('the device draft', function () {
 
         expect($authed)->toContain('? clear() : restore()')
             ->and($guest)->toContain('? clear() : restore()');
+    });
+});
+
+describe('the picker rows', function () {
+    it('shows a team mark and a bold name, not a plain list item', function () {
+        // These rows are the one thing on the screen a user is here to press,
+        // so they carry the team's logo and read louder than body text.
+        $this->vols->update([
+            'logo' => 'https://espn/2633.png',
+            'logo_dark' => 'https://espn/2633-dark.png',
+        ]);
+
+        $html = Livewire::actingAs(User::factory()->create())
+            ->test('onboarding')
+            ->set('teamQuery', 'Tennessee')
+            ->html();
+
+        expect($html)
+            ->toContain('https://espn/2633.png')
+            // The dark-mode mark is swapped by CSS, not by a second request.
+            ->toContain('https://espn/2633-dark.png')
+            ->toContain('min-w-0 flex-1 truncate font-semibold');
+    });
+
+    it('carries logos through the cached picker list', function () {
+        /*
+         * The list is CACHED, so it holds plain arrays — an Eloquent model
+         * round-trips as __PHP_Incomplete_Class and fails on the second
+         * request. The logo has to ride along in the array or the row has
+         * nothing to render.
+         */
+        $this->vols->update(['logo' => 'https://espn/2633.png']);
+        TeamGlance::flush();
+        Cache::flush();
+
+        $teams = collect(TeamGlance::fbsTeams(2026));
+        $vols = $teams->firstWhere('id', 2633);
+
+        expect($vols)->toHaveKeys(['id', 'name', 'logo', 'logo_dark'])
+            ->and($vols['logo'])->toBe('https://espn/2633.png');
     });
 });

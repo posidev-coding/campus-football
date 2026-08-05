@@ -110,7 +110,7 @@ new class extends Component
     /**
      * Everything each card says, from two game queries and the glance maps.
      *
-     * @return list<array{team: Team, rank: ?int, record: ?array, conference: ?string, position: ?int, form: mixed, live: ?Game, next: ?Game, last: ?Game}>
+     * @return list<array{team: Team, rank: ?int, record: ?array, conference: ?string, position: ?int, trend: mixed, live: ?Game, next: ?Game, last: ?Game}>
      */
     #[Computed]
     public function glances(): array
@@ -128,7 +128,7 @@ new class extends Component
             'awayTeam:'.self::TEAM_COLUMNS,
         ];
 
-        // Form and last result: the season's completed games, oldest first.
+        // Trends and last result: the season's completed games, oldest first.
         // Scoped to the results year so this is ~65 rows for five teams, not
         // a decade of history.
         $seasonIds = Season::where('year', TeamGlance::year())->pluck('id');
@@ -163,7 +163,7 @@ new class extends Component
             $involves = fn (Game $game) => $game->home_team_id === $team->id || $game->away_team_id === $team->id;
 
             $theirs = $completed->filter($involves);
-            $form = $theirs->slice(-5)->values();
+            $trend = $theirs->slice(-5)->values();
 
             return [
                 'team' => $team,
@@ -171,7 +171,7 @@ new class extends Component
                 'record' => $records[$team->id] ?? null,
                 'conference' => $conferences[$team->id] ?? null,
                 'position' => $positions[$team->id] ?? null,
-                'form' => $form,
+                'trend' => $trend,
                 'live' => $pending->first(fn (Game $game) => $involves($game) && $game->isInProgress()),
                 'next' => $pending->first(fn (Game $game) => $involves($game) && ! $game->isInProgress()),
                 'last' => $theirs->last(),
