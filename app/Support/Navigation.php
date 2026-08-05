@@ -54,7 +54,9 @@ class Navigation
                 // when it lost its tab — the bar at the top of Home IS the
                 // search experience now, and /search survives only for deep
                 // links and shared URLs.
-                'routes' => ['home', 'news', 'search'],
+                // `article` rides along so reading a story keeps Home lit, the
+                // same way a game page keeps Scores lit.
+                'routes' => ['home', 'news', 'search', 'article'],
                 /*
                  * No sections. "For You" and "News" made a two-tab strip whose
                  * first tab was the screen you were already on, and the search

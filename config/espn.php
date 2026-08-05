@@ -17,6 +17,15 @@ return [
         'site' => 'https://site.api.espn.com/apis/site/v2/sports/football/college-football',
         // Athlete-centric views: bio, gamelog, overview.
         'web' => 'https://site.web.api.espn.com/apis/common/v3/sports/football/college-football',
+        /*
+         * Article BODIES, and the only place they exist. The news list gives a
+         * headline, a thumbnail and a link; `now/{espnId}` gives the story
+         * itself. It is not under the college-football path — it is a
+         * league-agnostic news host keyed on the article id alone. Verified
+         * live over https (v3 called it over http) and it 404s on an unknown
+         * id rather than returning an empty envelope.
+         */
+        'now' => 'https://now.core.api.espn.com/v1/sports/news',
     ],
 
     /*

@@ -56,6 +56,19 @@ class EspnClient
     }
 
     /**
+     * One article's full body, from ESPN's league-agnostic news host.
+     *
+     * Keyed on the article id alone — there is no college-football path here,
+     * and no way to ask the news LIST for bodies, so this is one request per
+     * article. Cheap (6-53 KB, measured across 18) but never free, which is why
+     * the caller stores what comes back rather than fetching per view.
+     */
+    public function news(int $espnId, ?int $ttl = null): ?array
+    {
+        return $this->get($this->url('now', (string) $espnId), [], $ttl);
+    }
+
+    /**
      * Follow a `$ref` from a payload.
      *
      * ESPN's core API returns collections as lists of `$ref` URLs, and mixes

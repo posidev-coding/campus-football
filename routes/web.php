@@ -19,6 +19,15 @@ Route::livewire('rankings', 'rankings')->name('rankings');
 Route::livewire('stats', 'stats')->name('stats');
 Route::livewire('leaders', 'leaders')->name('leaders');
 Route::livewire('news', 'news')->name('news');
+/*
+ * Article bodies are read HERE rather than on espn.com. Like the game page,
+ * this screen can trigger an ESPN request — the body exists in exactly one
+ * payload — and it is bounded the same way: fetched once per article, ever,
+ * throttled per article rather than per viewer. See SyncArticleStory.
+ *
+ * Routed by id: `articles` has no slug, and ESPN headlines collide freely.
+ */
+Route::livewire('news/{article}', 'article')->name('article');
 
 /*
  * No `bowls` route. The postseason is two entries at the end of the scoreboard's

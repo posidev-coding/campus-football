@@ -1,14 +1,23 @@
 @props(['article', 'compact' => false])
 
-{{--
-    Links out to ESPN. These are their articles, not ours — we store the
-    headline and a thumbnail to make the feed browsable and send the reader to
-    the source for the body.
---}}
+@php
+    /*
+     * Read here when there is something to read, out to ESPN when there is not.
+     *
+     * `isReadable()` is optimistic before the first fetch, because knowing for
+     * certain would mean a request per CARD — 50 of them for one feed. The
+     * article page absorbs the rare miss: it says what happened and hands over
+     * the link, which is exactly where this card would have sent them anyway.
+     *
+     * `wire:navigate` only on our own links; an external one must be a plain
+     * new-tab anchor.
+     */
+    $readable = $article->isReadable();
+@endphp
+
 <a
-    href="{{ $article->url }}"
-    target="_blank"
-    rel="noopener noreferrer"
+    href="{{ $readable ? route('article', $article) : $article->url }}"
+    @if ($readable) wire:navigate @else target="_blank" rel="noopener noreferrer" @endif
     {{ $attributes->class(['group flex gap-3 rounded-lg border border-zinc-200 p-3 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700']) }}
 >
     @if ($article->image_url)

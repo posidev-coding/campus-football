@@ -164,3 +164,98 @@
         border-bottom-width: 0;
     }
 }
+
+/*
+ * Article bodies.
+ *
+ * ESPN's story markup arrives as bare `<p>`, `<a>`, `<h2>`, `<figure>` with
+ * every class stripped by ArticleStory's allowlist, so the typography has to
+ * come from here rather than from utilities on the elements. Tailwind's
+ * typography plugin is not installed and adding a dependency is not this
+ * change's call to make.
+ *
+ * Measure is capped at 68 characters. The page is `max-w-7xl` and prose read
+ * across that width is the single fastest way to make an article feel like a
+ * spreadsheet.
+ */
+.article-body {
+    max-width: 68ch;
+    line-height: 1.7;
+}
+
+.article-body > * + * {
+    margin-top: 1rem;
+}
+
+.article-body p {
+    color: var(--color-zinc-700);
+}
+
+.article-body a {
+    color: var(--color-blue-600);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.article-body h2,
+.article-body h3,
+.article-body h4 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-top: 1.75rem;
+    line-height: 1.3;
+}
+
+.article-body h2 { font-size: 1.25rem; }
+.article-body h3 { font-size: 1.125rem; }
+
+.article-body ul,
+.article-body ol {
+    padding-left: 1.25rem;
+    list-style-position: outside;
+}
+
+.article-body ul { list-style-type: disc; }
+.article-body ol { list-style-type: decimal; }
+.article-body li + li { margin-top: 0.375rem; }
+
+.article-body blockquote {
+    border-left: 3px solid var(--color-zinc-200);
+    padding-left: 1rem;
+    font-style: italic;
+    color: var(--color-zinc-600);
+}
+
+.article-body hr {
+    border-color: var(--color-zinc-200);
+    margin-block: 1.75rem;
+}
+
+/* Inline images: ESPN's own dimensions are stripped with its attributes, so
+   they are constrained here. `figure` is what a resolved `<photoN>` becomes. */
+.article-body img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-lg);
+}
+
+.article-body figure {
+    margin-block: 1.5rem;
+}
+
+.article-body figcaption {
+    margin-top: 0.5rem;
+    font-size: var(--text-xs);
+    color: var(--color-zinc-500);
+}
+
+.dark .article-body p { color: var(--color-zinc-300); }
+/* zinc-500 measured 4.12:1 on the dark page — under the bar for text this
+   small. zinc-400 clears it. */
+.dark .article-body figcaption { color: var(--color-zinc-400); }
+.dark .article-body a { color: var(--color-blue-400); }
+.dark .article-body blockquote {
+    border-color: var(--color-zinc-700);
+    color: var(--color-zinc-400);
+}
+.dark .article-body hr { border-color: var(--color-zinc-800); }

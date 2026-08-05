@@ -16,12 +16,50 @@ class Article extends Model
 {
     use HasFactory;
 
+    /**
+     * ESPN's type for a video or photo post.
+     *
+     * These carry no story at all — 78 of our 212 articles, and every one of
+     * the eight in a sampled 18 came back with an empty body. Asking for one is
+     * a request we already know the answer to.
+     */
+    public const MEDIA = 'Media';
+
     protected function casts(): array
     {
         return [
             'published_at' => 'datetime',
+            'story_fetched_at' => 'datetime',
+            'story_images' => 'array',
             'premium' => 'boolean',
         ];
+    }
+
+    /**
+     * Whether asking ESPN for this article's body could tell us anything new.
+     *
+     * False once we have asked, whatever came back: a `Media` post has no story
+     * to find, and an article that answered with nothing will answer with
+     * nothing again. Without this, every view of every video post is a request.
+     */
+    public function storyIsWorthFetching(): bool
+    {
+        return $this->story === null
+            && $this->story_fetched_at === null
+            && $this->type !== self::MEDIA;
+    }
+
+    /**
+     * Whether to send a reader to our own page rather than to espn.com.
+     *
+     * Optimistic before the first fetch — we cannot know a body exists without
+     * asking, and asking on the LIST would be one request per card. So a card
+     * links inward whenever a story is plausible, and the article page falls
+     * back gracefully on the rare miss.
+     */
+    public function isReadable(): bool
+    {
+        return $this->story !== null || $this->storyIsWorthFetching();
     }
 
     public function teams(): BelongsToMany

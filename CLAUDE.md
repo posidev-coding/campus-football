@@ -1369,6 +1369,53 @@ the window, it does not extend it — the earliest article date barely moves.
 Every write that creates a follow goes through `app/Actions`, never straight to
 the relation, so the dispatch cannot be forgotten by a new caller.
 
+## Article BODIES live on a fourth host, one request each
+
+The news list carries a headline, a thumbnail and a link — never the story. The
+body is only at `now.core.api.espn.com/v1/sports/news/{espnId}`, which is NOT
+under the college-football path: it is league-agnostic and keyed on the article
+id alone. Verified live over https (v3 called it over http) and it 404s on an
+unknown id rather than returning an empty envelope.
+
+Bounded exactly like the game summary, because the shape is identical — one
+payload, and it cannot change once published:
+
+    fetched ONCE, ever          a stored story makes every later view a pure
+                                database read, so a shared article costs one
+                                request no matter how many people open it
+    throttled per ARTICLE       Cache::lock("espn:story:{id}", 60), not per
+                                viewer
+
+**A third of articles have NO body.** `Media` is a video or photo post — 78 of
+our 212, and every one of eight sampled came back empty. So `story` being null
+cannot mean "not fetched yet" or every view of every video post is a request:
+`story_fetched_at` is what separates "asked, and there is nothing" from "never
+asked". A failed request writes NEITHER — a transient 500 must not permanently
+demote an article to a link.
+
+**A story is not plain HTML.** It carries ESPN's own pseudo-tags — `<photo1>`,
+`<inline1>`, `<video1>`, `<alsosee>` — which their renderer fills in and a
+browser keeps as empty inline nodes. Observed across 18 stories: `alsosee` on 8,
+`photoN` on 4, `inlineN` on 4. `<photoN>` resolves against `images[N]`, index 0
+being the lead image the page renders itself. The rest are cross-promotion back
+to espn.com and are dropped — **along with the paragraph wrapping them**, or the
+prose is left with blank gaps; one conference roundup had seven.
+
+`App\Support\ArticleStory` does that, then rewrites espn.com team and player
+links to OUR pages (two queries per article, and `teams.id` IS the ESPN id),
+then runs a deny-by-default tag and attribute allowlist. That last part is not
+optional: this is third-party HTML rendered unescaped, which is the exact shape
+of a stored XSS. Unknown tags are UNWRAPPED rather than deleted, so a wrapper
+ESPN adds next season cannot silently eat a paragraph.
+
+What is stored is ESPN's RAW markup; rendering happens at read time and is
+memoized as a plain string. So improving the renderer never means re-fetching
+200 articles.
+
+Store the story in `mediumtext`, not `text`: measured 1.6-28 KB, and `text`
+tops out at 64 KB — close enough to a long ranked-list feature that a silent
+truncation is a real risk.
+
 ## Lazy loading is disabled, so a missing eager load is a 500
 
 `x-article-card` renders team chips, so anything selecting Articles must
