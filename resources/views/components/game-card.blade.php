@@ -1,5 +1,5 @@
 {{--
-    `date` prepends a short m/d to an UPCOMING game's kickoff line.
+    `date` prepends a short m/d to the card's caption row, ahead of the venue.
 
     Off by default because most surfaces already carry the date around the
     card: the scoreboard groups by day heading, and Home shows a single week.
@@ -55,6 +55,17 @@
              was a chip spending width to say nothing. `conference_game` is
              still synced and still filters standings. --}}
         <span class="flex min-w-0 items-center gap-1.5 text-zinc-500">
+            {{-- Leads the row, ahead of the venue, and `shrink-0` so it is the
+                 one thing here that never truncates — a long stadium name
+                 must eat itself rather than the date. Upcoming games only:
+                 a final says "Final" and a live game says its clock. --}}
+            @if ($date && ! $live && ! $final)
+                <span class="tabular shrink-0 font-medium text-zinc-600 dark:text-zinc-400">
+                    {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('n/j') }}
+                </span>
+                <span class="shrink-0 text-zinc-300 dark:text-zinc-600">·</span>
+            @endif
+
             <span class="truncate">{{ $game->venue?->name ?? 'Venue TBD' }}</span>
         </span>
 
@@ -66,14 +77,7 @@
         @elseif ($final)
             <span class="shrink-0 font-medium text-zinc-500">Final</span>
         @else
-            {{-- Scheduled: this branch is upcoming games only — a final says
-                 "Final" and a live game says its clock — so the date lands
-                 exactly where it is useful and nowhere else. --}}
             <span class="shrink-0 text-right font-medium text-zinc-600 dark:text-zinc-400">
-                @if ($date)
-                    <span class="tabular text-zinc-500">{{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('n/j') }}</span>
-                    <span class="text-zinc-400">·</span>
-                @endif
                 {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('g:ia') }}
                 @if ($broadcast)
                     <span class="text-zinc-400">· {{ $broadcast }}</span>
