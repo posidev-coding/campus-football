@@ -844,6 +844,27 @@ months when the date and venue are the only things on offer. The scoreboard adds
 excluded on the basis of its teams. That is an escape hatch for UNANNOUNCED
 games only; a real matchup outside the scope still filters out.
 
+## `wire:sort` takes a bare METHOD NAME, never a call expression
+
+`wire:sort="reorder($item, $position)"` looks more explicit and sends NULLs.
+Livewire's `contextualizeExpression()` rewrites every identifier that is not in
+the element's own Alpine scope to `$wire.<ident>` — and the `$item`/`$position`
+magics arrive as an evaluator OPTION, not as element scope, so they are
+rewritten too. The call became `$wire.reorder($wire.$item, $wire.$position)`,
+both `undefined`, and the server rejected a null team id with
+"Argument #1 ($teamId) must be of type int, null given".
+
+Correct is `wire:sort="reorder"`; Livewire passes the moved item and its new
+**0-based** index itself. Two things this cost:
+
+- **Only a real pointer drag reaches it.** SortableJS ignores synthetic
+  pointer and mouse events, so no automated interaction test can reproduce
+  it — `AlpineExpressionsTest` asserts the rendered ATTRIBUTE is a bare method
+  name instead, which is the only layer a test can hold.
+- The item id arrives as a STRING (`_x_sort_key` is whatever the attribute
+  held), which PHP coerces for an `int` parameter. Fine for numeric ids, and
+  worth knowing before typing a handler `string`.
+
 ## Reordering needs a FLIP, and it must use `animate()`
 
 The followed-teams list puts the pinned team first, so pinning a lower row
@@ -2336,6 +2357,20 @@ triggers dispatch from a curated allowlist — the options ARE the validation.
 The chrome-consistency sweeps exclude `filament/` views: the admin panel
 renders inside Filament's design system, and the phone-first rules enforced
 on an admin table is the right rule on the wrong product.
+
+**The panel does NOT load `resources/css/app.css`, so Tailwind utilities
+written in an admin view have no definitions behind them.** The first Sync
+Health page laid itself out with `grid grid-cols-2 gap-4` and `flex
+items-center gap-3` and rendered as one unaligned column — every class
+silently absent, which reads as bad design rather than a missing stylesheet.
+So the page is built entirely from Filament's own widgets and tables, which
+carry their own CSS: a `StatsOverviewWidget` for spend, `TableWidget`s with
+`->records(array)` for the computed coverage and schedule rows, and a normal
+Eloquent table for failures. Anything genuinely custom needs a Filament theme
+registered first. Page-scoped widgets set `protected static bool $isDiscovered
+= false` so they do not also appear on the dashboard — and their content is
+NOT in the page's own HTML, so a test must target the widget class, not the
+page.
 
 ## `queue:work --memory` is useless below PHP's own limit
 

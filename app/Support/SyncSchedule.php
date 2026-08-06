@@ -102,9 +102,11 @@ class SyncSchedule
             $command = substr($command, $artisan + strlen("'artisan' "));
         }
 
-        return str_contains($command, 'cfb:') || str_contains($command, 'model:prune')
-            ? trim($command)
-            : null;
+        // cfb tasks only. `model:prune` is on the schedule too, but it is the
+        // ledger's own housekeeping — it writes no feed run, so it could only
+        // ever render as a permanently grey "untracked" row that means
+        // nothing.
+        return str_contains($command, 'cfb:') ? trim($command) : null;
     }
 
     /**

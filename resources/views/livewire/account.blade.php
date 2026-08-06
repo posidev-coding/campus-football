@@ -453,11 +453,18 @@ new class extends Component
          and its 150ms shuffle, so the hand-rolled FLIP that used to animate a
          pin moving is gone with the pin.
 
-         Its handler reports ONE item and its new index, not the whole list,
-         and that index is 0-based (Sortable's `newIndex`). `place()` rebuilds
-         the full order from it so the drag path gets the same membership
-         validation as the keyboard path. --}}
-    <div wire:sort="reorder($item, $position)" class="flex flex-col gap-3">
+         The value is a BARE METHOD NAME, never a call expression. Livewire
+         passes the moved item and its new 0-based index itself; writing
+         `reorder($item, $position)` sends NULLs instead, because
+         `contextualizeExpression()` rewrites every identifier that is not in
+         the element's Alpine scope to `$wire.<ident>` — and the $item/$position
+         magics arrive as an evaluator OPTION, not as element scope. So the
+         call became `$wire.reorder($wire.$item, $wire.$position)`, both
+         undefined, and the server rejected a null team id.
+
+         `place()` rebuilds the full order from that pair, so the drag path
+         gets the same membership validation as the keyboard path. --}}
+    <div wire:sort="reorder" class="flex flex-col gap-3">
         @foreach ($this->followed as $team)
             <div
                 wire:sort:item="{{ $team->id }}"

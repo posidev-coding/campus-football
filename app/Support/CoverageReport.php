@@ -243,7 +243,9 @@ class CoverageReport
         return $this->row(
             key: 'rankings',
             label: 'Rankings freshness',
-            expected: $inSeason ? '≤ 4 days' : 'out of season',
+            // Not "out of season": in August the scheduler still runs, and a
+            // preseason poll is out. The threshold relaxes, the claim does not.
+            expected: $inSeason ? '≤ 4 days' : 'relaxed',
             actual: $age === null ? 'never' : sprintf('%.0f days', $age),
             status: $status,
             detail: $latest ? "latest poll rows written {$latest}" : 'no ranking rows at all',

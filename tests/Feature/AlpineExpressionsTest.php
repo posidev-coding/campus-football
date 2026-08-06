@@ -95,3 +95,57 @@ it('never declares a variable Alpine will refuse to compile', function () {
         .' `result = const …` and the directive never runs. Move the body into'
         .' an x-data method and call it from here.');
 });
+
+/*
+ * The same failure mode, one directive over: `wire:sort` takes a bare METHOD
+ * NAME, and Livewire passes the moved item and its new 0-based index itself.
+ *
+ * Writing the call out — `reorder($item, $position)` — looks more explicit and
+ * silently sends NULLs, because `contextualizeExpression()` rewrites every
+ * identifier that is not in the element's Alpine scope to `$wire.<ident>`, and
+ * the $item/$position magics arrive as an evaluator OPTION rather than element
+ * scope. The call became `$wire.reorder($wire.$item, $wire.$position)`, both
+ * undefined, and the server rejected a null team id.
+ *
+ * Only reachable by a real pointer drag — SortableJS ignores synthetic events,
+ * so no automated interaction test can reach it. The rendered attribute is
+ * therefore what gets asserted.
+ *
+ * @return list<array{file: string, expression: string}>
+ */
+function wireSortExpressions(): array
+{
+    $found = [];
+
+    foreach (Finder::create()->files()->in(resource_path('views'))->name('*.blade.php') as $file) {
+        preg_match_all('/\bwire:sort="([^"]*)"/', $file->getContents(), $matches, PREG_SET_ORDER);
+
+        foreach ($matches as [, $expression]) {
+            $found[] = [
+                'file' => str_replace(resource_path('views').'/', '', $file->getPathname()),
+                'expression' => $expression,
+            ];
+        }
+    }
+
+    return $found;
+}
+
+it('finds a wire:sort to check, or that sweep is vacuous too', function () {
+    expect(wireSortExpressions())->not->toBeEmpty();
+});
+
+it('passes wire:sort a bare method name, never a call expression', function () {
+    $broken = [];
+
+    foreach (wireSortExpressions() as $sort) {
+        if (preg_match('/^[a-zA-Z_]\w*$/', trim($sort['expression'])) !== 1) {
+            $broken[] = "{$sort['file']} (wire:sort=\"{$sort['expression']}\")";
+        }
+    }
+
+    expect($broken)->toBe([], implode(', ', $broken)
+        .' — wire:sort takes a bare method name. Livewire passes the item and'
+        .' its 0-based position itself; spelling the call out rewrites $item to'
+        .' $wire.$item, which is undefined, and the handler receives null.');
+});

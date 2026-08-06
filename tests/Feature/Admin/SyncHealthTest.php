@@ -2,6 +2,10 @@
 
 use App\Console\Concerns\TracksFeedRun;
 use App\Filament\Pages\SyncHealth;
+use App\Filament\Widgets\DataCoverage;
+use App\Filament\Widgets\RecentSyncFailures;
+use App\Filament\Widgets\ScheduledSyncTasks;
+use App\Filament\Widgets\SyncSpend;
 use App\Jobs\FetchGameSummary;
 use App\Jobs\SyncTeamSeason;
 use App\Models\Article;
@@ -125,16 +129,48 @@ describe('the Sync Health page', function () {
     it('renders for an admin', function () {
         Livewire::actingAs($this->admin)
             ->test(SyncHealth::class)
+            ->assertOk();
+    });
+
+    /*
+     * Each section is its own Filament widget — a separate Livewire component,
+     * so its content is NOT in the page's own HTML and has to be tested where
+     * it lives. That is deliberate: the panel ships its own stylesheet and
+     * does not load app.css, so a hand-rolled Blade view here renders with no
+     * grid, flex or spacing whatsoever.
+     */
+    it('renders coverage through a Filament table widget', function () {
+        Livewire::actingAs($this->admin)
+            ->test(DataCoverage::class)
             ->assertOk()
             ->assertSee('Data coverage')
-            ->assertSee('Scheduled tasks');
+            ->assertSee('Box scores');
     });
 
     it('lists the schedule from the schedule itself, not a second registry', function () {
         Livewire::actingAs($this->admin)
-            ->test(SyncHealth::class)
+            ->test(ScheduledSyncTasks::class)
+            ->assertOk()
             ->assertSee('cfb:games --tier=live')
             ->assertSee('cfb:summaries:live');
+    });
+
+    it('shows the request spend and a coverage verdict', function () {
+        Livewire::actingAs($this->admin)
+            ->test(SyncSpend::class)
+            ->assertOk()
+            ->assertSee('ESPN requests · 24h')
+            ->assertSee('budget 240/min');
+    });
+
+    it('says plainly that failed QUEUE jobs live in the Cloud dashboard', function () {
+        // The ledger covers scheduled COMMANDS; managed queues keep their own
+        // failures, and a panel implying otherwise sends you looking in the
+        // wrong place during an incident.
+        Livewire::actingAs($this->admin)
+            ->test(RecentSyncFailures::class)
+            ->assertOk()
+            ->assertSee('Laravel Cloud');
     });
 
     it('queues an allowlisted task from the run action', function () {

@@ -2,13 +2,14 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Widgets\DataCoverage;
+use App\Filament\Widgets\RecentSyncFailures;
+use App\Filament\Widgets\ScheduledSyncTasks;
+use App\Filament\Widgets\SyncSpend;
 use App\Jobs\FetchGameSummary;
 use App\Jobs\SyncTeamSeason;
-use App\Models\FeedRun;
 use App\Models\Game;
 use App\Services\CfbCalendar;
-use App\Support\CoverageReport;
-use App\Support\SyncSchedule;
 use App\Support\TeamGlance;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -26,6 +27,13 @@ use Illuminate\Support\Facades\Artisan;
  * Reads three sources — the schedule itself (introspected, never a second
  * registry), the feed_runs ledger, and CoverageReport, which cfb:doctor
  * shares — so the panel and the terminal can never disagree.
+ *
+ * Built entirely from Filament's own widgets and tables, and that is not a
+ * style preference. The panel ships its OWN compiled stylesheet: utilities
+ * from `resources/css/app.css` do not exist inside it, so a hand-rolled Blade
+ * view here renders with no grid, no flex and no spacing at all — which is
+ * exactly how the first version of this page looked. Native components carry
+ * their own CSS. Anything genuinely custom would need a Filament theme first.
  */
 class SyncHealth extends Page
 {
@@ -66,19 +74,26 @@ class SyncHealth extends Page
         ];
     }
 
-    /** @return array<string, mixed> */
-    protected function getViewData(): array
+    /**
+     * Stats read first, then the two questions in the order you ask them —
+     * "is the data whole" before "did the schedule run", because a green
+     * schedule with missing data is the failure this page exists for.
+     *
+     * @return list<class-string>
+     */
+    protected function getHeaderWidgets(): array
     {
         return [
-            'tasks' => app(SyncSchedule::class)->tasks(),
-            'checks' => app(CoverageReport::class)->checks(),
-            'failures' => FeedRun::where('status', FeedRun::FAILED)
-                ->orderByDesc('started_at')
-                ->limit(10)
-                ->get(),
-            'spendDay' => FeedRun::where('started_at', '>=', now()->subDay())->sum('requests'),
-            'spendWeek' => FeedRun::where('started_at', '>=', now()->subWeek())->sum('requests'),
+            SyncSpend::class,
+            DataCoverage::class,
+            ScheduledSyncTasks::class,
+            RecentSyncFailures::class,
         ];
+    }
+
+    public function getHeaderWidgetsColumns(): int|array
+    {
+        return 1;
     }
 
     protected function getHeaderActions(): array
