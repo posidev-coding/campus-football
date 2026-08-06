@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\FeedRun;
 use App\Services\Espn\Sync\SyncNews;
 use Illuminate\Console\Scheduling\Schedule as ScheduleClass;
 use Illuminate\Support\Facades\Schedule;
@@ -378,4 +379,22 @@ Schedule::command('cfb:aggregate --year=results')
     ->dailyAt('05:15')
     ->timezone($tz)
     ->when($inSeason)
+    ->withoutOverlapping();
+
+/*
+ * The feed-run ledger keeps a fortnight; the live tier writes a row a minute
+ * all Saturday, so in season this trims daily. Off season the writers are
+ * monthly and the trim rides an hour the news sync is already keeping the
+ * cluster awake for, costing no extra wake of its own.
+ */
+Schedule::command('model:prune', ['--model' => [FeedRun::class]])
+    ->dailyAt('04:50')
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+Schedule::command('model:prune', ['--model' => [FeedRun::class]])
+    ->weeklyOn(ScheduleClass::SUNDAY, '07:10')
+    ->timezone($tz)
+    ->when($offSeason)
     ->withoutOverlapping();

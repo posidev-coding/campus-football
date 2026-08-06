@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\TracksFeedRun;
 use App\Services\CfbCalendar;
 use App\Services\Espn\EspnClient;
 use App\Services\Espn\Sync\ComputeStandings;
@@ -21,6 +22,8 @@ use Illuminate\Console\Command;
 
 class SyncSeasonCommand extends Command
 {
+    use TracksFeedRun;
+
     protected $signature = 'cfb:sync
         {--year= : Season year, or current|results|next resolved at run time (defaults to CFB_SEASON)}
         {--only= : One step: seasons|conferences|teams|games|rankings|rankings-current|predictors|recruiting|injuries|standings|compute|reconcile|leaders|athletes|news}';
@@ -57,17 +60,21 @@ class SyncSeasonCommand extends Command
         $steps = $only ? [$only] : self::STEPS;
 
         $this->info("Syncing {$year} from ESPN");
-        $espn->resetCallCount();
         $started = microtime(true);
+
+        // Summed per step: each step's feed run resets the shared counter so
+        // its own row records its own spend.
+        $requests = 0;
 
         foreach ($steps as $step) {
             $this->runStep($step, $year);
+            $requests += $espn->callCount();
         }
 
         $this->newLine();
         $this->line(sprintf(
             '  <fg=gray>%d ESPN requests in %.1fs</>',
-            $espn->callCount(),
+            $requests,
             microtime(true) - $started
         ));
 
@@ -91,7 +98,7 @@ class SyncSeasonCommand extends Command
     {
         $started = microtime(true);
 
-        $count = match ($step) {
+        $count = $this->trackRun("sync:{$step}", $year, fn (): int => match ($step) {
             'seasons' => count(app(SyncSeason::class)->handle($year)),
             'conferences' => app(SyncConferences::class)->handle($year),
             'teams' => app(SyncTeams::class)->handle($year),
@@ -111,7 +118,7 @@ class SyncSeasonCommand extends Command
             // is year-independent — syncing it per year would just refetch the
             // same articles.
             'news' => app(SyncNews::class)->general(),
-        };
+        });
 
         $label = match ($step) {
             'reconcile' => $count > 0 ? "{$count} diverged" : 'no divergence',

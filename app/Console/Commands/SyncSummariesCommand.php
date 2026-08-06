@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\TracksFeedRun;
 use App\Jobs\FetchGameSummary;
 use App\Models\Game;
 use App\Models\GameSummary;
@@ -30,6 +31,8 @@ use Illuminate\Support\Facades\Bus;
  */
 class SyncSummariesCommand extends Command
 {
+    use TracksFeedRun;
+
     protected $signature = 'cfb:summaries
         {--year= : Season year (defaults to every season)}
         {--game= : One game id}
@@ -62,20 +65,26 @@ class SyncSummariesCommand extends Command
      */
     private function queue(Collection $gameIds): int
     {
-        // Forced: `--missing` targets games with no summary and `--force`
-        // re-fetches deliberately, so the staleness re-check must not apply.
-        // The `backfill` queue keeps a thousand-game drain from starving the
-        // live queue's seconds-level pickup on a game day.
-        $batch = Bus::batch($gameIds->map(fn (int $id) => new FetchGameSummary($id, force: true))->all())
-            ->onQueue('backfill')
-            ->name('Game summaries'.($this->option('year') ? ' '.$this->option('year') : ''))
-            /*
-             * One corrupt game must not cancel the rest. ESPN game 401767129
-             * carries a scoring play with a negative score; before this, that
-             * single row ended a 954-game run at game 260.
-             */
-            ->allowFailures()
-            ->dispatch();
+        $batch = null;
+
+        $this->trackRun('summaries', $this->option('year') ? (int) $this->option('year') : null, function () use ($gameIds, &$batch): array {
+            // Forced: `--missing` targets games with no summary and `--force`
+            // re-fetches deliberately, so the staleness re-check must not apply.
+            // The `backfill` queue keeps a thousand-game drain from starving the
+            // live queue's seconds-level pickup on a game day.
+            $batch = Bus::batch($gameIds->map(fn (int $id) => new FetchGameSummary($id, force: true))->all())
+                ->onQueue('backfill')
+                ->name('Game summaries'.($this->option('year') ? ' '.$this->option('year') : ''))
+                /*
+                 * One corrupt game must not cancel the rest. ESPN game 401767129
+                 * carries a scoring play with a negative score; before this, that
+                 * single row ended a 954-game run at game 260.
+                 */
+                ->allowFailures()
+                ->dispatch();
+
+            return ['records' => $gameIds->count(), 'batch_id' => $batch->id];
+        });
 
         $this->info("Queued {$gameIds->count()} game summaries.");
         $this->newLine();

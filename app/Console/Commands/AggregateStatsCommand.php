@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\TracksFeedRun;
 use App\Models\Season;
 use App\Services\CfbCalendar;
 use App\Services\Stats\AggregateAthleteStats;
@@ -25,6 +26,8 @@ use Illuminate\Console\Command;
  */
 class AggregateStatsCommand extends Command
 {
+    use TracksFeedRun;
+
     protected $signature = 'cfb:aggregate
         {--year= : Season year, or current|results resolved at run time (defaults to every season with games)}
         {--type= : Season type, defaults to regular and postseason}';
@@ -46,23 +49,28 @@ class AggregateStatsCommand extends Command
             : [Season::REGULAR, Season::POSTSEASON, AggregateAthleteStats::FULL_SEASON];
 
         $started = microtime(true);
-        $total = 0;
 
-        foreach ($years as $year) {
-            foreach ($types as $type) {
-                $written = $aggregate->handle($year, $type);
-                $total += $written;
+        $total = $this->trackRun('aggregate', count($years) === 1 ? $years[0] : null, function () use ($years, $types, $aggregate): int {
+            $total = 0;
 
-                if ($written > 0) {
-                    $this->line(sprintf(
-                        '  <fg=green>✓</> %d %-12s <fg=gray>%d athlete-categories</>',
-                        $year,
-                        $type === AggregateAthleteStats::FULL_SEASON ? 'full season' : "type {$type}",
-                        $written
-                    ));
+            foreach ($years as $year) {
+                foreach ($types as $type) {
+                    $written = $aggregate->handle($year, $type);
+                    $total += $written;
+
+                    if ($written > 0) {
+                        $this->line(sprintf(
+                            '  <fg=green>✓</> %d %-12s <fg=gray>%d athlete-categories</>',
+                            $year,
+                            $type === AggregateAthleteStats::FULL_SEASON ? 'full season' : "type {$type}",
+                            $written
+                        ));
+                    }
                 }
             }
-        }
+
+            return $total;
+        });
 
         $this->newLine();
         $this->line(sprintf(

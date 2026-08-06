@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\TracksFeedRun;
 use App\Jobs\FetchCoach;
 use App\Models\Coach;
 use App\Services\Espn\EspnClient;
@@ -22,6 +23,8 @@ use Illuminate\Support\Facades\Bus;
  */
 class SyncCoachesCommand extends Command
 {
+    use TracksFeedRun;
+
     protected $signature = 'cfb:coaches
         {--coach= : One coach id}
         {--missing : Only coaches with no career record stored}
@@ -51,15 +54,22 @@ class SyncCoachesCommand extends Command
     private function queue(Collection $coachIds): int
     {
         $currentOnly = (bool) $this->option('current');
+        $batchId = null;
 
-        $batch = Bus::batch($coachIds->map(fn (int $id) => new FetchCoach($id, $currentOnly))->all())
-            ->name('Coaches')
-            // One malformed coach must not cancel the other 135.
-            ->allowFailures()
-            ->dispatch();
+        $this->trackRun('coaches', null, function () use ($coachIds, $currentOnly, &$batchId): array {
+            $batch = Bus::batch($coachIds->map(fn (int $id) => new FetchCoach($id, $currentOnly))->all())
+                ->name('Coaches')
+                // One malformed coach must not cancel the other 135.
+                ->allowFailures()
+                ->dispatch();
+
+            $batchId = $batch->id;
+
+            return ['records' => $coachIds->count(), 'batch_id' => $batch->id];
+        });
 
         $this->info("Queued {$coachIds->count()} coaches.");
-        $this->line("  <fg=gray>batch</> {$batch->id}");
+        $this->line("  <fg=gray>batch</> {$batchId}");
         $this->line('  <fg=gray>Run a worker if one is not already going:</>');
         $this->line('  <fg=gray>php artisan queue:work --stop-when-empty</>');
 

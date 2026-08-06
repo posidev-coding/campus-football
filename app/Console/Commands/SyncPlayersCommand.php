@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\TracksFeedRun;
 use App\Jobs\SyncTeamSeason;
 use App\Models\Team;
 use App\Models\TeamSeason;
@@ -31,6 +32,8 @@ use Illuminate\Support\Facades\Bus;
  */
 class SyncPlayersCommand extends Command
 {
+    use TracksFeedRun;
+
     protected $signature = 'cfb:players
         {--year= : Season year, or current|results resolved at run time (defaults to CFB_SEASON)}
         {--only= : rosters|stats}
@@ -58,22 +61,32 @@ class SyncPlayersCommand extends Command
             return $this->runNow($teamIds, $year, $only, $espn, $rosters, $stats);
         }
 
-        $batch = Bus::batch(array_map(
-            fn (int $id) => new SyncTeamSeason(
-                teamId: $id,
-                year: $year,
-                rosters: $only !== 'stats',
-                stats: $only !== 'rosters',
-            ),
-            $teamIds
-        ))
-            ->name("Team {$only} {$year}")
-            // One bad team must not cancel the rest.
-            ->allowFailures()
-            ->dispatch();
+        $batchId = null;
+
+        // Records = teams QUEUED, honestly labelled: the real work drains
+        // through the batch, which the run row links by id.
+        $this->trackRun('players:'.($only ?? 'all'), $year, function () use ($teamIds, $year, $only, &$batchId): array {
+            $batch = Bus::batch(array_map(
+                fn (int $id) => new SyncTeamSeason(
+                    teamId: $id,
+                    year: $year,
+                    rosters: $only !== 'stats',
+                    stats: $only !== 'rosters',
+                ),
+                $teamIds
+            ))
+                ->name("Team {$only} {$year}")
+                // One bad team must not cancel the rest.
+                ->allowFailures()
+                ->dispatch();
+
+            $batchId = $batch->id;
+
+            return ['records' => count($teamIds), 'batch_id' => $batch->id];
+        });
 
         $this->info(sprintf('Queued %d teams for %d.', count($teamIds), $year));
-        $this->line("  <fg=gray>batch</> {$batch->id}");
+        $this->line("  <fg=gray>batch</> {$batchId}");
 
         return self::SUCCESS;
     }

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\TracksFeedRun;
 use App\Models\Season;
 use App\Models\Week;
 use App\Services\CfbCalendar;
@@ -19,6 +20,8 @@ use Illuminate\Console\Command;
  */
 class SyncGamesCommand extends Command
 {
+    use TracksFeedRun;
+
     protected $signature = 'cfb:games
         {--tier=current : live|today|current|recent|week|season}
         {--year= : Season year, or current|results resolved at run time (defaults to CFB_SEASON)}
@@ -32,10 +35,16 @@ class SyncGamesCommand extends Command
         $year = app(CfbCalendar::class)->resolveYear($this->option('year'));
         $tier = $this->option('tier');
 
-        $espn->resetCallCount();
+        // Checked BEFORE the run is recorded — a typo is not a feed run.
+        if (! in_array($tier, ['live', 'today', 'current', 'recent', 'week', 'season'], true)) {
+            $this->error("Unknown tier [{$tier}].");
+
+            return self::FAILURE;
+        }
+
         $started = microtime(true);
 
-        $changed = match ($tier) {
+        $changed = $this->trackRun("games:{$tier}", $year, fn (): int => match ($tier) {
             // One request, and only when something is actually in progress.
             'live' => $games->live(),
 
@@ -53,15 +62,7 @@ class SyncGamesCommand extends Command
             'week' => $this->syncWeek($games, $year, (int) $this->option('week')),
 
             'season' => $games->season($year),
-
-            default => -1,
-        };
-
-        if ($changed === -1) {
-            $this->error("Unknown tier [{$tier}].");
-
-            return self::FAILURE;
-        }
+        });
 
         $this->line(sprintf(
             '  <fg=green>✓</> %-8s %d changed  <fg=gray>%d requests, %.1fs</>',

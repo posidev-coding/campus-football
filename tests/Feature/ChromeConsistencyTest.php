@@ -20,7 +20,11 @@ function bladeViews(): array
 {
     $views = [];
 
-    foreach (Finder::create()->files()->in(resource_path('views'))->name('*.blade.php') as $file) {
+    // `filament/` is excluded: the admin panel renders inside Filament's own
+    // design system, and the chrome vocabulary these sweeps enforce is the
+    // PUBLIC app's. Holding an admin table to the phone-first no-horizontal-
+    // scroll rule would be enforcing the right rule on the wrong product.
+    foreach (Finder::create()->files()->in(resource_path('views'))->exclude('filament')->name('*.blade.php') as $file) {
         $views[str_replace(resource_path('views').'/', '', $file->getPathname())] = $file->getContents();
     }
 

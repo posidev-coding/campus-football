@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Console\Concerns\TracksFeedRun;
 use App\Jobs\FetchGameSummary;
 use App\Models\Game;
 use Illuminate\Console\Command;
@@ -24,27 +25,33 @@ use Illuminate\Console\Command;
  */
 class SweepLiveSummariesCommand extends Command
 {
+    use TracksFeedRun;
+
     protected $signature = 'cfb:summaries:live';
 
     protected $description = 'Queue summary refreshes for in-progress games with stale box scores';
 
     public function handle(): int
     {
-        // The SQL mirror of SyncGameSummary::isStale() for LIVE games: no
-        // summary yet, never synced, or synced over a minute ago. `is_final`
-        // cannot be true for an in-progress game, so it needs no clause here.
-        $gameIds = Game::query()
-            ->inProgress()
-            ->where(fn ($query) => $query
-                ->whereDoesntHave('summary')
-                ->orWhereHas('summary', fn ($summary) => $summary
-                    ->whereNull('synced_at')
-                    ->orWhere('synced_at', '<', now()->subMinute())))
-            ->pluck('id');
+        $queued = $this->trackRun('summaries:live', null, function (): int {
+            // The SQL mirror of SyncGameSummary::isStale() for LIVE games: no
+            // summary yet, never synced, or synced over a minute ago. `is_final`
+            // cannot be true for an in-progress game, so it needs no clause here.
+            $gameIds = Game::query()
+                ->inProgress()
+                ->where(fn ($query) => $query
+                    ->whereDoesntHave('summary')
+                    ->orWhereHas('summary', fn ($summary) => $summary
+                        ->whereNull('synced_at')
+                        ->orWhere('synced_at', '<', now()->subMinute())))
+                ->pluck('id');
 
-        $gameIds->each(fn (int $id) => FetchGameSummary::dispatch($id)->onQueue('live'));
+            $gameIds->each(fn (int $id) => FetchGameSummary::dispatch($id)->onQueue('live'));
 
-        $this->info("Queued {$gameIds->count()} live summary refreshes.");
+            return $gameIds->count();
+        });
+
+        $this->info("Queued {$queued} live summary refreshes.");
 
         return self::SUCCESS;
     }
