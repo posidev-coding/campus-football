@@ -219,10 +219,10 @@ new class extends Component
 
     {{--
         Sub-tabs left, filters right, one ruled row — the app's one shape for
-        "which list am I looking at". NOT full-bleed: `x-section-nav` renders
-        the section strip with byte-identical underline classes only 20px
-        above, so an edge-to-edge rule here would read as a second section
-        strip. Chrome bleeds; a control inside content does not.
+        "which list am I looking at". NOT full-bleed: this plate sits in the
+        screen's content column, and chrome bleeds while a control inside
+        content does not. (The bleed variant belongs to hero-led screens like
+        the team page.)
     --}}
     <x-plate
         :tabs="['team' => 'Team', 'players' => 'Players']"

@@ -83,10 +83,16 @@ it('renders the gutter track only through x-gutter-tabs', function () {
         .' — inlines the gutter markup. Use <x-gutter-tabs>.');
 });
 
-it('renders underlined tabs only through x-plate and the section nav', function () {
+it('renders underlined tabs only through x-plate', function () {
+    /*
+     * The section nav used to share these classes byte-for-byte; it speaks
+     * the area nav's chip language now, so the underline is exclusively the
+     * plate's in-content idiom — a reader never has to ask whether an
+     * underlined row navigates or filters. A border-b-2 reappearing in
+     * section-nav is a regression to the two-idiom chrome.
+     */
     $allowed = [
         'components/plate.blade.php',
-        'components/section-nav.blade.php',
     ];
 
     $violations = [];

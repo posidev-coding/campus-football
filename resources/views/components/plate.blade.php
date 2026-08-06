@@ -6,10 +6,10 @@
     /** Per-screen wire:key prefix, so two plates on sibling screens cannot collide. */
     'keyPrefix' => 'view',
     /**
-     * Full-bleed variant (mobile only), for screens whose hero separates this
-     * from x-section-nav's identical underlines. A screen where the section
-     * strip sits 20px above must NOT bleed — two full-bleed underlined rules
-     * that close together read as one confusing double strip.
+     * Full-bleed variant (mobile only), for hero-led screens — the team page
+     * — whose tabs span the viewport edge to edge beneath the hero. A plate
+     * sitting directly in a screen's content column must NOT bleed: chrome
+     * bleeds, a control inside content does not.
      */
     'bleed' => false,
 ])

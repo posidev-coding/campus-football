@@ -11,11 +11,15 @@
     single-screen areas — Home and Scores — show nothing at all: "when
     necessary" rather than always.
 
-    These underline classes are NOT unique to this strip. The Stats screen's
-    Team/Players toggle and the team page's use them verbatim, because a
-    sub-tab is legitimately the same visual language one level down. What keeps
-    the levels apart is the bleed: this strip spans the viewport, a control
-    inside content sits in the content column.
+    The strip speaks the CHIP language of `x-area-nav` one level up — all
+    navigation is chips and color, and the underline is exclusively x-plate's
+    in-content control idiom. That is what keeps the levels apart: a reader
+    never has to ask whether an underlined row navigates or filters.
+
+    The active chip classes are therefore shared with the area nav's current
+    tab, which is in the DOM (md:flex-hidden) on every League page — so a test
+    must scope to `aria-label="Sections"` rather than count the string
+    page-wide.
 
     Some overlap with the tab bar is deliberate: an area's landing route appears
     as its own first section, because it is both where the area starts and
@@ -38,12 +42,12 @@
     >
         <div
             x-ref="strip"
-            class="flex gap-1 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            class="flex gap-1 overflow-x-auto px-4 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
             @foreach ($sections as $section)
                 {{-- A section lights on its detail pages too — a team page
-                     keeps Teams underlined — via the same routes-list idea
-                     the area tabs use. --}}
+                     keeps the Teams chip filled — via the same routes-list
+                     idea the area tabs use. --}}
                 @php $current = request()->routeIs(...($section['routes'] ?? [$section['route']])); @endphp
 
                 <a
@@ -51,9 +55,9 @@
                     wire:navigate
                     @if ($current) aria-current="page" @endif
                     @class([
-                        'shrink-0 border-b-2 px-2 py-2.5 text-sm font-medium whitespace-nowrap transition-colors',
-                        'border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100' => $current,
-                        'border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100' => ! $current,
+                        'shrink-0 rounded-md px-2.5 py-1.5 text-sm font-medium whitespace-nowrap transition-colors',
+                        'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100' => $current,
+                        'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100' => ! $current,
                     ])
                 >{{ $section['label'] }}</a>
             @endforeach

@@ -626,10 +626,10 @@ new class extends Component
                  filter INSIDE the tab the strip above already selected, and
                  rendering both the same way made a child look like a sibling.
                  The BLEED variant — full width at 390px, edge to edge — is
-                 allowed here because the hero and tab strip separate it from
-                 x-section-nav's identical underlines; the League Stats screen
-                 must not bleed for exactly that reason. Value 'players'
-                 matches /stats, so one control means one thing app-wide. --}}
+                 allowed here because this is a hero-led screen whose tabs run
+                 the viewport; the League Stats screen sits in its content
+                 column and must not bleed. Value 'players' matches /stats, so
+                 one control means one thing app-wide. --}}
             <x-plate
                 :tabs="['team' => 'Team', 'players' => 'Players']"
                 :selected="$statsView"

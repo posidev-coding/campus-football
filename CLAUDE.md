@@ -1380,26 +1380,29 @@ screen opened on tackles rather than points.
 same control does not read two ways in one app. The leftmost tab is the
 default, as everywhere else.
 
-## An underlined sub-tab must not bleed like the section strip
+## Navigation is chips; the underline belongs to controls
 
-League's Stats screen carries the same Team/Players toggle, and it exposed a
-collision: `x-section-nav` renders the section strip with BYTE-IDENTICAL
-underline classes, and it lives in `<header>` only 20px above content. A
-full-bleed copy of the team page's toggle put two identical rules 20px apart
-and read as one confusing double strip.
+The section strip (`x-section-nav`) speaks the CHIP language of the desktop
+area nav (`x-area-nav`) — active section on a soft zinc chip, the rest muted
+text. It used to render BYTE-IDENTICAL underlined tabs to `x-plate`, which
+forced a "distinguished only by bleed" rule and a page-wide class count in
+`NavigationTest` that read 2 on any screen with a plate. Now the split is
+semantic: NAVIGATION (area nav, section strip, bottom bar) is chips and
+color; the UNDERLINE is exclusively `x-plate`'s in-content control idiom —
+a reader never has to ask whether an underlined row navigates or filters.
+`ChromeConsistencyTest` allowlists `border-b-2` in `plate.blade.php` alone.
 
-So the same visual language, distinguished by the BLEED:
+Two consequences worth keeping straight:
 
-    section strip     spans the viewport      0 -> 390 at 390px
-    sub-toggle        sits in the content column   16 -> 374
-
-Chrome bleeds; a control inside content does not. The team page keeps its
-full-bleed version because its hero and pill strip sit between the two, so
-there is nothing to confuse it with.
-
-Consequence for `NavigationTest`'s "exactly one underlined section" assertion:
-it counts on `/standings` deliberately. Point it at `/stats`, `/recruiting` or
-a team page and it reads 2 — a control, not a navigation bug.
+- **The active chip classes are shared with the area nav's current tab**,
+  which is `md:flex`-hidden but in the DOM on every League page. A test for
+  "which section is lit" must slice the page between `aria-label="Sections"`
+  and the strip's `</nav>` — counting the chip string page-wide reads 2 by
+  design. `NavigationTest` does exactly that.
+- **The bleed rule survives on its own merits**: chrome bleeds, a control
+  inside content does not. The team page's stats toggle still bleeds because
+  it is a hero-led screen whose tabs run the viewport; the League Stats
+  screen's plate sits in the content column and must not.
 
 ## League chrome speaks one vocabulary
 
@@ -1444,9 +1447,10 @@ the components encode:
 5. **`x-plate`** is the ruled "which list am I looking at" row: two tabs,
    three at the very most (the component THROWS past three), resting their
    active underline directly on the rule, with the row doubling as the shelf
-   for right-aligned actions — typically the scope and season menus. Bleed
-   variant only where a hero separates it from `x-section-nav`'s identical
-   underlines (team page). Standings, Stats, Recruiting and the team stats
+   for right-aligned actions — typically the scope and season menus. The
+   underline is the plate's alone — navigation is chips (see above) — and
+   the bleed variant belongs only to hero-led screens whose tabs run the
+   viewport (team page). Standings, Stats, Recruiting and the team stats
    toggle all speak it, value-compatible (`team`/`players`).
 6. **`x-gutter-tabs`** — the zinc track with the raised white pad — is for
    tab sets a plate cannot hold: more than three (team page's five sections,

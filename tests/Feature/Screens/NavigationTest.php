@@ -113,33 +113,38 @@ describe('sections', function () {
     it('lights the Teams section on an individual team page', function () {
         /*
          * Sections light on their detail pages the same way area tabs do — a
-         * team page keeps Teams underlined in the strip, not just League lit
-         * in the tab bar. Asserted through the underline classes, because
-         * `aria-current` alone also appears on the League area tab.
+         * team page keeps the Teams chip filled, not just League lit in the
+         * tab bar.
+         *
+         * Asserted INSIDE the Sections nav, sliced between its aria-label and
+         * its closing tag, because the strip now speaks the area nav's chip
+         * language and the League area tab wears these SAME active-chip
+         * classes on every League page (md:flex-hidden, but in the DOM).
+         * Page-wide, the chip string counts 2 — the shared vocabulary is the
+         * design, not a bug — so a bare substr_count over the page proves
+         * nothing about the strip.
          */
-        // The underlined-section classes only ever render on the current
-        // section link.
-        $underlined = 'border-zinc-900 text-zinc-900 dark:border-zinc-100';
+        $chip = 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100';
 
-        $this->get(route('team', $this->team))
-            ->assertOk()
-            ->assertSeeInOrder([$underlined, 'Teams'], escape: false);
+        $strip = str($this->get(route('team', $this->team))->assertOk()->content())
+            ->after('aria-label="Sections"')
+            ->before('</nav>');
+
+        // Exactly one chip, and the label inside that chip's own link is
+        // Teams — chip and label proven to share one element, which the old
+        // assertSeeInOrder never quite did.
+        expect($strip->substrCount($chip))->toBe(1)
+            ->and((string) $strip->after($chip)->before('</a>'))->toContain('Teams');
 
         /*
-         * Exactly one section is current — the sections have not started
-         * claiming each other's detail pages.
-         *
-         * Counted on /players deliberately, a section screen with no
-         * sub-tabs. Those underline classes are not unique to the section
-         * strip: x-sub-tabs reuses them verbatim, because a sub-view toggle
-         * is legitimately the same visual language one level down. Pointing
-         * this count at /stats, /standings, /recruiting or a team page reads
-         * 2 — a control, not a navigation bug. (/news would read 0: it is a
-         * League page but not a section, so nothing in the strip lights.)
+         * Exactly one section is current on a plain section screen too — the
+         * sections have not started claiming each other's detail pages.
          */
-        $html = $this->get(route('players'))->assertOk()->content();
+        $strip = str($this->get(route('players'))->assertOk()->content())
+            ->after('aria-label="Sections"')
+            ->before('</nav>');
 
-        expect(substr_count($html, $underlined))->toBe(1);
+        expect($strip->substrCount($chip))->toBe(1);
     });
 
     it('lights the Players section on an individual player page', function () {
@@ -152,12 +157,12 @@ describe('sections', function () {
             'id' => 4242, 'slug' => 'test-player', 'display_name' => 'Test Player',
         ]);
 
-        $this->get(route('player', $athlete))
-            ->assertOk()
-            ->assertSeeInOrder(
-                ['border-zinc-900 text-zinc-900 dark:border-zinc-100', 'Players'],
-                escape: false
-            );
+        $strip = str($this->get(route('player', $athlete))->assertOk()->content())
+            ->after('aria-label="Sections"')
+            ->before('</nav>');
+
+        expect((string) $strip->after('bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100')->before('</a>'))
+            ->toContain('Players');
     });
 
     it('renders no strip on Scores, which is the only screen in its area', function () {
