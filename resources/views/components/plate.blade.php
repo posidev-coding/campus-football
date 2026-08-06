@@ -42,13 +42,21 @@
         @foreach ($tabs as $value => $label)
             @php $active = $selected === $value; @endphp
 
+            {{-- `pt-0.5 pb-2` mirrors the actions column exactly: its menu
+                 triggers wear `py-0.5` inside a `pb-2` shelf, so the tab takes
+                 the same 2px above the text and 8px below to keep both columns
+                 32px tall with the text at the same offset. `items-center`
+                 alone cannot arrange that — it centers the equal BOXES, not
+                 the text inside them, and the tab text sat 2px high. Taken
+                 out of the bottom padding rather than added on, so the active
+                 underline still rests directly on the rule. --}}
             <button
                 type="button"
                 wire:click="$set('{{ $model }}', '{{ $value }}')"
                 wire:key="{{ $keyPrefix }}-{{ $value }}"
                 @if ($active) aria-current="page" @endif
                 @class([
-                    'border-b-2 text-sm font-medium transition-colors pb-2.5',
+                    'border-b-2 pt-0.5 pb-2 text-sm font-medium transition-colors',
                     'shrink-0 whitespace-nowrap px-3 first:pl-0 sm:px-4 sm:first:pl-4' => ! $bleed,
                     'flex-1 px-2 sm:flex-none sm:px-4' => $bleed,
                     'border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100' => $active,
