@@ -78,6 +78,35 @@ it('syncs a week in a single request', function () {
     Http::assertSentCount(1);
 });
 
+/**
+ * A game the way it actually arrives: scheduled first, then played.
+ *
+ * The transition is the whole signal, so a test about finishing has to
+ * create the row BEFORE it is complete — a row that shows up already
+ * finished is a backfill, and deliberately queues nothing.
+ */
+function kickOffThenFinish(): void
+{
+    /*
+     * ONE fake, as a sequence. Successive Http::fake() calls STACK and the
+     * first registered pattern keeps answering, so faking the finished
+     * payload after the live one silently replays the live one and the game
+     * never transitions — which is a test that proves nothing.
+     */
+    $finished = ['events' => [scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]];
+
+    Http::fake(['*scoreboard*' => Http::sequence()
+        ->push(['events' => [scoreboardEvent(401, '2025-09-27T19:30Z', 14, 10, completed: false, state: 'in')]])
+        ->push($finished)
+        // Every later pass re-reads the finished game, which is what the
+        // live tier does for the rest of the day.
+        ->whenEmpty(Http::response($finished)),
+    ]);
+
+    app(SyncGames::class)->week(test()->week);
+    app(SyncGames::class)->week(test()->week);
+}
+
 it('queues a box score the moment a game finishes', function () {
     /*
      * The day-to-day win. A nightly sweep meant an 11pm Saturday final had no
@@ -87,10 +116,13 @@ it('queues a box score the moment a game finishes', function () {
      */
     Queue::fake();
 
-    fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]);
-    app(SyncGames::class)->week($this->week);
+    kickOffThenFinish();
 
-    Queue::assertPushed(FetchGameSummary::class, fn ($job) => $job->gameId === 401);
+    Queue::assertPushed(FetchGameSummary::class, fn (FetchGameSummary $job) => $job->gameId === 401
+        // Forced past the staleness check, and on `live` so a Saturday's
+        // finals never wait behind a draining backfill.
+        && $job->force === true);
+    Queue::assertPushedOn('live', FetchGameSummary::class);
 });
 
 it('does not re-queue a box score for a game that was already final', function () {
@@ -98,11 +130,27 @@ it('does not re-queue a box score for a game that was already final', function (
     // the rest of the day must not queue the same fetch over and over.
     Queue::fake();
 
-    fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]);
-    app(SyncGames::class)->week($this->week);
+    kickOffThenFinish();
     app(SyncGames::class)->week($this->week);
 
     Queue::assertPushed(FetchGameSummary::class, 1);
+});
+
+it('does not queue box scores for a backfill of already-finished games', function () {
+    /*
+     * A game is always scheduled before it is played, so a row arriving
+     * already completed is history being imported rather than a whistle.
+     * Seeding six seasons this way once queued 4,844 fetches onto the `live`
+     * queue — which is the queue a Saturday depends on, and exactly what
+     * splitting the queues was meant to protect. Backfills go through
+     * `cfb:summaries --missing`, which queues them on `backfill`.
+     */
+    Queue::fake();
+
+    fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]);
+    app(SyncGames::class)->week($this->week);
+
+    Queue::assertNotPushed(FetchGameSummary::class);
 });
 
 it('does not queue a box score for a game still in progress', function () {

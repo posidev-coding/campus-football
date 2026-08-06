@@ -373,8 +373,16 @@ class SyncGames
          *
          * Read BEFORE save, while `completed` is still dirty — afterwards the
          * original and current values match and the transition is invisible.
+         *
+         * `$game->exists` is what separates a FINISH from a BACKFILL. A game
+         * is always scheduled before it is played, so a row arriving already
+         * completed is history being imported, not a whistle. Without this a
+         * six-season seed queued 4,844 summary fetches onto the `live` queue —
+         * defeating the whole point of splitting the queues, since a backfill
+         * would then crowd the queue a Saturday depends on. Backfills go
+         * through `cfb:summaries --missing`, which queues them on `backfill`.
          */
-        $justFinished = $game->isDirty('completed') && $game->completed;
+        $justFinished = $game->exists && $game->isDirty('completed') && $game->completed;
 
         /*
          * Did the score or status move on an EXISTING row? Also read before
