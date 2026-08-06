@@ -5,6 +5,7 @@ use App\Models\Standing;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Services\CfbCalendar;
+use App\Support\Remember;
 use App\Support\Scope;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
@@ -63,7 +64,10 @@ new class extends Component
     #[Computed]
     public function years(): array
     {
-        return Cache::remember('teams:years', 3600, fn () => TeamSeason::query()
+        // Remember::filled, not Cache::remember: team_seasons fills through
+        // queued jobs, and a request racing the backfill must not pin an
+        // empty season menu for a TTL.
+        return Remember::filled('teams:years', 3600, fn () => TeamSeason::query()
             ->distinct()
             ->orderByDesc('season_year')
             ->pluck('season_year')

@@ -3,6 +3,8 @@
 use App\Enums\StandingSource;
 use App\Models\Conference;
 use App\Models\ConferenceSeason;
+use App\Models\Game;
+use App\Models\Season;
 use App\Models\Standing;
 use App\Models\Team;
 use Livewire\Livewire;
@@ -74,6 +76,67 @@ it('shows an empty state for a season with no standings', function () {
         ->set('year', 2019)
         ->assertOk()
         ->assertSee('No standings yet');
+});
+
+describe('the default season', function () {
+    /*
+     * The August shape: 2025 is fully played, 2026 is scheduled and current.
+     * ESPN publishes the upcoming season's standings months ahead as 0-0
+     * rows — the screen should open there, exactly as ESPN's own site does,
+     * and fill in for real the moment week 1 completes.
+     */
+    beforeEach(function () {
+        $this->travelTo('2026-08-06');
+
+        $regular2025 = Season::factory()->create([
+            'year' => 2025, 'type' => Season::REGULAR,
+            'start_date' => '2025-08-23', 'end_date' => '2025-12-13',
+        ]);
+
+        Season::factory()->create([
+            'year' => 2026, 'type' => Season::PRESEASON,
+            'start_date' => '2026-02-01', 'end_date' => '2026-08-22',
+        ]);
+
+        $regular2026 = Season::factory()->create([
+            'year' => 2026, 'type' => Season::REGULAR,
+            'start_date' => '2026-08-22', 'end_date' => '2026-12-12',
+        ]);
+
+        // Pinned kickoffs: a random factory date can land slate-eligible.
+        Game::factory()->finished()->create([
+            'season_id' => $regular2025->id, 'kickoff_at' => '2025-10-04 19:30:00',
+        ]);
+        Game::factory()->create([
+            'season_id' => $regular2026->id, 'kickoff_at' => '2026-09-05 19:30:00', 'completed' => false,
+        ]);
+    });
+
+    it('opens on the season being played once ESPN publishes standings for it', function () {
+        Standing::create([
+            'season_year' => 2026, 'conference_id' => 8, 'team_id' => 61,
+            'source' => StandingSource::Espn,
+            'conf_wins' => 0, 'conf_losses' => 0, 'overall_wins' => 0, 'overall_losses' => 0,
+        ]);
+
+        Livewire::test('standings')->assertSet('year', 2026);
+    });
+
+    it('falls back to the latest played season while the upcoming one has no rows', function () {
+        Livewire::test('standings')->assertSet('year', 2025);
+    });
+
+    it('lets a bookmarked year win over the default', function () {
+        Standing::create([
+            'season_year' => 2026, 'conference_id' => 8, 'team_id' => 61,
+            'source' => StandingSource::Espn,
+            'conf_wins' => 0, 'conf_losses' => 0, 'overall_wins' => 0, 'overall_losses' => 0,
+        ]);
+
+        Livewire::withQueryParams(['year' => 2025])
+            ->test('standings')
+            ->assertSet('year', 2025);
+    });
 });
 
 describe('the scope filter', function () {

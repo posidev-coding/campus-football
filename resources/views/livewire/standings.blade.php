@@ -4,6 +4,7 @@ use App\Models\Conference;
 use App\Models\ConferenceSeason;
 use App\Models\Standing;
 use App\Services\CfbCalendar;
+use App\Support\Remember;
 use App\Support\Scope;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
@@ -37,9 +38,32 @@ new class extends Component
 
     public function mount(CfbCalendar $calendar): void
     {
-        $this->year ??= $calendar->resultsYear();
+        $this->year ??= $this->defaultYear($calendar);
 
         $this->normaliseScope();
+    }
+
+    /**
+     * The season being played, the moment ESPN publishes standings for it —
+     * which is months before kickoff, as 0-0 rows. That is what ESPN's own
+     * site shows in August, and it fills in for real the moment week 1
+     * completes. resultsYear() stays as the fallback so a fresh database
+     * without the upcoming season still opens on a season that has rows.
+     *
+     * Remember::filled, not Cache::remember: the existence check must not pin
+     * "no rows yet" for a TTL while the standings sync is landing them.
+     */
+    private function defaultYear(CfbCalendar $calendar): int
+    {
+        $year = $calendar->scoreboardYear();
+
+        $published = Remember::filled(
+            "standings:published:{$year}",
+            3600,
+            fn (): ?bool => Standing::fromEspn()->where('season_year', $year)->exists() ?: null
+        );
+
+        return $published ? $year : $calendar->resultsYear();
     }
 
     /**
@@ -62,7 +86,10 @@ new class extends Component
     #[Computed]
     public function seasons(): array
     {
-        return Cache::remember('standings:seasons', 3600, fn () => Standing::query()
+        // Remember::filled, not Cache::remember: standings fill through a
+        // seed running long after its command exits, and a request racing it
+        // must not pin an empty season menu for a TTL.
+        return Remember::filled('standings:seasons', 3600, fn () => Standing::query()
             ->distinct()
             ->orderByDesc('season_year')
             ->pluck('season_year')

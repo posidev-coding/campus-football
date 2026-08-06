@@ -5,10 +5,10 @@ use App\Models\AthleteSeasonStat;
 use App\Models\Team;
 use App\Models\TeamSeasonStat;
 use App\Support\Ordinal;
+use App\Support\Remember;
 use App\Support\Scope;
 use App\Support\Stats\LeaderQuery;
 use App\Support\Stats\StatCatalog;
-use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -62,6 +62,16 @@ new class extends Component
     {
         $this->year ??= $this->latestYear();
 
+        // A bookmarked or carried-over ?year= is not validated by the menu,
+        // which only offers real years — and 2026 is exactly what a link from
+        // a screen defaulting on scoreboardYear() carries all summer. Left
+        // alone it renders "Nothing published for 2026 yet." under a menu
+        // trigger reading 2025. Same mount-AND-update discipline /players
+        // applies to $sort.
+        if (! in_array($this->year, $this->years, true) && $this->years !== []) {
+            $this->year = $this->years[0];
+        }
+
         $this->normaliseScope();
     }
 
@@ -108,13 +118,19 @@ new class extends Component
         return $this->view === self::TEAM;
     }
 
+    /**
+     * Remember::filled, not Cache::remember, and the fallback OUTSIDE the
+     * cache: these tables fill through queued jobs, so a request racing the
+     * backfill must not pin "no years" or the fallback year for a TTL. See
+     * the class docblock on Remember.
+     */
     private function latestYear(): int
     {
-        return $this->isTeamView()
-            ? Cache::remember('stats:latest-year', 3600, fn () => TeamSeasonStat::max('season_year')
-                ?? app(App\Services\CfbCalendar::class)->resultsYear())
-            : Cache::remember('leaders:derived-year', 3600, fn () => AthleteSeasonStat::max('season_year')
-                ?? app(App\Services\CfbCalendar::class)->resultsYear());
+        $max = $this->isTeamView()
+            ? Remember::filled('stats:latest-year', 3600, fn () => TeamSeasonStat::max('season_year'))
+            : Remember::filled('leaders:derived-year', 3600, fn () => AthleteSeasonStat::max('season_year'));
+
+        return $max ?? app(App\Services\CfbCalendar::class)->resultsYear();
     }
 
     /**
@@ -129,9 +145,9 @@ new class extends Component
     public function years(): array
     {
         return $this->isTeamView()
-            ? Cache::remember('stats:years', 3600, fn () => TeamSeasonStat::query()
+            ? Remember::filled('stats:years', 3600, fn () => TeamSeasonStat::query()
                 ->distinct()->orderByDesc('season_year')->pluck('season_year')->all())
-            : Cache::remember('leaders:years', 3600, fn () => AthleteSeasonStat::query()
+            : Remember::filled('leaders:years', 3600, fn () => AthleteSeasonStat::query()
                 ->distinct()->orderByDesc('season_year')->pluck('season_year')->all());
     }
 
