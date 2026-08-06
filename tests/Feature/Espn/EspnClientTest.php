@@ -20,6 +20,38 @@ it('returns the decoded body on success', function () {
     expect($body)->toBe(['count' => 3, 'items' => []]);
 });
 
+it('sends a User-Agent ESPN does not refuse', function () {
+    /*
+     * `site.api.espn.com` 403s a CUSTOM User-Agent. Measured live on
+     * 2026-08-06, interleaved against a working agent so ordering and rate
+     * effects are ruled out: curl, GuzzleHttp and python-requests all got
+     * 200, while `CampusFootball/1.0 (+https://campusfootball.net)`, a bare
+     * `foo/1.0` and a full Chrome string all got 403.
+     *
+     * The cost of getting this wrong is invisible: a 403 is not retried, the
+     * client logs and returns null, and "never write a default when a feed
+     * returns nothing" means `cfb:games` reports "0 changed, 1 requests" and
+     * exits 0 — the scoreboard and summary feeds, which is to say the whole
+     * app, quietly stopped updating while rankings and recruiting (core and
+     * web hosts, unaffected) kept working.
+     *
+     * Pinned as a SHAPE rather than a literal, so the env override stays
+     * usable if their policy shifts again: a product name here is the
+     * regression.
+     */
+    Http::fake(['*' => Http::response(['ok' => true])]);
+
+    app(EspnClient::class)->site('scoreboard', ttl: 0);
+
+    Http::assertSent(function (Request $request) {
+        $agent = $request->header('User-Agent')[0] ?? '';
+
+        return str_contains($agent, 'GuzzleHttp')
+            || str_contains($agent, 'curl')
+            || str_contains($agent, 'python-requests');
+    });
+});
+
 it('returns null on 404 rather than throwing', function () {
     // ESPN 404s constantly for valid requests — a freshman with no stats, an
     // offseason injuries list. That must be an ordinary "no data" answer.

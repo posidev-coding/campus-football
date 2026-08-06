@@ -71,7 +71,38 @@ return [
          */
         'rate_limit' => (int) env('ESPN_RATE_LIMIT', 240),
 
-        'user_agent' => 'CampusFootball/1.0 (+https://campusfootball.net)',
+        /*
+         * `site.api.espn.com` 403s a CUSTOM User-Agent. Measured 2026-08-06,
+         * interleaved so ordering and rate effects are ruled out — the result
+         * tracks the header, not the sequence:
+         *
+         *     curl/8.7.1                              200
+         *     GuzzleHttp/7                            200
+         *     python-requests/2.31.0                  200
+         *     CampusFootball/1.0 (+https://...)       403
+         *     CampusFootball/1.0                      403
+         *     foo/1.0                                 403
+         *     Mozilla/5.0 ... Chrome/131 ...          403
+         *
+         * So their edge allowlists known HTTP-client agents and refuses
+         * everything else, browser strings included. It is host-specific:
+         * core and web served 200 to the custom agent throughout, which is
+         * why this hid for so long — rankings, recruiting, coaches and team
+         * stats all kept working while the SCOREBOARD and SUMMARY feeds, the
+         * two this app runs on, returned nothing.
+         *
+         * And it failed SILENTLY. A 403 is not retried (correctly — the
+         * request is not wrong, and repeating it burns allowance), so the
+         * client logged a warning and returned null, and "never write a
+         * default when a feed returns nothing" did the rest: `cfb:games`
+         * reported "0 changed, 1 requests" and exited 0, all day.
+         *
+         * GuzzleHttp/7 is what Laravel's HTTP client would send if we set no
+         * header at all, so this is honest rather than an impersonation.
+         * Env-overridable: if their policy shifts again this must be
+         * changeable without a deploy.
+         */
+        'user_agent' => env('ESPN_USER_AGENT', 'GuzzleHttp/7'),
     ],
 
     /*
