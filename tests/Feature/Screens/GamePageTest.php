@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\FetchGameSummary;
 use App\Models\Athlete;
 use App\Models\AthleteGameStat;
 use App\Models\Game;
@@ -11,8 +12,8 @@ use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGameSummary;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -57,12 +58,14 @@ it('renders a completed game for guests', function () {
 it('costs no ESPN request for a final game', function () {
     // A final game's summary can never change, so it is fetched once ever and
     // every later visit is a pure database read. This is what makes an archive
-    // of 5,000 game pages free to browse.
+    // of 5,000 game pages free to browse — nothing fetched, nothing queued.
     Http::fake();
+    Queue::fake();
 
     Livewire::test('game', ['game' => $this->game])->assertOk();
 
     Http::assertNothingSent();
+    Queue::assertNothingPushed();
 });
 
 it('renders the team box score in ESPN order, not MySQL JSON order', function () {
@@ -145,27 +148,111 @@ it('tells the user an upcoming game has no box score yet', function () {
         ->assertSee('Not played yet');
 });
 
-it('throttles a live game to one ESPN request per minute across all viewers', function () {
-    // The invariant that keeps this screen cheap. Ten people opening the same
-    // live game must produce ONE upstream request, not ten.
-    Cache::clear();
-    Http::fake(['*' => Http::response(['boxscore' => ['teams' => [], 'players' => []]])]);
+it('never fetches ESPN synchronously, even for a live game', function () {
+    /*
+     * The page used to fetch the 544 KB summary INLINE in the Livewire
+     * request — the slow path on the one screen people refresh most. It
+     * queues a refresh now (the athlete game-log pattern) and renders
+     * whatever is stored.
+     */
+    Http::fake();
+    Queue::fake();
 
     $live = Game::factory()->create([
         'season_id' => $this->season->id, 'week_id' => $this->week->id,
         'home_team_id' => 61, 'away_team_id' => 333,
         'completed' => false, 'status' => 'in',
+        // Pinned: an unpinned kickoff drifts into other tests' date-window
+        // queries and shifts the faker sequence beneath them.
+        'kickoff_at' => '2025-09-27 19:30:00',
     ]);
 
-    $sync = app(SyncGameSummary::class);
+    Livewire::test('game', ['game' => $live])->assertOk();
 
-    $fetched = 0;
+    Http::assertNothingSent();
+    // On the live queue, so it is picked up in seconds even while a backfill
+    // batch drains.
+    Queue::assertPushedOn('live', FetchGameSummary::class);
+    Queue::assertPushed(FetchGameSummary::class, fn (FetchGameSummary $job) => $job->force === false);
+});
 
-    for ($viewer = 0; $viewer < 10; $viewer++) {
-        $fetched += $sync->refresh($live->fresh()) ? 1 : 0;
+it('queues one refresh for a live game, not one per viewer', function () {
+    /*
+     * The invariant that keeps this screen cheap: the job is unique on the
+     * game, so a second viewer mounting while the first's job is still
+     * queued adds NOTHING. (Queue::fake honors ShouldBeUnique locks.)
+     */
+    Queue::fake();
+
+    $live = Game::factory()->create([
+        'season_id' => $this->season->id, 'week_id' => $this->week->id,
+        'home_team_id' => 61, 'away_team_id' => 333,
+        'completed' => false, 'status' => 'in',
+        // Pinned: an unpinned kickoff drifts into other tests' date-window
+        // queries and shifts the faker sequence beneath them.
+        'kickoff_at' => '2025-09-27 19:30:00',
+    ]);
+
+    foreach (range(1, 3) as $viewer) {
+        Livewire::test('game', ['game' => $live->fresh()])->assertOk();
     }
 
-    expect($fetched)->toBe(1);
+    Queue::assertPushed(FetchGameSummary::class, 1);
+});
+
+it('queues nothing for a fresh live summary', function () {
+    // The staleness window is the per-game throttle now: a summary synced
+    // seconds ago means the next viewer dispatches nothing at all.
+    Queue::fake();
+
+    $live = Game::factory()->create([
+        'season_id' => $this->season->id, 'week_id' => $this->week->id,
+        'home_team_id' => 61, 'away_team_id' => 333,
+        'completed' => false, 'status' => 'in',
+        // Pinned: an unpinned kickoff drifts into other tests' date-window
+        // queries and shifts the faker sequence beneath them.
+        'kickoff_at' => '2025-09-27 19:30:00',
+    ]);
+
+    GameSummary::create([
+        'game_id' => $live->id,
+        'is_final' => false,
+        'synced_at' => now(),
+    ]);
+
+    Livewire::test('game', ['game' => $live])->assertOk();
+
+    Queue::assertNothingPushed();
+});
+
+it('queues nothing pregame', function () {
+    // The summary payload has no box score before kickoff; the old inline
+    // refresh burned one 544 KB request a minute on every upcoming game
+    // somebody left open.
+    Queue::fake();
+
+    $upcoming = Game::factory()->create([
+        'season_id' => $this->season->id, 'week_id' => $this->week->id,
+        'home_team_id' => 61, 'away_team_id' => 333,
+        'completed' => false, 'status' => 'pre',
+    ]);
+
+    Livewire::test('game', ['game' => $upcoming])->assertOk();
+
+    Queue::assertNothingPushed();
+});
+
+it('queues a refresh for a completed game whose final fetch was swallowed', function () {
+    // A completed game wearing a mid-game summary means the just-final fetch
+    // died (crashed worker, cancelled batch). Waiting for staleness would be
+    // fine; waiting forever would not — isStale(Game) treats it as due.
+    Queue::fake();
+
+    GameSummary::where('game_id', $this->game->id)->update(['is_final' => false, 'synced_at' => now()]);
+
+    Livewire::test('game', ['game' => $this->game->fresh()])->assertOk();
+
+    Queue::assertPushedOn('live', FetchGameSummary::class);
 });
 
 it('links a game card to its game page', function () {

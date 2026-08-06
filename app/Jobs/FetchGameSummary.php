@@ -54,10 +54,20 @@ class FetchGameSummary implements ShouldBeUnique, ShouldQueue
      */
     public int $uniqueFor = 300;
 
-    public function __construct(public int $gameId) {}
+    /**
+     * `$force` skips the staleness re-check, never the in-flight lock: the
+     * just-final fetch and the backfill must run even when a live fetch
+     * landed seconds ago, because what they are fetching is the FINAL truth.
+     * Live dispatches (sweep, page views) leave it false, so a copy that sat
+     * queued behind an equivalent fetch becomes a no-op instead of a request.
+     */
+    public function __construct(public int $gameId, public bool $force = false) {}
 
     public function uniqueId(): string
     {
+        // The game id alone — force and non-force copies dedupe together,
+        // deliberately: two fetches for one game inside one window are
+        // redundant whichever flavor got there first.
         return (string) $this->gameId;
     }
 
@@ -96,9 +106,14 @@ class FetchGameSummary implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        // The unthrottled path: the per-game throttle exists to stop page views
-        // stampeding one live game, and a batch is already paced by the
-        // client's shared rate limiter.
+        // Re-checked here rather than trusting the dispatcher: many viewers
+        // and the sweep can queue this game before the first copy runs, and
+        // uniqueness cannot dedupe a dispatch made after an earlier copy
+        // finished. A fresh summary makes the late copy a no-op.
+        if (! $this->force && ! $sync->isStale($game)) {
+            return;
+        }
+
         $sync->handle($game);
     }
 }

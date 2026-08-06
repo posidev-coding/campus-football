@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\FetchGameSummary;
 use App\Models\AthleteGameStat;
 use App\Models\Game;
 use App\Services\Espn\Sync\SyncGameSummary;
@@ -10,19 +11,18 @@ use Livewire\Component;
 /**
  * A single game: box score, scoring summary, drives, win probability.
  *
- * This is the ONLY screen in the app that can cause an ESPN request, and it
- * does so under tight constraints. The box score exists nowhere except the
- * `summary` payload, which is 544 KB — larger than a whole day's scoreboard —
- * so:
+ * Rendering is a pure database read — this page can no longer CAUSE a
+ * synchronous ESPN request. Viewing a live game QUEUES a summary refresh
+ * (the athlete game-log pattern): the job is unique on the game and
+ * re-checks staleness before fetching, so a hundred viewers plus the
+ * gameday sweep collapse into at most one request per 60s window, and no
+ * page request ever blocks on a 544 KB fetch. Between views, the two-minute
+ * live sweep (cfb:summaries:live) keeps every in-progress game hydrated.
  *
  *   - A FINAL game is fetched once, ever. Its summary cannot change, so every
  *     later visit is a pure database read and costs nothing upstream.
- *   - A LIVE game is fetched at most once a minute, throttled on the GAME
- *     rather than on the viewer. A hundred people watching one game is one
- *     request a minute — the same invariant the scoreboard holds.
- *
- * The throttle lives in SyncGameSummary::refresh(), which is what makes it
- * shared across every viewer rather than per-session.
+ *   - A missed final fetch shows the last stored box score and fills in
+ *     behind the next poll or visit rather than blocking the request.
  */
 new class extends Component
 {
@@ -45,17 +45,31 @@ new class extends Component
     }
 
     /**
-     * Pull the summary if we do not have it, or if the game is live and the
-     * stored copy has gone stale.
+     * Queue a summary refresh when the stored copy is due one.
+     *
+     * Dispatched, never fetched inline — the fetch is 544 KB plus a write
+     * transaction, and holding a page request open for it put the slow path
+     * on the one screen people refresh most. The job's uniqueness and its
+     * own staleness re-check absorb every concurrent viewer.
      */
     private function hydrateSummary(): void
     {
-        app(SyncGameSummary::class)->refresh($this->game);
+        // Pregame there is nothing to fetch: the payload has no box score
+        // yet, and the old inline refresh burned one 544 KB request a minute
+        // on every upcoming game somebody left open.
+        if ($this->game->status === 'pre' && ! $this->game->completed) {
+            return;
+        }
+
+        if (app(SyncGameSummary::class)->isStale($this->game)) {
+            FetchGameSummary::dispatch($this->game->id)->onQueue('live');
+        }
     }
 
     /**
-     * Live games re-poll. Polling calls `refresh()` again, which is throttled,
-     * so the extra viewers cost database reads rather than ESPN requests.
+     * Live games re-poll. Each poll re-reads our own database and re-queues
+     * the refresh only once the 60s window has passed, so extra viewers cost
+     * database reads rather than ESPN requests.
      */
     public function poll(): void
     {

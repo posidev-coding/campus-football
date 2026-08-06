@@ -62,7 +62,12 @@ class SyncSummariesCommand extends Command
      */
     private function queue(Collection $gameIds): int
     {
-        $batch = Bus::batch($gameIds->map(fn (int $id) => new FetchGameSummary($id))->all())
+        // Forced: `--missing` targets games with no summary and `--force`
+        // re-fetches deliberately, so the staleness re-check must not apply.
+        // The `backfill` queue keeps a thousand-game drain from starving the
+        // live queue's seconds-level pickup on a game day.
+        $batch = Bus::batch($gameIds->map(fn (int $id) => new FetchGameSummary($id, force: true))->all())
+            ->onQueue('backfill')
             ->name('Game summaries'.($this->option('year') ? ' '.$this->option('year') : ''))
             /*
              * One corrupt game must not cancel the rest. ESPN game 401767129
@@ -78,7 +83,7 @@ class SyncSummariesCommand extends Command
         $this->line('  <fg=gray>watch</> php artisan cfb:summaries:status '.$batch->id);
         $this->newLine();
         $this->line('  <fg=gray>Run a worker if one is not already going:</>');
-        $this->line('  <fg=gray>php artisan queue:work --stop-when-empty --memory=256</>');
+        $this->line('  <fg=gray>php artisan queue:work --queue=backfill --stop-when-empty --memory=256</>');
 
         return self::SUCCESS;
     }

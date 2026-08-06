@@ -24,6 +24,16 @@ it('schedules recruiting by relative token, never a resolved year', function () 
         ->and($commands->filter(fn (string $c) => str_contains($c, '--year=next')))->toHaveCount(1);
 });
 
+it('schedules the live summary sweep inside the live window', function () {
+    // The sweep rides the live tier's window; its own first query is the
+    // guard that makes a quiet tick free.
+    $sweep = collect(app(Schedule::class)->events())
+        ->first(fn (Event $event) => str_contains($event->command ?? '', 'cfb:summaries:live'));
+
+    expect($sweep)->not->toBeNull()
+        ->and($sweep->expression)->toBe('*/2 * * * *');
+});
+
 it('resolves current and next against the calendar at run time', function () {
     // The season we are heading into. `compute` is pure database arithmetic
     // — zero ESPN requests — so it can carry the year assertion safely.

@@ -334,14 +334,57 @@ Dead ends, so nobody re-probes them: `/recruiting/{y}/teams`,
 
 ## Sync cost tiers
 
-Live refresh costs ONE request per minute total, regardless of how many games
-are in progress or how many people are watching. Respect the tiers in
-`SyncGames` and `routes/console.php`; v3 burst to ~20 requests/second.
+SCORES cost ONE request per minute total, regardless of how many games are in
+progress or how many people are watching — that one scoreboard payload carries
+every live game's score, clock, period and status, which is also everything
+pick'em scoring needs. Respect the tiers in `SyncGames` and
+`routes/console.php`; v3 burst to ~20 requests/second.
 
     live 0-1 · today 1 · current 1 · recent 2 · season 9
 
+BOX SCORES are the other half, and they do not ride the scoreboard —
+`cfb:summaries:live` sweeps every in-progress game every two minutes, one
+request per game (see the game-summary section). A 30-game Saturday peak is
+~15 req/min on top of the tiers, comfortably inside the 240/min budget.
+
+**That budget is OURS, not ESPN's.** `ESPN_RATE_LIMIT` defaults to 240 and no
+ESPN document or observed 429 sets it — it was chosen as ~5x below v3's
+known-bad burst rate. What ESPN *does* enforce is a User-Agent allowlist; see
+below.
+
 Scale-to-zero MySQL means writes are not free: sync only writes rows that
-actually changed (`fill` + `isDirty`), and public reads are cache-first.
+actually changed (`fill` + `isDirty`), and public reads are cache-first. The
+summary sync carries the same discipline in `game_summaries.scoring_plays_hash`
+— scoring rows are replaced wholesale, so an unchanged payload must skip the
+rewrite or the sweep churns every row all Saturday. It is a HASH rather than a
+count or a last-sequence check because ESPN issues corrections that rewrite an
+existing play, which neither of those can see.
+
+## ESPN 403s a custom User-Agent on the site host
+
+Measured 2026-08-06, interleaved so ordering and rate effects are ruled out —
+the result tracks the header, not the sequence:
+
+    curl/8.7.1                          200
+    GuzzleHttp/7                        200
+    python-requests/2.31.0              200
+    CampusFootball/1.0 (+https://...)   403
+    foo/1.0                             403
+    Mozilla/5.0 ... Chrome/131 ...      403
+
+Their edge allowlists known HTTP-client agents and refuses everything else,
+browser strings included. **Host-specific**, which is why it hid: `core` and
+`web` served 200 to the custom agent throughout, so rankings, recruiting,
+coaches and team stats all kept working while `site` — the SCOREBOARD and
+SUMMARY feeds, which is to say games and box scores — returned nothing.
+
+And it fails SILENTLY. A 403 is not retried (correctly: the request is not
+wrong, and repeating it burns allowance), so the client logs a warning and
+returns null, and "never write a default when a feed returns nothing" does the
+rest — `cfb:games` reported `0 changed, 1 requests` and exited 0, all day.
+`config('espn.http.user_agent')` is `GuzzleHttp/7`, which is what Laravel's
+client sends when no header is set, and `ESPN_USER_AGENT` overrides it without
+a deploy if their policy shifts again.
 
 ## Never hardcode the current season
 
@@ -1742,10 +1785,54 @@ only single-game fetch in the app, and it is bounded twice over:
 - A **final** game is fetched once, ever. Its summary cannot change, so
   `game_summaries.is_final` short-circuits every later page view to a pure
   database read.
-- A **live** game is throttled by `Cache::lock("espn:summary:{id}", 60)` — keyed
-  on the GAME, not the viewer. A hundred people watching one game is one request
-  a minute. The lock is never released, only allowed to expire; it rate-limits
-  rather than guarding a critical section.
+- A **live** game is fetched at most once per 60s staleness window, keyed on
+  the GAME rather than the viewer.
+
+**Nothing fetches this inline.** The game page dispatches `FetchGameSummary`
+and renders from the database (the athlete game-log pattern); a gameday sweep
+(`cfb:summaries:live`, every two minutes) keeps every in-progress game
+hydrated whether or not anyone is watching it, so opening a game never shows a
+box score as stale as the last viewer left it.
+
+**Three layers keep concurrent viewers from stacking fetches**, and each
+catches a race the others cannot:
+
+    ShouldBeUnique          collapses simultaneous DISPATCHES (a page full of
+                            viewers plus the sweep) into one queued job.
+                            Does NOT apply inside Bus::batch — batched jobs
+                            skip unique locks entirely
+    in-handle isStale()     a copy that sat queued while another source
+                            refreshed the game becomes a no-op instead of a
+                            request. `force: true` skips this, and only the
+                            just-final dispatch and the backfill carry it
+    released Cache::lock    two workers genuinely executing at once for one
+                            game — the backfill-beside-live case uniqueness
+                            cannot see. RELEASED in a finally, not expired:
+                            its never-released predecessor silently swallowed
+                            any fetch made within a minute of the last, the
+                            same bug the game-log lock had
+
+`SyncGameSummary::isStale()` is game-aware where the model's own is not:
+"a final summary never changes" holds only while the GAME agrees it is final,
+and they disagree in both directions — a completed game with a non-final
+summary means the just-final fetch was swallowed, and a live game with a final
+summary means ESPN flipped a game back after briefly reporting it complete,
+which would otherwise freeze that box score for the rest of the game.
+
+**Queues are split by latency class**, since a thousand-game backfill must not
+starve a Saturday: `live` (sweep, view boost, just-final), `default`
+(game logs, coaches, team news), `backfill` (`cfb:summaries` batches). Workers
+want SMALL concurrency — `ThrottleEspn` RELEASES a job when the shared 240/min
+window is spent, so adding workers past ~3 on `backfill` lowers throughput
+rather than raising it. `QUEUE_CONNECTION` and `CACHE_STORE` must BOTH be
+redis in production: the limiter window, the in-flight locks and the
+uniqueness locks all ride the cache store, and splitting them silently voids
+every guarantee above.
+
+`GameScoreChanged` and `GameWentFinal` (dispatched from `SyncGames::store()`,
+after save, never on a first insert) are the pick'em subscription points — a
+contest recompute listens there rather than polling. They carry scalars, never
+the model.
 
 It is also the **only source of historical players.** Rosters publish the
 current season only, so a 2021 player has no roster row to have come from; box

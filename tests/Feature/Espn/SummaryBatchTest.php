@@ -46,6 +46,21 @@ it('queues one job per game rather than looping in-process', function () {
         && $batch->jobs->every(fn ($job) => $job instanceof FetchGameSummary));
 });
 
+it('drains on the backfill queue, forced past the staleness check', function () {
+    /*
+     * `backfill` so a thousand-game drain cannot starve the live queue's
+     * seconds-level pickup on a game day; forced because --missing targets
+     * games with no summary and --force re-fetches deliberately — the
+     * staleness re-check must not apply to either.
+     */
+    Bus::fake();
+
+    $this->artisan('cfb:summaries --year=2025')->assertSuccessful();
+
+    Bus::assertBatched(fn ($batch) => ($batch->options['queue'] ?? null) === 'backfill'
+        && $batch->jobs->every(fn (FetchGameSummary $job) => $job->force === true));
+});
+
 it('lets one bad game fail without cancelling the batch', function () {
     // ESPN game 401767129 carries a scoring play with a negative score. Before
     // allowFailures(), one such row ended a 954-game run at game 260.

@@ -44,6 +44,19 @@ Schedule::command('cfb:games --tier=live')
     ->when($inSeason)
     ->withoutOverlapping();
 
+/*
+ * Live box scores ride the same window as the live tier. The command's first
+ * query is its own guard — no in-progress games means no dispatches and no
+ * ESPN cost — and each dispatched job re-checks staleness before spending a
+ * request, so viewers and this sweep can never stack fetches for one game.
+ */
+Schedule::command('cfb:summaries:live')
+    ->everyTwoMinutes()
+    ->timezone($tz)
+    ->between('11:00', '23:59')
+    ->when($inSeason)
+    ->withoutOverlapping();
+
 // Tier 2 — the current week on game days, catching finals and late corrections
 // once the live window closes.
 Schedule::command('cfb:games --tier=current')

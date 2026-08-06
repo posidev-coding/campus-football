@@ -30,13 +30,16 @@ use Illuminate\Support\Facades\DB;
  *
  *   - A FINAL game is fetched exactly once, ever. Its summary cannot change,
  *     so every later page view is a pure database read.
- *   - A LIVE game is fetched at most once per minute, enforced by a cache lock
- *     keyed on the game rather than on the viewer. A hundred people watching
- *     one game is one request a minute, which is the same invariant the
- *     scoreboard holds.
+ *   - A LIVE game is fetched at most once per staleness window (60s), and
+ *     never by a page view directly: viewers and the gameday sweep both
+ *     dispatch FetchGameSummary, whose uniqueness and in-handle staleness
+ *     re-check collapse a hundred watchers of one game into one request.
  *
- * The lock is deliberately never released — it is allowed to expire — because
- * its purpose is to rate-limit, not to guard a critical section.
+ * The in-flight lock below is RELEASED on completion — it is a concurrency
+ * guard for the one race job uniqueness cannot see (a backfill batch job
+ * executing beside a live job), not a rate limiter. The old never-released
+ * 60s variant silently swallowed legitimate fetches made within a minute of
+ * the last one; the game-log sync learned the same lesson first.
  *
  * One useful side effect: this is the ONLY source of historical athletes. The
  * roster endpoint publishes the current season only, so a 2021 player has no
@@ -45,41 +48,73 @@ use Illuminate\Support\Facades\DB;
  */
 class SyncGameSummary
 {
-    private const THROTTLE_SECONDS = 60;
+    /** Crash ceiling only — the lock is released in a finally. */
+    private const IN_FLIGHT_SECONDS = 60;
 
     public function __construct(private EspnClient $espn) {}
 
     /**
-     * Refresh a game's summary if it is stale, respecting the throttle.
+     * Whether this game's summary needs a fetch.
      *
-     * Returns whether a fetch actually happened, so callers can tell "already
-     * fresh" from "nothing to sync".
+     * Game-aware where the model's own isStale() cannot be: "a final summary
+     * never changes" is only true while the GAME agrees that it is final, and
+     * the two disagree in both directions.
+     *
+     *   completed game, non-final summary   the just-final fetch was
+     *                                       swallowed (crashed worker,
+     *                                       cancelled batch), and staleness
+     *                                       alone would leave a finished game
+     *                                       wearing a mid-game box score
+     *   live game, final summary            ESPN briefly reported the game
+     *                                       complete and then flipped it
+     *                                       back. Trusting the flag here
+     *                                       freezes the box score for the
+     *                                       rest of the game — is_final's
+     *                                       short-circuit is permanent
+     *
+     * So disagreement is always stale, and the cheap archive short-circuit
+     * survives for the case it was written for: both sides final.
      */
-    public function refresh(Game $game): bool
+    public function isStale(Game $game): bool
     {
         $summary = $game->summary;
 
-        // A final game never changes. This short-circuit is what makes an
-        // archived game page free.
-        if ($summary !== null && ! $summary->isStale()) {
-            return false;
+        if ($summary === null) {
+            return true;
         }
 
-        $lock = Cache::lock("espn:summary:{$game->id}", self::THROTTLE_SECONDS);
+        if ($game->completed !== (bool) $summary->is_final) {
+            return true;
+        }
 
-        // Somebody fetched this game inside the window. Not an error — the
-        // caller renders what is already stored.
+        return $summary->isStale();
+    }
+
+    /**
+     * Fetch and store. Returns whether a fetch actually happened.
+     *
+     * Freshness policy lives in the CALLER (FetchGameSummary re-checks
+     * isStale() unless forced); this method only refuses to run two fetches
+     * for one game at the same instant.
+     */
+    public function handle(Game $game): bool
+    {
+        $lock = Cache::lock("espn:summary:{$game->id}", self::IN_FLIGHT_SECONDS);
+
+        // A concurrent fetch for this game is in flight — the caller renders
+        // what is already stored, and the in-flight copy lands momentarily.
         if (! $lock->get()) {
             return false;
         }
 
-        return $this->handle($game);
+        try {
+            return $this->fetch($game);
+        } finally {
+            $lock->release();
+        }
     }
 
-    /**
-     * Fetch and store, bypassing the throttle. Used by the backfill.
-     */
-    public function handle(Game $game): bool
+    private function fetch(Game $game): bool
     {
         $body = $this->espn->site('summary', ['event' => $game->id], ttl: config('espn.cache.live'));
 
@@ -89,9 +124,20 @@ class SyncGameSummary
 
         $isFinal = (bool) data_get($body, 'header.competitions.0.status.type.completed', $game->completed);
 
-        DB::transaction(function () use ($game, $body, $isFinal) {
+        // Hashed OUTSIDE the row write so an unchanged scoring summary skips
+        // the delete-and-recreate below — under a two-minute sweep that write
+        // would otherwise churn every scoring row all Saturday against a
+        // scale-to-zero database.
+        $playsHash = md5(json_encode($body['scoringPlays'] ?? []));
+        $previousHash = GameSummary::whereKey($game->id)->value('scoring_plays_hash');
+
+        DB::transaction(function () use ($game, $body, $isFinal, $playsHash, $previousHash) {
             $this->storeTeamStats($game, $body);
-            $this->storeScoringPlays($game, $body);
+
+            if ($playsHash !== $previousHash) {
+                $this->storeScoringPlays($game, $body);
+            }
+
             $this->storePlayerStats($game, $body);
 
             GameSummary::updateOrCreate(
@@ -102,6 +148,10 @@ class SyncGameSummary
                     'leaders' => $body['leaders'] ?? null,
                     'attendance' => data_get($body, 'gameInfo.attendance'),
                     'is_final' => $isFinal,
+                    // Written in the same transaction as the rows it
+                    // describes, so a rollback cannot strand a hash that
+                    // claims plays which were never stored.
+                    'scoring_plays_hash' => $playsHash,
                     'synced_at' => now(),
                 ]
             );
@@ -167,7 +217,10 @@ class SyncGameSummary
 
         // Replaced wholesale rather than upserted: a live game's scoring plays
         // only ever grow, but a correction can rewrite one, and a stale row
-        // with a sequence nobody reuses would linger forever.
+        // with a sequence nobody reuses would linger forever. The caller's
+        // payload hash gates this — a count or last-sequence check could not,
+        // because a correction changes neither — so an unchanged summary
+        // never pays for the rewrite.
         GameScoringPlay::where('game_id', $game->id)->delete();
 
         foreach ($plays as $index => $play) {

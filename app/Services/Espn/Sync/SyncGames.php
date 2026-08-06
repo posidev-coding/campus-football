@@ -2,6 +2,8 @@
 
 namespace App\Services\Espn\Sync;
 
+use App\Events\GameScoreChanged;
+use App\Events\GameWentFinal;
 use App\Jobs\FetchGameSummary;
 use App\Models\Game;
 use App\Models\Season;
@@ -374,8 +376,35 @@ class SyncGames
          */
         $justFinished = $game->isDirty('completed') && $game->completed;
 
+        /*
+         * Did the score or status move on an EXISTING row? Also read before
+         * save, for the same reason. `$game->exists` keeps a season backfill
+         * from firing 950 "score changed" events for rows being created.
+         */
+        $scoreMoved = $game->exists
+            && ($game->isDirty('home_score') || $game->isDirty('away_score') || $game->isDirty('status'));
+
         if ($changed) {
             $game->save();
+        }
+
+        /*
+         * The pick'em subscription points, dispatched AFTER save so a future
+         * listener reads the new database state. No listeners exist yet;
+         * the completing pass fires both (status goes dirty on the flip),
+         * so listeners must treat them as idempotent signals, not deltas.
+         */
+        if ($scoreMoved) {
+            GameScoreChanged::dispatch(
+                $game->id,
+                $game->home_score,
+                $game->away_score,
+                (string) $game->status,
+            );
+        }
+
+        if ($justFinished) {
+            GameWentFinal::dispatch($game->id);
         }
 
         /*
@@ -390,7 +419,10 @@ class SyncGames
          * same fetch twice.
          */
         if ($justFinished) {
-            FetchGameSummary::dispatch($game->id);
+            // Forced: what this fetches is the FINAL truth, and a live fetch
+            // that landed seconds ago must not make it a no-op. `live` queue —
+            // a Saturday's finals must not wait behind a draining backfill.
+            FetchGameSummary::dispatch($game->id, force: true)->onQueue('live');
         }
 
         /*

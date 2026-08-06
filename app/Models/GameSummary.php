@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 #[Fillable([
     'game_id', 'drives', 'win_probability', 'leaders',
-    'attendance', 'is_final', 'synced_at',
+    'attendance', 'scoring_plays_hash', 'is_final', 'synced_at',
 ])]
 class GameSummary extends Model
 {
@@ -44,9 +44,11 @@ class GameSummary extends Model
      * Whether this summary needs refreshing from ESPN.
      *
      * A final game's summary can never change, so it is fetched exactly once
-     * and every later view is a pure database read. Anything else is refetched
-     * at most once a minute — the throttle lives in SyncGameSummary, and this
-     * is only the cheap short-circuit before it.
+     * and every later view is a pure database read. Anything else is due
+     * again sixty seconds after its last sync — the one window every
+     * dispatcher checks before queueing a fetch, and that FetchGameSummary
+     * re-checks before spending a request. Prefer SyncGameSummary::isStale(),
+     * which also catches a completed game whose final fetch was swallowed.
      */
     public function isStale(): bool
     {
