@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\FetchAthleteGameLog;
 use App\Models\Athlete;
 use App\Models\AthleteGameStat;
 use App\Models\Team;
@@ -13,32 +14,99 @@ use Livewire\Component;
  * ESPN has no prose bio for college athletes — `/athletes/{id}/bio` returns only
  * team history — so this leans on measurables, hometown, class, and production.
  *
- * The game log is the one genuinely per-athlete feed, so it is fetched lazily on
- * first view and cached. Concurrent viewers collapse into a single upstream
- * request; see SyncAthleteStats.
+ * The game log is the one genuinely per-athlete feed. Opening the page
+ * DISPATCHES a refresh when the log is due one and renders whatever we already
+ * hold; nobody waits on an upstream round trip to read a page. Freshness is a
+ * timestamp on the athlete, and the window is a day wider off gameday than on —
+ * see SyncAthleteStats.
  */
 new class extends Component
 {
+    /**
+     * How long to keep waiting on a dispatched job before giving the reader
+     * their controls back.
+     *
+     * A failed fetch deliberately leaves `game_log_fetched_at` alone, so
+     * "landed" can never arrive for it — without a ceiling the page would poll
+     * forever under a spinner and the refresh button would never appear.
+     */
+    private const WAIT_CEILING = 30;
+
     public Athlete $athlete;
 
-    public bool $logLoaded = false;
+    /**
+     * When we asked for a refresh, and the stamp the athlete carried when we
+     * did. The job changing that stamp is how the page knows it came back.
+     *
+     * Unix seconds, not Carbon: these ride through Livewire's snapshot, and a
+     * date object round-trips as `__PHP_Incomplete_Class`.
+     */
+    public ?int $queuedAt = null;
 
-    public function mount(Athlete $athlete): void
+    public ?int $stampAtQueue = null;
+
+    public function mount(Athlete $athlete, SyncAthleteStats $stats): void
     {
         $this->athlete = $athlete;
+
+        // Dispatch, never fetch. The job is unique on the athlete, so a player
+        // trending after a big game costs one request rather than one per
+        // viewer.
+        if ($stats->isStale($athlete)) {
+            $this->queue();
+        }
     }
 
     /**
-     * Deferred so the page paints immediately and the log fills in after —
-     * the fetch is an upstream round-trip and must not block first render.
+     * A refresh the reader asked for, on a log that is not due one.
+     *
+     * Forced past the staleness check — the whole point is that they want it
+     * now — but still behind the service's in-flight lock, which is what keeps
+     * a public button from becoming a way to hammer ESPN.
      */
-    public function loadGameLog(SyncAthleteStats $stats): void
+    public function refreshGameLog(): void
     {
-        $stats->refreshGameLog($this->athlete->id);
+        $this->queue(force: true);
+    }
 
-        $this->logLoaded = true;
+    private function queue(bool $force = false): void
+    {
+        $this->stampAtQueue = $this->athlete->game_log_fetched_at?->getTimestamp();
+        $this->queuedAt = now()->getTimestamp();
 
-        unset($this->gameLog);
+        FetchAthleteGameLog::dispatch($this->athlete->id, $force);
+    }
+
+    /**
+     * Whether a dispatched refresh is still outstanding.
+     *
+     * `$athlete` is re-resolved from the database on every request — Livewire
+     * stores a model as its key, not its attributes — so a poll sees the stamp
+     * the job wrote without asking for it explicitly.
+     */
+    #[Computed]
+    public function refreshing(): bool
+    {
+        if ($this->queuedAt === null) {
+            return false;
+        }
+
+        $stamp = $this->athlete->game_log_fetched_at?->getTimestamp();
+
+        // The job stamped a new time: it is back, whatever it found.
+        if ($stamp !== $this->stampAtQueue) {
+            return false;
+        }
+
+        // Or it stamped the SAME second the previous fetch carried, which the
+        // column cannot tell apart — `timestamp` has no sub-second precision,
+        // so a refresh landing inside a second of the last one would otherwise
+        // look like it never arrived.
+        if ($stamp !== null && $stamp >= $this->queuedAt) {
+            return false;
+        }
+
+        return now()->getTimestamp() - $this->queuedAt < self::WAIT_CEILING;
     }
 
     #[Computed]
@@ -153,15 +221,23 @@ new class extends Component
         @endforeach
     </div>
 
-    <div class="flex flex-col gap-2">
-        <div class="flex items-center justify-between">
+    {{-- The poll belongs HERE rather than on the empty state: a player who
+         already has rows shows the table while a refresh is outstanding, so a
+         poll scoped to the empty branch would never bring the button back for
+         them. It reads only our own database and stops as soon as the job
+         lands or the wait ceiling passes. --}}
+    <div class="flex flex-col gap-2" @if ($this->refreshing) wire:poll.2s @endif>
+        <div class="flex items-center justify-between gap-3">
             <flux:subheading>Game log</flux:subheading>
 
-            @if (! $logLoaded && $this->gameLog->isEmpty())
-                <flux:button wire:click="loadGameLog" size="xs" variant="ghost" wire:loading.attr="disabled">
-                    <span wire:loading.remove wire:target="loadGameLog">Load</span>
-                    <span wire:loading wire:target="loadGameLog">Loading…</span>
-                </flux:button>
+            {{-- Only once nothing is outstanding. Offering "Refresh" while the
+                 job dispatched on page load is still in flight invites a second
+                 request for the answer already on its way, and reads as though
+                 the first one failed. --}}
+            @if (! $this->refreshing)
+                <flux:button wire:click="refreshGameLog" size="xs" variant="ghost">Refresh</flux:button>
+            @else
+                <span class="text-micro text-zinc-400">Refreshing…</span>
             @endif
         </div>
 
@@ -191,14 +267,14 @@ new class extends Component
                     </tbody>
                 </table>
             </div>
-        @elseif ($logLoaded)
+        @elseif ($this->refreshing)
+            <flux:callout icon="chart-bar" variant="secondary">
+                <flux:callout.text>Fetching {{ $athlete->display_name }}'s game log…</flux:callout.text>
+            </flux:callout>
+        @else
             <flux:callout icon="chart-bar">
                 <flux:callout.heading>No game log</flux:callout.heading>
                 <flux:callout.text>{{ $athlete->display_name }} has no recorded stats yet.</flux:callout.text>
-            </flux:callout>
-        @else
-            <flux:callout icon="chart-bar" variant="secondary">
-                <flux:callout.text>Game logs load on demand.</flux:callout.text>
             </flux:callout>
         @endif
     </div>

@@ -18,6 +18,7 @@ use Laravel\Scout\Searchable;
     'id', 'slug', 'first_name', 'last_name', 'display_name', 'short_name',
     'headshot_url', 'height_in', 'display_height', 'weight_lb', 'display_weight',
     'birth_city', 'birth_state', 'birth_country', 'is_active',
+    'game_log_fetched_at',
 ])]
 class Athlete extends Model
 {
@@ -29,7 +30,10 @@ class Athlete extends Model
 
     protected function casts(): array
     {
-        return ['is_active' => 'boolean'];
+        return [
+            'is_active' => 'boolean',
+            'game_log_fetched_at' => 'datetime',
+        ];
     }
 
     /**
