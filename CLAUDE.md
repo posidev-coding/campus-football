@@ -1834,6 +1834,28 @@ after save, never on a first insert) are the pick'em subscription points — a
 contest recompute listens there rather than polling. They carry scalars, never
 the model.
 
+## Which store lives where, and the two queue tables Redis does not replace
+
+    cache + locks   redis      CACHE_STORE, connection `cache`, DB 1
+    queue           redis      QUEUE_CONNECTION, connection `default`, DB 0
+    batching        MYSQL      job_batches
+    failed jobs     MYSQL      failed_jobs
+    sessions        MYSQL      SESSION_DRIVER=database
+
+`cache`, `cache_locks` and `jobs` are gone from the migrations — Redis holds
+all three. **`job_batches` and `failed_jobs` are not**, and that is the part
+worth knowing: `queue.batching` and `queue.failed` are configured SEPARATELY
+from the queue connection and both default to the database, so a redis queue
+still writes them. `cfb:summaries` dispatches a real `Bus::batch`, so dropping
+`job_batches` breaks the backfill rather than merely losing bookkeeping.
+
+**`cache:clear` calls `flushdb()`** — it wipes the whole Redis database for
+the cache connection, ignoring key prefixes. Cache sits on connection `cache`
+(`REDIS_CACHE_DB`, database 1) and everything else on `default` (database 0),
+so clearing the cache is safe today. If sessions ever move to Redis on a
+managed instance that exposes only database 0, `cache:clear` becomes a
+site-wide logout — check `SESSION_CONNECTION` before making that move.
+
 It is also the **only source of historical players.** Rosters publish the
 current season only, so a 2021 player has no roster row to have come from; box
 scores name everyone who took a snap.

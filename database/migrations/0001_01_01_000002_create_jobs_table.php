@@ -7,20 +7,30 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration
 {
     /**
-     * Run the migrations.
+     * The queue tables Redis does NOT replace.
+     *
+     * `QUEUE_CONNECTION=redis`, so the `jobs` table is gone — Redis holds the
+     * pending work — and `CACHE_STORE=redis` removed `cache`/`cache_locks`
+     * with it (that migration no longer exists).
+     *
+     * These two stay, and the reason is easy to get wrong: batching and
+     * failed-job logging are configured SEPARATELY from the queue connection
+     * and both default to the database.
+     *
+     *   queue.batching  -> `job_batches`, and `cfb:summaries` dispatches a
+     *                      real Bus::batch, so dropping this breaks the
+     *                      backfill rather than just losing bookkeeping
+     *   queue.failed    -> `failed_jobs`, driver `database-uuids`. A redis
+     *                      queue that loses a job silently is not something
+     *                      to opt into; this is also what Laravel Cloud's
+     *                      failed-jobs view reads
+     *
+     * The filename still says "jobs" because renaming a migration that has
+     * already run makes Laravel treat it as a NEW one and re-run it against
+     * tables that already exist.
      */
     public function up(): void
     {
-        Schema::create('jobs', function (Blueprint $table) {
-            $table->id();
-            $table->string('queue')->index();
-            $table->longText('payload');
-            $table->unsignedSmallInteger('attempts');
-            $table->unsignedInteger('reserved_at')->nullable();
-            $table->unsignedInteger('available_at');
-            $table->unsignedInteger('created_at');
-        });
-
         Schema::create('job_batches', function (Blueprint $table) {
             $table->string('id')->primary();
             $table->string('name');
@@ -47,12 +57,8 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::dropIfExists('jobs');
         Schema::dropIfExists('job_batches');
         Schema::dropIfExists('failed_jobs');
     }
