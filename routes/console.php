@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\CfbCalendar;
 use App\Services\Espn\Sync\SyncNews;
 use Illuminate\Console\Scheduling\Schedule as ScheduleClass;
 use Illuminate\Support\Facades\Schedule;
@@ -162,10 +163,24 @@ Schedule::command('cfb:sync --only=injuries')
     ->when($inSeason)
     ->withoutOverlapping();
 
-Schedule::command('cfb:sync --only=recruiting')
-    ->weeklyOn(ScheduleClass::WEDNESDAY, '03:00')
-    ->timezone($tz)
-    ->withoutOverlapping();
+/*
+ * Recruiting. A whole class is SIX requests now — the collection serves 1,000
+ * a page and each item already carries its full document, so nothing is
+ * fetched per prospect. That is why this syncs two classes rather than one.
+ *
+ * The classes worth refreshing are the one that just signed and the one being
+ * recruited, which are `currentYear()` and the year after. It used to sync
+ * `config('cfb.season')`, a fixed value that drifts a year behind the class
+ * anybody is actually following.
+ */
+$recruitingClass = app(CfbCalendar::class)->currentYear();
+
+foreach ([$recruitingClass, $recruitingClass + 1] as $class) {
+    Schedule::command("cfb:sync --only=recruiting --year={$class}")
+        ->weeklyOn(ScheduleClass::WEDNESDAY, '03:00')
+        ->timezone($tz)
+        ->withoutOverlapping();
+}
 
 /*
  * News. The feed is a rolling window of roughly six days and clamps `limit` to

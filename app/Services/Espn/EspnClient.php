@@ -81,18 +81,47 @@ class EspnClient
     }
 
     /**
+     * The largest page ESPN actually honours.
+     *
+     * Verified live on the recruiting collection: `limit=1000` returns 1000,
+     * and `limit=2000` is SILENTLY IGNORED — you get the default 25 with no
+     * error and a pageCount to match. So an un-clamped caller asking for
+     * everything gets the first page instead, which is exactly how the
+     * recruiting table ended up holding 25 of 5,193 prospects.
+     */
+    public const MAX_PAGE_SIZE = 1000;
+
+    /**
      * Walk a paginated core-API collection, yielding each item's resolved body.
      *
      * Yields rather than returns: a full-season event list is ~918 items and a
      * roster sweep is tens of thousands, and holding all of that in memory to
      * return one array is how a sync job gets OOM-killed halfway through.
+     *
+     * `$inline` is the cost lever. Some collections return items that carry
+     * BOTH a `$ref` and the whole document — diffed on recruiting and the key
+     * sets are identical, nothing is missing — so following the ref buys
+     * nothing and costs one request per item. A full recruiting class went from
+     * ~5,200 requests to 6 on that alone.
+     *
+     * It is opt-in rather than sniffed from the payload: a collection of bare
+     * refs looks similar enough that guessing would eventually starve one of
+     * its documents, and that failure is silent.
      */
-    public function paginate(string $path, array $query = [], ?int $ttl = null): Generator
-    {
+    public function paginate(
+        string $path,
+        array $query = [],
+        ?int $ttl = null,
+        int $perPage = 100,
+        bool $inline = false,
+    ): Generator {
         $page = 1;
+        $perPage = min($perPage, self::MAX_PAGE_SIZE);
 
         do {
-            $body = $this->core($path, array_merge($query, ['limit' => 100, 'page' => $page]), $ttl);
+            // Merged LAST so these win: a caller passing its own `limit` would
+            // otherwise fight the pagination it is asking for.
+            $body = $this->core($path, array_merge($query, ['limit' => $perPage, 'page' => $page]), $ttl);
 
             if ($body === null || empty($body['items'])) {
                 return;
@@ -100,7 +129,7 @@ class EspnClient
 
             foreach ($body['items'] as $item) {
                 // A collection page is either a list of $refs or of inline objects.
-                yield isset($item['$ref']) ? $this->ref($item['$ref'], $ttl) : $item;
+                yield ! $inline && isset($item['$ref']) ? $this->ref($item['$ref'], $ttl) : $item;
             }
 
             $pageCount = (int) ($body['pageCount'] ?? 1);

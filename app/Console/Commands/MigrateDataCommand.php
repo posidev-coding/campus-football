@@ -56,7 +56,10 @@ class MigrateDataCommand extends Command
         ['step' => 'reconcile', 'command' => 'cfb:sync', 'per_season' => true, 'cost' => '0'],
         ['step' => 'leaders', 'command' => 'cfb:sync', 'per_season' => true, 'cost' => '2'],
         ['step' => 'athletes', 'command' => 'cfb:sync', 'per_season' => true, 'cost' => '~250'],
-        ['step' => 'recruiting', 'command' => 'cfb:sync', 'per_season' => true, 'cost' => '~10'],
+        // Six requests for a 5,000-prospect class: the collection serves 1,000
+        // a page and every item is already inline. It was ~5,200 when each
+        // prospect cost a $ref fetch, which is why this used to be capped.
+        ['step' => 'recruiting', 'command' => 'cfb:sync', 'per_season' => true, 'cost' => '6'],
         ['step' => 'rosters', 'command' => 'cfb:players', 'per_season' => true, 'cost' => '~136'],
         ['step' => 'stats', 'command' => 'cfb:players', 'per_season' => true, 'cost' => '~272'],
         // Deliberately last and opt-in. One request per game, 544 KB each — by
