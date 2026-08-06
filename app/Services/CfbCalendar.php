@@ -120,6 +120,34 @@ class CfbCalendar
     }
 
     /**
+     * Resolve a scheduled command's `--year` into an actual season.
+     *
+     * The schedule names a season RELATIVELY and this resolves it at run
+     * time, for two reasons. `routes/console.php` loads during every artisan
+     * command — including a deploy build against a database with no tables —
+     * so it must not query anything itself. And a literal year baked into the
+     * schedule is a year somebody has to remember to bump every August;
+     * `config('cfb.season')` is the same hazard wearing a config key, which
+     * is why it survives only as the last-resort default for a bare command.
+     *
+     *   current   the season we are in or heading into — membership,
+     *             rosters, schedules: things true of the season being played
+     *   results   the latest season that HAS completed games — standings,
+     *             leaders, season totals. In August these differ, and asking
+     *             for `current` there spends a whole pass writing nothing
+     *   next      recruiting's following class
+     */
+    public function resolveYear(?string $token): int
+    {
+        return match ($token) {
+            'current' => $this->currentYear(),
+            'results' => $this->resultsYear(),
+            'next' => $this->currentYear() + 1,
+            default => (int) ($token ?: config('cfb.season')),
+        };
+    }
+
+    /**
      * The week we are inside, if any.
      *
      * Null is a legitimate answer: bowl season and the gaps between weeks are

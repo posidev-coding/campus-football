@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Season;
 use App\Models\Week;
+use App\Services\CfbCalendar;
 use App\Services\Espn\EspnClient;
 use App\Services\Espn\Sync\SyncGames;
 use Carbon\CarbonImmutable;
@@ -20,7 +21,7 @@ class SyncGamesCommand extends Command
 {
     protected $signature = 'cfb:games
         {--tier=current : live|today|current|recent|week|season}
-        {--year= : Season year (defaults to CFB_SEASON)}
+        {--year= : Season year, or current|results resolved at run time (defaults to CFB_SEASON)}
         {--week= : Week number, with --tier=week}
         {--date= : A specific date (Y-m-d), with --tier=today}';
 
@@ -28,7 +29,7 @@ class SyncGamesCommand extends Command
 
     public function handle(SyncGames $games, EspnClient $espn): int
     {
-        $year = (int) ($this->option('year') ?: config('cfb.season'));
+        $year = app(CfbCalendar::class)->resolveYear($this->option('year'));
         $tier = $this->option('tier');
 
         $espn->resetCallCount();

@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Jobs\SyncTeamSeason;
 use App\Models\Team;
 use App\Models\TeamSeason;
+use App\Services\CfbCalendar;
 use App\Services\Espn\EspnClient;
 use App\Services\Espn\Sync\SyncRosters;
 use App\Services\Espn\Sync\SyncTeamStats;
@@ -31,7 +32,7 @@ use Illuminate\Support\Facades\Bus;
 class SyncPlayersCommand extends Command
 {
     protected $signature = 'cfb:players
-        {--year= : Season year (defaults to CFB_SEASON)}
+        {--year= : Season year, or current|results resolved at run time (defaults to CFB_SEASON)}
         {--only= : rosters|stats}
         {--team= : Limit to one team id}
         {--classification=FBS : FBS, FCS, or empty for everything}
@@ -41,7 +42,7 @@ class SyncPlayersCommand extends Command
 
     public function handle(EspnClient $espn, SyncRosters $rosters, SyncTeamStats $stats): int
     {
-        $year = (int) ($this->option('year') ?: config('cfb.season'));
+        $year = app(CfbCalendar::class)->resolveYear($this->option('year'));
         $only = $this->option('only');
 
         $teamIds = $this->teamIds($year);

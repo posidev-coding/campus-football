@@ -26,7 +26,7 @@ use Illuminate\Console\Command;
 class AggregateStatsCommand extends Command
 {
     protected $signature = 'cfb:aggregate
-        {--year= : Season year, or `current` resolved at run time (defaults to every season with games)}
+        {--year= : Season year, or current|results resolved at run time (defaults to every season with games)}
         {--type= : Season type, defaults to regular and postseason}';
 
     protected $description = 'Derive athlete season totals from stored box scores';
@@ -84,22 +84,17 @@ class AggregateStatsCommand extends Command
      * including a deploy build with no tables yet.
      *
      * `resultsYear()` rather than `currentYear()`: this reads box scores, and
+     * The schedule passes `results`, not `current`: this reads box scores, and
      * in August the season we are heading into has none. Aggregating it would
      * spend the whole pass writing nothing while the season that actually has
-     * numbers went stale.
+     * numbers went stale. In season the two tokens agree.
      *
      * @return list<int>
      */
     private function years(): array
     {
-        $option = $this->option('year');
-
-        if ($option === 'current') {
-            return [app(CfbCalendar::class)->resultsYear()];
-        }
-
-        if ($option) {
-            return [(int) $option];
+        if ($option = $this->option('year')) {
+            return [app(CfbCalendar::class)->resolveYear($option)];
         }
 
         return Season::query()

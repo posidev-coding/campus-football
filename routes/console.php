@@ -35,12 +35,34 @@ $tz = config('cfb.timezone');
  */
 $inSeason = fn () => in_array(now($tz)->month, [8, 9, 10, 11, 12, 1], true);
 
-// Tier 1 — in-progress games. One request, and the command returns without
-// calling ESPN at all when nothing is live.
+/*
+ * Its complement, for the entries that keep a REDUCED cadence out of season
+ * rather than stopping. Reference data still drifts in the spring —
+ * realignment is announced, portal players move, next season's schedule
+ * publishes — but hourly is a cadence for a Saturday, not for June.
+ *
+ * Every wake matters more than the request does: a scheduled task holds a
+ * scale-to-zero app cluster up for the whole sleep timeout, so an hourly
+ * job in the offseason is what stands between this app and months of
+ * genuine sleep.
+ */
+$offSeason = fn () => ! in_array(now($tz)->month, [8, 9, 10, 11, 12, 1], true);
+
+/*
+ * Tier 1 — in-progress games. One request, and the command returns without
+ * calling ESPN at all when nothing is live.
+ *
+ * The window runs to 3am, NOT to midnight. A West Coast night game kicks at
+ * 10:30pm Eastern and is still being played at 2am, so a window ending at
+ * 23:59 freezes the score of exactly the games people are still awake for —
+ * and leaves the final, the box score and every pick'em result waiting until
+ * the next morning's tier. Laravel rolls the end time forward a day when it
+ * is earlier than the start, so this reads as one continuous slate.
+ */
 Schedule::command('cfb:games --tier=live')
     ->everyMinute()
     ->timezone($tz)
-    ->between('11:00', '23:59')
+    ->between('11:00', '03:00')
     ->when($inSeason)
     ->withoutOverlapping();
 
@@ -53,7 +75,7 @@ Schedule::command('cfb:games --tier=live')
 Schedule::command('cfb:summaries:live')
     ->everyTwoMinutes()
     ->timezone($tz)
-    ->between('11:00', '23:59')
+    ->between('11:00', '03:00')
     ->when($inSeason)
     ->withoutOverlapping();
 
@@ -83,7 +105,7 @@ Schedule::command('cfb:games --tier=recent')
  * November is pure waste and a pointless write pass against a scale-to-zero
  * database. `cfb:sync --only=rankings` still exists for a backfill.
  */
-Schedule::command('cfb:sync --only=rankings-current')
+Schedule::command('cfb:sync --only=rankings-current --year=current')
     ->days([ScheduleClass::SUNDAY, ScheduleClass::TUESDAY])
     ->at('19:00')
     ->timezone($tz)
@@ -104,38 +126,68 @@ Schedule::command('cfb:sync --only=predictors')
 
 // Standings follow the games, so they run after the nightly game pass. The
 // reconciler runs last and flags any disagreement for the admin panel.
-Schedule::command('cfb:sync --only=standings')
+Schedule::command('cfb:sync --only=standings --year=results')
     ->dailyAt('04:30')
     ->timezone($tz)
+    ->when($inSeason)
     ->withoutOverlapping();
 
-Schedule::command('cfb:sync --only=compute')
+Schedule::command('cfb:sync --only=compute --year=results')
     ->dailyAt('04:40')
     ->timezone($tz)
+    ->when($inSeason)
     ->withoutOverlapping();
 
-Schedule::command('cfb:sync --only=reconcile')
+Schedule::command('cfb:sync --only=reconcile --year=results')
     ->dailyAt('04:45')
     ->timezone($tz)
+    ->when($inSeason)
     ->withoutOverlapping();
 
 // Reference data barely moves. Conference membership can still change mid-year
 // when ESPN corrects its tree, so this is weekly rather than annual — but never
 // on a game day.
-Schedule::command('cfb:sync --only=conferences')
+Schedule::command('cfb:sync --only=conferences --year=current')
     ->weeklyOn(ScheduleClass::TUESDAY, '03:00')
     ->timezone($tz)
+    ->when($inSeason)
     ->withoutOverlapping();
 
-Schedule::command('cfb:sync --only=teams')
+Schedule::command('cfb:sync --only=conferences --year=current')
+    ->monthlyOn(1, '03:00')
+    ->timezone($tz)
+    ->when($offSeason)
+    ->withoutOverlapping();
+
+/*
+ * Teams is the longest inline command in the schedule — 800 requests and
+ * ~165 seconds, measured. It holds the app cluster awake for all of it, so
+ * it runs at 03:20 on a Tuesday and monthly once the season ends.
+ */
+Schedule::command('cfb:sync --only=teams --year=current')
     ->weeklyOn(ScheduleClass::TUESDAY, '03:20')
     ->timezone($tz)
+    ->when($inSeason)
     ->withoutOverlapping();
 
-// A full-season reconcile, deliberately rare. Nine requests.
-Schedule::command('cfb:games --tier=season')
+Schedule::command('cfb:sync --only=teams --year=current')
+    ->monthlyOn(1, '03:20')
+    ->timezone($tz)
+    ->when($offSeason)
+    ->withoutOverlapping();
+
+// A full-season reconcile, deliberately rare. Nine requests. Next season's
+// schedule publishes in the spring, so this keeps a monthly beat out of season.
+Schedule::command('cfb:games --tier=season --year=current')
     ->weeklyOn(ScheduleClass::TUESDAY, '05:00')
     ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+Schedule::command('cfb:games --tier=season --year=current')
+    ->monthlyOn(1, '05:00')
+    ->timezone($tz)
+    ->when($offSeason)
     ->withoutOverlapping();
 
 /*
@@ -143,12 +195,21 @@ Schedule::command('cfb:games --tier=season')
  * weekly is ample; nothing here is ever on a live path. Recruiting is capped
  * (see SyncRecruiting) and matters most through the signing periods.
  */
-Schedule::command('cfb:players --only=rosters')
+Schedule::command('cfb:players --only=rosters --year=current')
     ->weeklyOn(ScheduleClass::TUESDAY, '06:00')
     ->timezone($tz)
+    ->when($inSeason)
     ->withoutOverlapping();
 
-Schedule::command('cfb:players --only=stats')
+// The portal and signing classes still move rosters in the spring, just not
+// weekly. This command only QUEUES a job per team, so it is cheap either way.
+Schedule::command('cfb:players --only=rosters --year=current')
+    ->monthlyOn(1, '06:00')
+    ->timezone($tz)
+    ->when($offSeason)
+    ->withoutOverlapping();
+
+Schedule::command('cfb:players --only=stats --year=results')
     ->weeklyOn(ScheduleClass::TUESDAY, '06:40')
     ->timezone($tz)
     ->when($inSeason)
@@ -168,7 +229,7 @@ Schedule::command('cfb:coaches --current')
     ->when($inSeason)
     ->withoutOverlapping();
 
-Schedule::command('cfb:sync --only=injuries')
+Schedule::command('cfb:sync --only=injuries --year=current')
     ->days([ScheduleClass::THURSDAY, ScheduleClass::FRIDAY])
     ->at('12:00')
     ->timezone($tz)
@@ -199,14 +260,29 @@ foreach (['current', 'next'] as $class) {
 }
 
 /*
- * News. The feed is a rolling window of roughly six days and clamps `limit` to
- * 50 whatever you ask for, so history is ACCUMULATED here rather than
- * backfilled — missing a run loses those articles permanently. Cheap enough
- * (one request) to run often.
+ * News. The general feed is a rolling window of roughly six days and clamps
+ * `limit` to 50 whatever you ask for, so history is ACCUMULATED here — a
+ * missed run in season loses those articles from the national feed.
+ *
+ * Hourly in season, four times a day out of it. The request costs nothing;
+ * the WAKE does. This was the only entry in the whole schedule running hourly
+ * year-round, which meant that in June — with every other job guarded — it
+ * alone woke a scale-to-zero app cluster 24 times a day to read a feed that
+ * barely moves. Six-day window, six-hourly checks: nothing ages out unseen.
+ *
+ * (A team's own feed reaches back years, so `SyncTeamNews` can rebuild depth
+ * later regardless; only the undifferentiated national feed is a true window.)
  */
 Schedule::command('cfb:sync --only=news')
     ->hourly()
     ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+Schedule::command('cfb:sync --only=news')
+    ->everySixHours()
+    ->timezone($tz)
+    ->when($offSeason)
     ->withoutOverlapping();
 
 /*
@@ -218,6 +294,14 @@ Schedule::call(fn () => app(SyncNews::class)->followed())
     ->twiceDaily(7, 19)
     ->timezone($tz)
     ->name('cfb:news:followed')
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+Schedule::call(fn () => app(SyncNews::class)->followed())
+    ->dailyAt('07:00')
+    ->timezone($tz)
+    ->name('cfb:news:followed:offseason')
+    ->when($offSeason)
     ->withoutOverlapping();
 
 /*
@@ -250,7 +334,7 @@ Schedule::command('cfb:summaries --missing --limit=150')
  * in the app. The athlete resolve pass that follows is capped, so a leaderboard
  * naming players we have never seen cannot turn this into a slow job.
  */
-Schedule::command('cfb:sync --only=leaders')
+Schedule::command('cfb:sync --only=leaders --year=results')
     ->dailyAt('05:30')
     ->timezone($tz)
     ->when($inSeason)
@@ -285,7 +369,7 @@ Schedule::command('cfb:sync --only=athletes')
  * cluster awake, and one that outruns the sleep timeout can be cut off
  * mid-pass. `cfb:aggregate` with no --year is still the backfill path.
  */
-Schedule::command('cfb:aggregate --year=current')
+Schedule::command('cfb:aggregate --year=results')
     ->dailyAt('05:15')
     ->timezone($tz)
     ->when($inSeason)

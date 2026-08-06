@@ -22,7 +22,7 @@ use Illuminate\Console\Command;
 class SyncSeasonCommand extends Command
 {
     protected $signature = 'cfb:sync
-        {--year= : Season year, or current|next resolved at run time (defaults to CFB_SEASON)}
+        {--year= : Season year, or current|results|next resolved at run time (defaults to CFB_SEASON)}
         {--only= : One step: seasons|conferences|teams|games|rankings|rankings-current|predictors|recruiting|injuries|standings|compute|reconcile|leaders|athletes|news}';
 
     protected $description = 'Sync a season of reference data from ESPN';
@@ -84,11 +84,7 @@ class SyncSeasonCommand extends Command
      */
     private function resolveYear(?string $option): int
     {
-        return match ($option) {
-            'current' => app(CfbCalendar::class)->currentYear(),
-            'next' => app(CfbCalendar::class)->currentYear() + 1,
-            default => (int) ($option ?: config('cfb.season')),
-        };
+        return app(CfbCalendar::class)->resolveYear($option);
     }
 
     private function runStep(string $step, int $year): void
