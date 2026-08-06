@@ -366,7 +366,12 @@ it('orders results year by year, not by season id', function () {
      * seasons gave them HIGHER ids and moved every default season in the app
      * backwards — the whole app quietly fell back a year.
      */
-    Game::factory()->create([
+    /*
+     * FINISHED games, or the whereExists finds nothing and the assertion
+     * exercises the config fallback instead of the ordering — which passed
+     * for as long as .env happened to agree with the fixture year.
+     */
+    Game::factory()->finished()->create([
         'season_id' => $this->regular->id,
         'week_id' => Week::where('season_id', $this->regular->id)->value('id'),
     ]);
@@ -382,7 +387,7 @@ it('orders results year by year, not by season id', function () {
         'start_date' => '2019-08-24 07:00', 'end_date' => '2019-09-02 06:59',
     ]);
 
-    Game::factory()->create(['season_id' => $old->id, 'week_id' => $oldWeek->id]);
+    Game::factory()->finished()->create(['season_id' => $old->id, 'week_id' => $oldWeek->id]);
 
     expect($this->calendar->resultsYear())->toBe(2025);
 });
