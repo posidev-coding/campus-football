@@ -6,10 +6,8 @@
     custom properties by the wrapper; neutral in dark via chart-pair). No
     charting library: two circles with stroke-dasharray IS the chart.
 
-    The arcs grow from zero on first paint — stroke-dasharray transitions in
-    every browser we serve — and prefers-reduced-motion renders them final
-    through motion-reduce. Percentages and abbreviations flank the ring, so
-    the numbers never depend on the colors.
+    Percentages and abbreviations flank the ring, so the numbers never depend
+    on the colors.
 --}}
 @php
     $away = (float) $predictor->away_projection;
@@ -19,30 +17,36 @@
     $stroke = 11;
 
     /*
-     * HOME sweeps first, clockwise from 12 o'clock, so it occupies the RIGHT
-     * half of the ring — under the home logo, which sits on the right. Away
-     * then carries on from where home ends, around the bottom and up the LEFT,
-     * finishing under its own logo.
+     * BOTH arcs begin at top dead centre and sweep away from each other —
+     * home clockwise down the right, away mirrored down the left — so each
+     * team's color sits under its own logo and the split is always at twelve
+     * o'clock regardless of the numbers.
      *
-     * Drawing away first put its color on the right and home's on the left:
-     * each side reading as the other team, on the one component whose entire
-     * job is saying who is favored.
+     * Two earlier shapes were wrong in instructive ways. Drawing away first,
+     * clockwise, put its color on the RIGHT under the home logo: each side
+     * reading as the other team, on the component whose entire job is saying
+     * who is favored. Starting the second arc where the first ended then fixed
+     * the colors but let the origin wander with the split — a 20/80 game began
+     * its ring a fifth of the way round.
+     *
+     * The mirror is `translate(120,0) scale(-1,1)`, which reflects about the
+     * vertical centre line: a clockwise-from-top arc becomes a
+     * counter-clockwise-from-top one, still centred on the same circle.
      */
-    $homeStart = -90;
-    $awayStart = -90 + 360 * ($home / 100);
+    $gap = 7;
 
     /*
-     * Round caps EXTEND a dash by half the stroke width at each end, so a
-     * shortening of S leaves a visible gap of S - stroke between segments.
-     * 18 buys roughly seven units of background either side of each junction —
-     * enough to read as deliberate white space rather than an anti-aliasing
-     * seam. There is no track circle behind them for the same reason: the gap
-     * should be the card, not a grey ring showing through.
+     * Round caps EXTEND a dash by half the stroke width at each end, so the
+     * offset that produces a visible gap of $gap between two neighbouring
+     * ends is half the gap PLUS half the stroke. Applied at both the start
+     * (the twelve o'clock split) and the end (where they meet at the bottom),
+     * which is why each arc loses twice it.
      */
-    $shorten = $stroke + 7;
+    $endInset = ($gap / 2) + ($stroke / 2);
+    $startAngle = -90 + ($endInset / $circumference) * 360;
 
-    $awayArc = max(0, $circumference * ($away / 100) - $shorten);
-    $homeArc = max(0, $circumference * ($home / 100) - $shorten);
+    $awayArc = max(0, $circumference * ($away / 100) - 2 * $endInset);
+    $homeArc = max(0, $circumference * ($home / 100) - 2 * $endInset);
 
     $margin = $predictor->home_pred_pt_diff !== null && $predictor->away_pred_pt_diff !== null
         ? ($predictor->home_pred_pt_diff >= $predictor->away_pred_pt_diff
@@ -54,7 +58,7 @@
 <div class="flex flex-col gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
     <h3 class="text-micro font-semibold tracking-wide text-zinc-400 uppercase">Matchup predictor</h3>
 
-    <div class="flex items-center justify-center gap-4" x-data="{ shown: false }" x-init="requestAnimationFrame(() => shown = true)">
+    <div class="flex items-center justify-center gap-4">
         <div class="flex flex-col items-center gap-1">
             <x-team-logo :team="$game->awayTeam" size="md" />
             <span class="text-micro font-medium text-zinc-500">{{ $game->awayTeam?->abbreviation ?? 'TBD' }}</span>
@@ -63,18 +67,28 @@
 
         <svg viewBox="0 0 120 120" class="size-32 shrink-0" role="img"
              aria-label="Win projection: {{ $game->awayTeam?->abbreviation }} {{ $away }}%, {{ $game->homeTeam?->abbreviation }} {{ $home }}%">
+            {{-- Home: clockwise from top, down the right.
+
+                 Drawn STATIC, deliberately. Two entrance animations were tried
+                 and both could render an empty ring: an Alpine flag flipped
+                 from requestAnimationFrame, and a CSS keyframe from a zero
+                 dasharray. Measured in a real browser, the animation reported
+                 playState "running" with currentTime frozen at 0 — so the arcs
+                 held their from-state indefinitely and the card showed nothing
+                 at all. A flourish whose stalled state hides the content is
+                 load-bearing, and this component's job is saying who is
+                 favored. --}}
             <circle cx="60" cy="60" r="45" fill="none" stroke-width="{{ $stroke }}" stroke-linecap="round"
-                    transform="rotate({{ $homeStart }} 60 60)"
-                    class="transition-[stroke-dasharray] duration-700 ease-out motion-reduce:transition-none"
+                    transform="rotate({{ $startAngle }} 60 60)"
                     style="stroke: var(--chart-home)"
-                    :stroke-dasharray="shown ? '{{ $homeArc }} {{ $circumference - $homeArc }}' : '0 {{ $circumference }}'"
-                    stroke-dasharray="0 {{ $circumference }}" />
+                    stroke-dasharray="{{ $homeArc }} {{ $circumference }}" />
+
+            {{-- Away: the same arc mirrored, so it leaves the same point going
+                 the other way and runs down the left. --}}
             <circle cx="60" cy="60" r="45" fill="none" stroke-width="{{ $stroke }}" stroke-linecap="round"
-                    transform="rotate({{ $awayStart }} 60 60)"
-                    class="transition-[stroke-dasharray] duration-700 ease-out motion-reduce:transition-none"
+                    transform="translate(120, 0) scale(-1, 1) rotate({{ $startAngle }} 60 60)"
                     style="stroke: var(--chart-away)"
-                    :stroke-dasharray="shown ? '{{ $awayArc }} {{ $circumference - $awayArc }}' : '0 {{ $circumference }}'"
-                    stroke-dasharray="0 {{ $circumference }}" />
+                    stroke-dasharray="{{ $awayArc }} {{ $circumference }}" />
         </svg>
 
         <div class="flex flex-col items-center gap-1">

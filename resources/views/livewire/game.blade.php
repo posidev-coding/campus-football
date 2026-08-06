@@ -1025,22 +1025,7 @@ new class extends Component
             key-prefix="gametab"
         />
 
-        <span class="hidden truncate text-micro text-zinc-500 sm:block">
-            {{ $game->week?->name }}@if ($game->season) · {{ $game->season->year }}@endif
-            @if ($game->venue)
-                · {{ $game->venue->name }}@if ($game->venue->city) · {{ $game->venue->city }}@if ($game->venue->state), {{ $game->venue->state }}@endif @endif
-            @endif
-        </span>
     </div>
-
-    {{-- Week, venue and broadcast get their own line at base, where the tab row
-         has no room. The week moved here when the nav row took the top. --}}
-    <p class="-mt-2 text-micro text-zinc-500 sm:hidden">
-        {{ $game->week?->name }}@if ($game->season) · {{ $game->season->year }}@endif
-        @if ($game->venue) · {{ $game->venue->name }}@if ($game->venue->city) · {{ $game->venue->city }}@if ($game->venue->state), {{ $game->venue->state }}@endif @endif @endif
-        @if ($game->broadcasts) · {{ implode(', ', $game->broadcasts) }}@endif
-        @if ($this->summary?->attendance ?? $game->attendance) · {{ number_format($this->summary?->attendance ?? $game->attendance) }} attended @endif
-    </p>
 
     @if ($tab === 'preview')
         @include('partials.game-preview')
@@ -1057,6 +1042,12 @@ new class extends Component
     @elseif ($tab === 'odds')
         @include('partials.game-odds')
     @endif
+
+    {{-- When, where and how to watch — once, at the foot of every tab. It
+         replaced a caption line under the tab strip, and sits here rather
+         than back up there so it is always available without pushing a box
+         score down the screen to reach it. --}}
+    <x-game-info :game="$game" :attendance="$this->summary?->attendance ?? $game->attendance" />
 
     @include('partials.game-league-sheet')
 </div>

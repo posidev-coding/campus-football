@@ -17,19 +17,29 @@
 
     <x-odds-strip :game="$game" class="text-sm" />
 
-    {{-- Recent runs, both sides. --}}
+    {{-- Each side's last five, side by side. Stacked at base and two-up from
+         `sm`: the additive rule — the wide layout adds a column, it is never
+         the only place the second team is reachable. --}}
     @if ($this->trends !== [])
-        <div class="flex flex-col gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
-            <h3 class="text-micro font-semibold tracking-wide text-zinc-400 uppercase">Trends</h3>
+        <div class="flex flex-col gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+            <h3 class="text-micro font-semibold tracking-wide text-zinc-400 uppercase">Last five games</h3>
 
-            @foreach ($this->sides as $side)
-                @continue($side['team'] === null)
+            <div class="grid gap-4 sm:grid-cols-2 sm:gap-6 sm:divide-x sm:divide-zinc-100 sm:dark:divide-zinc-800/60">
+                @foreach ($this->sides as $side)
+                    @continue($side['team'] === null)
 
-                <div class="flex items-center justify-between gap-2">
-                    <x-team-link :team="$side['team']" label="location" size="xs" class="min-w-0" />
-                    <x-trend-pills :games="$this->trends[$side['team']->id] ?? collect()" :team-id="$side['team']->id" />
-                </div>
-            @endforeach
+                    {{-- The grid's gap and divide-x do the separating; a
+                         conditional padding class here would be a Blade
+                         directive inside a component attribute, which does
+                         not compile. --}}
+                    <x-last-five
+                        :team="$side['team']"
+                        :games="$this->trends[$side['team']->id] ?? collect()"
+                        :class="$loop->first ? '' : 'sm:ps-6'"
+                        wire:key="l5card-{{ $side['team']->id }}"
+                    />
+                @endforeach
+            </div>
         </div>
     @endif
 

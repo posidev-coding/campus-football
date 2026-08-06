@@ -14,6 +14,7 @@ use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\User;
+use App\Models\Venue;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGameSummary;
 use App\Support\TeamPalette;
@@ -624,5 +625,73 @@ describe('the hand-asked refresh', function () {
 
         Livewire::test('game', ['game' => $upcoming])
             ->assertSet('canRefresh', false);
+    });
+});
+
+describe('the game information card', function () {
+    it('carries when, where and how to watch, without a redundant heading', function () {
+        $venue = Venue::create([
+            'id' => 3504, 'name' => 'Aviva Stadium', 'city' => 'Dublin',
+            'image_url' => 'https://a.espncdn.com/i/venues/college-football/day/3504.jpg',
+            'image_checked_at' => now(),
+        ]);
+
+        $this->game->update(['venue_id' => $venue->id, 'broadcasts' => ['ESPN']]);
+
+        Livewire::test('game', ['game' => $this->game->fresh()])
+            ->assertSee('Aviva Stadium')
+            ->assertSee('Dublin')
+            ->assertSee('Where to Watch')
+            ->assertSee('ESPN')
+            ->assertSee('day/3504.jpg')
+            // The card names itself by its contents; a "Game Information"
+            // heading would be the widest thing in it.
+            ->assertDontSee('Game Information');
+    });
+
+    it('renders without a venue photo, which two in five venues lack', function () {
+        $venue = Venue::create([
+            'id' => 9999, 'name' => 'Somewhere Field', 'city' => 'Nowhere', 'state' => 'KS',
+            'image_checked_at' => now(),
+        ]);
+
+        $this->game->update(['venue_id' => $venue->id]);
+
+        Livewire::test('game', ['game' => $this->game->fresh()])
+            ->assertOk()
+            ->assertSee('Somewhere Field')
+            ->assertSee('Nowhere, KS');
+    });
+});
+
+describe('last five', function () {
+    it('lists a team\'s recent games newest first, with the right side of each score', function () {
+        Queue::fake();
+
+        $upcoming = Game::factory()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'completed' => false, 'status' => 'pre', 'kickoff_at' => now()->addDays(3),
+        ]);
+
+        // Georgia wins away 28-10, then loses at home 14-21.
+        Game::factory()->finished(10, 28)->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 333, 'away_team_id' => 61,
+            'kickoff_at' => '2025-09-06 19:30:00',
+        ]);
+        Game::factory()->finished(14, 21)->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'kickoff_at' => '2025-09-13 19:30:00',
+        ]);
+
+        $html = Livewire::test('game', ['game' => $upcoming])->html();
+
+        // Newest first: the Sep 13 loss precedes the Sep 6 win in the table.
+        expect(strpos($html, '9/13/25'))->toBeLessThan(strpos($html, '9/6/25'))
+            // Georgia's own score leads each result, whichever side it played.
+            ->and($html)->toContain('14-21')
+            ->and($html)->toContain('28-10');
     });
 });

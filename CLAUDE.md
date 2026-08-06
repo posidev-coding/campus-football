@@ -775,6 +775,32 @@ Rules the screen keeps, each one paid for:
   omitting the block is a transient gap — nulling real data over it is the
   default-writing mistake. Possession ids obey the non-positive rule.
 
+### The donut: both arcs leave top dead centre, and nothing animates
+
+Home sweeps clockwise down the right, away is the same arc MIRRORED
+(`translate(120,0) scale(-1,1)`) so it leaves the same point going the other
+way and runs down the left. Each team's color therefore sits under its own
+logo, and the split is at twelve o'clock whatever the numbers say. Two
+earlier shapes were wrong: drawing away first put its color on the RIGHT
+under the home logo, and starting the second arc where the first ended fixed
+the colors but let the origin wander with the split.
+
+Round caps EXTEND a dash by half the stroke width at each end, so the offset
+that yields a visible gap of G between neighbouring ends is `G/2 + stroke/2`,
+applied at both the twelve o'clock split and the bottom meeting point. A
+plain `- $gap` produces no gap at all.
+
+**It is drawn STATIC, and that is the load-bearing part.** Two entrance
+animations were tried and both could render an EMPTY ring: an Alpine flag
+flipped from `requestAnimationFrame`, and a CSS keyframe animating from a
+zero dasharray. Measured in a real browser, `getAnimations()[0]` reported
+`playState: "running"` with `currentTime` frozen at 0 across seconds — so the
+arcs held their from-state indefinitely and the card showed nothing. This is
+the same no-frames condition documented for the automated tab, and the rule
+it teaches is general: **a flourish whose stalled state hides the content is
+not decoration.** Animate only where the un-animated state is the finished
+one.
+
 ### Chart marks: team colors in light, neutral in dark, resolved as a PAIR
 
 `TeamPalette::chartColors(away, home)` — the donut and comparison bars draw
@@ -2090,6 +2116,16 @@ in turn carries `team.$ref` with the TEAM ID IN THE URL, so a coach's moves
 between schools (Riley: Oklahoma 2017-2021, USC 2022-, verified live) parse
 out of refs without resolving them — a coach costs 2 + 2N requests, not 2 + 3N.
 
+- **Venue photos are probed, not fetched.** ESPN has them on its CDN but
+  hands them to no feed a pregame screen can reach — `gameInfo.venue.images`
+  lives in the summary payload, and an unplayed game has no summary. The URL
+  is not derivable either: measured across six venues, three answer only
+  under `day/interior`, one only under `day`, two under both, and one has
+  none. So `cfb:venues` HEADs both patterns once per venue and stores only a
+  200; `venues.image_checked_at` separates "asked, and there is nothing" from
+  "never asked", which is what stops the 93 photoless venues being re-probed
+  every run. 149 of 242 have one, so the game-information card must read
+  correctly without it.
 - **There is no coach headshot endpoint.** `players/full/{id}.png` resolves
   only where a coach's id matches their old player id (Smart yes, Riley no).
   One HEAD against the CDN — not the API, so not against the rate ceiling —
