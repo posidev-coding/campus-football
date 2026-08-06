@@ -5,12 +5,14 @@ use App\Models\Athlete;
 use App\Models\Conference;
 use App\Models\ConferenceSeason;
 use App\Models\NationalLeader;
+use App\Models\Recruit;
 use App\Models\Season;
 use App\Models\Standing;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\TeamSeasonStat;
 use App\Support\Scope;
+use App\Support\Search;
 use App\Support\Stats\LeaderQuery;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
@@ -65,7 +67,7 @@ describe('teams index', function () {
     });
 });
 
-describe('national leaders', function () {
+describe('national leaders (the Players half of Stats)', function () {
     beforeEach(function () {
         $this->passer = Athlete::create(['id' => 5219834, 'slug' => 'top-passer', 'display_name' => 'Top Passer']);
         $this->fcsPasser = Athlete::create(['id' => 999, 'slug' => 'fcs-passer', 'display_name' => 'FCS Passer']);
@@ -84,7 +86,9 @@ describe('national leaders', function () {
     });
 
     it('renders for guests', function () {
-        $this->get(route('leaders'))->assertOk();
+        // Player stats used to be their own /leaders route. It is the Players
+        // half of one Stats screen now.
+        $this->get(route('stats', ['view' => 'players']))->assertOk();
     });
 
     it('keeps the national feed as a cross-check, not as the screen', function () {
@@ -108,13 +112,18 @@ describe('national leaders', function () {
     it('renders without erroring when a season has no derived stats', function () {
         // 2026 is scheduled but unplayed, so there are no box scores to derive
         // from. An empty state, not a crash.
-        Livewire::test('leaders')->set('year', 2026)->assertOk()->assertSee('No statistics');
+        Livewire::test('stats')->set('view', 'players')->set('year', 2026)
+            ->assertOk()->assertSee('No statistics');
     });
 });
 
-describe('national team stats', function () {
-    it('renders for guests', function () {
+describe('national team stats (the Team half of Stats)', function () {
+    it('renders for guests, and Team is what opens', function () {
+        // Team leads: "how good is this team" is what a league stats screen is
+        // usually opened for, and the leftmost tab is the default.
         $this->get(route('stats'))->assertOk();
+
+        Livewire::test('stats')->assertSet('view', 'team');
     });
 
     it('ranks teams within the scope, not by ESPN national rank', function () {
@@ -217,6 +226,43 @@ describe('global search', function () {
             ->set('q', 'Georg')
             ->assertSee('Georgia Bulldogs')
             ->assertSee('George Player');
+    });
+
+    it('finds a prospect who has not enrolled, by first name or surname', function () {
+        Recruit::create([
+            'espn_id' => 1, 'recruiting_class' => 2027, 'display_name' => 'Jalen Brewster',
+            'first_name' => 'Jalen', 'last_name' => 'Brewster', 'national_rank' => 1, 'grade' => 93,
+        ]);
+
+        // Both halves are indexed, like athletes: a prefix matches from the
+        // start of a field, so surname-only would otherwise find nobody.
+        foreach (['Brewster', 'Jalen'] as $term) {
+            expect(Search::recruits($term))->toHaveCount(1);
+        }
+
+        // And a prefix really is a prefix.
+        expect(Search::recruits('rewster'))->toHaveCount(0);
+    });
+
+    it('keeps an enrolled recruit out of the recruits group', function () {
+        /*
+         * About half of an older class eventually reaches a roster we hold, and
+         * those people are already found under Players. Listing them twice
+         * would put one person in a result list under two headings whose rows
+         * point at different places.
+         *
+         * This is the rule that regresses quietly if `athlete_id IS NULL` is
+         * ever dropped from the scope.
+         */
+        $athlete = Athlete::create(['id' => 900, 'slug' => 'grown-up', 'display_name' => 'Grown Up']);
+
+        Recruit::create([
+            'espn_id' => 2, 'recruiting_class' => 2021, 'display_name' => 'Grown Up',
+            'first_name' => 'Grown', 'last_name' => 'Up', 'athlete_id' => $athlete->id,
+        ]);
+
+        expect(Search::recruits('Grown'))->toHaveCount(0)
+            ->and(Search::players('Grown'))->toHaveCount(1);
     });
 
     it('ignores a query too short to be useful', function () {

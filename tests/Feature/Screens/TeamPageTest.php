@@ -5,6 +5,8 @@ use App\Models\AthleteTeamSeason;
 use App\Models\Conference;
 use App\Models\Game;
 use App\Models\Position;
+use App\Models\Recruit;
+use App\Models\RecruitSchool;
 use App\Models\Season;
 use App\Models\Standing;
 use App\Models\Team;
@@ -12,6 +14,7 @@ use App\Models\TeamLeader;
 use App\Models\TeamSeason;
 use App\Models\TeamSeasonStat;
 use App\Models\Week;
+use App\Support\RecruitingClasses;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -81,9 +84,11 @@ it('shows season leaders with their stat line', function () {
         'display_value' => '251/355, 2691 YDS, 23 TD, 5 INT',
     ]);
 
+    // Stats opens on Team now, so the Players half has to be asked for.
     Livewire::test('team', ['team' => $this->team])
         ->set('year', 2025)
         ->set('tab', 'stats')
+        ->set('statsView', 'players')
         ->assertSee('Passing')
         ->assertSee('Gunner Stockton')
         ->assertSee('2691 YDS');
@@ -101,6 +106,7 @@ it('orders leaders by the published category order, not insertion order', functi
     Livewire::test('team', ['team' => $this->team])
         ->set('year', 2025)
         ->set('tab', 'stats')
+        ->set('statsView', 'players')
         ->assertSeeInOrder(['Passing', 'Tackles']);
 });
 
@@ -111,6 +117,62 @@ it('groups the roster by position group', function () {
         ->assertSee('Offense')
         ->assertSee('Gunner Stockton')
         ->assertSee('Tiger, GA');
+});
+
+describe('the roster squad tabs', function () {
+    beforeEach(function () {
+        Position::create(['id' => 30, 'name' => 'Linebacker', 'abbreviation' => 'LB']);
+        Position::create(['id' => 22, 'name' => 'Place Kicker', 'abbreviation' => 'PK']);
+
+        foreach ([[30, 'defense', 'Dax Backer'], [22, 'special_teams', 'Kip Kicker']] as [$pid, $group, $name]) {
+            $athlete = Athlete::create(['id' => $pid * 100, 'display_name' => $name]);
+
+            AthleteTeamSeason::create([
+                'athlete_id' => $athlete->id, 'team_id' => 61, 'season_year' => 2025,
+                'position_id' => $pid, 'position_group' => $group,
+            ]);
+        }
+    });
+
+    it('opens on the whole squad, not on offense', function () {
+        // A roster tab that opened filtered would hide two thirds of the team
+        // from someone who came to look at the team.
+        Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2025)->set('tab', 'roster')
+            ->assertSet('rosterGroup', '')
+            ->assertSee('Gunner Stockton')
+            ->assertSee('Dax Backer')
+            ->assertSee('Kip Kicker');
+    });
+
+    it('offers the squads in ESPN order and filters to one', function () {
+        Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2025)->set('tab', 'roster')
+            ->assertSeeInOrder(['>All<', '>Offense<', '>Defense<', '>Special Teams<'], escape: false)
+            ->set('rosterGroup', 'defense')
+            ->assertSee('Dax Backer')
+            ->assertDontSee('Gunner Stockton')
+            ->assertDontSee('Kip Kicker');
+    });
+
+    it('hides the strip on a roster with no position groups', function () {
+        /*
+         * 119 teams' most recent roster predates the current one and is derived
+         * from box scores, which carry a team and a jersey and NO position
+         * group. A one-tab strip is chrome, not a filter.
+         */
+        $bare = Team::factory()->create(['id' => 99, 'slug' => 'bare-college', 'display_name' => 'Bare College']);
+        $walkOn = Athlete::create(['id' => 9001, 'display_name' => 'Walk On']);
+
+        AthleteTeamSeason::create([
+            'athlete_id' => $walkOn->id, 'team_id' => 99, 'season_year' => 2025,
+        ]);
+
+        Livewire::test('team', ['team' => $bare])
+            ->set('year', 2025)->set('tab', 'roster')
+            ->assertSee('Walk On')
+            ->assertDontSee('aria-label="Squad"', escape: false);
+    });
 });
 
 it('says which season the roster belongs to when it is not the one selected', function () {
@@ -126,6 +188,7 @@ it('shows empty states rather than erroring for a season with no data', function
     Livewire::test('team', ['team' => $this->team])
         ->set('year', 2019)
         ->set('tab', 'stats')
+        ->set('statsView', 'players')
         ->assertOk()
         ->assertSee('No leaders yet');
 });
@@ -186,6 +249,7 @@ describe('the stats tab', function () {
         Livewire::test('team', ['team' => $this->team])
             ->set('year', 2025)
             ->set('tab', 'stats')
+            ->set('statsView', 'players')
             ->assertSeeInOrder(['Passing', 'Receiving', 'Defense']);
     });
 
@@ -200,31 +264,111 @@ describe('the stats tab', function () {
             ->assertSee('412');
     });
 
-    it('renders the scope toggle as underlined tabs, not a second pill group', function () {
+    it('renders the scope toggle as an underlined plate, not a second gutter', function () {
         /*
-         * The scope filter lives INSIDE the tab the strip above selected, so
-         * rendering both as segmented pills made a child look like a sibling.
-         * Exactly one pill group survives on the page — the tabs.
+         * The scope filter lives INSIDE the tab the gutter above selected, so
+         * rendering both in the gutter language made a child look like a
+         * sibling. Exactly one gutter track survives on the page — the
+         * level-1 tabs — and the Team/Players toggle is underlined.
          */
         $html = Livewire::test('team', ['team' => $this->team])
             ->set('year', 2025)
             ->set('tab', 'stats')
             ->html();
 
-        expect(substr_count($html, 'ui-radio-group'))->toBe(2)   // one open + one close tag
+        expect(substr_count($html, 'bg-zinc-800/5'))->toBe(1)
             ->and($html)->toContain('Players')
             ->toContain('border-zinc-900 text-zinc-900 dark:border-zinc-100');
     });
 
-    it('keeps leaders and team stats out of each other\'s view', function () {
-        $leaders = Livewire::test('team', ['team' => $this->team])
+    it('opens the Stats tab on Team, with Players a tap away', function () {
+        /*
+         * Team leads — "how good is this team" before "who on it is good" —
+         * matching the League Stats screen, where the leftmost tab is also the
+         * default. The two halves must not bleed into each other: 412 is a
+         * team stat and 2691 an individual one, so each view shows exactly one.
+         */
+        $stats = Livewire::test('team', ['team' => $this->team])
             ->set('year', 2025)->set('tab', 'stats');
 
-        $leaders->assertSee('2691')->assertDontSee('412');
-
-        $leaders->set('statsView', 'team')
+        $stats->assertSet('statsView', 'team')
             ->assertSee('412')
             ->assertDontSee('2691');
+
+        $stats->set('statsView', 'players')
+            ->assertSee('2691')
+            ->assertDontSee('412');
+    });
+
+    it('puts Team left of Players', function () {
+        // Order is the array's, and it has to match the League screen's or the
+        // same control reads two ways in one app.
+        Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2025)
+            ->set('tab', 'stats')
+            ->assertSeeInOrder(['>Team<', '>Players<'], escape: false);
+    });
+});
+
+describe('the recruiting tab', function () {
+    beforeEach(function () {
+        $this->rival = Team::factory()->create([
+            'id' => 77, 'slug' => 'rival-college', 'location' => 'Rival', 'display_name' => 'Rival College',
+        ]);
+
+        // Georgia's class.
+        $this->signee = Recruit::create([
+            'espn_id' => 1, 'recruiting_class' => 2025, 'display_name' => 'Blue Chip',
+            'grade' => 92, 'national_rank' => 5, 'committed_team_id' => 61,
+            'high_school' => 'Some High School',
+        ]);
+
+        // One who went elsewhere but Georgia was in on.
+        $this->missed = Recruit::create([
+            'espn_id' => 2, 'recruiting_class' => 2025, 'display_name' => 'The One That Got Away',
+            'grade' => 95, 'national_rank' => 1, 'committed_team_id' => 77,
+        ]);
+
+        RecruitSchool::create(['recruit_id' => $this->missed->id, 'espn_team_id' => 61, 'team_id' => 61, 'status' => 'Undecided']);
+    });
+
+    it('lists this team\'s class, not another team\'s', function () {
+        Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2025)->set('tab', 'recruiting')
+            ->assertSee('Blue Chip')
+            ->assertSee('Some High School');
+    });
+
+    it('shows the class rank, and it agrees with the League screen', function () {
+        /*
+         * Both read App\Support\RecruitingClasses, so a team cannot be 9th on
+         * one screen and 12th on the other.
+         */
+        $summary = Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2025)->set('tab', 'recruiting')
+            ->get('classSummary');
+
+        $league = collect(RecruitingClasses::forClass(2025))
+            ->search(fn (array $row) => $row['team']['id'] === 61);
+
+        expect($summary['rank'])->toBe($league + 1)
+            ->and($summary['signees'])->toBe(1);
+    });
+
+    it('shows who the team recruited and lost', function () {
+        // Only possible because the sync stores the whole interest list rather
+        // than the commitment alone.
+        Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2025)->set('tab', 'recruiting')
+            ->assertSee('Also recruited')
+            ->assertSee('The One That Got Away');
+    });
+
+    it('follows the page\'s season rather than carrying its own control', function () {
+        Livewire::test('team', ['team' => $this->team])
+            ->set('year', 2024)->set('tab', 'recruiting')
+            ->assertSee('No commitments')
+            ->assertDontSee('Blue Chip');
     });
 });
 
@@ -387,8 +531,10 @@ describe('the season it opens on', function () {
             'kickoff_at' => '2026-08-29 19:00:00', 'completed' => false,
         ]);
 
+        // The year menu keys each option, so the year being OFFERED (not just
+        // mentioned somewhere) is what this matches.
         Livewire::test('team', ['team' => $this->team])
-            ->assertSee('value="2026"', escape: false);
+            ->assertSee('wire:key="season-2026"', escape: false);
     });
 
     it('shows last season\'s stats, labelled, before the new one kicks off', function () {

@@ -6,6 +6,7 @@ use App\Models\Athlete;
 use App\Models\Coach;
 use App\Models\Conference;
 use App\Models\Game;
+use App\Models\Recruit;
 use App\Models\Team;
 use Illuminate\Support\Collection;
 
@@ -38,8 +39,12 @@ class Search
     /**
      * `%` and `_` are LIKE wildcards; typed literally they should match
      * literally, not blow the query open.
+     *
+     * Public because the Players index builds its own LIKE rather than going
+     * through Scout — it filters a season's roster, not the athletes table —
+     * and two escaping rules for the same input is how one of them goes wrong.
      */
-    private static function term(string $query): string
+    public static function term(string $query): string
     {
         return addcslashes(trim($query), '%_\\');
     }
@@ -168,6 +173,43 @@ class Search
                     else 2
                 end")
                 ->orderByRaw('abs(timestampdiff(second, now(), kickoff_at))'))
+            ->take($limit)
+            ->get();
+    }
+
+    /**
+     * Prospects who have NOT enrolled yet.
+     *
+     * Scoped to `athlete_id IS NULL`, and that is the load-bearing part. About
+     * half of an older class eventually appears on a roster we hold, and those
+     * people are already found by players() — surfacing them here too would put
+     * one person in a result list twice under two headings, with the two rows
+     * pointing at different places. Recruiting covers the ones a player search
+     * cannot reach.
+     *
+     * Newest class first, then national rank: an unranked 2028 sophomore with a
+     * matching surname is less interesting than a ranked 2027 signee. Unranked
+     * prospects sort last rather than first, which `order by rank` alone would
+     * do with nulls.
+     *
+     * @return Collection<int, Recruit>
+     */
+    public static function recruits(string $query, int $limit = 4): Collection
+    {
+        if (self::tooShort($query)) {
+            return collect();
+        }
+
+        return Recruit::search(self::term($query))
+            ->query(fn ($q) => $q
+                ->whereNull('athlete_id')
+                ->with([
+                    'committedTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
+                    'position:id,abbreviation',
+                ])
+                ->orderByDesc('recruiting_class')
+                ->orderByRaw('national_rank is null, national_rank')
+                ->orderBy('display_name'))
             ->take($limit)
             ->get();
     }

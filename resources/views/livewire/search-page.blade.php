@@ -52,6 +52,13 @@ new class extends Component
     {
         return Search::games($this->q, limit: 8);
     }
+
+    /** Unenrolled prospects only — anyone who made a roster is under Players. */
+    #[Computed]
+    public function recruits()
+    {
+        return Search::recruits($this->q, limit: 6);
+    }
 }; ?>
 
 <div class="flex flex-col gap-4">
@@ -74,5 +81,6 @@ new class extends Component
         'coaches' => $this->coaches,
         'conferences' => $this->conferences,
         'games' => $this->games,
+        'recruits' => $this->recruits,
     ])
 </div>

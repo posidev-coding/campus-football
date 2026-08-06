@@ -2,8 +2,9 @@
     Search results, shared by the Home search panel and the /search page — one
     set of rows, so a deep-linked search and an in-place one can never drift.
 
-    Expects $q plus collections $teams, $players, $coaches, $conferences and
-    $games. Callers pass their own limits; this only renders what it is given.
+    Expects $q plus collections $teams, $players, $coaches, $conferences,
+    $games and $recruits. Callers pass their own limits; this only renders what
+    it is given.
 
     The rows are rich and the groups are ordered by who gets asked for most,
     but the CONTENT stays factual — search serves Scores and League, so only
@@ -12,7 +13,7 @@
 
 @php
     $hasResults = $teams->isNotEmpty() || $players->isNotEmpty() || $coaches->isNotEmpty()
-        || $conferences->isNotEmpty() || $games->isNotEmpty();
+        || $conferences->isNotEmpty() || $games->isNotEmpty() || $recruits->isNotEmpty();
 @endphp
 
 <div class="flex flex-col gap-4">
@@ -20,7 +21,7 @@
         <flux:callout icon="magnifying-glass">
             <flux:callout.heading>Search Campus Football</flux:callout.heading>
             <flux:callout.text>
-                Teams, players, coaches, conferences and games. Type at least two characters.
+                Teams, players, recruits, coaches, conferences and games. Type at least two characters.
             </flux:callout.text>
         </flux:callout>
     @elseif (! $hasResults)
@@ -48,6 +49,19 @@
 
             @foreach ($players as $athlete)
                 <x-search.player-row :athlete="$athlete" wire:key="sr-player-{{ $athlete->id }}" />
+            @endforeach
+        </div>
+    @endif
+
+    {{-- Straight after Players, because it is the same question asked of people
+         who have not enrolled yet. The group only ever holds prospects a player
+         search cannot reach — see Search::recruits(). --}}
+    @if ($recruits->isNotEmpty())
+        <div class="flex flex-col gap-1">
+            <flux:subheading>Recruits</flux:subheading>
+
+            @foreach ($recruits as $recruit)
+                <x-search.recruit-row :recruit="$recruit" wire:key="sr-recruit-{{ $recruit->id }}" />
             @endforeach
         </div>
     @endif

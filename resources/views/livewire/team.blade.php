@@ -4,12 +4,15 @@ use App\Jobs\SyncTeamNews;
 use App\Models\Article;
 use App\Models\AthleteTeamSeason;
 use App\Models\Game;
+use App\Models\Recruit;
+use App\Models\RecruitSchool;
 use App\Models\Season;
 use App\Models\Standing;
 use App\Models\Team;
 use App\Models\TeamLeader;
 use App\Models\TeamSeasonStat;
 use App\Services\CfbCalendar;
+use App\Support\RecruitingClasses;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -32,9 +35,21 @@ new class extends Component
     #[Url]
     public string $tab = 'schedule';
 
-    /** Within Stats: 'leaders' (individual) or 'team'. */
+    /**
+     * Within Stats: 'team' (how good is this team) or 'players' (who on it is
+     * good). Team leads, matching the League Stats screen's own sub-toggle.
+     */
     #[Url]
-    public string $statsView = 'leaders';
+    public string $statsView = 'team';
+
+    /**
+     * Within Roster: a `position_group`, or '' for the whole squad.
+     *
+     * Defaults to all — a roster tab that opened on offense would hide two
+     * thirds of the team from someone who came to look at the team.
+     */
+    #[Url]
+    public string $rosterGroup = '';
 
     /**
      * Opens on the season we are IN or heading into, not the last one played.
@@ -282,12 +297,43 @@ new class extends Component
     #[Computed]
     public function roster()
     {
-        return AthleteTeamSeason::with(['athlete:id,display_name,headshot_url,display_height,display_weight,birth_city,birth_state,slug', 'position:id,abbreviation,name'])
+        $roster = AthleteTeamSeason::with(['athlete:id,display_name,headshot_url,display_height,display_weight,birth_city,birth_state,slug', 'position:id,abbreviation,name'])
             ->where('team_id', $this->team->id)
             ->where('season_year', $this->rosterYear)
             ->get()
             ->sortBy(fn (AthleteTeamSeason $r) => [$r->position?->abbreviation ?? 'ZZ', $r->athlete?->display_name])
             ->groupBy('position_group');
+
+        return $this->rosterGroup === ''
+            ? $roster
+            : $roster->filter(fn ($players, $group) => $group === $this->rosterGroup);
+    }
+
+    /**
+     * The squads this roster actually has, in ESPN's own order.
+     *
+     * Empty for a roster with fewer than two — 119 teams' newest roster is
+     * older than the current one and therefore derived from box scores, which
+     * carry a team and a jersey and NO position group. A one-tab strip is
+     * chrome, not a filter.
+     *
+     * @return list<string>
+     */
+    #[Computed]
+    public function rosterGroups(): array
+    {
+        $order = ['offense' => 0, 'defense' => 1, 'special_teams' => 2];
+
+        $groups = AthleteTeamSeason::where('team_id', $this->team->id)
+            ->where('season_year', $this->rosterYear)
+            ->whereNotNull('position_group')
+            ->distinct()
+            ->pluck('position_group')
+            ->sortBy(fn (string $g) => $order[$g] ?? 9)
+            ->values()
+            ->all();
+
+        return count($groups) > 1 ? $groups : [];
     }
 
     /**
@@ -312,6 +358,67 @@ new class extends Component
         }
 
         return (int) (AthleteTeamSeason::where('team_id', $this->team->id)->max('season_year') ?? $this->year);
+    }
+
+    /**
+     * This team's signees for the class, best first.
+     *
+     * The class IS the page's `$year` — a recruiting class is keyed on a year
+     * and the page already has a season select, so a second control would ask
+     * the reader the same question twice.
+     */
+    #[Computed]
+    public function commits()
+    {
+        return Recruit::query()
+            ->with('position:id,abbreviation')
+            ->where('committed_team_id', $this->team->id)
+            ->where('recruiting_class', $this->year)
+            ->orderByRaw('national_rank is null, national_rank')
+            ->orderByDesc('grade')
+            ->orderBy('display_name')
+            ->get();
+    }
+
+    /**
+     * Signees, average grade and the team's national rank IN this class.
+     *
+     * Read from the same ranked list the League screen renders, so the two can
+     * never report a different rank for the same team.
+     *
+     * @return array{rank:int, signees:int, average:float|null, best:int|null}|null
+     */
+    #[Computed]
+    public function classSummary(): ?array
+    {
+        return RecruitingClasses::forTeam($this->team->id, $this->year);
+    }
+
+    /**
+     * Prospects this school was in on who signed somewhere else.
+     *
+     * The interesting half of a recruiting tab, and only possible because the
+     * sync now stores the whole `schools[]` interest list rather than the
+     * commitment alone — no other screen can show it.
+     */
+    #[Computed]
+    public function missedOut()
+    {
+        return RecruitSchool::query()
+            ->with([
+                'recruit:id,display_name,recruiting_class,national_rank,grade,position_id,committed_team_id,high_school',
+                'recruit.committedTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
+                'recruit.position:id,abbreviation',
+            ])
+            ->where('team_id', $this->team->id)
+            ->whereHas('recruit', fn ($q) => $q
+                ->where('recruiting_class', $this->year)
+                ->whereNotNull('committed_team_id')
+                ->where('committed_team_id', '!=', $this->team->id))
+            ->get()
+            ->sortBy(fn (RecruitSchool $s) => $s->recruit?->national_rank ?? PHP_INT_MAX)
+            ->take(12)
+            ->values();
     }
 
     public function groupLabel(string $group): string
@@ -385,28 +492,34 @@ new class extends Component
         <livewire:follow-button :team="$team" :key="'follow-'.$team->id" class="shrink-0 self-start" />
     </div>
 
-    {{-- Tabs left, season right, on one row. The tab strip scrolls inside its
-         own track — four tabs plus the select will not fit at 390px, and a
-         segmented control that overflows silently clips the last one — while
-         the select stays put as a fixed-width sibling. `min-w-0` is what lets
-         the track actually shrink instead of pushing the select off-screen. --}}
-    <div class="flex items-center justify-between gap-3">
-        <div class="-ml-4 min-w-0 overflow-x-auto pl-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <flux:radio.group wire:model.live="tab" variant="segmented" size="sm" class="w-max">
-                <flux:radio value="schedule" label="Schedule" />
-                <flux:radio value="roster" label="Roster" />
-                <flux:radio value="stats" label="Stats" />
-                <flux:radio value="news" label="News" />
-            </flux:radio.group>
-        </div>
+    {{--
+        Five tabs are past the plate's two-or-three, so this is the gutter's
+        shrink variant. Nothing scrolls sideways except the week scroller:
+        at 390px the five tabs take the full row — measured from the font
+        itself, 350px in a 358px column, which is also why this tab says
+        "Recruits" (the full word tipped it to 362px) — and the year menu
+        wraps below, right-aligned. From `sm` they share one row.
+    --}}
+    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 sm:flex-nowrap sm:justify-between">
+        <x-gutter-tabs
+            :items="[
+                'schedule' => 'Schedule',
+                'roster' => 'Roster',
+                'stats' => 'Stats',
+                'recruiting' => 'Recruits',
+                'news' => 'News',
+            ]"
+            :selected="$tab"
+            model="tab"
+            label="Team page section"
+            key-prefix="tab"
+        />
 
-        {{-- No label: four-digit years in a narrow select are self-evident,
-             and the label was the widest thing on the row. --}}
-        <flux:select wire:model.live="year" size="sm" class="w-24 shrink-0" aria-label="Season">
-            @foreach (range($this->latestYear, $this->latestYear - 4) as $y)
-                <flux:select.option :value="$y">{{ $y }}</flux:select.option>
-            @endforeach
-        </flux:select>
+        <x-season-menu
+            :years="range($this->latestYear, $this->latestYear - 4)"
+            :selected="$year"
+            class="ml-auto shrink-0"
+        />
     </div>
 
     @if ($tab === 'schedule')
@@ -431,6 +544,35 @@ new class extends Component
                     ESPN publishes only the current roster, so this shows {{ $this->rosterYear }}.
                 </flux:callout.text>
             </flux:callout>
+        @endif
+
+        {{--
+            Squad filter as a centered shrink gutter — four items measure
+            315px at 390, so they fit as content-sized tabs where the block
+            variant's equal cells (88px each) could not hold "Special Teams".
+
+            Absent on a roster that has fewer than two squads — 119 teams'
+            most recent roster predates the current one and is derived from
+            box scores, which carry no position group at all.
+        --}}
+        @if ($this->rosterGroups !== [])
+            @php
+                $squadItems = collect(array_merge([''], $this->rosterGroups))
+                    ->map(fn ($group) => [
+                        'value' => $group,
+                        'label' => $group === '' ? 'All' : $this->groupLabel($group),
+                    ])
+                    ->all();
+            @endphp
+
+            <x-gutter-tabs
+                :items="$squadItems"
+                :selected="$rosterGroup"
+                model="rosterGroup"
+                label="Squad"
+                key-prefix="squad"
+                class="mx-auto"
+            />
         @endif
 
         @forelse ($this->roster as $group => $players)
@@ -480,32 +622,23 @@ new class extends Component
                  good is this team?" — so they get a toggle rather than one
                  long scroll that answers both badly.
 
-                 Underlined tabs, NOT another segmented pill group: this is a
-                 scope filter INSIDE the tab the strip above already selected,
-                 and rendering both the same way made a child look like a
-                 sibling. Full width at 390px, natural width from `sm`. The
-                 rule runs edge to edge on a phone by cancelling the layout
-                 container's padding, the same trick the scoreboard chrome
-                 uses. --}}
-            <div class="-mx-4 flex border-b border-zinc-200 px-4 sm:mx-0 sm:px-0 dark:border-zinc-800">
-                {{-- "Players", not "Leaders": the scope is who is on the team,
-                     and the leaders are simply how that scope is presented. --}}
-                @foreach (['leaders' => 'Players', 'team' => 'Team'] as $value => $label)
-                    <button
-                        type="button"
-                        wire:click="$set('statsView', '{{ $value }}')"
-                        wire:key="statsview-{{ $value }}"
-                        @if ($statsView === $value) aria-current="page" @endif
-                        @class([
-                            'flex-1 border-b-2 px-2 pb-2.5 text-sm font-medium transition-colors sm:flex-none sm:px-4',
-                            'border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100' => $statsView === $value,
-                            'border-transparent text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100' => $statsView !== $value,
-                        ])
-                    >{{ $label }}</button>
-                @endforeach
-            </div>
+                 Sub-tabs, NOT another segmented pill group: this is a scope
+                 filter INSIDE the tab the strip above already selected, and
+                 rendering both the same way made a child look like a sibling.
+                 The BLEED variant — full width at 390px, edge to edge — is
+                 allowed here because the hero and tab strip separate it from
+                 x-section-nav's identical underlines; the League Stats screen
+                 must not bleed for exactly that reason. Value 'players'
+                 matches /stats, so one control means one thing app-wide. --}}
+            <x-plate
+                :tabs="['team' => 'Team', 'players' => 'Players']"
+                :selected="$statsView"
+                model="statsView"
+                key-prefix="teamstats"
+                bleed
+            />
 
-            @if ($statsView === 'leaders')
+            @if ($statsView === 'players')
                 @if ($this->leaders->isEmpty())
                     <flux:callout icon="chart-bar">
                         <flux:callout.heading>No leaders yet</flux:callout.heading>
@@ -596,6 +729,96 @@ new class extends Component
                         <flux:callout.text>Nothing published for {{ $year }}.</flux:callout.text>
                     </flux:callout>
                 @endforelse
+            @endif
+        </div>
+    @endif
+
+    @if ($tab === 'recruiting')
+        <div class="flex flex-col gap-4">
+            @if ($this->classSummary)
+                {{-- One line of context before the names: where this class
+                     ranks, how big it is, how good. The rank comes from the
+                     same ranked list the League screen renders. --}}
+                <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+                    <span class="text-base font-semibold">
+                        {{ Illuminate\Support\Number::ordinal($this->classSummary['rank']) }}
+                        <span class="text-sm font-normal text-zinc-500">in the {{ $year }} class</span>
+                    </span>
+
+                    <span class="tabular text-stat text-zinc-500">
+                        {{ $this->classSummary['signees'] }} signees
+                        @if ($this->classSummary['average'])
+                            &middot; {{ $this->classSummary['average'] }} avg grade
+                        @endif
+                        @if ($this->classSummary['best'])
+                            &middot; best #{{ $this->classSummary['best'] }}
+                        @endif
+                    </span>
+                </div>
+            @endif
+
+            @forelse ($this->commits as $recruit)
+                {{-- `min-w-0`: a flex item's automatic minimum size is its
+                     min-content width, so the row would grow to fit the longest
+                     high school rather than letting the inner column clip. --}}
+                <div class="-mt-2 flex min-w-0 items-center gap-3 rounded-lg border border-zinc-200 p-2.5 dark:border-zinc-800"
+                     wire:key="commit-{{ $recruit->id }}">
+                    <span class="tabular w-8 shrink-0 text-right text-stat font-semibold text-zinc-400">
+                        {{ $recruit->national_rank ?? '—' }}
+                    </span>
+
+                    <div class="flex min-w-0 flex-1 flex-col">
+                        <span class="truncate text-sm font-medium">{{ $recruit->display_name }}</span>
+                        <span class="truncate text-micro text-zinc-500">
+                            {{ collect([$recruit->position?->abbreviation, $recruit->high_school])->filter()->implode(' · ') }}
+                        </span>
+
+                        {{-- Its own line — the hometown is the first thing
+                             truncation eats and it takes the school with it. --}}
+                        @if ($recruit->hometown())
+                            <span class="truncate text-micro text-zinc-400">{{ $recruit->hometown() }}</span>
+                        @endif
+                    </div>
+
+                    <span class="tabular w-8 shrink-0 text-right text-sm font-semibold">{{ $recruit->grade ?? '—' }}</span>
+                </div>
+            @empty
+                <flux:callout icon="academic-cap">
+                    <flux:callout.heading>No commitments</flux:callout.heading>
+                    <flux:callout.text>
+                        Nothing recorded for {{ $team->placeName() }}'s {{ $year }} class.
+                    </flux:callout.text>
+                </flux:callout>
+            @endforelse
+
+            @if ($this->missedOut->isNotEmpty())
+                <div class="flex flex-col gap-2">
+                    {{-- Only possible because the sync stores the whole
+                         interest list rather than the commitment alone. --}}
+                    <flux:subheading>Also recruited</flux:subheading>
+
+                    <div class="flex flex-col divide-y divide-zinc-100 rounded-lg border border-zinc-200 dark:divide-zinc-800/60 dark:border-zinc-800">
+                        @foreach ($this->missedOut as $school)
+                            <div class="flex min-w-0 items-center gap-3 p-2.5" wire:key="miss-{{ $school->id }}">
+                                <span class="tabular w-8 shrink-0 text-right text-stat text-zinc-400">
+                                    {{ $school->recruit?->national_rank ?? '—' }}
+                                </span>
+
+                                <div class="flex min-w-0 flex-1 flex-col">
+                                    <span class="truncate text-sm">{{ $school->recruit?->display_name }}</span>
+                                    <span class="truncate text-micro text-zinc-500">
+                                        {{ collect([$school->recruit?->position?->abbreviation, $school->recruit?->high_school])->filter()->implode(' · ') }}
+                                    </span>
+                                </div>
+
+                                <span class="shrink-0 text-micro text-zinc-400">signed with</span>
+
+                                <x-team-link :team="$school->recruit?->committedTeam" label="abbr" size="xs"
+                                             class="shrink-0 text-zinc-500" />
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
             @endif
         </div>
     @endif
