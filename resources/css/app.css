@@ -165,6 +165,19 @@
     }
 }
 
+/* Two-team chart marks — the matchup donut, the comparison bars. Light mode
+   draws in team colors, pair-resolved by TeamPalette::chartColors so a pale
+   brand cannot vanish and two red teams cannot merge; the page sets the two
+   custom properties inline. Dark mode un-brands to neutral-vs-accent, the
+   same rule as every branded surface — and color is never the only
+   distinguisher, since each mark carries its team's mark or abbreviation. */
+@utility chart-pair {
+    .dark & {
+        --chart-away: var(--color-zinc-400);
+        --chart-home: var(--color-blue-400);
+    }
+}
+
 /*
  * Article bodies.
  *

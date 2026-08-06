@@ -1,15 +1,30 @@
 <?php
 
 use App\Jobs\FetchGameSummary;
+use App\Models\Athlete;
 use App\Models\AthleteGameStat;
+use App\Models\AthleteSeasonStat;
 use App\Models\Game;
+use App\Models\GameDrive;
+use App\Models\TeamSeason;
+use App\Models\TeamSeasonStat;
+use App\Services\CfbCalendar;
 use App\Services\Espn\Sync\SyncGameSummary;
+use App\Services\Stats\AggregateAthleteStats;
+use App\Support\GameRanks;
+use App\Support\TeamPalette;
+use Carbon\CarbonImmutable;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
- * A single game: box score, scoring summary, drives, win probability.
+ * A single game — one shell, three states.
+ *
+ * The first tab IS the state: Preview before kickoff (matchup predictor,
+ * comparison, leaders, last meetings), Live during (situation, win
+ * probability, the drive feed), Recap after (line score, leaders, the story
+ * of the game). Box, Scoring, Drives and Odds ride behind whichever leads.
  *
  * Rendering is a pure database read — this page can no longer CAUSE a
  * synchronous ESPN request. Viewing a live game QUEUES a summary refresh
@@ -19,29 +34,51 @@ use Livewire\Component;
  * page request ever blocks on a 544 KB fetch. Between views, the two-minute
  * live sweep (cfb:summaries:live) keeps every in-progress game hydrated.
  *
- *   - A FINAL game is fetched once, ever. Its summary cannot change, so every
- *     later visit is a pure database read and costs nothing upstream.
- *   - A missed final fetch shows the last stored box score and fills in
- *     behind the next poll or visit rather than blocking the request.
+ * Drives are the exception to "load everything": ~306 KB of JSON in their
+ * own table precisely so a page view does not read them. They are queried
+ * only while a tab that shows them is active — the split that took 1.4 GB
+ * out of the hot path must not be quietly undone by an eager load.
  */
 new class extends Component
 {
     public Game $game;
 
     #[Url]
-    public string $tab = 'box';
+    public string $tab = '';
+
+    /** The Around the League sheet, and the ET day it is paging. */
+    public bool $sheetOpen = false;
+
+    public string $leagueDate = '';
 
     public function mount(Game $game): void
     {
         $this->game = $game->load([
-            'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color',
-            'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color',
+            'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color',
+            'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color',
             'venue',
             'week:id,name',
             'season:id,year',
         ]);
 
+        $this->leagueDate = $this->game->kickoff_at
+            ->setTimezone(config('cfb.timezone'))
+            ->toDateString();
+
         $this->hydrateSummary();
+        $this->normalizeTab();
+    }
+
+    /**
+     * The right first tab opens itself, and a URL carried across a state
+     * change (?tab=live on a game that has since gone final) resolves to the
+     * new state's lead rather than an empty pane.
+     */
+    private function normalizeTab(): void
+    {
+        if (! array_key_exists($this->tab, $this->tabs)) {
+            $this->tab = array_key_first($this->tabs);
+        }
     }
 
     /**
@@ -76,13 +113,71 @@ new class extends Component
         $this->game->refresh();
         $this->hydrateSummary();
 
-        unset($this->teamStats, $this->scoringPlays, $this->playerStats, $this->summary);
+        unset(
+            $this->teamStats, $this->scoringPlays, $this->playerStats,
+            $this->summary, $this->drives, $this->winProbability, $this->tabs,
+        );
+
+        // A whistle mid-visit: the Live tab just became Recap.
+        $this->normalizeTab();
+    }
+
+    public function shiftLeagueDay(int $days): void
+    {
+        $this->leagueDate = CarbonImmutable::parse($this->leagueDate)
+            ->addDays($days)
+            ->toDateString();
+
+        unset($this->leagueSlate);
+    }
+
+    public function updatedSheetOpen(): void
+    {
+        unset($this->leagueSlate);
+    }
+
+    /** pre | live | final */
+    #[Computed]
+    public function state(): string
+    {
+        return match (true) {
+            $this->game->completed => 'final',
+            $this->game->status === 'in' => 'live',
+            default => 'pre',
+        };
     }
 
     #[Computed]
     public function isLive(): bool
     {
-        return $this->game->status === 'in';
+        return $this->state === 'live';
+    }
+
+    /** @return array<string, string> */
+    #[Computed]
+    public function tabs(): array
+    {
+        $tabs = match ($this->state) {
+            'pre' => ['preview' => 'Preview'],
+            'live' => ['live' => 'Live'],
+            default => ['recap' => 'Recap'],
+        };
+
+        if ($this->state !== 'pre') {
+            $tabs['box'] = 'Box';
+
+            if ($this->scoringPlays->isNotEmpty()) {
+                $tabs['scoring'] = 'Scoring';
+            }
+
+            if ($this->hasDrives) {
+                $tabs['drives'] = 'Drives';
+            }
+        }
+
+        $tabs['odds'] = 'Odds';
+
+        return $tabs;
     }
 
     #[Computed]
@@ -132,142 +227,652 @@ new class extends Component
     public function sides(): array
     {
         return [
-            ['team' => $this->game->awayTeam, 'score' => $this->game->away_score, 'rank' => $this->game->away_rank, 'record' => $this->game->away_record, 'line' => $this->game->away_line_scores],
-            ['team' => $this->game->homeTeam, 'score' => $this->game->home_score, 'rank' => $this->game->home_rank, 'record' => $this->game->home_record, 'line' => $this->game->home_line_scores],
+            ['team' => $this->game->awayTeam, 'score' => $this->game->away_score, 'rank' => $this->ranks['away'], 'record' => $this->game->away_record, 'line' => $this->game->away_line_scores, 'timeouts' => $this->game->away_timeouts],
+            ['team' => $this->game->homeTeam, 'score' => $this->game->home_score, 'rank' => $this->ranks['home'], 'record' => $this->game->home_record, 'line' => $this->game->home_line_scores, 'timeouts' => $this->game->home_timeouts],
         ];
     }
 
-    /** @return list<string> */
+    /** @return array{home: ?int, away: ?int} */
     #[Computed]
-    public function tabs(): array
+    public function ranks(): array
     {
-        $tabs = ['box' => 'Box Score'];
+        return GameRanks::forGame($this->game);
+    }
 
-        if ($this->scoringPlays->isNotEmpty()) {
-            $tabs['scoring'] = 'Scoring';
+    /**
+     * The chart pair — light mode only; dark neutralizes in CSS. Resolved
+     * together so two same-colored teams cannot merge into one ring.
+     *
+     * @return array{string, string} [away, home]
+     */
+    #[Computed]
+    public function chartColors(): array
+    {
+        if ($this->game->awayTeam === null || $this->game->homeTeam === null) {
+            return ['#3f3f46', '#71717a'];
         }
 
-        $tabs['odds'] = 'Odds';
+        return TeamPalette::chartColors($this->game->awayTeam, $this->game->homeTeam);
+    }
 
-        return $tabs;
+    #[Computed]
+    public function hasDrives(): bool
+    {
+        return GameDrive::whereKey($this->game->id)->exists();
+    }
+
+    /**
+     * The drive chart, ONLY while a tab that renders it is active. ~306 KB
+     * of JSON — the exact payload the game_drives split keeps off every
+     * other view of this page.
+     *
+     * @return list<array<string, mixed>>
+     */
+    #[Computed]
+    public function drives(): array
+    {
+        if (! in_array($this->tab, ['drives', 'live'], true)) {
+            return [];
+        }
+
+        return GameDrive::find($this->game->id)?->drives ?? [];
+    }
+
+    /**
+     * Win probability, downsampled for the chart. ESPN publishes a point per
+     * play (~175); sixty is indistinguishable at chart size and a third the
+     * payload. The final point always survives — it is the story's ending.
+     *
+     * @return list<float> home win probability, 0-100
+     */
+    #[Computed]
+    public function winProbability(): array
+    {
+        $points = collect($this->summary?->win_probability ?? [])
+            ->map(fn ($point) => (float) ($point['homeWinPercentage'] ?? 0) * 100)
+            ->values();
+
+        if ($points->count() <= 60) {
+            return $points->all();
+        }
+
+        $step = (int) ceil($points->count() / 60);
+
+        $sampled = $points->filter(fn ($value, $index) => $index % $step === 0)->values();
+
+        return $sampled->push($points->last())->all();
+    }
+
+    /**
+     * Completed meetings between these two teams, newest first — from our
+     * own games table, no feed involved.
+     *
+     * @return \Illuminate\Support\Collection<int, Game>
+     */
+    #[Computed]
+    public function lastMeetings()
+    {
+        $home = $this->game->home_team_id;
+        $away = $this->game->away_team_id;
+
+        if ($home === null || $away === null) {
+            return collect();
+        }
+
+        return Game::query()
+            ->completed()
+            ->whereKeyNot($this->game->id)
+            // Both orders: home teams swap between meetings.
+            ->where(fn ($q) => $q
+                ->where(fn ($q) => $q->where('home_team_id', $home)->where('away_team_id', $away))
+                ->orWhere(fn ($q) => $q->where('home_team_id', $away)->where('away_team_id', $home)))
+            ->with([
+                'homeTeam:id,slug,location,short_display_name,abbreviation,logo,logo_dark',
+                'awayTeam:id,slug,location,short_display_name,abbreviation,logo,logo_dark',
+            ])
+            ->orderByDesc('kickoff_at')
+            ->limit(5)
+            ->get();
+    }
+
+    /**
+     * Each side's recent completed games, oldest first, for the trend pills.
+     * Across seasons deliberately: before week 1 the honest recent run is
+     * last season's end, and a mid-season game's is its own.
+     *
+     * @return array<int, \Illuminate\Support\Collection<int, Game>>
+     */
+    #[Computed]
+    public function trends(): array
+    {
+        $teamIds = array_filter([$this->game->home_team_id, $this->game->away_team_id]);
+
+        if ($teamIds === []) {
+            return [];
+        }
+
+        $recent = Game::query()
+            ->completed()
+            ->where(fn ($q) => $q->whereIn('home_team_id', $teamIds)->orWhereIn('away_team_id', $teamIds))
+            ->with([
+                'homeTeam:id,slug,location,short_display_name,abbreviation,logo,logo_dark',
+                'awayTeam:id,slug,location,short_display_name,abbreviation,logo,logo_dark',
+            ])
+            ->orderByDesc('kickoff_at')
+            ->limit(30)
+            ->get();
+
+        return collect($teamIds)
+            ->mapWithKeys(fn (int $teamId) => [$teamId => $recent
+                ->filter(fn (Game $g) => $g->home_team_id === $teamId || $g->away_team_id === $teamId)
+                ->take(5)
+                ->reverse()
+                ->values()])
+            ->all();
+    }
+
+    /**
+     * Season stat comparison rows, both sides of each bar from one query.
+     * Falls back through seasons the way the team page's stats tab does —
+     * before kickoff the season being played has no numbers, and the most
+     * recent season that does is the honest comparison.
+     *
+     * @return array{year: ?int, rows: list<array{label: string, away: array<string, mixed>, home: array<string, mixed>}>}
+     */
+    #[Computed]
+    public function comparison(): array
+    {
+        $teamIds = array_filter([$this->game->away_team_id, $this->game->home_team_id]);
+
+        if (count($teamIds) < 2) {
+            return ['year' => null, 'rows' => []];
+        }
+
+        $year = TeamSeasonStat::whereIn('team_id', $teamIds)->max('season_year');
+
+        if ($year === null) {
+            return ['year' => null, 'rows' => []];
+        }
+
+        $stats = TeamSeasonStat::query()
+            ->whereIn('team_id', $teamIds)
+            ->where('season_year', $year)
+            ->whereIn('category', ['passing', 'scoring', 'rushing', 'defensive'])
+            ->get()
+            ->groupBy('team_id');
+
+        $read = function (int $teamId, string $category, string $stat) use ($stats): array {
+            $row = $stats->get($teamId)?->firstWhere('category', $category);
+
+            return $row?->stat($stat) ?? ['display' => null, 'value' => null, 'rank' => null, 'label' => ''];
+        };
+
+        $rows = collect([
+            ['category' => 'scoring', 'stat' => 'totalPointsPerGame', 'label' => 'Points / Game'],
+            ['category' => 'passing', 'stat' => 'yardsPerGame', 'label' => 'Yards / Game'],
+            ['category' => 'passing', 'stat' => 'netPassingYardsPerGame', 'label' => 'Passing / Game'],
+            ['category' => 'rushing', 'stat' => 'rushingYardsPerGame', 'label' => 'Rushing / Game'],
+            ['category' => 'defensive', 'stat' => 'sacks', 'label' => 'Sacks'],
+            ['category' => 'defensive', 'stat' => 'totalTackles', 'label' => 'Tackles'],
+        ])
+            ->map(fn (array $row) => [
+                'label' => $row['label'],
+                'away' => $read($this->game->away_team_id, $row['category'], $row['stat']),
+                'home' => $read($this->game->home_team_id, $row['category'], $row['stat']),
+            ])
+            ->filter(fn (array $row) => $row['away']['value'] !== null || $row['home']['value'] !== null)
+            ->values()
+            ->all();
+
+        return ['year' => (int) $year, 'rows' => $rows];
+    }
+
+    /**
+     * Each side's season leaders — passing, rushing, receiving — the
+     * "probable pitchers" of a football preview. Derived from our own
+     * aggregates, whole year including bowls, same as every leaderboard.
+     *
+     * @return array{year: ?int, rows: list<array{label: string, away: ?array<string, mixed>, home: ?array<string, mixed>}>}
+     */
+    #[Computed]
+    public function seasonLeaders(): array
+    {
+        $teamIds = array_filter([$this->game->away_team_id, $this->game->home_team_id]);
+
+        if (count($teamIds) < 2) {
+            return ['year' => null, 'rows' => []];
+        }
+
+        $year = AthleteSeasonStat::whereIn('team_id', $teamIds)->max('season_year');
+
+        if ($year === null) {
+            return ['year' => null, 'rows' => []];
+        }
+
+        $categories = [
+            'passing' => ['stat' => 'passingYards', 'tds' => 'passingTouchdowns', 'label' => 'Passing'],
+            'rushing' => ['stat' => 'rushingYards', 'tds' => 'rushingTouchdowns', 'label' => 'Rushing'],
+            'receiving' => ['stat' => 'receivingYards', 'tds' => 'receivingTouchdowns', 'label' => 'Receiving'],
+        ];
+
+        $rows = AthleteSeasonStat::query()
+            ->whereIn('team_id', $teamIds)
+            ->where('season_year', $year)
+            ->where('season_type', AggregateAthleteStats::FULL_SEASON)
+            ->whereIn('category', array_keys($categories))
+            ->get(['athlete_id', 'team_id', 'category', 'stats']);
+
+        $leaders = [];
+
+        foreach ($categories as $category => $meta) {
+            foreach ($teamIds as $teamId) {
+                $best = $rows
+                    ->where('category', $category)
+                    ->where('team_id', $teamId)
+                    ->sortByDesc(fn ($r) => (float) ($r->stats[$meta['stat']] ?? 0))
+                    ->first();
+
+                if ($best !== null && (float) ($best->stats[$meta['stat']] ?? 0) > 0) {
+                    $leaders[$category][$teamId] = [
+                        'athlete_id' => $best->athlete_id,
+                        'yards' => (float) ($best->stats[$meta['stat']] ?? 0),
+                        'tds' => (float) ($best->stats[$meta['tds']] ?? 0),
+                    ];
+                }
+            }
+        }
+
+        $athletes = Athlete::whereIn('id', collect($leaders)->flatten(1)->pluck('athlete_id'))
+            ->get(['id', 'slug', 'display_name', 'short_name', 'headshot_url'])
+            ->keyBy('id');
+
+        $resolve = function (string $category, ?int $teamId) use ($leaders, $athletes): ?array {
+            $entry = $leaders[$category][$teamId] ?? null;
+
+            if ($entry === null) {
+                return null;
+            }
+
+            return $entry + ['athlete' => $athletes->get($entry['athlete_id'])];
+        };
+
+        return [
+            'year' => (int) $year,
+            'rows' => collect($categories)
+                ->map(fn (array $meta, string $category) => [
+                    'label' => $meta['label'],
+                    'away' => $resolve($category, $this->game->away_team_id),
+                    'home' => $resolve($category, $this->game->home_team_id),
+                ])
+                ->filter(fn (array $row) => $row['away'] !== null || $row['home'] !== null)
+                ->values()
+                ->all(),
+        ];
+    }
+
+    /**
+     * The game's statistical leaders, from the summary payload ESPN already
+     * computed — passing, rushing, receiving per side. Athletes we hold link
+     * to their pages; ones we do not degrade to the payload's name, because
+     * a box score names everyone but the roster only names this season.
+     *
+     * @return list<array{label: string, away: ?array<string, mixed>, home: ?array<string, mixed>}>
+     */
+    #[Computed]
+    public function gameLeaders(): array
+    {
+        $payload = collect($this->summary?->leaders ?? []);
+
+        if ($payload->isEmpty()) {
+            return [];
+        }
+
+        $wanted = ['passingYards' => 'Passing', 'rushingYards' => 'Rushing', 'receivingYards' => 'Receiving'];
+
+        $entries = [];
+
+        foreach ($payload as $side) {
+            $teamId = (int) data_get($side, 'team.id');
+
+            foreach (data_get($side, 'leaders', []) as $category) {
+                $name = data_get($category, 'name');
+
+                if (! isset($wanted[$name])) {
+                    continue;
+                }
+
+                $leader = data_get($category, 'leaders.0');
+
+                if ($leader === null) {
+                    continue;
+                }
+
+                $entries[$name][$teamId] = [
+                    'athlete_id' => (int) data_get($leader, 'athlete.id'),
+                    'name' => data_get($leader, 'athlete.displayName'),
+                    'display' => data_get($leader, 'displayValue'),
+                ];
+            }
+        }
+
+        $athletes = Athlete::whereIn('id', collect($entries)->flatten(1)->pluck('athlete_id')->filter())
+            ->get(['id', 'slug', 'display_name', 'short_name', 'headshot_url'])
+            ->keyBy('id');
+
+        $resolve = function (string $name, ?int $teamId) use ($entries, $athletes): ?array {
+            $entry = $entries[$name][$teamId] ?? null;
+
+            return $entry === null ? null : $entry + ['athlete' => $athletes->get($entry['athlete_id'])];
+        };
+
+        return collect($wanted)
+            ->map(fn (string $label, string $name) => [
+                'label' => $label,
+                'away' => $resolve($name, $this->game->away_team_id),
+                'home' => $resolve($name, $this->game->home_team_id),
+            ])
+            ->filter(fn (array $row) => $row['away'] !== null || $row['home'] !== null)
+            ->values()
+            ->all();
+    }
+
+    /** Articles the summary sync attached: the recap, then the reading list. */
+    #[Computed]
+    public function articles()
+    {
+        return $this->game->articles()
+            ->with('teams:id,slug,abbreviation,short_display_name,logo,logo_dark')
+            ->orderByDesc('published_at')
+            ->get();
+    }
+
+    /**
+     * The Around the League sheet: that ET day's slate, grouped by what the
+     * viewer cares about — their teams, ranked matchups, this game's
+     * conference(s), then the rest. Each game claimed by the FIRST group
+     * that wants it, the same rule the scoreboard's floated block uses.
+     *
+     * Computed only while the sheet is open; a closed sheet costs nothing.
+     *
+     * @return list<array{label: string, games: list<Game>}>
+     */
+    #[Computed]
+    public function leagueSlate(): array
+    {
+        if (! $this->sheetOpen) {
+            return [];
+        }
+
+        $tz = config('cfb.timezone');
+        $day = CarbonImmutable::parse($this->leagueDate, $tz);
+
+        $games = Game::query()
+            ->whereKeyNot($this->game->id)
+            ->whereBetween('kickoff_at', [$day->startOfDay()->utc(), $day->endOfDay()->utc()])
+            ->with([
+                'homeTeam:id,slug,location,short_display_name,abbreviation,logo,logo_dark',
+                'awayTeam:id,slug,location,short_display_name,abbreviation,logo,logo_dark',
+            ])
+            ->orderBy('kickoff_at')
+            ->get();
+
+        if ($games->isEmpty()) {
+            return [];
+        }
+
+        $followed = auth()->user()?->followedTeams()->pluck('teams.id')->all() ?? [];
+
+        $conferenceTeams = $this->conferenceTeamIds();
+
+        $claimed = [];
+
+        // Marked with a plain foreach, not an arrow fn: arrow functions
+        // capture by VALUE, so `fn ($g) => $claimed[$g->id] = true` writes a
+        // copy and every group re-claims the whole slate.
+        $claim = function (callable $wants) use ($games, &$claimed): array {
+            $taken = $games
+                ->filter(fn (Game $g) => ! isset($claimed[$g->id]) && $wants($g))
+                ->values();
+
+            foreach ($taken as $game) {
+                $claimed[$game->id] = true;
+            }
+
+            return $taken->all();
+        };
+
+        $groups = [
+            ['label' => 'Your teams', 'games' => $claim(fn (Game $g) => array_intersect($followed, [$g->home_team_id, $g->away_team_id]) !== [])],
+            ['label' => 'Top 25', 'games' => $claim(function (Game $g) {
+                $ranks = GameRanks::forGame($g);
+
+                return $ranks['home'] !== null || $ranks['away'] !== null;
+            })],
+            ['label' => 'Conference', 'games' => $claim(fn (Game $g) => array_intersect($conferenceTeams, array_filter([$g->home_team_id, $g->away_team_id])) !== [])],
+            ['label' => 'Around the league', 'games' => $claim(fn () => true)],
+        ];
+
+        return array_values(array_filter($groups, fn (array $group) => $group['games'] !== []));
+    }
+
+    /**
+     * Teams sharing a conference with either side, in the game's season —
+     * membership is season-scoped, never a scalar on the team.
+     *
+     * @return list<int>
+     */
+    private function conferenceTeamIds(): array
+    {
+        $year = $this->game->season?->year ?? app(CfbCalendar::class)->scoreboardYear();
+
+        $teamIds = array_filter([$this->game->home_team_id, $this->game->away_team_id]);
+
+        if ($teamIds === []) {
+            return [];
+        }
+
+        $conferences = TeamSeason::where('season_year', $year)
+            ->whereIn('team_id', $teamIds)
+            ->whereNotNull('conference_id')
+            ->pluck('conference_id');
+
+        if ($conferences->isEmpty()) {
+            return [];
+        }
+
+        return TeamSeason::where('season_year', $year)
+            ->whereIn('conference_id', $conferences)
+            ->pluck('team_id')
+            ->all();
     }
 }; ?>
 
 <div class="flex flex-col gap-4" @if ($this->isLive) wire:poll.30s.visible="poll" @endif>
-    {{-- Header: the matchup, the score, and where it is being played. --}}
-    <div class="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+    {{--
+        The scorebug: sticky, so the score survives every scroll. Cancels the
+        container's padding the way the scoreboard chrome does, wears the
+        header's own surface, and rests exactly where it sticks
+        (h-14 + 1px border from `sm` up; the top of the viewport at base).
+        The sheet is NOT nested in here — backdrop-blur makes this the
+        containing block for fixed descendants, the search-panel lesson.
+    --}}
+    <div class="sticky top-0 z-30 -mx-4 -mt-5 border-b border-zinc-200 bg-white/95 px-4 pt-4 pb-3 backdrop-blur sm:top-[calc(var(--spacing)*14+1px)] dark:border-zinc-800 dark:bg-zinc-950/95">
         <div class="flex items-center justify-between gap-2 text-micro text-zinc-500">
-            <span class="truncate">
-                {{ $game->week?->name }}
-                @if ($game->venue)
-                    · {{ $game->venue->name }}@if ($game->venue->city), {{ $game->venue->city }}@endif
+            <span class="min-w-0 truncate">
+                @if ($game->note)
+                    {{ $game->note }}
+                @else
+                    {{ $game->week?->name }}@if ($game->season) · {{ $game->season->year }}@endif
                 @endif
             </span>
 
-            @if ($this->isLive)
-                <span class="flex shrink-0 items-center gap-1 font-semibold text-red-600 dark:text-red-400">
-                    <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
-                    {{ $game->status_detail ?? 'Live' }}
-                </span>
-            @elseif ($game->completed)
-                <span class="shrink-0 font-medium">Final</span>
-            @else
-                <span class="shrink-0 font-medium">
-                    {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('D, M j · g:ia') }}
-                </span>
-            @endif
+            {{-- MLB puts the slate one tap from the scorebug; so do we. --}}
+            <button
+                type="button"
+                wire:click="$set('sheetOpen', true)"
+                class="flex shrink-0 items-center gap-1 font-medium text-zinc-500 transition-colors hover:text-zinc-800 dark:hover:text-zinc-200"
+            >
+                <flux:icon.calendar3-week variant="micro" class="size-3.5" />
+                Around the League
+            </button>
         </div>
 
-        @foreach ($this->sides as $side)
-            @php
-                $winner = $game->winnerTeamId();
-                $lost = $game->completed && $winner !== null && $winner !== $side['team']?->id;
-            @endphp
+        <div class="mt-2 flex items-center gap-2">
+            @foreach ($this->sides as $index => $side)
+                @php
+                    $winner = $game->winnerTeamId();
+                    $lost = $game->completed && $winner !== null && $winner !== $side['team']?->id;
+                    $possession = $this->isLive && $side['team'] && $game->possession_team_id === $side['team']->id;
+                @endphp
 
-            <div class="flex items-center gap-3">
-                <x-team-link
-                    :team="$side['team']"
-                    :rank="$side['rank']"
-                    :record="$side['record']"
-                    :muted="$lost"
-                    size="md"
-                    class="min-w-0 flex-1"
-                />
+                @if ($index === 1)
+                    {{-- Center: what the game is doing right now. --}}
+                    <div class="flex w-20 shrink-0 flex-col items-center gap-0.5 text-center">
+                        @if ($this->isLive)
+                            <span class="flex items-center gap-1 text-micro font-semibold text-red-600 dark:text-red-400">
+                                <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
+                                {{ $game->status_detail ?? 'Live' }}
+                            </span>
 
-                {{-- Quarter-by-quarter, which the scoreboard feed already gives
-                     us — so this renders for a live game with no summary. --}}
-                @if ($side['line'])
-                    <div class="hidden items-center gap-2 sm:flex">
-                        @foreach ($side['line'] as $quarter)
-                            <span class="tabular w-5 text-center text-stat text-zinc-400">{{ $quarter }}</span>
-                        @endforeach
+                            @if ($game->down_distance_text)
+                                <span @class([
+                                    'text-micro font-medium',
+                                    'text-red-600 dark:text-red-400' => $game->is_red_zone,
+                                    'text-zinc-500' => ! $game->is_red_zone,
+                                ])>{{ $game->down_distance_text }}</span>
+                            @endif
+                        @elseif ($game->completed)
+                            <span class="text-stat font-semibold">Final</span>
+                        @else
+                            <span class="text-micro font-medium text-zinc-500">
+                                {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('D M j') }}
+                            </span>
+                            <span class="text-stat font-semibold">
+                                {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('g:ia') }}
+                            </span>
+                        @endif
                     </div>
                 @endif
 
-                <span @class([
-                    'tabular w-10 shrink-0 text-right text-xl tracking-tight',
-                    'font-bold' => ! $lost,
-                    'font-semibold text-zinc-400' => $lost,
+                <div @class([
+                    'flex min-w-0 flex-1 items-center gap-2',
+                    'flex-row-reverse text-right' => $index === 1,
                 ])>
-                    {{ $game->completed || $this->isLive ? $side['score'] : '—' }}
-                </span>
-            </div>
-        @endforeach
+                    {{-- The game page is WHERE the team links live — cards
+                         send every tap here precisely because these exist. --}}
+                    <a
+                        @if ($side['team']) href="{{ route('team', $side['team']) }}" wire:navigate @endif
+                        @class([
+                            'flex min-w-0 items-center gap-2',
+                            'flex-row-reverse' => $index === 1,
+                        ])
+                    >
+                        <x-team-logo :team="$side['team']" size="sm" class="shrink-0" />
 
-        @if ($this->summary?->attendance)
-            <p class="text-micro text-zinc-500">
-                Attendance {{ number_format($this->summary->attendance) }}
-            </p>
+                        <div class="flex min-w-0 flex-col">
+                            <span class="flex items-center gap-1 truncate text-sm font-semibold @if ($index === 1) justify-end @endif @if ($lost) text-zinc-400 @endif">
+                                @if ($possession)
+                                    <span class="size-1.5 shrink-0 rounded-full bg-amber-500" title="Possession"></span>
+                                @endif
+                                @if ($side['rank'])
+                                    <span class="text-micro font-medium text-zinc-400">{{ $side['rank'] }}</span>
+                                @endif
+                                {{ $side['team']?->abbreviation ?? 'TBD' }}
+                            </span>
+
+                            <span class="truncate text-micro text-zinc-500">
+                                @if ($this->isLive && $side['timeouts'] !== null)
+                                    {{ str_repeat('●', $side['timeouts']) }}{{ str_repeat('○', max(0, 3 - $side['timeouts'])) }}
+                                @else
+                                    {{ $side['record'] }}
+                                @endif
+                            </span>
+                        </div>
+                    </a>
+
+                    @if ($game->completed || $this->isLive)
+                        <span @class([
+                            'tabular shrink-0 text-2xl tracking-tight',
+                            'font-bold' => ! $lost,
+                            'font-semibold text-zinc-400' => $lost,
+                        ])>{{ $side['score'] }}</span>
+                    @endif
+                </div>
+            @endforeach
+        </div>
+
+        @if ($this->isLive && $game->last_play_text)
+            <p class="mt-2 truncate text-micro text-zinc-500">{{ $game->last_play_text }}</p>
         @endif
     </div>
 
-    {{-- Nothing to show yet: an upcoming game has no box score, and saying so
-         is better than an empty tab strip. --}}
-    @if (! $game->completed && ! $this->isLive)
-        <x-odds-strip :game="$game" class="text-sm" />
-
-        <flux:callout icon="clock">
-            <flux:callout.heading>Not played yet</flux:callout.heading>
-            <flux:callout.text>
-                Box score, scoring summary and drives appear once this one kicks off.
-            </flux:callout.text>
-        </flux:callout>
-    @else
-        <flux:tabs wire:model.live="tab">
-            @foreach ($this->tabs as $value => $label)
-                <flux:tab :name="$value">{{ $label }}</flux:tab>
-            @endforeach
-        </flux:tabs>
-
-        @if ($tab === 'box')
-            @include('partials.game-box-score')
-        @elseif ($tab === 'scoring')
-            @include('partials.game-scoring')
-        @elseif ($tab === 'odds')
-            <div class="flex flex-col gap-3">
-                <x-odds-strip :game="$game" class="text-sm" />
-
-                @if ($game->predictor)
-                    <div class="stat-grid rounded-lg border border-zinc-200 dark:border-zinc-800">
-                        <table class="w-full text-stat">
-                            <tbody>
-                                @if ($game->predictor->matchup_quality !== null)
-                                    <tr class="border-b border-zinc-100 dark:border-zinc-800/60">
-                                        <td class="px-3 py-1.5 text-zinc-500">Matchup quality</td>
-                                        <td class="px-3 py-1.5 text-right font-medium">{{ $game->predictor->matchup_quality }}</td>
-                                    </tr>
-                                @endif
-                                @if ($game->predictor->game_quality !== null)
-                                    <tr>
-                                        <td class="px-3 py-1.5 text-zinc-500">Game quality</td>
-                                        <td class="px-3 py-1.5 text-right font-medium">{{ $game->predictor->game_quality }}</td>
-                                    </tr>
-                                @endif
-                            </tbody>
-                        </table>
-                    </div>
-                @endif
-            </div>
-        @endif
+    {{-- The line score: quarters plus total, the R/H/E analogue. Free — the
+         scoreboard feed already carries it. --}}
+    @if (($game->completed || $this->isLive) && $game->home_line_scores)
+        <div class="stat-grid rounded-lg border border-zinc-200 dark:border-zinc-800">
+            <table class="w-full text-stat">
+                <thead>
+                    <tr class="border-b border-zinc-100 text-micro text-zinc-400 dark:border-zinc-800/60">
+                        <th class="px-3 py-1 text-left font-medium"><span class="sr-only">Team</span></th>
+                        @foreach ($game->home_line_scores as $quarter => $points)
+                            <th class="w-8 px-1.5 py-1 text-center font-medium">{{ $quarter < 4 ? $quarter + 1 : 'OT'.($quarter > 4 ? $quarter - 3 : '') }}</th>
+                        @endforeach
+                        <th class="w-10 px-3 py-1 text-right font-semibold">T</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach ($this->sides as $side)
+                        <tr class="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                            <td class="px-3 py-1.5 font-medium">{{ $side['team']?->abbreviation ?? 'TBD' }}</td>
+                            @foreach ($side['line'] ?? [] as $points)
+                                <td class="tabular px-1.5 py-1.5 text-center text-zinc-500">{{ $points }}</td>
+                            @endforeach
+                            <td class="tabular px-3 py-1.5 text-right font-bold">{{ $side['score'] }}</td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
     @endif
+
+    <div class="flex items-center justify-between gap-2">
+        <x-gutter-tabs
+            :items="$this->tabs"
+            :selected="$tab"
+            model="tab"
+            label="Game sections"
+            key-prefix="gametab"
+        />
+
+        <span class="hidden truncate text-micro text-zinc-500 sm:block">
+            @if ($game->venue)
+                {{ $game->venue->name }}@if ($game->venue->city) · {{ $game->venue->city }}@if ($game->venue->state), {{ $game->venue->state }}@endif @endif
+            @endif
+        </span>
+    </div>
+
+    {{-- Venue and broadcast get their own line at base, where the tab row has no room. --}}
+    <p class="-mt-2 text-micro text-zinc-500 sm:hidden">
+        @if ($game->venue){{ $game->venue->name }}@if ($game->venue->city) · {{ $game->venue->city }}@if ($game->venue->state), {{ $game->venue->state }}@endif @endif @endif
+        @if ($game->broadcasts) · {{ implode(', ', $game->broadcasts) }}@endif
+        @if ($this->summary?->attendance ?? $game->attendance) · {{ number_format($this->summary?->attendance ?? $game->attendance) }} attended @endif
+    </p>
+
+    @if ($tab === 'preview')
+        @include('partials.game-preview')
+    @elseif ($tab === 'live')
+        @include('partials.game-live')
+    @elseif ($tab === 'recap')
+        @include('partials.game-recap')
+    @elseif ($tab === 'box')
+        @include('partials.game-box-score')
+    @elseif ($tab === 'scoring')
+        @include('partials.game-scoring')
+    @elseif ($tab === 'drives')
+        @include('partials.game-drives')
+    @elseif ($tab === 'odds')
+        @include('partials.game-odds')
+    @endif
+
+    @include('partials.game-league-sheet')
 </div>

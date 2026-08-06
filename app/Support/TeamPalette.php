@@ -88,6 +88,99 @@ final class TeamPalette
             : self::fromLadder($primary, $secondary);
     }
 
+    /** A data mark must be visible against the light page… */
+    private const CHART_VS_PAGE_MIN = 2.0;
+
+    /** …and the two marks must read as two colors, not one. */
+    private const CHART_SEPARATION_MIN = 1.25;
+
+    /**
+     * The pair of colors a two-team chart draws in — LIGHT MODE ONLY, like
+     * the rest of this class; dark mode un-brands to neutrals in CSS.
+     *
+     * Resolved as a PAIR, never per team, because the two failure modes are
+     * both pairwise: a near-white brand vanishes into the page, and two red
+     * teams become one ring. The away side keeps its primary; the home side
+     * yields — first to its own secondary (Alabama's gray beside Georgia's
+     * red is truer than a shifted red), then to a lightness shift, then to a
+     * neutral that always reads.
+     *
+     * @return array{string, string} [away, home]
+     */
+    public static function chartColors(Team $away, Team $home): array
+    {
+        $first = self::chartable(self::rgb($away->color)) ?? self::rgb('#3f3f46');
+        $second = self::chartable(self::rgb($home->color)) ?? self::rgb('#71717a');
+
+        if (self::ratio($first, $second) < self::CHART_SEPARATION_MIN) {
+            $second = self::separate($second, $first, self::rgb($home->alt_color));
+        }
+
+        return [self::hex($first), self::hex($second)];
+    }
+
+    /**
+     * Darken a too-pale mark until it is visible on the page. Null stays
+     * null so the caller can substitute its fallback.
+     *
+     * @param  array{int, int, int}|null  $color
+     * @return array{int, int, int}|null
+     */
+    private static function chartable(?array $color): ?array
+    {
+        if ($color === null) {
+            return null;
+        }
+
+        $white = self::rgb(self::WHITE);
+
+        for ($step = 0; $step <= self::NUDGE_MAX_STEPS; $step++) {
+            $candidate = self::mix($color, [0, 0, 0], $step * self::NUDGE_STEP);
+
+            if (self::ratio($white, $candidate) >= self::CHART_VS_PAGE_MIN) {
+                return $candidate;
+            }
+        }
+
+        return $color;
+    }
+
+    /**
+     * Make one mark distinguishable from another it currently matches.
+     *
+     * @param  array{int, int, int}  $color
+     * @param  array{int, int, int}  $against
+     * @param  array{int, int, int}|null  $secondary
+     * @return array{int, int, int}
+     */
+    private static function separate(array $color, array $against, ?array $secondary): array
+    {
+        $white = self::rgb(self::WHITE);
+
+        $alt = self::chartable($secondary);
+
+        if ($alt !== null && self::ratio($alt, $against) >= self::CHART_SEPARATION_MIN) {
+            return $alt;
+        }
+
+        // Shift toward whichever pole is farther from the color it matches,
+        // stopping at the first step that both separates and stays visible.
+        $target = self::luminance($against) > 0.5 ? [0, 0, 0] : [255, 255, 255];
+
+        for ($step = 1; $step <= self::NUDGE_MAX_STEPS; $step++) {
+            $candidate = self::mix($color, $target, $step * self::NUDGE_STEP);
+
+            if (self::ratio($candidate, $against) >= self::CHART_SEPARATION_MIN
+                && self::ratio($white, $candidate) >= self::CHART_VS_PAGE_MIN) {
+                return $candidate;
+            }
+        }
+
+        // Two colors that cannot be pulled apart get a neutral that always
+        // reads — zinc-500 on white is ~4.6:1 and unlike any brand red.
+        return self::rgb('#71717a');
+    }
+
     /**
      * The WCAG 2.x contrast ratio between two colors, 1.0 to 21.0.
      *

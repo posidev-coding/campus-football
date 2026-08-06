@@ -3,15 +3,20 @@
 use App\Jobs\FetchGameSummary;
 use App\Models\Athlete;
 use App\Models\AthleteGameStat;
+use App\Models\Conference;
 use App\Models\Game;
+use App\Models\GameDrive;
+use App\Models\GamePredictor;
 use App\Models\GameScoringPlay;
 use App\Models\GameSummary;
 use App\Models\GameTeamStat;
 use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeason;
+use App\Models\User;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGameSummary;
+use App\Support\TeamPalette;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -136,7 +141,10 @@ it('shows attendance from the summary', function () {
     Livewire::test('game', ['game' => $this->game])->assertSee('92,746');
 });
 
-it('tells the user an upcoming game has no box score yet', function () {
+it('opens an upcoming game on the Preview tab, with no box tabs to fall into', function () {
+    // "Not played yet" used to be the whole pregame page. The preview IS the
+    // pregame page now; the apology only survives for a fixture with nothing
+    // at all to say.
     $upcoming = Game::factory()->create([
         'season_id' => $this->season->id, 'week_id' => $this->week->id,
         'home_team_id' => 61, 'away_team_id' => 333,
@@ -145,7 +153,8 @@ it('tells the user an upcoming game has no box score yet', function () {
 
     Livewire::test('game', ['game' => $upcoming])
         ->assertOk()
-        ->assertSee('Not played yet');
+        ->assertSet('tab', 'preview')
+        ->assertDontSee('Box Score');
 });
 
 it('never fetches ESPN synchronously, even for a live game', function () {
@@ -297,4 +306,222 @@ it('survives a negative running score from ESPN', function () {
         ->and($play->away_score)->toBe(0)
         // The play itself is still worth having.
         ->and($play->text)->toContain('Ernest Campbell');
+});
+
+describe('the three states', function () {
+    it('opens a final game on Recap and a live one on Live', function () {
+        Livewire::test('game', ['game' => $this->game])
+            ->assertSet('tab', 'recap');
+
+        Queue::fake();
+
+        $live = Game::factory()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'completed' => false, 'status' => 'in',
+            'kickoff_at' => '2025-09-27 19:30:00',
+        ]);
+
+        Livewire::test('game', ['game' => $live])->assertSet('tab', 'live');
+    });
+
+    it('resolves a tab carried across a state change to the new lead', function () {
+        // ?tab=live bookmarked mid-game, opened after the whistle.
+        Livewire::withQueryParams(['tab' => 'live'])
+            ->test('game', ['game' => $this->game])
+            ->assertSet('tab', 'recap');
+    });
+});
+
+describe('drives', function () {
+    beforeEach(function () {
+        GameDrive::create([
+            'game_id' => $this->game->id,
+            'drives' => [[
+                'id' => 'd1',
+                'team' => ['id' => 61],
+                'description' => '8 plays, 75 yards, 3:29',
+                'result' => 'TD',
+                'displayResult' => 'Touchdown',
+                'isScore' => true,
+                'start' => ['text' => 'UGA 25'],
+                'end' => ['text' => 'ALA end zone'],
+                'plays' => [[
+                    'id' => 'p1',
+                    'text' => 'Deep shot to the post for the score.',
+                    'scoringPlay' => true,
+                    'clock' => ['displayValue' => '3:05'],
+                    'period' => ['number' => 1],
+                ]],
+            ]],
+        ]);
+    });
+
+    it('never reads the drive payload while another tab is showing', function () {
+        /*
+         * game_drives is ~306 KB a row and lives in its own table precisely so
+         * a page view does not read it. The recap and box tabs must not undo
+         * the split with a curious query.
+         */
+        $reads = 0;
+
+        DB::listen(function ($query) use (&$reads) {
+            if (str_contains($query->sql, 'game_drives') && str_contains($query->sql, 'select `drives`')) {
+                $reads++;
+            }
+        });
+
+        Livewire::test('game', ['game' => $this->game]); // recap tab
+
+        expect($reads)->toBe(0);
+    });
+
+    it('renders the drive chart, expandable plays and all, on its own tab', function () {
+        Livewire::test('game', ['game' => $this->game])
+            ->set('tab', 'drives')
+            ->assertSee('Touchdown')
+            ->assertSee('8 plays, 75 yards, 3:29')
+            ->assertSee('Deep shot to the post for the score.');
+    });
+});
+
+describe('the preview', function () {
+    it('shows the matchup predictor donut from stored projections', function () {
+        Queue::fake();
+
+        $upcoming = Game::factory()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'completed' => false, 'status' => 'pre',
+            'kickoff_at' => now()->addDays(3),
+        ]);
+
+        GamePredictor::create([
+            'game_id' => $upcoming->id,
+            'matchup_quality' => 63.6,
+            'home_projection' => 51.5,
+            'away_projection' => 48.5,
+            'home_pred_pt_diff' => 0.5,
+            'away_pred_pt_diff' => -0.5,
+        ]);
+
+        Livewire::test('game', ['game' => $upcoming])
+            ->assertSee('Matchup predictor')
+            ->assertSee('51.5%')
+            ->assertSee('48.5%')
+            ->assertSee('UGA by 0.5');
+    });
+
+    it('lists last meetings from both home-away orders, capped at five', function () {
+        Queue::fake();
+
+        $upcoming = Game::factory()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'completed' => false, 'status' => 'pre',
+            'kickoff_at' => now()->addDays(3),
+        ]);
+
+        // Seven meetings, hosts alternating. With the beforeEach final also a
+        // UGA-ALA meeting that makes eight candidates — only five may show,
+        // so the three oldest fall off.
+        $meetings = collect(range(1, 7))->map(fn (int $i) => Game::factory()->finished(20 + $i, 10)->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => $i % 2 === 0 ? 61 : 333,
+            'away_team_id' => $i % 2 === 0 ? 333 : 61,
+            'kickoff_at' => "2025-09-0{$i} 19:30:00",
+        ]));
+
+        $shown = Livewire::test('game', ['game' => $upcoming])->instance()->lastMeetings;
+
+        expect($shown)->toHaveCount(5)
+            ->and($shown->pluck('id'))->not->toContain($meetings[0]->id)
+            ->and($shown->pluck('id'))->not->toContain($meetings[1]->id)
+            ->and($shown->pluck('id'))->not->toContain($meetings[2]->id)
+            // Both home/away orders admitted: Sep 6 (UGA hosting) and
+            // Sep 7 (ALA hosting) are both in.
+            ->and($shown->pluck('id'))->toContain($meetings[5]->id)
+            ->and($shown->pluck('id'))->toContain($meetings[6]->id);
+    });
+});
+
+describe('around the league', function () {
+    it('orders the sheet followed, ranked, conference, rest — each game claimed once', function () {
+        $user = User::factory()->create();
+        $user->followedTeams()->attach(333, ['position' => 1]);
+
+        // Same ET day as the game.
+        $others = collect([
+            'followed' => [333, null],   // the followed team also plays... claimed by YOUR TEAMS
+            'ranked' => [null, null],    // carries a curated rank
+            'conference' => [61, null],  // shares Georgia's conference
+            'rest' => [null, null],
+        ])->map(function ($teams, $kind) {
+            $home = Team::factory()->create();
+            $away = Team::factory()->create();
+
+            TeamSeason::create(['team_id' => $home->id, 'season_year' => 2025, 'classification' => 'FBS', 'conference_id' => null]);
+
+            return Game::factory()->create([
+                'season_id' => $this->season->id, 'week_id' => $this->week->id,
+                'home_team_id' => $teams[0] ?? $home->id,
+                'away_team_id' => $teams[1] ?? $away->id,
+                'completed' => false, 'status' => 'pre',
+                'kickoff_at' => $this->game->kickoff_at,
+                'home_rank' => $kind === 'ranked' ? 4 : null,
+            ]);
+        });
+
+        // Georgia and the "conference" game's opponent share a conference.
+        $sec = Conference::factory()->create(['id' => 8, 'name' => 'SEC']);
+        TeamSeason::query()->whereIn('team_id', [61, $others['conference']->home_team_id])
+            ->update(['conference_id' => 8]);
+
+        $component = Livewire::actingAs($user)
+            ->test('game', ['game' => $this->game])
+            ->set('sheetOpen', true);
+
+        $slate = $component->instance()->leagueSlate;
+
+        $labels = collect($slate)->pluck('label')->all();
+        $byLabel = collect($slate)->keyBy('label');
+
+        expect($labels)->toBe(['Your teams', 'Top 25', 'Conference', 'Around the league'])
+            ->and(collect($byLabel['Your teams']['games'])->pluck('id'))->toContain($others['followed']->id)
+            ->and(collect($byLabel['Top 25']['games'])->pluck('id'))->toContain($others['ranked']->id)
+            ->and(collect($byLabel['Conference']['games'])->pluck('id'))->toContain($others['conference']->id)
+            ->and(collect($byLabel['Around the league']['games'])->pluck('id'))->toContain($others['rest']->id)
+            // The page's own game never lists, and nothing appears twice.
+            ->and(collect($slate)->pluck('games')->flatten(1)->pluck('id'))
+            ->not->toContain($this->game->id)
+            ->and(collect($slate)->pluck('games')->flatten(1)->pluck('id')->duplicates())->toBeEmpty();
+    });
+
+    it('costs nothing while closed', function () {
+        $component = Livewire::test('game', ['game' => $this->game]);
+
+        expect($component->instance()->leagueSlate)->toBe([]);
+    });
+});
+
+describe('chart colors', function () {
+    it('separates two same-colored teams and keeps both visible on the page', function () {
+        $georgia = Team::factory()->make(['color' => 'ba0c2f', 'alt_color' => '000000']);
+        $alabama = Team::factory()->make(['color' => '9e1b32', 'alt_color' => '828a8f']);
+
+        [$away, $home] = TeamPalette::chartColors($georgia, $alabama);
+
+        expect(TeamPalette::contrast($away, $home))->toBeGreaterThanOrEqual(1.25)
+            ->and(TeamPalette::contrast($away, '#ffffff'))->toBeGreaterThanOrEqual(2.0)
+            ->and(TeamPalette::contrast($home, '#ffffff'))->toBeGreaterThanOrEqual(2.0);
+    });
+
+    it('darkens a near-white brand until it reads on the page', function () {
+        $pale = Team::factory()->make(['color' => 'f8f8f8', 'alt_color' => null]);
+        $navy = Team::factory()->make(['color' => '001a57', 'alt_color' => null]);
+
+        [$away, $home] = TeamPalette::chartColors($pale, $navy);
+
+        expect(TeamPalette::contrast($away, '#ffffff'))->toBeGreaterThanOrEqual(2.0);
+    });
 });

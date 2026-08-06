@@ -731,6 +731,64 @@ query per map over the whole league, never per row. It memoizes in a static
 property on top of the cache, which outlives each test's application;
 `tests/Pest.php` flushes it in `beforeEach`.
 
+## The Game screen is one shell in three states, and the first tab IS the state
+
+    pre    Preview  — matchup predictor donut, comparison bars, season
+                      leaders, trends, last meetings, odds
+    live   Live     — situation on the scorebug, win probability, drive feed
+    final  Recap    — line score, recap article, game leaders, probability
+                      swing, related reading
+
+Box · Scoring · Drives · Odds ride behind whichever leads, each offered only
+when its data exists. `$tab` is `#[Url]`; mount() AND poll() normalize it, so
+`?tab=live` bookmarked mid-game resolves to Recap after the whistle instead of
+an empty pane.
+
+Rules the screen keeps, each one paid for:
+
+- **Drives are read ONLY while a tab showing them is active** — a computed
+  gated on `$tab`. game_drives is ~306 KB a row in its own table precisely so
+  a page view does not read it; `GamePageTest` asserts the recap tab issues
+  zero `game_drives` reads. `hasDrives` (an exists() on the PK) is what offers
+  the tab.
+- **The scorebug links both teams.** Cards send every tap to the game because
+  the team links live HERE — `LinkingTest` enforces it, and it is the first
+  thing a redesign quietly drops.
+- **The sheet is a sibling of the scorebug, never a child** — the scorebug's
+  backdrop-blur is a containing block for fixed descendants (the search-panel
+  lesson), and would cap the z-50 sheet at the scorebug's own size.
+- **Around the League claims each game once**: followed → Top 25 (via
+  GameRanks) → this game's conference(s) via season-scoped team_seasons →
+  rest of the ET day, computed only while the sheet is open. Drag-to-dismiss
+  and the entrance spring run through `element.animate()` (nothing inline for
+  a morph to strand); `x-trap.noscroll` does focus trap and scroll lock in
+  one; multi-statement Alpine lives in x-data METHODS.
+- **`SyncPredictors` is upcoming-only and that is a one-way door**: ESPN
+  serves predictors for unplayed games only, so a projection not captured
+  before kickoff never exists. Wed/Thu/Sat-morning passes are the capture;
+  `CoverageReport` watches the coming 10 days. The row also keeps
+  `pred_pt_diff` (projected margin) and opponent-strength ranks;
+  `teamChanceLoss` is the projection's complement and is derived, never
+  stored.
+- **The live situation clears when a game LEAVES the in state, and only
+  then.** A final must not wear a frozen "3rd & 7", but a live payload
+  omitting the block is a transient gap — nulling real data over it is the
+  default-writing mistake. Possession ids obey the non-positive rule.
+
+### Chart marks: team colors in light, neutral in dark, resolved as a PAIR
+
+`TeamPalette::chartColors(away, home)` — the donut and comparison bars draw
+in team colors in light mode, and BOTH pairwise failure modes are real: a
+near-white brand vanishes into the page, and two red teams merge into one
+ring. The away side keeps its primary; the home side yields — its own
+secondary first (Alabama gray beside Georgia red is truer than a shifted
+red), then a lightness shift, then a neutral that always reads. Dark mode
+un-brands both through the `chart-pair` utility (zinc vs accent), the same
+rule as every branded surface — and color is never the only distinguisher,
+because every mark carries its team's abbreviation. Floors: 2.0 against the
+page, 1.25 between the marks; the tests assert RATIOS, not which hex was
+picked.
+
 ## `games.name` is never the bowl name
 
 It only ever holds "A at B". The event's real name — "Rose Bowl Presented by
@@ -2248,6 +2306,37 @@ survives for backfills only.
 Worth checking the same question of any sweep before scheduling it: what new
 information does this run actually obtain?
 
+## The ops layer: feed_runs is the ledger, sync_runs is cfb:migrate's alone
+
+Every recurring `cfb:*` command wraps its work in `TracksFeedRun::trackRun()`,
+which writes one **feed_runs** row per invocation — records, ESPN requests
+(the same singleton counter the console line prints), duration, error, and
+the batch id for fan-out commands — then RETHROWS on failure so scheduler
+exit codes still mean what they meant. Pruned after a fortnight. `sync_runs`
+is a different thing and must stay one: cfb:migrate's resume ledger, unique
+per (step, season), overwritten on re-run.
+
+`App\Support\CoverageReport` is the expected-vs-actual layer — team stats,
+summaries, standings (FBS+FCS members ONLY: D2/D3's 400 conference members
+carry zero standings by design, and counting them turns a healthy 265/265
+into a red 265/796), rosters, aggregates, predictor coverage, freshness.
+Shared verbatim by the Filament **Sync Health** page and `cfb:doctor`
+(non-zero exit on any failure), so the panel and the terminal cannot
+disagree. Every check names its remedy command.
+
+The Sync Health page introspects `Schedule::events()` rather than keeping a
+second registry — but routes/console.php only loads when the CONSOLE kernel
+bootstraps, so in an HTTP request the resolved Schedule is empty until
+`app(Console\Kernel::class)->bootstrap()` runs. That is safe precisely
+because the schedule file is guaranteed side-effect-free while loading. The
+overdue flag comes from each event's own cron expression, evaluated only when
+its filters pass, so August does not flag offseason-gated tasks. Manual
+triggers dispatch from a curated allowlist — the options ARE the validation.
+
+The chrome-consistency sweeps exclude `filament/` views: the admin panel
+renders inside Filament's design system, and the phone-first rules enforced
+on an admin table is the right rule on the wrong product.
+
 ## `queue:work --memory` is useless below PHP's own limit
 
 Ordering matters and getting it wrong looks like the guard simply not working:
@@ -2283,6 +2372,29 @@ returns the live object. Cache timestamps as ints.
 
 Any test for this class of bug must **call twice**. A single-call test always
 passes.
+
+## Never Cache::remember an empty list on a screen fed by queued jobs
+
+The cache-layer twin of "never write a default when a feed returns nothing".
+Production served a fully populated stats screen whose season menu had NO
+options: the menu is built from "which years have rows", the page was first
+opened while the team-stats backfill was still draining, and `Cache::remember`
+pinned `[]` as authoritative for an hour at a time — while the boards beside
+it healed on their own per-year keys. **`App\Support\Remember::filled()`**
+serves a cached value only when non-empty, stores only non-empty results, and
+treats an already-cached empty as a miss — so deploying it healed production
+with no `cache:clear`. Every year-list/latest-year lookup that gates a screen
+goes through it, with any calendar fallback applied OUTSIDE the cache so a
+fallback year can never be pinned either.
+
+## An arrow function captures by VALUE, and a mutation inside one is lost
+
+`fn ($g) => $claimed[$g->id] = true` writes to a copy — silently, no warning —
+so the Around the League sheet's claim-once rule marked nothing and every
+group re-claimed the whole slate. Any closure that MUTATES captured state must
+be a full `function () use (&$ref)` or a plain foreach; the test that caught
+it asserts `pluck('id')->duplicates()` is empty, which is the right shape for
+any partitioning that promises each row appears once.
 
 ## Don't name a helper after a base-class method
 
