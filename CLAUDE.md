@@ -1877,10 +1877,19 @@ starve a Saturday: `live` (sweep, view boost, just-final), `default`
 (game logs, coaches, team news), `backfill` (`cfb:summaries` batches). Workers
 want SMALL concurrency — `ThrottleEspn` RELEASES a job when the shared 240/min
 window is spent, so adding workers past ~3 on `backfill` lowers throughput
-rather than raising it. `QUEUE_CONNECTION` and `CACHE_STORE` must BOTH be
-redis in production: the limiter window, the in-flight locks and the
-uniqueness locks all ride the cache store, and splitting them silently voids
-every guarantee above.
+rather than raising it.
+
+**Production queues ride Laravel Cloud managed queues, and deploying one sets
+`QUEUE_CONNECTION=cloud` — do not set it back.** Each of the three names is
+its own managed queue (Flex, max 2 workers; 512 MiB where FetchGameSummary
+runs, because it decodes a 544 KB payload). What must NEVER move off redis is
+`CACHE_STORE`: the limiter window, the in-flight locks and the uniqueness
+locks all ride the cache store, and managed-queue workers are separate
+instances — split the cache and every no-stacking guarantee above silently
+voids, one limiter and one set of locks per worker. Locally the queue stays
+redis; `aws/aws-sdk-php` is required by the cloud driver at deploy time.
+`queue:failed`/`queue:retry` do not exist for managed queues — failed jobs
+live in the Cloud dashboard's Queues tab.
 
 `GameScoreChanged` and `GameWentFinal` (dispatched from `SyncGames::store()`,
 after save, never on a first insert) are the pick'em subscription points — a
@@ -1889,10 +1898,11 @@ the model.
 
 ## Which store lives where, and the two queue tables Redis does not replace
 
-    cache + locks   redis      CACHE_STORE, connection `cache`, DB 1
-    queue           redis      QUEUE_CONNECTION, connection `default`, DB 0
+    cache + locks   redis      CACHE_STORE, connection `cache`, DB 1 — always
+    queue           cloud on Laravel Cloud (managed queues, set at deploy);
+                    redis locally, connection `default`, DB 0
     batching        MYSQL      job_batches
-    failed jobs     MYSQL      failed_jobs
+    failed jobs     MYSQL      failed_jobs (locally; Cloud has its own view)
     sessions        MYSQL      SESSION_DRIVER=database
 
 `cache`, `cache_locks` and `jobs` are gone from the migrations — Redis holds
