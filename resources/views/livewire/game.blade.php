@@ -122,7 +122,7 @@ new class extends Component
         unset(
             $this->teamStats, $this->scoringPlays, $this->playerStats,
             $this->summary, $this->drives, $this->winProbability, $this->tabs,
-            $this->canRefresh,
+            $this->canRefresh, $this->refreshAvailableIn,
         );
 
         // A whistle mid-visit: the Live tab just became Recap.
@@ -156,6 +156,29 @@ new class extends Component
         // and asking again is free — the job is unique per game.
         return $syncedAt === null
             || $syncedAt->diffInSeconds(now()) >= self::REFRESH_OFFERED_AFTER;
+    }
+
+    /**
+     * Seconds until a hand-asked refresh becomes worth making — what the
+     * countdown ring depletes over. Zero once it is available.
+     *
+     * The ring is driven client-side because the page only re-renders every
+     * thirty seconds, and a countdown that moved twice a minute would not be
+     * a countdown. The server still owns the DECISION (canRefresh), so the
+     * two can disagree by at most the second the tick lands on.
+     */
+    #[Computed]
+    public function refreshAvailableIn(): int
+    {
+        if (! $this->isLive || $this->canRefresh) {
+            return 0;
+        }
+
+        $syncedAt = $this->summary?->synced_at;
+
+        return $syncedAt === null
+            ? 0
+            : max(0, self::REFRESH_OFFERED_AFTER - (int) $syncedAt->diffInSeconds(now()));
     }
 
     /**
@@ -797,27 +820,68 @@ new class extends Component
                 @endif
             </button>
 
-            {{-- Hidden, not disabled, for the first half of every cycle: a
-                 control that cannot do anything is noise, and this one is
-                 genuinely unavailable rather than merely unwise. The slot
-                 stays in the grid either way, so the title does not shift
-                 when it appears. --}}
-            <div class="justify-self-end">
-                @if ($this->canRefresh)
-                    <button
-                        type="button"
-                        wire:click="forceRefresh"
-                        class="rounded-md p-1 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                        aria-label="Refresh now"
-                        title="Refresh now"
+            {{--
+                The cooldown made visible: a blue ring that empties over the
+                thirty seconds a forced fetch would be wasted in, then the word
+                Refresh once it would actually expedite something.
+
+                Keyed on the sync timestamp so a landed fetch REPLACES this
+                node — Livewire's morph preserves Alpine state, so without a
+                changing key the countdown would keep draining from wherever
+                the last cycle left it instead of restarting at full.
+
+                The slot itself is always in the grid, so the title never
+                shifts as the control changes shape.
+            --}}
+            <div class="justify-self-end" wire:key="refresh-{{ $this->summary?->synced_at?->timestamp ?? 0 }}">
+                @if ($this->isLive)
+                    <div
+                        x-data="{
+                            remaining: @js($this->refreshAvailableIn),
+                            total: @js($this->refreshAvailableIn ?: 1),
+                            timer: null,
+                            start() {
+                                if (this.remaining <= 0) return;
+                                this.timer = setInterval(() => {
+                                    this.remaining = Math.max(0, this.remaining - 1);
+                                    if (this.remaining === 0) this.stop();
+                                }, 1000);
+                            },
+                            stop() {
+                                if (this.timer) clearInterval(this.timer);
+                                this.timer = null;
+                            },
+                        }"
+                        x-init="start()"
+                        x-on:beforeunload.window="stop()"
                     >
-                        <flux:icon.arrow-path
-                            variant="micro"
-                            class="size-4"
-                            wire:loading.class="animate-spin"
+                        {{-- Emptying, not filling: the ring is time you still
+                             have to wait, so it should be running out. --}}
+                        <svg
+                            x-show="remaining > 0"
+                            x-cloak
+                            viewBox="0 0 24 24"
+                            class="size-5 -rotate-90"
+                            aria-hidden="true"
+                        >
+                            <circle cx="12" cy="12" r="9" fill="none" stroke-width="2.5"
+                                    class="stroke-zinc-200 dark:stroke-zinc-700" />
+                            <circle cx="12" cy="12" r="9" fill="none" stroke-width="2.5" stroke-linecap="round"
+                                    class="stroke-blue-500 transition-[stroke-dashoffset] duration-1000 ease-linear motion-reduce:transition-none"
+                                    stroke-dasharray="56.55"
+                                    :style="`stroke-dashoffset: ${56.55 * (1 - remaining / total)}`"
+                            />
+                        </svg>
+
+                        <button
+                            type="button"
+                            x-show="remaining <= 0"
+                            wire:click="forceRefresh"
+                            class="rounded-md px-1.5 py-1 text-sm font-medium transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                            wire:loading.attr="disabled"
                             wire:target="forceRefresh"
-                        />
-                    </button>
+                        >Refresh</button>
+                    </div>
                 @endif
             </div>
         </div>

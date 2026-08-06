@@ -16,13 +16,33 @@
     $home = (float) $predictor->home_projection;
 
     $circumference = 2 * M_PI * 45;
-    $gap = 6;
+    $stroke = 11;
 
-    $awayArc = max(0, $circumference * ($away / 100) - $gap);
-    $homeArc = max(0, $circumference * ($home / 100) - $gap);
+    /*
+     * HOME sweeps first, clockwise from 12 o'clock, so it occupies the RIGHT
+     * half of the ring — under the home logo, which sits on the right. Away
+     * then carries on from where home ends, around the bottom and up the LEFT,
+     * finishing under its own logo.
+     *
+     * Drawing away first put its color on the right and home's on the left:
+     * each side reading as the other team, on the one component whose entire
+     * job is saying who is favored.
+     */
+    $homeStart = -90;
+    $awayStart = -90 + 360 * ($home / 100);
 
-    // Home starts where away's share ends; both rotate from 12 o'clock.
-    $homeStart = -90 + 360 * ($away / 100);
+    /*
+     * Round caps EXTEND a dash by half the stroke width at each end, so a
+     * shortening of S leaves a visible gap of S - stroke between segments.
+     * 18 buys roughly seven units of background either side of each junction —
+     * enough to read as deliberate white space rather than an anti-aliasing
+     * seam. There is no track circle behind them for the same reason: the gap
+     * should be the card, not a grey ring showing through.
+     */
+    $shorten = $stroke + 7;
+
+    $awayArc = max(0, $circumference * ($away / 100) - $shorten);
+    $homeArc = max(0, $circumference * ($home / 100) - $shorten);
 
     $margin = $predictor->home_pred_pt_diff !== null && $predictor->away_pred_pt_diff !== null
         ? ($predictor->home_pred_pt_diff >= $predictor->away_pred_pt_diff
@@ -43,19 +63,17 @@
 
         <svg viewBox="0 0 120 120" class="size-32 shrink-0" role="img"
              aria-label="Win projection: {{ $game->awayTeam?->abbreviation }} {{ $away }}%, {{ $game->homeTeam?->abbreviation }} {{ $home }}%">
-            <circle cx="60" cy="60" r="45" fill="none" stroke-width="11"
-                    class="stroke-zinc-100 dark:stroke-zinc-800" />
-            <circle cx="60" cy="60" r="45" fill="none" stroke-width="11" stroke-linecap="round"
-                    transform="rotate(-90 60 60)"
-                    class="transition-[stroke-dasharray] duration-700 ease-out motion-reduce:transition-none"
-                    style="stroke: var(--chart-away)"
-                    :stroke-dasharray="shown ? '{{ $awayArc }} {{ $circumference - $awayArc }}' : '0 {{ $circumference }}'"
-                    stroke-dasharray="0 {{ $circumference }}" />
-            <circle cx="60" cy="60" r="45" fill="none" stroke-width="11" stroke-linecap="round"
+            <circle cx="60" cy="60" r="45" fill="none" stroke-width="{{ $stroke }}" stroke-linecap="round"
                     transform="rotate({{ $homeStart }} 60 60)"
                     class="transition-[stroke-dasharray] duration-700 ease-out motion-reduce:transition-none"
                     style="stroke: var(--chart-home)"
                     :stroke-dasharray="shown ? '{{ $homeArc }} {{ $circumference - $homeArc }}' : '0 {{ $circumference }}'"
+                    stroke-dasharray="0 {{ $circumference }}" />
+            <circle cx="60" cy="60" r="45" fill="none" stroke-width="{{ $stroke }}" stroke-linecap="round"
+                    transform="rotate({{ $awayStart }} 60 60)"
+                    class="transition-[stroke-dasharray] duration-700 ease-out motion-reduce:transition-none"
+                    style="stroke: var(--chart-away)"
+                    :stroke-dasharray="shown ? '{{ $awayArc }} {{ $circumference - $awayArc }}' : '0 {{ $circumference }}'"
                     stroke-dasharray="0 {{ $circumference }}" />
         </svg>
 

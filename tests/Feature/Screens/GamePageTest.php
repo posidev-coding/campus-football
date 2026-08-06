@@ -565,9 +565,12 @@ describe('the hand-asked refresh', function () {
             'game_id' => $this->live->id, 'is_final' => false, 'synced_at' => now()->subSeconds(10),
         ]);
 
+        // Both states ship in the markup and Alpine picks between them, so
+        // absence is asserted on the value that drives the choice rather than
+        // on the text — the countdown is what the reader sees.
         Livewire::test('game', ['game' => $this->live])
             ->assertSet('canRefresh', false)
-            ->assertDontSee('Refresh now');
+            ->assertSet('refreshAvailableIn', 20);
     });
 
     it('appears halfway in, when pressing it would genuinely expedite', function () {
@@ -577,7 +580,9 @@ describe('the hand-asked refresh', function () {
 
         Livewire::test('game', ['game' => $this->live])
             ->assertSet('canRefresh', true)
-            ->assertSee('Refresh now');
+            // Nothing left to count down; the ring gives way to the button.
+            ->assertSet('refreshAvailableIn', 0)
+            ->assertSee('Refresh');
     });
 
     it('forces past the staleness check, because it is offered before staleness', function () {
