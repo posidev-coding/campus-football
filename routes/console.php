@@ -1,6 +1,5 @@
 <?php
 
-use App\Services\CfbCalendar;
 use App\Services\Espn\Sync\SyncNews;
 use Illuminate\Console\Scheduling\Schedule as ScheduleClass;
 use Illuminate\Support\Facades\Schedule;
@@ -169,13 +168,17 @@ Schedule::command('cfb:sync --only=injuries')
  * fetched per prospect. That is why this syncs two classes rather than one.
  *
  * The classes worth refreshing are the one that just signed and the one being
- * recruited, which are `currentYear()` and the year after. It used to sync
- * `config('cfb.season')`, a fixed value that drifts a year behind the class
- * anybody is actually following.
+ * recruited — `current` and `next`, resolved by the COMMAND at run time. It
+ * used to sync `config('cfb.season')`, a fixed value that drifts a year
+ * behind the class anybody is actually following; then it resolved
+ * `currentYear()` HERE, which queried `seasons` while this file loaded —
+ * and this file loads during every artisan command, including
+ * package:discover on a deploy build whose database has no tables yet, so
+ * the deploy died before migrations ran. Nothing in this file may touch the
+ * database at load time; anything data-dependent belongs in a closure or in
+ * the command itself.
  */
-$recruitingClass = app(CfbCalendar::class)->currentYear();
-
-foreach ([$recruitingClass, $recruitingClass + 1] as $class) {
+foreach (['current', 'next'] as $class) {
     Schedule::command("cfb:sync --only=recruiting --year={$class}")
         ->weeklyOn(ScheduleClass::WEDNESDAY, '03:00')
         ->timezone($tz)

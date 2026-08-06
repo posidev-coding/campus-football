@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Services\CfbCalendar;
 use App\Services\Espn\EspnClient;
 use App\Services\Espn\Sync\ComputeStandings;
 use App\Services\Espn\Sync\ReconcileStandings;
@@ -21,7 +22,7 @@ use Illuminate\Console\Command;
 class SyncSeasonCommand extends Command
 {
     protected $signature = 'cfb:sync
-        {--year= : Season year (defaults to CFB_SEASON)}
+        {--year= : Season year, or current|next resolved at run time (defaults to CFB_SEASON)}
         {--only= : One step: seasons|conferences|teams|games|rankings|rankings-current|predictors|recruiting|injuries|standings|compute|reconcile|leaders|athletes|news}';
 
     protected $description = 'Sync a season of reference data from ESPN';
@@ -44,7 +45,7 @@ class SyncSeasonCommand extends Command
 
     public function handle(EspnClient $espn): int
     {
-        $year = (int) ($this->option('year') ?: config('cfb.season'));
+        $year = $this->resolveYear($this->option('year'));
         $only = $this->option('only');
 
         if ($only !== null && ! in_array($only, [...self::STEPS, 'rankings-current'], true)) {
@@ -71,6 +72,23 @@ class SyncSeasonCommand extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * `current` and `next` exist so the SCHEDULE can name a season without
+     * resolving it: the recruiting entries used to call the calendar while
+     * routes/console.php loaded, which is during every artisan command —
+     * including package:discover on a deploy build with no database yet, so
+     * the deploy died before migrations ran. The schedule now passes a
+     * relative token and the query happens here, at run time.
+     */
+    private function resolveYear(?string $option): int
+    {
+        return match ($option) {
+            'current' => app(CfbCalendar::class)->currentYear(),
+            'next' => app(CfbCalendar::class)->currentYear() + 1,
+            default => (int) ($option ?: config('cfb.season')),
+        };
     }
 
     private function runStep(string $step, int $year): void
