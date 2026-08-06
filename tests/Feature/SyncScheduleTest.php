@@ -1,6 +1,9 @@
 <?php
 
+use App\Models\Game;
 use App\Models\Season;
+use App\Models\Week;
+use App\Services\CfbCalendar;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 
@@ -22,6 +25,64 @@ it('schedules recruiting by relative token, never a resolved year', function () 
     expect($commands)->toHaveCount(2)
         ->and($commands->filter(fn (string $c) => str_contains($c, '--year=current')))->toHaveCount(1)
         ->and($commands->filter(fn (string $c) => str_contains($c, '--year=next')))->toHaveCount(1);
+});
+
+describe('the nightly aggregate is scoped to the season being played', function () {
+    /*
+     * A finished season's totals cannot change, so recomputing all six every
+     * night is ~18 season/type rounds over 305,000 box-score lines — half an
+     * hour of compute, nightly, to learn what one season did yesterday. It
+     * also risks outrunning the sleep timeout on a scale-to-zero app cluster
+     * and being cut off mid-pass.
+     */
+    it('passes the relative token rather than every season', function () {
+        $aggregate = collect(app(Schedule::class)->events())
+            ->first(fn (Event $event) => str_contains($event->command ?? '', 'cfb:aggregate'));
+
+        expect($aggregate)->not->toBeNull()
+            ->and($aggregate->command)->toContain('--year=current');
+    });
+
+    it('resolves `current` to a season that HAS box scores', function () {
+        /*
+         * resultsYear(), not currentYear(). In August the season we are
+         * heading into has no completed games, so aggregating it would spend
+         * the whole pass writing nothing while the season that actually holds
+         * numbers went stale — the same distinction that empties a dropdown
+         * everywhere else in this app.
+         */
+        $played = Season::factory()->create([
+            'year' => 2025, 'type' => Season::REGULAR,
+            'start_date' => '2025-08-23', 'end_date' => '2025-12-13',
+        ]);
+
+        $week = Week::create([
+            'season_id' => $played->id, 'number' => 5, 'name' => 'Week 5',
+            'start_date' => '2025-09-23', 'end_date' => '2025-09-29',
+        ]);
+
+        Game::factory()->finished()->create([
+            'season_id' => $played->id,
+            'week_id' => $week->id,
+        ]);
+
+        // Scheduled but unplayed — the season a naive "current" would pick.
+        Season::factory()->create([
+            'year' => 2026, 'type' => Season::REGULAR,
+            'start_date' => '2026-08-22', 'end_date' => '2026-12-13',
+        ]);
+
+        $this->artisan('cfb:aggregate', ['--year' => 'current'])
+            ->expectsOutputToContain('zero ESPN requests')
+            ->assertSuccessful();
+
+        expect(app(CfbCalendar::class)->resultsYear())->toBe(2025);
+    });
+
+    it('still recomputes every season when no year is named', function () {
+        // The backfill path, which is what a fresh seed needs.
+        $this->artisan('cfb:aggregate')->assertSuccessful();
+    });
 });
 
 it('schedules the live summary sweep inside the live window', function () {

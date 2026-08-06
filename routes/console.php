@@ -274,7 +274,18 @@ Schedule::command('cfb:sync --only=athletes')
  * the MAC had FOUR players in the national top 100 for passing yards. Ranking
  * our own aggregates gives that conference 43.
  */
-Schedule::command('cfb:aggregate')
+/*
+ * The CURRENT season only. A finished season's totals cannot change, and
+ * recomputing all six nightly is ~18 season/type rounds over 305,000
+ * box-score lines — half an hour of compute to learn what one season did
+ * yesterday. Same reasoning as the rankings tier, which stopped re-reading
+ * eighteen weeks of published polls to pick up one new week.
+ *
+ * Scoping matters for more than cost: a scheduled command holds the app
+ * cluster awake, and one that outruns the sleep timeout can be cut off
+ * mid-pass. `cfb:aggregate` with no --year is still the backfill path.
+ */
+Schedule::command('cfb:aggregate --year=current')
     ->dailyAt('05:15')
     ->timezone($tz)
     ->when($inSeason)

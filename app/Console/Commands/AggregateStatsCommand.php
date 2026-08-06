@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Season;
+use App\Services\CfbCalendar;
 use App\Services\Stats\AggregateAthleteStats;
 use Illuminate\Console\Command;
 
@@ -11,27 +12,28 @@ use Illuminate\Console\Command;
  *
  * Pure arithmetic over data we already hold — no ESPN requests at all — so it
  * is cheap to re-run and safe to schedule.
+ *
+ * But it is NOT cheap in time: a full six-season pass is ~18 season/type
+ * rounds over 305,000 box-score lines, and the seed run took half an hour on
+ * production compute. A finished season's totals can never change, so the
+ * SCHEDULE passes `--year=current` and only the season being played is
+ * recomputed — the same reasoning that stopped SyncRankings re-reading
+ * eighteen weeks of published polls to learn one.
+ *
+ * Bare `cfb:aggregate` still does every season, which is what a backfill
+ * wants; it just is not what a nightly job should do.
  */
 class AggregateStatsCommand extends Command
 {
     protected $signature = 'cfb:aggregate
-        {--year= : Season year (defaults to every season with games)}
+        {--year= : Season year, or `current` resolved at run time (defaults to every season with games)}
         {--type= : Season type, defaults to regular and postseason}';
 
     protected $description = 'Derive athlete season totals from stored box scores';
 
     public function handle(AggregateAthleteStats $aggregate): int
     {
-        $years = $this->option('year')
-            ? [(int) $this->option('year')]
-            : Season::query()
-                ->whereExists(fn ($q) => $q->selectRaw(1)->from('games')
-                    ->whereColumn('games.season_id', 'seasons.id')
-                    ->where('games.completed', true))
-                ->distinct()
-                ->orderBy('year')
-                ->pluck('year')
-                ->all();
+        $years = $this->years();
 
         /*
          * FULL_SEASON last, so it folds a year that already has its parts.
@@ -71,5 +73,42 @@ class AggregateStatsCommand extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The seasons to recompute.
+     *
+     * `current` resolves through CfbCalendar at RUN time rather than being
+     * baked into the schedule file — routes/console.php must not touch the
+     * database while it loads, since it loads during every artisan command
+     * including a deploy build with no tables yet.
+     *
+     * `resultsYear()` rather than `currentYear()`: this reads box scores, and
+     * in August the season we are heading into has none. Aggregating it would
+     * spend the whole pass writing nothing while the season that actually has
+     * numbers went stale.
+     *
+     * @return list<int>
+     */
+    private function years(): array
+    {
+        $option = $this->option('year');
+
+        if ($option === 'current') {
+            return [app(CfbCalendar::class)->resultsYear()];
+        }
+
+        if ($option) {
+            return [(int) $option];
+        }
+
+        return Season::query()
+            ->whereExists(fn ($q) => $q->selectRaw(1)->from('games')
+                ->whereColumn('games.season_id', 'seasons.id')
+                ->where('games.completed', true))
+            ->distinct()
+            ->orderBy('year')
+            ->pluck('year')
+            ->all();
     }
 }
