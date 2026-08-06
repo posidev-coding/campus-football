@@ -250,6 +250,110 @@ describe('the movement column appears only when it can mean something', function
     });
 });
 
+describe('the division plate', function () {
+    it('offers a division tab only where a poll has rows', function () {
+        /*
+         * The fixture holds AP and Coaches only, so the plate is a single FBS
+         * tab — derived from the data rather than hardcoded, the same rule as
+         * a Top 25 filter with no poll behind it: a tab whose screen can only
+         * ever be empty must not render.
+         */
+        Livewire::test('rankings')
+            ->assertSet('division', 'fbs')
+            ->assertSee('FBS')
+            ->assertDontSee('FCS')
+            ->assertDontSee('DII/DIII');
+    });
+
+    it('partitions the polls and switches division through the tabs', function () {
+        Ranking::create([
+            'season_id' => $this->season->id, 'week_id' => $this->week16->id,
+            'poll' => 'fcs', 'team_id' => $this->miami->id, 'rank' => 1, 'record' => '13-3',
+        ]);
+
+        Livewire::test('rankings')
+            // The FBS menu must not offer the other division's poll.
+            ->assertSee('AP Top 25')
+            ->assertDontSee('FCS Coaches')
+            ->set('division', 'fcs')
+            // A division means its leading published poll, week re-resolved.
+            ->assertSet('poll', 'fcs')
+            ->assertSet('release', $this->week16->id)
+            ->assertSee('FCS Coaches')
+            ->assertSee('Miami')
+            ->assertDontSee('AP Top 25');
+    });
+
+    it('re-resolves the year when the division\'s poll lives in an earlier season', function () {
+        /*
+         * The FCS poll's newest rows may sit a season behind the FBS poll on
+         * screen. Keeping the stale year would open the tab on an empty page
+         * with the real rankings one season away — the same conflation of
+         * "this poll's year" and "the year on screen" mount() already avoids.
+         */
+        $season2024 = Season::factory()->create([
+            'year' => 2024, 'type' => Season::REGULAR,
+            'start_date' => '2024-08-24', 'end_date' => '2024-12-14',
+        ]);
+
+        $week = Week::create([
+            'season_id' => $season2024->id, 'number' => 16, 'name' => 'Week 16',
+            'start_date' => '2024-12-08', 'end_date' => '2024-12-15',
+        ]);
+
+        Ranking::create([
+            'season_id' => $season2024->id, 'week_id' => $week->id,
+            'poll' => 'fcs', 'team_id' => $this->miami->id, 'rank' => 1, 'record' => '12-2',
+        ]);
+
+        Livewire::test('rankings')
+            ->assertSet('year', 2025)
+            ->set('division', 'fcs')
+            ->assertSet('poll', 'fcs')
+            ->assertSet('year', 2024)
+            ->assertSet('release', $week->id)
+            ->assertSee('Miami');
+    });
+
+    it('excludes the small-college polls entirely', function () {
+        /*
+         * This is a Division I app. The AFCA DII and DIII polls still sync
+         * and store, but the screen never offers them — no tab, no menu
+         * entry, and a deep link carrying one resolves like no poll at all
+         * instead of rendering an orphaned list under the FBS tab.
+         */
+        Ranking::create([
+            'season_id' => $this->season->id, 'week_id' => $this->week16->id,
+            'poll' => 'afca-dii', 'team_id' => $this->miami->id, 'rank' => 1, 'record' => '11-0',
+        ]);
+
+        Livewire::test('rankings')
+            ->assertDontSee('DII/DIII')
+            ->assertDontSee('AFCA Div II');
+
+        Livewire::withQueryParams(['poll' => 'afca-dii'])
+            ->test('rankings')
+            ->assertSet('poll', 'ap')
+            ->assertSee('Indiana');
+
+        // The client can push one straight at the property, menu or not.
+        Livewire::test('rankings')
+            ->set('poll', 'afca-dii')
+            ->assertSet('poll', 'ap')
+            ->assertSee('Indiana');
+    });
+
+    it('falls back rather than erroring on an unknown division', function () {
+        // The plate writes $division from the client, so any string can
+        // arrive. An unknown one snaps back to the current poll's division.
+        Livewire::test('rankings')
+            ->set('division', 'nonsense')
+            ->assertSet('division', 'fbs')
+            ->assertSet('poll', 'ap')
+            ->assertSee('Indiana');
+    });
+});
+
 describe('the release strip', function () {
     it('offers a pill per release instead of a third dropdown', function () {
         // A release only exists where the poll has rows, so week 15 has to be

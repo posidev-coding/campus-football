@@ -74,6 +74,38 @@ enum Poll: string
     }
 
     /**
+     * Which division tab this poll sits under on /rankings, or null for a
+     * poll the screen does not carry at all.
+     *
+     * 'fbs' and 'fcs' are the Scope vocabulary Standings' plate already
+     * speaks. The AFCA Division II and III polls are EXCLUDED deliberately —
+     * this is a Division I app, and a small-college tab spent a third of the
+     * plate on lists nobody here reads. Their rows still sync and store; the
+     * screen just never offers them.
+     */
+    public function division(): ?string
+    {
+        return match ($this) {
+            self::Fcs => 'fcs',
+            self::DivisionII, self::DivisionIII => null,
+            default => 'fbs',
+        };
+    }
+
+    /**
+     * One division's polls, in the order a rankings screen should prefer
+     * them — majors first for FBS, matching availablePolls()' presentation.
+     *
+     * @return list<self>
+     */
+    public static function inDivision(string $division): array
+    {
+        $ordered = [...self::major(), self::CfpSeedings, self::Fcs];
+
+        return array_values(array_filter($ordered, fn (self $poll) => $poll->division() === $division));
+    }
+
+    /**
      * The first regular-season week this poll can appear in.
      *
      * AP and Coaches publish a preseason poll and run all season. The CFP

@@ -5,6 +5,7 @@ use App\Models\Ranking;
 use App\Models\Season;
 use App\Models\Week;
 use App\Services\CfbCalendar;
+use App\Support\Scope;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -29,12 +30,29 @@ new class extends Component
     #[Url]
     public ?int $release = null;
 
+    /**
+     * The plate's active tab. NOT `#[Url]`, deliberately: the poll fully
+     * determines its division, and a second querystring parameter saying the
+     * same thing is a second thing that can disagree with the first.
+     */
+    public string $division = Scope::FBS;
+
     public function mount(CfbCalendar $calendar): void
     {
+        // A poll this screen does not carry — the AFCA small-college polls,
+        // or a mistyped querystring — resolves exactly like no poll at all,
+        // so the deep link lands on the default instead of an orphaned list.
+        if ($this->poll !== '' && ! $this->carries($this->poll)) {
+            $this->poll = '';
+            $this->year = null;
+            $this->release = null;
+        }
+
         // CFP once it exists for the season, AP until then.
         $this->poll = $this->poll ?: $calendar->defaultPoll()->value;
         $this->year ??= $calendar->rankingsYear($this->poll);
         $this->release ??= $calendar->latestRankingRelease($this->year, $this->poll);
+        $this->division = $this->divisionOf();
     }
 
     /**
@@ -43,8 +61,51 @@ new class extends Component
      */
     public function updatedPoll(CfbCalendar $calendar): void
     {
+        // Reachable from the client with any string, not just the menu's
+        // options — an uncarried poll falls back rather than rendering.
+        if (! $this->carries($this->poll)) {
+            $this->poll = $calendar->defaultPoll()->value;
+        }
+
+        $this->division = $this->divisionOf();
         $this->year = $calendar->rankingsYear($this->poll);
         $this->release = $calendar->latestRankingRelease($this->year, $this->poll);
+    }
+
+    /**
+     * Switching division switches POLL: the tabs partition the polls the way
+     * Standings' tabs partition conferences, so a division means its leading
+     * published poll — majors first for FBS — and the year and release
+     * re-resolve exactly as a poll change does, because the division's poll
+     * may live in an earlier season than the one on screen.
+     */
+    public function updatedDivision(CfbCalendar $calendar): void
+    {
+        $poll = collect(Poll::inDivision($this->division))
+            ->first(fn (Poll $p) => in_array($p->value, $this->publishedPolls, true));
+
+        // Reachable from the client with any string; an unknown or empty
+        // division falls back to the one the current poll belongs to.
+        if ($poll === null) {
+            $this->division = $this->divisionOf();
+
+            return;
+        }
+
+        $this->poll = $poll->value;
+        $this->year = $calendar->rankingsYear($this->poll);
+        $this->release = $calendar->latestRankingRelease($this->year, $this->poll);
+    }
+
+    private function divisionOf(): string
+    {
+        return Poll::tryFrom($this->poll)?->division() ?? Scope::FBS;
+    }
+
+    /** Whether this screen offers the poll at all — the AFCA polls have no division. */
+    private function carries(string $poll): bool
+    {
+        return Poll::tryFrom($poll)?->division() !== null;
     }
 
     public function updatedYear(CfbCalendar $calendar): void
@@ -97,7 +158,52 @@ new class extends Component
     }
 
     /**
-     * Polls with rows for this season, majors first.
+     * Every poll with rows in ANY season — what decides which division tabs
+     * render at all. Not year-scoped, deliberately: a tab exists so long as
+     * its division has something to show, and switching to it re-resolves the
+     * year to wherever that something lives.
+     *
+     * @return list<string>
+     */
+    #[Computed]
+    public function publishedPolls(): array
+    {
+        return Cache::remember(
+            'rankings:published-polls',
+            3600,
+            fn () => Ranking::query()->distinct()->pluck('poll')->all()
+        );
+    }
+
+    /**
+     * The plate's tabs: FBS and FCS, where a published poll exists. The AFCA
+     * small-college polls carry no division, so they can never surface a tab.
+     *
+     * Derived from the data rather than hardcoded, so a fresh database does
+     * not offer tabs whose screens can only ever be empty — the same rule as
+     * a Top 25 filter with no poll behind it.
+     *
+     * @return array<string, string>
+     */
+    #[Computed]
+    public function divisionTabs(): array
+    {
+        $divisions = array_map(
+            fn (string $poll) => Poll::tryFrom($poll)?->division(),
+            $this->publishedPolls
+        );
+
+        return array_filter(
+            [Scope::FBS => 'FBS', Scope::FCS => 'FCS'],
+            fn (string $division) => in_array($division, $divisions, true),
+            ARRAY_FILTER_USE_KEY
+        );
+    }
+
+    /**
+     * Polls with rows for this season, narrowed to the active division —
+     * the tabs partition the polls, so the menu holds only the current tab's.
+     * Majors first within it.
      *
      * @return array<string,string>
      */
@@ -105,6 +211,7 @@ new class extends Component
     public function polls(): array
     {
         return collect(app(CfbCalendar::class)->availablePolls($this->year))
+            ->filter(fn (Poll $p) => $p->division() === $this->division)
             ->mapWithKeys(fn (Poll $p) => [$p->value => $p->label()])
             ->all();
     }
@@ -166,31 +273,44 @@ new class extends Component
 <div class="flex flex-col gap-4">
     <h1 class="sr-only">Rankings</h1>
 
-    {{-- Both WHEN controls as text-button menus, poll left and season far
-         right as everywhere — no boxed selects beside dropdowns. --}}
+    {{--
+        The same plate Standings wears — division tabs on the rule, the WHO
+        and WHEN menus on the shelf. The one difference in meaning: these tabs
+        partition POLLS rather than conferences, so the menu beside them holds
+        only the active division's polls and switching tab jumps to that
+        division's leading published poll.
+    --}}
     @php
         $pollItems = collect($this->polls)
             ->map(fn ($label, $value) => ['value' => $value, 'label' => $label])
             ->values()
             ->all();
     @endphp
-    <div class="flex items-center justify-between gap-3">
-        <x-filter-menu
-            :items="$pollItems"
-            :selected="$poll"
-            model="poll"
-            label="Poll"
-            key-prefix="poll"
-            class="shrink-0"
-        />
+    <x-plate
+        :tabs="$this->divisionTabs"
+        :selected="$division"
+        model="division"
+        key-prefix="rankdivision"
+    >
+        <x-slot:actions>
+            <x-filter-menu
+                :items="$pollItems"
+                :selected="$poll"
+                model="poll"
+                label="Poll"
+                key-prefix="poll"
+                align="end"
+                class="shrink-0"
+            />
 
-        <x-season-menu :years="$this->years" :selected="$year" class="shrink-0" />
-    </div>
+            <x-season-menu :years="$this->years" :selected="$year" class="shrink-0" />
+        </x-slot:actions>
+    </x-plate>
 
     {{--
-        The release picker, promoted out of a third dropdown into the same strip
-        Scores uses — the season's polls visible by swiping rather than hidden
-        behind a select.
+        The release picker as the plate's second row, in the same strip Scores
+        uses — the season's polls visible by swiping rather than hidden behind
+        a select. Period WITHIN a season is always a scroller, never a menu.
 
         Deliberately the SAME component, so the active pill is filled exactly as
         it is on Scores. Two horizontal strips in one app should not speak two
