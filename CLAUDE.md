@@ -234,8 +234,103 @@ plain arrays.
   `matchupQuality`.
 - Only the CURRENT roster is published. `?season=2025` returns zero athletes.
 - Recruiting resolves only at `/recruiting/{year}/athletes` (404s on every
-  obvious guess).
+  obvious guess) — see the Recruiting section below, which is the one feed where
+  the cost was self-inflicted.
 - There is no NIL endpoint. `NilNewsProvider` filters team news by keyword.
+
+## Recruiting: 27,000 prospects for 31 requests
+
+The recruiting table held **25 prospects of one class** for months. Nothing was
+broken; two assumptions were, and both are the kind that fail silently.
+
+**`limit` caps at 1000, and asking for more gets you 25.**
+
+    /recruiting/2026/athletes            count=5193  pageSize=25    pageCount=208
+    /recruiting/2026/athletes?limit=1000 count=5193  pageSize=1000  pageCount=6
+    /recruiting/2026/athletes?limit=2000 -> silently ignored, back to 25
+
+That silent fallback is why `EspnClient::MAX_PAGE_SIZE` clamps rather than
+trusting the caller: over the ceiling, "fetch everything" becomes "fetch the
+first page" with no error to notice.
+
+**Every collection item is ALREADY the whole document.** Diffed an item against
+its own `$ref` payload: the key sets are identical, nothing is missing. So
+following the ref cost one request per prospect and bought nothing —
+`paginate()` now takes `inline: true` to skip it. A full class went from ~5,200
+requests to **six**. All eight classes, 27,178 prospects: **31 requests**.
+
+Twenty-three classes are published, **2006-2028**. We hold 2021-2028.
+
+**`alternateId` links a prospect to the player they became**, and it is why
+history is worth holding — but the rate is nothing like the top of a class
+suggests. Measured against athletes we actually hold:
+
+    2021   82% of the top 1000   51% of the whole class
+    2024   89%                   41%
+    2026   30%                    4%   (they have not enrolled yet)
+
+### `schools[]` is an interest list, not a visit list
+
+Only **659 of 10,472** entries in the 2026 class carry a date — 6%. Most rows
+are "this school was in the running". Hence `recruit_schools`, and hence the
+team page can show who a school recruited and lost.
+
+Three traps in it, all measured:
+
+- **Seven rows carry the year 2205** — an ESPN typo for 2025, and MySQL's
+  `timestamp` tops out at 2038-01-19. The column is a `date` and the sync drops
+  anything outside `[class-3, class+1]` rather than guessing the intended year.
+- **The unique cannot be `(recruit_id, team_id)`.** That column is nullable for
+  schools we do not carry, and MySQL never matches NULL to NULL in a unique
+  index, so those rows were re-inserted on every weekly run — verified, one
+  recruit went from 21 interest rows to 22. It is keyed on `espn_team_id`, which
+  is never null and also records WHICH school it was.
+- **An Undecided prospect's schools all share status id 0.** Matching the
+  commitment on status id alone would pick one of their visits at random and
+  call it a signing, so `committedTeamId()` bails on a falsy status.
+
+### Recruiting has its own position vocabulary
+
+It is NOT the roster's. Recruits are labelled `QB-PP` (pro-style, 224 in 2026),
+`QB-DT` (dual-threat, 85), `OG`, `OC`, `OT`, `OLB`, `TE-H` — plain `QB` has
+exactly **one** prospect. A position filter built from roster labels finds
+nobody. `/recruiting` derives its position menu from the recruits themselves
+and orders it by `positions.parent_id` (70 offense, 71 defense, 72 special),
+because recruits carry no `position_group`.
+
+### A class ranking cannot be an average, and cannot be a total
+
+ESPN's `recruiting/{y}/rankings` is an empty shell — `{id, name: "ESPN Class
+Rankings"}` with no entries, every sub-path 404 — so it must be derived, and
+both naive answers are wrong on real data:
+
+    average alone   a school with ONE 77-grade signee ranked 3rd nationally
+    total alone     West Virginia's 71 signees (61.1 avg) outranked LSU's
+                    class containing the nation's #1 prospect
+
+`App\Support\RecruitingClasses` sums the **top twenty**, which is the size of a
+real class and what a recruiting service actually does. ESPN lists 40-70
+"commitments" per school; the walk-on tail must not move a ranking. One place,
+shared by `/recruiting` and the team tab, so the two can never disagree about a
+team's rank.
+
+### Two more things that bit
+
+- **A conference scope must not be resolved against the recruiting class.**
+  `team_seasons` stops at the newest season we hold, so `Scope::teamIds('fbs',
+  2028)` is an EMPTY array — not "everyone" — and it excluded every committed
+  prospect in the 2027 and 2028 classes. The screen asks the DATA for the newest
+  membership year at or before the class; `currentYear()` is the wrong question
+  because it falls back to config when no seasons are loaded.
+- **Uncommitted prospects are 6-12% of a class** and belong to no team, so a
+  scope filter has to admit them explicitly — the same escape hatch the
+  scoreboard gives an unannounced fixture.
+
+Dead ends, so nobody re-probes them: `/recruiting/{y}/teams`,
+`/recruiting/{y}/schools`, `/recruits/{id}/analysis`, `/recruits/{id}/notes` all
+404; a team document carries no recruiting ref; and `attributes` exposes
+`fortyYrdDash`, `threeConeDrill` and `twentyYrdShuttle` which are **all sentinel
+99** — the same "number that means no data" as `curatedRank`.
 
 ## Sync cost tiers
 
@@ -410,8 +505,24 @@ below ~600px. See below.
               Home · Scores · League · Account. They do not change as you
               move around inside one.
     SECTIONS  the scrolling strip at the top, belonging to the CURRENT area.
-              League shows Standings · Rankings · Teams · Stats · Leaders ·
+              League shows Standings · Rankings · Teams · Players · Stats ·
               Recruiting. Home and Scores have none.
+
+**No screen shows a visible heading.** Recruiting was the last holdout with a
+`flux:heading`; the section strip already names every League screen, so an `h1`
+said the same word twice and is `sr-only` everywhere. Scores remains the one
+exception, because it has no strip.
+
+Team Stats and Player Stats were once two sections, which spent two of six
+slots on one idea and made "stats" a place you had to guess at. They are one
+Stats screen with a Team/Players sub-toggle now, and the freed slot went to
+Players — a player index the app did not have at all.
+
+**A section's `routes` list is what lights it on a detail page.** `player` was
+in the League area's routes but belonged to no section, so a player page lit the
+League tab with the entire strip unlit — you could see you were in League and
+not where. Any new detail route needs adding to its section's `routes`, not just
+to the area's.
 
 Both once listed the same nine sections, which made the top strip a second copy
 of the bottom bar. `App\Support\Navigation` is the single source of truth for
@@ -1265,6 +1376,224 @@ without telling anyone and a hardcoded list silently drops them. Reading
 ESPN's own order put `defensive` first and `scoring` near the end, so the
 screen opened on tackles rather than points.
 
+**TEAM leads, PLAYERS follows** — here and on League's Stats screen, so the
+same control does not read two ways in one app. The leftmost tab is the
+default, as everywhere else.
+
+## An underlined sub-tab must not bleed like the section strip
+
+League's Stats screen carries the same Team/Players toggle, and it exposed a
+collision: `x-section-nav` renders the section strip with BYTE-IDENTICAL
+underline classes, and it lives in `<header>` only 20px above content. A
+full-bleed copy of the team page's toggle put two identical rules 20px apart
+and read as one confusing double strip.
+
+So the same visual language, distinguished by the BLEED:
+
+    section strip     spans the viewport      0 -> 390 at 390px
+    sub-toggle        sits in the content column   16 -> 374
+
+Chrome bleeds; a control inside content does not. The team page keeps its
+full-bleed version because its hero and pill strip sit between the two, so
+there is nothing to confuse it with.
+
+Consequence for `NavigationTest`'s "exactly one underlined section" assertion:
+it counts on `/standings` deliberately. Point it at `/stats`, `/recruiting` or
+a team page and it reads 2 — a control, not a navigation bug.
+
+## League chrome speaks one vocabulary
+
+Every screen's top chrome is built from five components in
+`resources/views/components/` — `filter-menu` (and its wrappers
+`scope-filter` and `season-menu`), `plate`, `gutter-tabs`, `filter-bar` —
+plus the existing `week-scroller`. `ChromeConsistencyTest` sweeps the views,
+so inlining the old markup is a red test rather than a quiet drift. The rules
+the components encode:
+
+1. **Nothing scrolls horizontally except `x-week-scroller`, `x-section-nav`
+   and Home's card swiper.** The week scroller earns it because a season's
+   weeks are a spatial sequence you scrub along; the section nav because six
+   sections measure 461px at 390 and navigation auto-centers its active item;
+   the swiper because it is content, not a control. Every other list that
+   outgrows its row goes in a menu that scrolls VERTICALLY — which is why the
+   22-position filter on `/players` is a `filter-menu`, not the pill strip it
+   used to be. Data tables still scroll inside their own `stat-grid`
+   container; the ban is on chrome and the document.
+2. **There are NO select boxes in screen chrome.** Every dropdown — scope,
+   season, class, poll, position — is the same text-button-plus-menu idiom
+   (`x-filter-menu`), because a boxed `flux:select` beside a text-button
+   dropdown reads as two different kinds of control doing one kind of job.
+   The sweep fails any `<flux:select` in a view; the one segmented control
+   outside the components is Account's appearance toggle, which binds
+   `$flux.appearance` through Alpine and renders identically to a gutter.
+3. **WHO** (Top 25 / FBS / FCS / a conference): `x-scope-filter`, or bare
+   `x-filter-menu` where a screen splits the division out. The division
+   options read **"All FBS" / "All FCS"** — beside a list of conferences the
+   bare acronym reads as one more league rather than the whole division.
+   Standings splits the division into plate tabs instead (FBS | FCS are
+   different LISTS, not a narrowing of one — almost nobody leaves FBS), whose
+   tabs write `$scope` directly while its menu holds only the active
+   division's conferences; a conference id still lights its division's tab,
+   because `division()` looks the classification up rather than assuming.
+   `$scope` speaks the same values everywhere: `fbs`, `fcs`, a conference id
+   as a string.
+4. **WHEN** (season, recruiting class, poll): `x-season-menu` (or a poll
+   `filter-menu`), always the LAST control on its row, menu aligned `end`.
+   Never a scroller; **period within a season** (weeks, poll releases) is
+   always `x-week-scroller`, never a menu.
+5. **`x-plate`** is the ruled "which list am I looking at" row: two tabs,
+   three at the very most (the component THROWS past three), resting their
+   active underline directly on the rule, with the row doubling as the shelf
+   for right-aligned actions — typically the scope and season menus. Bleed
+   variant only where a hero separates it from `x-section-nav`'s identical
+   underlines (team page). Standings, Stats, Recruiting and the team stats
+   toggle all speak it, value-compatible (`team`/`players`).
+6. **`x-gutter-tabs`** — the zinc track with the raised white pad — is for
+   tab sets a plate cannot hold: more than three (team page's five sections,
+   `shrink` variant) or a second row of categorical sub-scoping under a plate
+   (stat categories, `block` variant — full width, items share the row
+   equally). `shrink` drops into any flex row: centered over content (roster
+   squads), floated beside actions, or out on a plate. `block` runs `px-2`
+   where `shrink` runs `px-3` — "Special Teams" at `px-3` sits 0.03px from
+   clipping a three-up cell at 390. Neither scrolls; a set that cannot fit
+   either way belongs in a `filter-menu`.
+7. **Row order, top down**: plate → filter bar → gutter → content. The WHEN
+   menu rides the plate's actions slot when one exists, else the filter
+   bar's.
+8. **Names**: `$year`, `$q`, `$scope`, `$sort`, `$view`, `$position`;
+   `$perPage` never `#[Url]`; `wire:key` prefixes are per-screen (the team
+   page and `/stats` once collided on `statsview-`).
+
+The team page's five tabs FIT at 390 instead of scrolling — 350px measured
+against a 358px column, which is why that tab says "Recruits" (the full word
+tipped it to 362) — and the year menu wraps below them at base,
+right-aligned, sharing the row only from `sm`. Widths that marginal are
+measured from the font file (`fontTools` against `archivo-variable-latin`),
+not eyeballed.
+
+## Position data exists for the CURRENT roster only
+
+Measured across `athlete_team_seasons`, and it is what shapes `/players`:
+
+    2026   13,580 rows   13,580 with a position   ALL FBS, no FCS roster
+    2025   12,571 rows      398 with a position
+    2024   12,307 rows      700 with a position
+
+ESPN publishes only the current roster, so every earlier row is derived from a
+box score: it carries a jersey and a team and no position. Two rules follow:
+
+- **There is NO season picker on `/players`**, and that is the screen's shape
+  rather than an omission: an earlier season is a name list with the position
+  filter switched off. The year is the newest season that HAS a roster — not
+  `resultsYear()`, which points at the last season with GAMES and is a year
+  behind all summer. A player's history lives on their own page.
+- **The position filter gates on COVERAGE, not presence.** Those 398 rows span
+  most abbreviations, so a strip built from "distinct positions this season"
+  looks complete and filters to 3% of the roster. It renders only where
+  positioned rows are at least half the season — which, with no season picker,
+  now only fires if the newest roster is itself box-score-derived.
+
+And `athlete_season_stats` tops out at 2025, so that year has no stats at all —
+`/players` shows roster facts and nothing else. That is honest for a season
+that has not kicked off, and it is why it is not a stats screen.
+
+**The position filter is a MENU, ordered by SQUAD, not alphabetically.** It
+was a scrolling pill strip — 1,015px of pills in a 390px track — until the
+no-horizontal-scroll rule (see "League chrome speaks one vocabulary") moved
+any open-ended set into an `x-filter-menu`, which also gave the screen back a
+whole chrome row. Order still matters in a menu: alphabetical buried QB
+seventeenth behind C, CB, DB, DE, DL, DT, EDGE... It sorts by ESPN's own
+`position_group` — offense, defense, special teams, the order every roster
+page uses including our own team page — then by squad size within each, which
+puts QB fifth. Derived rather than a hardcoded list, so a position ESPN adds
+lands in its group instead of being dropped. Note the cache:
+`players:positions:{year}` holds the ORDER too, so changing the sort needs
+`cache:clear` to be visible. The menu's trigger shows only the current
+selection, which is why the search placeholder names the position — "Search
+Quarterbacks…" — instead of a heading repeating the filter.
+
+**Position ABBREVIATIONS collide across ids.** Among positions with 2026 rows,
+`LS` resolves to two (39 with 256 players, 78 with 13). A select keyed on
+`position_id` renders "LS" twice and each entry silently hides the other's
+players. Key the filter on the abbreviation and match every id that shares it.
+
+`/players` is driven from `team_id IN (...)` via `Scope::teamIds()` because
+there is NO index leading with `season_year` — the usable one is
+`(team_id, season_year, position_group)`. Measured: 64ms unfiltered and sorted,
+2ms once a name prefix rides `athletes_last_name_index`.
+
+Its name filter is a PREFIX, matching `Search::players()` and the model's own
+`#[SearchUsingPrefix]`: "Smith" finds every Smith through `last_name`, "mith"
+finds nobody. A screen matching differently from the search bar above it would
+read as a bug.
+
+Sorting is **Name · Last (A–Z) · Last (Z–A) · Team**, defaulting to Last
+ascending — how a roster, a box score and a depth chart are all listed, and it
+agrees with what the name filter matches. Name means first-then-last; sorting a
+roster by given name alone answers nothing.
+
+**Direction rides IN the sort value, not in a second property.** Only surname
+sorting has two useful directions — "teams, Z first" is not a question — so a
+separate `$direction` would be a control meaning nothing for three of four
+options, the same trap as a Top 25 filter with no poll behind it. One value also
+keeps every option directly clickable rather than hiding the reverse behind a
+second click on the option already selected.
+
+Ties break on whatever half of the name is left, **in the same direction**: a
+list reversed at the top and ascending underneath is not reversed, it is two
+sorts. Verified on the 44 Williamses — ascending gives Aaron, Anthony, Arion;
+descending gives Zach, Xavier, Tyson.
+
+That is a reading choice, not a cost one: measured at 118/91/116ms, the options
+are the same price, because the query is driven from `team_seasons` into
+`athlete_team_seasons` and so ordering on any `athletes` column is a filesort.
+`athletes_last_name_index` serves the name FILTER, never the sort.
+
+`$sort` is normalized in BOTH `mount()` and `updatedSort()` — `#[Url]` hydrates
+from the querystring without firing the update hook, so a bookmarked
+`?sort=nonsense` would otherwise reach the query builder as a column name.
+
+## Infinite scroll grows a LIMIT, and the payload is the price
+
+`/players` loads 50 rows and grows by 50, driven by `wire:intersect` on a
+sentinel that is also a real `<button wire:click>` — the observer never runs for
+a visitor with JS off or a throttled background tab, and 50 of 13,580 with no
+way forward is not a list.
+
+It cannot run away: a chunk is 50 rows at 64px, so loading one pushes the
+sentinel ~3,200px down, past any viewport plus the 600px margin, and
+`wire:intersect` only fires on ENTERING. `loadMore()` guards on the total anyway.
+
+**The query cost is flat** — measured 259/164/154/187ms at limits of
+50/200/500/1000. The filesort over 13,580 dominates, so fetching more rows is
+free. That is the opposite of the intuition and it is why a growing LIMIT is
+tenable at all.
+
+**The response is not.** Livewire re-sends the whole rendered component, so each
+load carries every row already on screen: measured **1,244 KB** for the load
+that took 500 rows to 550, then 1,354 KB, then 1,463 KB — about 110 KB more each
+time. Realistic depth (2-5 chunks behind a position filter) is 250-600 KB, which
+is heavy but works; deliberate deep scrolling is not.
+
+The cheaper shape is `@island(name:…)` plus `wire:island.append`, which sends
+only the new chunk — a constant ~110 KB. It was NOT taken, and the reason is
+worth keeping: an island is skipped on a parent re-render and replaced wholesale
+when forced to run with `always: true`, so its body must render only the current
+chunk (`forPage`). Any parent re-render that does not first reset the page then
+collapses the list to whatever that chunk happens to be. Today every filter path
+does reset, so it would work — and it would keep working only for as long as
+nobody adds a control that re-renders without resetting. Growing a LIMIT is the
+slower option and the one that cannot show the wrong rows.
+
+**Verifying it needs the button, not the scroll.** The automated tab delivers no
+IntersectionObserver entries, so `wire:intersect` cannot fire there — drive the
+end state instead: click the sentinel, or call `loadMore()` and assert the row
+count. The scroll trigger itself only fires on a real device.
+
+`x-search.player-row` takes an optional `season`, defaulting to `latestSeason`.
+Search wants the default — it has no year in mind. A YEAR-SCOPED caller must
+pass the row it is showing or a 2024 list prints everyone's 2026 team.
+
 ## A team logo never sits on the team's color
 
 A one-color mark in the team's own color vanishes into an accent surface —
@@ -1425,6 +1754,77 @@ Two shapes in that payload to respect:
 - Box scores contain pseudo-athletes with **negative ids** and the name "Team"
   (sack yardage charged to the team). `athletes.id` is unsigned, so inserting one
   fails outright. Skip `id <= 0`.
+
+## A player's game log is POLLED, and Saturday is not like other days
+
+The game log is the one genuinely per-athlete feed, so bulk syncing it would
+cost one request for each of 34,836 players. Opening a player page therefore
+DISPATCHES `FetchAthleteGameLog` rather than fetching inline — the page renders
+what we already hold and returns in ~92ms instead of waiting on ESPN.
+
+Freshness is `athletes.game_log_fetched_at`, and the window depends on the day:
+
+    Sun-Fri   24 hours     nothing is moving
+    Saturday  15 minutes   the numbers actually change
+
+Fifteen minutes is a per-ATHLETE ceiling — four requests an hour for a player
+somebody is watching, none at all for the rest of the roster — so it sits an
+order of magnitude under the live scoreboard tier and well inside the 240/min
+allowance.
+
+**Saturday is decided in `config('cfb.timezone')`, never UTC.** A UTC Saturday
+opens at 8pm Friday Eastern, which would put Friday night's games on the gameday
+cadence and Saturday night's on the 24-hour one — exactly inverted, and only
+ever visible in the evening.
+
+Three rules the polling has to keep, all the same shape as `articles.story`:
+
+- **The timestamp records that we ASKED, not that we got rows.** Most athletes
+  never record a stat, so reading an empty `athlete_game_stats` as "never
+  fetched" dispatches a job on every view of every one of them, forever.
+- **An empty answer still stamps; a failed request does not.** A transient 500
+  must not permanently demote a player to "no stats" — leaving the timestamp
+  null is what makes the next view try again.
+- **Persisted, not cached.** A `cache:clear` would otherwise re-open the tap on
+  all 34,836 at once.
+
+The job is unique on the ATHLETE, so a player trending after a big game is one
+request rather than one per viewer — verified live: three page views, one queued
+job. The service keeps a 60-second in-flight lock as well, deliberately shorter
+than the gameday window so it cannot veto the cadence it exists to protect.
+
+The page's two empty states are keyed on the TIMESTAMP, not on the log being
+empty: "Fetching…" (with a `wire:poll` that reads only our own database) until
+the first answer lands, then "No game log" forever after. Keyed on emptiness, a
+player with no stats would sit under a spinner that never resolves.
+
+**A "Refresh" button is offered only when nothing is outstanding**, and forces
+past the staleness check — the whole point is a log that is not due one.
+Offering it while the page-load job is still in flight invites a second request
+for the answer already on its way and reads as though the first one failed.
+
+### An in-flight guard must be RELEASED, not given a TTL
+
+That lock was `Cache::add($key, true, 60)` with no release, which made it a
+60-second freshness gate wearing an in-flight label. It silently swallowed any
+hand-asked refresh made within a minute of the last fetch: no request, no stamp,
+so the page had no "it came back" signal to wait for and spun until its own
+30-second ceiling. It looked like a hang with a healthy queue worker behind it.
+
+`Cache::lock()` acquired for the duration of the fetch and released in a
+`finally` blocks only genuine concurrency. Redundant repeats on the unforced
+path were never this lock's job anyway — `FetchAthleteGameLog` re-checks
+staleness before spending a request.
+
+The test that "proved" the old behavior called the service three times in a row
+and asserted one request. Sequential calls are not concurrent viewers, so it was
+passing for the wrong reason and pinned the bug in place. It asserts through the
+JOB now, which is where the guarantee actually lives.
+
+**The page's "did it come back?" signal compares second-resolution stamps**, so
+it also treats a stamp at or after the moment it queued as landed — `timestamp`
+has no sub-second precision, and a refresh landing inside a second of the last
+one would otherwise look like it never arrived.
 
 ## Coaches: the roster names them, the coach sync makes them people
 

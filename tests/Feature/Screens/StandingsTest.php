@@ -75,3 +75,58 @@ it('shows an empty state for a season with no standings', function () {
         ->assertOk()
         ->assertSee('No standings yet');
 });
+
+describe('the scope filter', function () {
+    beforeEach(function () {
+        // An FCS conference with standings, to prove the divisions separate.
+        Conference::factory()->create(['id' => 30, 'name' => 'Southern Conference', 'short_name' => 'SoCon', 'is_conference' => true]);
+        ConferenceSeason::create(['conference_id' => 30, 'season_year' => 2025, 'classification' => 'FCS']);
+
+        Team::factory()->create(['id' => 2000, 'location' => 'Furman', 'display_name' => 'Furman Paladins']);
+
+        Standing::create([
+            'season_year' => 2025, 'conference_id' => 30, 'team_id' => 2000,
+            'source' => StandingSource::Espn,
+            'conf_wins' => 6, 'conf_losses' => 2, 'overall_wins' => 9, 'overall_losses' => 3,
+        ]);
+    });
+
+    it('separates the divisions as sub-tabs, FBS first', function () {
+        // Two different LISTS, not a narrowing of one — most readers never
+        // leave FBS, so the split is a tab, and the menu within a division
+        // says "All FBS" rather than a bare acronym beside conference names.
+        Livewire::test('standings')
+            ->set('year', 2025)
+            ->assertSee('Georgia')
+            ->assertDontSee('Furman')
+            ->assertSee('All FBS')
+            ->set('scope', 'fcs')
+            ->assertSee('Furman')
+            ->assertDontSee('Georgia')
+            ->assertSee('All FCS');
+    });
+
+    it('narrows to one conference by id, and its division tab stays lit', function () {
+        $screen = Livewire::test('standings')
+            ->set('year', 2025)
+            ->set('scope', '30')
+            ->assertSee('Furman')
+            ->assertDontSee('Georgia');
+
+        // The FCS tab is current even though the scope is a conference id —
+        // the id belongs to a division too.
+        expect($screen->get('division'))->toBe('fcs');
+    });
+
+    it('falls back to FBS on a value it does not recognise', function () {
+        // A pre-rename bookmark carries ?classification=FCS&conference=8 —
+        // neither reaches the property — or a hand-edited ?scope=nonsense.
+        // `#[Url]` hydrates without firing the update hook, so mount() has to
+        // normalise too; this exercises that path through the querystring.
+        Livewire::withQueryParams(['scope' => 'nonsense'])
+            ->test('standings')
+            ->set('year', 2025)
+            ->assertSet('scope', 'fbs')
+            ->assertSee('Georgia');
+    });
+});

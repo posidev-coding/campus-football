@@ -4,6 +4,7 @@ use App\Models\Conference;
 use App\Models\ConferenceSeason;
 use App\Models\Standing;
 use App\Services\CfbCalendar;
+use App\Support\Scope;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -25,16 +26,37 @@ new class extends Component
     #[Url]
     public ?int $year = null;
 
+    /**
+     * One WHO filter — 'fbs', 'fcs', or a conference id as a string — through
+     * the same scope vocabulary as every other League screen. This replaced a
+     * classification select and a conference select that together were a
+     * second dialect for the same question.
+     */
     #[Url]
-    public string $classification = 'FBS';
-
-    /** String for the same reason as on the scoreboard — see that component. */
-    #[Url]
-    public string $conference = '';
+    public string $scope = Scope::FBS;
 
     public function mount(CfbCalendar $calendar): void
     {
         $this->year ??= $calendar->resultsYear();
+
+        $this->normaliseScope();
+    }
+
+    /**
+     * Needed in BOTH places: `#[Url]` hydrates from the querystring without
+     * firing the update hook, so a stale bookmark (`?classification=FCS`
+     * predates this property) must fall back to the default on first load.
+     */
+    public function updatedScope(): void
+    {
+        $this->normaliseScope();
+    }
+
+    private function normaliseScope(): void
+    {
+        if (! in_array($this->scope, [Scope::FBS, Scope::FCS], true) && ! ctype_digit($this->scope)) {
+            $this->scope = Scope::FBS;
+        }
     }
 
     #[Computed]
@@ -48,27 +70,92 @@ new class extends Component
     }
 
     /**
-     * Conferences with published standings this season, in this division.
-     * Read through conference_seasons because classification is season-scoped.
+     * Which division the scope sits in — the active sub-tab.
+     *
+     * FBS and FCS are sub-tabs rather than menu options here because they are
+     * different LISTS, not a narrowing of one: the overwhelming majority of
+     * readers never leave FBS, and burying the split in a dropdown made the
+     * common case share a menu with the case almost nobody wants. A conference
+     * id belongs to a division too, so the tab stays lit while the menu
+     * narrows within it.
      */
-    /** @return list<array{id:int, name:string}> */
+    #[Computed]
+    public function division(): string
+    {
+        if (! ctype_digit($this->scope)) {
+            return $this->scope;
+        }
+
+        $classification = Cache::remember(
+            "standings:division:{$this->year}:{$this->scope}",
+            3600,
+            fn () => ConferenceSeason::where('season_year', $this->year)
+                ->where('conference_id', (int) $this->scope)
+                ->value('classification') ?? 'FBS'
+        );
+
+        return strtolower($classification) === Scope::FCS ? Scope::FCS : Scope::FBS;
+    }
+
+    /**
+     * The active division's conferences with published standings.
+     * Read through conference_seasons because classification is season-scoped.
+     *
+     * @return list<array{id:int, label:string}>
+     */
     #[Computed]
     public function conferences(): array
     {
+        // `v2`: the cached shape changed from a list of ids to id+label rows,
+        // and a stale entry from before the change fatalled the live page
+        // while every test passed on its fresh array cache. A shape change
+        // gets a new key, never a coordinated cache:clear.
         return Cache::remember(
-            "standings:conferences:{$this->year}:{$this->classification}",
+            "standings:conferences:v2:{$this->year}:{$this->division}",
             3600,
             fn () => Conference::query()
                 ->whereIn('id', ConferenceSeason::where('season_year', $this->year)
-                    ->where('classification', $this->classification)
+                    ->where('classification', strtoupper($this->division))
                     ->pluck('conference_id'))
                 ->where('is_conference', true)
                 ->whereIn('id', Standing::fromEspn()->where('season_year', $this->year)->distinct()->pluck('conference_id'))
                 ->orderBy('name')
-                ->get(['id', 'name'])
-                ->map(fn (Conference $c) => ['id' => $c->id, 'name' => $c->name])
+                ->get(['id', 'short_name', 'name'])
+                ->map(fn (Conference $c) => ['id' => $c->id, 'label' => $c->short_name ?: $c->name])
                 ->all()
         );
+    }
+
+    /**
+     * The conference menu: "All FBS" (or FCS), then the division's
+     * conferences. Values are scope values, so picking one just moves $scope
+     * within the division the tabs selected.
+     *
+     * @return list<array{value:string, label:string}>
+     */
+    #[Computed]
+    public function conferenceItems(): array
+    {
+        return [
+            ['value' => $this->division, 'label' => 'All '.strtoupper($this->division)],
+            ...array_map(fn (array $c) => ['value' => (string) $c['id'], 'label' => $c['label']], $this->conferences),
+        ];
+    }
+
+    /**
+     * The conference ids the scope resolves to — a division means every
+     * conference in it with published standings, a digit means that one.
+     *
+     * @return list<int>
+     */
+    #[Computed]
+    public function conferenceIds(): array
+    {
+        if (ctype_digit($this->scope)) {
+            return [(int) $this->scope];
+        }
+
+        return array_column($this->conferences, 'id');
     }
 
     /**
@@ -77,9 +164,7 @@ new class extends Component
     #[Computed]
     public function standings()
     {
-        $conferenceIds = $this->conference !== ''
-            ? [(int) $this->conference]
-            : array_column($this->conferences, 'id');
+        $conferenceIds = $this->conferenceIds;
 
         if ($conferenceIds === []) {
             return collect();
@@ -103,25 +188,32 @@ new class extends Component
 <div class="flex flex-col gap-4">
     <h1 class="sr-only">Standings</h1>
 
-    <div class="flex flex-wrap gap-2">
-        <flux:select wire:model.live="year" size="sm" class="w-28">
-            @foreach ($this->seasons as $season)
-                <flux:select.option :value="$season">{{ $season }}</flux:select.option>
-            @endforeach
-        </flux:select>
+    {{--
+        FBS | FCS as underlined sub-tabs — two different LISTS, in the same
+        layout as Stats — with the conference menu and season select on the
+        ruled row. The tabs write $scope directly ('fbs'/'fcs'), which also
+        resets any conference narrowing from the other division.
+    --}}
+    <x-plate
+        :tabs="['fbs' => 'FBS', 'fcs' => 'FCS']"
+        :selected="$this->division"
+        model="scope"
+        key-prefix="division"
+    >
+        <x-slot:actions>
+            <x-filter-menu
+                :items="$this->conferenceItems"
+                :selected="$scope"
+                model="scope"
+                label="Filter by conference"
+                key-prefix="conf"
+                align="end"
+                class="shrink-0"
+            />
 
-        <flux:select wire:model.live="classification" size="sm" class="w-28">
-            <flux:select.option value="FBS">FBS</flux:select.option>
-            <flux:select.option value="FCS">FCS</flux:select.option>
-        </flux:select>
-
-        <flux:select wire:model.live="conference" size="sm" class="min-w-40 flex-1">
-            <flux:select.option value="">All conferences</flux:select.option>
-            @foreach ($this->conferences as $c)
-                <flux:select.option :value="$c['id']">{{ $c['name'] }}</flux:select.option>
-            @endforeach
-        </flux:select>
-    </div>
+            <x-season-menu :years="$this->seasons" :selected="$year" class="shrink-0" />
+        </x-slot:actions>
+    </x-plate>
 
     @forelse ($this->standings as $conferenceName => $rows)
         <div class="flex flex-col gap-2">

@@ -159,11 +159,7 @@ new class extends Component
             </div>
         </div>
 
-        <flux:select wire:model.live="year" size="sm" class="w-24 shrink-0">
-            @foreach ($this->years as $y)
-                <flux:select.option :value="$y">{{ $y }}</flux:select.option>
-            @endforeach
-        </flux:select>
+        <x-season-menu :years="$this->years" :selected="$year" class="shrink-0" />
     </div>
 
     <div class="flex flex-col gap-2">

@@ -166,18 +166,25 @@ new class extends Component
 <div class="flex flex-col gap-4">
     <h1 class="sr-only">Rankings</h1>
 
-    <div class="flex flex-wrap gap-2">
-        <flux:select wire:model.live="poll" size="sm" class="min-w-36 flex-1">
-            @foreach ($this->polls as $value => $label)
-                <flux:select.option :value="$value">{{ $label }}</flux:select.option>
-            @endforeach
-        </flux:select>
+    {{-- Both WHEN controls as text-button menus, poll left and season far
+         right as everywhere — no boxed selects beside dropdowns. --}}
+    @php
+        $pollItems = collect($this->polls)
+            ->map(fn ($label, $value) => ['value' => $value, 'label' => $label])
+            ->values()
+            ->all();
+    @endphp
+    <div class="flex items-center justify-between gap-3">
+        <x-filter-menu
+            :items="$pollItems"
+            :selected="$poll"
+            model="poll"
+            label="Poll"
+            key-prefix="poll"
+            class="shrink-0"
+        />
 
-        <flux:select wire:model.live="year" size="sm" class="w-28">
-            @foreach ($this->years as $y)
-                <flux:select.option :value="$y">{{ $y }}</flux:select.option>
-            @endforeach
-        </flux:select>
+        <x-season-menu :years="$this->years" :selected="$year" class="shrink-0" />
     </div>
 
     {{--
@@ -209,7 +216,7 @@ new class extends Component
                  team cell overrides it with `truncate`. --}}
             <table class="w-full text-stat whitespace-nowrap">
                 <thead>
-                    <tr class="border-b border-zinc-200 text-micro tracking-wide text-zinc-500 uppercase dark:border-zinc-800">
+                    <tr class="border-b border-zinc-200 text-micro uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
                         <th scope="col" class="px-3 py-2 text-right font-medium">
                             <span aria-hidden="true">#</span>
                             <span class="sr-only">Rank</span>

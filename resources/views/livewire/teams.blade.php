@@ -5,6 +5,7 @@ use App\Models\Standing;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Services\CfbCalendar;
+use App\Support\Scope;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -22,8 +23,14 @@ new class extends Component
     #[Url]
     public ?int $year = null;
 
+    /**
+     * One WHO filter — 'fbs', 'fcs', or a conference id as a string — the
+     * same scope vocabulary as every other League screen. Replaced a
+     * classification select, and gained the conference jump this page never
+     * had.
+     */
     #[Url]
-    public string $classification = 'FBS';
+    public string $scope = Scope::FBS;
 
     #[Url]
     public string $q = '';
@@ -31,6 +38,25 @@ new class extends Component
     public function mount(CfbCalendar $calendar): void
     {
         $this->year ??= $calendar->resultsYear();
+
+        $this->normaliseScope();
+    }
+
+    /**
+     * Needed in BOTH places: `#[Url]` hydrates from the querystring without
+     * firing the update hook, so a stale `?classification=FCS` bookmark must
+     * fall back to the default on first load.
+     */
+    public function updatedScope(): void
+    {
+        $this->normaliseScope();
+    }
+
+    private function normaliseScope(): void
+    {
+        if (! in_array($this->scope, [Scope::FBS, Scope::FCS], true) && ! ctype_digit($this->scope)) {
+            $this->scope = Scope::FBS;
+        }
     }
 
     /** @return list<int> */
@@ -53,7 +79,11 @@ new class extends Component
         $memberships = TeamSeason::query()
             ->with(['team:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark'])
             ->where('season_year', $this->year)
-            ->where('classification', $this->classification)
+            // A division scope filters on classification; a conference id
+            // narrows the page to that one group.
+            ->when(ctype_digit($this->scope),
+                fn ($q) => $q->where('conference_id', (int) $this->scope),
+                fn ($q) => $q->where('classification', strtoupper($this->scope)))
             ->whereNotNull('conference_id')
             ->get();
 
@@ -94,26 +124,15 @@ new class extends Component
 <div class="flex flex-col gap-4">
     <h1 class="sr-only">Teams</h1>
 
-    <div class="flex flex-wrap gap-2">
-        <flux:input
-            wire:model.live.debounce.250ms="q"
-            size="sm"
-            icon="magnifying-glass"
-            placeholder="Filter teams"
-            class="min-w-40 flex-1"
-        />
+    {{-- The one filter-row shape: search owns the row, WHO beside it as a
+         text button, WHEN far right. --}}
+    <x-filter-bar placeholder="Search teams…">
+        <x-scope-filter :year="$year" :selected="$scope" :top25="false" :include-fcs="true" class="shrink-0" />
 
-        <flux:select wire:model.live="classification" size="sm" class="w-24">
-            <flux:select.option value="FBS">FBS</flux:select.option>
-            <flux:select.option value="FCS">FCS</flux:select.option>
-        </flux:select>
-
-        <flux:select wire:model.live="year" size="sm" class="w-24">
-            @foreach ($this->years as $y)
-                <flux:select.option :value="$y">{{ $y }}</flux:select.option>
-            @endforeach
-        </flux:select>
-    </div>
+        <x-slot:actions>
+            <x-season-menu :years="$this->years" :selected="$year" class="shrink-0" />
+        </x-slot:actions>
+    </x-filter-bar>
 
     @forelse ($this->grouped as $group)
         <div class="flex flex-col gap-2" wire:key="conf-{{ $group['conference']?->id }}">

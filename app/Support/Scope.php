@@ -10,7 +10,8 @@ use App\Services\CfbCalendar;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * The "who am I looking at" filter shared by Scores, Stats, Leaders and Teams.
+ * The "who am I looking at" filter — Scores, Stats, Players, Recruiting,
+ * Standings and Teams all speak it, through x-scope-filter.
  *
  * Replaces the plain conference dropdown those screens each had. Two things
  * make it more than a rename:
@@ -71,39 +72,59 @@ class Scope
                     ];
                 }
 
-                $options[] = ['value' => self::FBS, 'label' => 'FBS'];
+                // "All FBS", not "FBS": beside a list of conferences the bare
+                // acronym reads as one more league rather than as the whole
+                // division, and the option means "everyone in it".
+                $options[] = ['value' => self::FBS, 'label' => 'All FBS'];
 
                 if ($includeFcs) {
-                    $options[] = ['value' => self::FCS, 'label' => 'FCS'];
+                    $options[] = ['value' => self::FCS, 'label' => 'All FCS'];
                 }
 
+                /*
+                 * With FCS in play the conference list doubles (11 FBS + 14
+                 * FCS in 2025), so each entry carries its division as `group`
+                 * and the menu renders the two under headings. Without FCS
+                 * the group stays null and no heading is drawn.
+                 */
                 foreach (self::conferences($year) as $conference) {
                     $options[] = [
                         'value' => (string) $conference['id'],
                         'label' => $conference['label'],
+                        'group' => $includeFcs ? 'FBS' : null,
                     ];
                 }
 
+                if ($includeFcs) {
+                    foreach (self::conferences($year, 'FCS') as $conference) {
+                        $options[] = [
+                            'value' => (string) $conference['id'],
+                            'label' => $conference['label'],
+                            'group' => 'FCS',
+                        ];
+                    }
+                }
+
                 // One shape for every option, so a caller never has to guess
-                // whether the key is there.
-                return array_map(fn (array $o) => $o + ['disabled' => false], $options);
+                // whether a key is there.
+                return array_map(fn (array $o) => $o + ['disabled' => false, 'group' => null], $options);
             }
         );
     }
 
     /**
-     * FBS conferences that had teams in a season.
+     * Conferences that had teams in a season, for one classification.
      *
      * Read through team_seasons because membership is season-scoped — the whole
      * reason that table exists.
      *
      * @return list<array{id:int, label:string}>
      */
-    public static function conferences(int $year): array
+    public static function conferences(int $year, string $classification = 'FBS'): array
     {
         return Conference::query()
             ->whereIn('id', TeamSeason::where('season_year', $year)
-                ->where('classification', 'FBS')
+                ->where('classification', $classification)
                 ->whereNotNull('conference_id')
                 ->distinct()
                 ->pluck('conference_id'))
