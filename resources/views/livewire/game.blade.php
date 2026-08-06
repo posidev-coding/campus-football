@@ -41,6 +41,12 @@ use Livewire\Component;
  */
 new class extends Component
 {
+    /**
+     * Half of GameSummary's own sixty-second staleness window — the moment a
+     * forced fetch starts being worth its 544 KB.
+     */
+    private const REFRESH_OFFERED_AFTER = 30;
+
     public Game $game;
 
     #[Url]
@@ -116,10 +122,63 @@ new class extends Component
         unset(
             $this->teamStats, $this->scoringPlays, $this->playerStats,
             $this->summary, $this->drives, $this->winProbability, $this->tabs,
+            $this->canRefresh,
         );
 
         // A whistle mid-visit: the Live tab just became Recap.
         $this->normalizeTab();
+    }
+
+    /**
+     * Whether to offer a hand-asked refresh.
+     *
+     * The summary refetches itself at most once every sixty seconds
+     * (GameSummary::isStale), and the page re-reads the database every thirty.
+     * Offering the button at the HALFWAY mark means it only ever appears when
+     * pressing it would genuinely expedite something: before then the stored
+     * copy is newer than the window, and a forced fetch would spend a 544 KB
+     * request to learn nothing.
+     *
+     * So it is hidden for the first half of each cycle and offered for the
+     * second — and it only exists for a live game, because a final summary
+     * cannot change and a pregame one does not exist.
+     */
+    #[Computed]
+    public function canRefresh(): bool
+    {
+        if (! $this->isLive) {
+            return false;
+        }
+
+        $syncedAt = $this->summary?->synced_at;
+
+        // Never synced: the mount dispatch is either in flight or was dropped,
+        // and asking again is free — the job is unique per game.
+        return $syncedAt === null
+            || $syncedAt->diffInSeconds(now()) >= self::REFRESH_OFFERED_AFTER;
+    }
+
+    /**
+     * Force a fetch past the staleness check.
+     *
+     * `force: true` is the whole point — the button is only offered when the
+     * stored copy is NOT yet stale enough to refetch on its own, so an
+     * unforced dispatch would re-check staleness and no-op.
+     *
+     * Not named refresh(): Livewire already answers to `$refresh`, and a
+     * helper sharing a framework name is a fatal waiting to happen.
+     */
+    public function forceRefresh(): void
+    {
+        if (! $this->canRefresh) {
+            return;
+        }
+
+        FetchGameSummary::dispatch($this->game->id, force: true)->onQueue('live');
+
+        // The row itself may already have moved; re-read what we hold rather
+        // than waiting for the next poll tick.
+        $this->poll();
     }
 
     public function shiftLeagueDay(int $days): void
@@ -720,8 +779,8 @@ new class extends Component
                     },
                 }"
                 x-on:click="done()"
-                class="justify-self-start rounded-md px-1.5 py-1 text-sm font-medium text-[var(--color-accent-content)] transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            >Done</button>
+                class="justify-self-start rounded-md px-1.5 py-1 text-sm font-medium transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >Back</button>
 
             {{-- The slate, one tap from the scorebug, exactly as MLB does it —
                  including the chevron flipping while the sheet is up. --}}
@@ -738,11 +797,29 @@ new class extends Component
                 @endif
             </button>
 
-            <a
-                href="{{ route('scoreboard') }}"
-                wire:navigate
-                class="justify-self-end rounded-md px-1.5 py-1 text-sm font-medium text-[var(--color-accent-content)] transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
-            >Scores</a>
+            {{-- Hidden, not disabled, for the first half of every cycle: a
+                 control that cannot do anything is noise, and this one is
+                 genuinely unavailable rather than merely unwise. The slot
+                 stays in the grid either way, so the title does not shift
+                 when it appears. --}}
+            <div class="justify-self-end">
+                @if ($this->canRefresh)
+                    <button
+                        type="button"
+                        wire:click="forceRefresh"
+                        class="rounded-md p-1 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                        aria-label="Refresh now"
+                        title="Refresh now"
+                    >
+                        <flux:icon.arrow-path
+                            variant="micro"
+                            class="size-4"
+                            wire:loading.class="animate-spin"
+                            wire:target="forceRefresh"
+                        />
+                    </button>
+                @endif
+            </div>
         </div>
 
         {{-- The bowl or playoff name is the game's IDENTITY — "College Football

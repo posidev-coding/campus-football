@@ -527,11 +527,10 @@ describe('chart colors', function () {
 });
 
 describe('the scorebug nav row', function () {
-    it('offers Done and Scores instead of a week caption', function () {
+    it('offers Back and Gameday instead of a week caption', function () {
         Livewire::test('game', ['game' => $this->game])
-            ->assertSee('Done')
+            ->assertSee('Back')
             ->assertSee('Gameday')
-            ->assertSee('Scores')
             // The week moved to the venue line; it did not vanish.
             ->assertSee('Week 5');
     });
@@ -544,5 +543,81 @@ describe('the scorebug nav row', function () {
 
         Livewire::test('game', ['game' => $this->game->fresh()])
             ->assertSee('College Football Playoff National Championship');
+    });
+});
+
+describe('the hand-asked refresh', function () {
+    beforeEach(function () {
+        Queue::fake();
+
+        $this->live = Game::factory()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'completed' => false, 'status' => 'in',
+            'kickoff_at' => '2025-09-27 19:30:00',
+        ]);
+    });
+
+    it('stays hidden for the first half of the sync cycle', function () {
+        // Freshly synced: the stored copy is newer than the 60s window, so a
+        // forced fetch would spend 544 KB to learn nothing.
+        GameSummary::create([
+            'game_id' => $this->live->id, 'is_final' => false, 'synced_at' => now()->subSeconds(10),
+        ]);
+
+        Livewire::test('game', ['game' => $this->live])
+            ->assertSet('canRefresh', false)
+            ->assertDontSee('Refresh now');
+    });
+
+    it('appears halfway in, when pressing it would genuinely expedite', function () {
+        GameSummary::create([
+            'game_id' => $this->live->id, 'is_final' => false, 'synced_at' => now()->subSeconds(35),
+        ]);
+
+        Livewire::test('game', ['game' => $this->live])
+            ->assertSet('canRefresh', true)
+            ->assertSee('Refresh now');
+    });
+
+    it('forces past the staleness check, because it is offered before staleness', function () {
+        GameSummary::create([
+            'game_id' => $this->live->id, 'is_final' => false, 'synced_at' => now()->subSeconds(35),
+        ]);
+
+        Livewire::test('game', ['game' => $this->live])->call('forceRefresh');
+
+        // Unforced, the job would re-check staleness and no-op at 35 seconds.
+        Queue::assertPushedOn('live', FetchGameSummary::class);
+        Queue::assertPushed(FetchGameSummary::class, fn (FetchGameSummary $job) => $job->force === true);
+    });
+
+    it('refuses to dispatch when called inside the window anyway', function () {
+        // The method is publicly reachable, so the throttle cannot live only
+        // in the Blade condition that hides the button.
+        GameSummary::create([
+            'game_id' => $this->live->id, 'is_final' => false, 'synced_at' => now(),
+        ]);
+
+        Livewire::test('game', ['game' => $this->live])->call('forceRefresh');
+
+        Queue::assertNotPushed(FetchGameSummary::class);
+    });
+
+    it('is never offered on a final game, whose summary cannot change', function () {
+        Livewire::test('game', ['game' => $this->game])
+            ->assertSet('canRefresh', false);
+    });
+
+    it('is never offered before kickoff, when there is nothing to fetch', function () {
+        $upcoming = Game::factory()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'completed' => false, 'status' => 'pre',
+            'kickoff_at' => now()->addDays(3),
+        ]);
+
+        Livewire::test('game', ['game' => $upcoming])
+            ->assertSet('canRefresh', false);
     });
 });
