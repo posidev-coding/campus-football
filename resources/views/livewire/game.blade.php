@@ -46,7 +46,7 @@ new class extends Component
     #[Url]
     public string $tab = '';
 
-    /** The Around the League sheet, and the ET day it is paging. */
+    /** The Gameday sheet, and the ET day it is paging. */
     public bool $sheetOpen = false;
 
     public string $leagueDate = '';
@@ -587,7 +587,7 @@ new class extends Component
     }
 
     /**
-     * The Around the League sheet: that ET day's slate, grouped by what the
+     * The Gameday sheet: that ET day's slate, grouped by what the
      * viewer cares about — their teams, ranked matchups, this game's
      * conference(s), then the rest. Each game claimed by the FIRST group
      * that wants it, the same rule the scoreboard's floated block uses.
@@ -697,25 +697,61 @@ new class extends Component
         containing block for fixed descendants, the search-panel lesson.
     --}}
     <div class="sticky top-0 z-30 -mx-4 -mt-5 border-b border-zinc-200 bg-white/95 px-4 pt-4 pb-3 backdrop-blur sm:top-[calc(var(--spacing)*14+1px)] dark:border-zinc-800 dark:bg-zinc-950/95">
-        <div class="flex items-center justify-between gap-2 text-micro text-zinc-500">
-            <span class="min-w-0 truncate">
-                @if ($game->note)
-                    {{ $game->note }}
-                @else
-                    {{ $game->week?->name }}@if ($game->season) · {{ $game->season->year }}@endif
-                @endif
-            </span>
+        {{--
+            A navigation bar, not a caption: Done · Gameday · Scores.
 
-            {{-- MLB puts the slate one tap from the scorebug; so do we. --}}
+            Three columns rather than a flex row, because the title is CENTERED
+            on the screen and the two sides have different widths — a
+            `justify-between` row would centre it only by accident.
+        --}}
+        <div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            {{-- Back to wherever they came from — a game is reached from six
+                 screens, so naming any one of them would be wrong. --}}
+            <button
+                type="button"
+                x-data="{
+                    done() {
+                        // Depth, not history.length — the latter counts the
+                        // blank new-tab page, so a shared link opened in a new
+                        // tab would send the reader out of the app entirely.
+                        window.cfbAppDepth > 1
+                            ? window.history.back()
+                            : Livewire.navigate(@js(route('scoreboard')));
+                    },
+                }"
+                x-on:click="done()"
+                class="justify-self-start rounded-md px-1.5 py-1 text-sm font-medium text-[var(--color-accent-content)] transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >Done</button>
+
+            {{-- The slate, one tap from the scorebug, exactly as MLB does it —
+                 including the chevron flipping while the sheet is up. --}}
             <button
                 type="button"
                 wire:click="$set('sheetOpen', true)"
-                class="flex shrink-0 items-center gap-1 font-medium text-zinc-500 transition-colors hover:text-zinc-800 dark:hover:text-zinc-200"
+                class="flex items-center gap-1 justify-self-center rounded-md px-1.5 py-1 text-sm font-semibold transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
             >
-                <flux:icon.calendar3-week variant="micro" class="size-3.5" />
-                Around the League
+                Gameday
+                @if ($sheetOpen)
+                    <flux:icon.chevron-up variant="micro" class="size-4 text-zinc-400" />
+                @else
+                    <flux:icon.chevron-down variant="micro" class="size-4 text-zinc-400" />
+                @endif
             </button>
+
+            <a
+                href="{{ route('scoreboard') }}"
+                wire:navigate
+                class="justify-self-end rounded-md px-1.5 py-1 text-sm font-medium text-[var(--color-accent-content)] transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            >Scores</a>
         </div>
+
+        {{-- The bowl or playoff name is the game's IDENTITY — "College Football
+             Playoff National Championship" — and the only thing separating a
+             playoff game from any other bowl, so it keeps a line of its own
+             rather than losing its place to the nav row. --}}
+        @if ($game->note)
+            <p class="mt-1 truncate text-center text-micro font-medium text-zinc-500">{{ $game->note }}</p>
+        @endif
 
         <div class="mt-2 flex items-center gap-2">
             @foreach ($this->sides as $index => $side)
@@ -767,7 +803,11 @@ new class extends Component
                             'flex-row-reverse' => $index === 1,
                         ])
                     >
-                        <x-team-logo :team="$side['team']" size="sm" class="shrink-0" />
+                        {{-- Sized to the two-line identity beside it — the mark
+                             is how a team is recognized before the letters are
+                             read, and at size-6 it was subordinate to its own
+                             abbreviation. --}}
+                        <x-team-logo :team="$side['team']" size="lg" class="shrink-0" />
 
                         <div class="flex min-w-0 flex-col">
                             <span class="flex items-center gap-1 truncate text-sm font-semibold @if ($index === 1) justify-end @endif @if ($lost) text-zinc-400 @endif">
@@ -845,15 +885,18 @@ new class extends Component
         />
 
         <span class="hidden truncate text-micro text-zinc-500 sm:block">
+            {{ $game->week?->name }}@if ($game->season) · {{ $game->season->year }}@endif
             @if ($game->venue)
-                {{ $game->venue->name }}@if ($game->venue->city) · {{ $game->venue->city }}@if ($game->venue->state), {{ $game->venue->state }}@endif @endif
+                · {{ $game->venue->name }}@if ($game->venue->city) · {{ $game->venue->city }}@if ($game->venue->state), {{ $game->venue->state }}@endif @endif
             @endif
         </span>
     </div>
 
-    {{-- Venue and broadcast get their own line at base, where the tab row has no room. --}}
+    {{-- Week, venue and broadcast get their own line at base, where the tab row
+         has no room. The week moved here when the nav row took the top. --}}
     <p class="-mt-2 text-micro text-zinc-500 sm:hidden">
-        @if ($game->venue){{ $game->venue->name }}@if ($game->venue->city) · {{ $game->venue->city }}@if ($game->venue->state), {{ $game->venue->state }}@endif @endif @endif
+        {{ $game->week?->name }}@if ($game->season) · {{ $game->season->year }}@endif
+        @if ($game->venue) · {{ $game->venue->name }}@if ($game->venue->city) · {{ $game->venue->city }}@if ($game->venue->state), {{ $game->venue->state }}@endif @endif @endif
         @if ($game->broadcasts) · {{ implode(', ', $game->broadcasts) }}@endif
         @if ($this->summary?->attendance ?? $game->attendance) · {{ number_format($this->summary?->attendance ?? $game->attendance) }} attended @endif
     </p>

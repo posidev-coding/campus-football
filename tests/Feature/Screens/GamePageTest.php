@@ -525,3 +525,24 @@ describe('chart colors', function () {
         expect(TeamPalette::contrast($away, '#ffffff'))->toBeGreaterThanOrEqual(2.0);
     });
 });
+
+describe('the scorebug nav row', function () {
+    it('offers Done and Scores instead of a week caption', function () {
+        Livewire::test('game', ['game' => $this->game])
+            ->assertSee('Done')
+            ->assertSee('Gameday')
+            ->assertSee('Scores')
+            // The week moved to the venue line; it did not vanish.
+            ->assertSee('Week 5');
+    });
+
+    it('keeps the bowl name, which is the game\'s identity', function () {
+        // games.note is the ONLY way to tell a playoff game from any other
+        // bowl — a heuristic on `name` matches nothing — so it cannot lose its
+        // place to the nav row.
+        $this->game->update(['note' => 'College Football Playoff National Championship']);
+
+        Livewire::test('game', ['game' => $this->game->fresh()])
+            ->assertSee('College Football Playoff National Championship');
+    });
+});

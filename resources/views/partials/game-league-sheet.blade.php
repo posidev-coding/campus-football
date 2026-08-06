@@ -1,5 +1,5 @@
 {{--
-    Around the League — the MLB Gameday sheet, recreated. A bottom sheet over
+    Gameday — the MLB sheet of the same name, recreated. A bottom sheet over
     a scrim, one vertical list of that ET day's games grouped by what the
     viewer cares about: their teams, ranked matchups, this game's
     conference(s), the rest. Each game claimed once, by the first group that
@@ -81,7 +81,7 @@
             class="fixed inset-x-0 bottom-0 z-50 flex h-[85dvh] flex-col rounded-t-2xl bg-white shadow-2xl dark:bg-zinc-900"
             role="dialog"
             aria-modal="true"
-            aria-label="Around the League"
+            aria-label="Gameday"
         >
             {{-- The grab handle is the drag surface; the list below scrolls. --}}
             <div class="shrink-0 cursor-grab touch-none select-none" x-on:pointerdown="down($event)">
@@ -91,7 +91,7 @@
                      way the MLB sheet does — the heading names the sheet, and
                      centring it stops the X reading as part of the title. --}}
                 <div class="relative flex items-center justify-center px-4 py-2.5">
-                    <h2 class="text-sm font-semibold">Around the League</h2>
+                    <h2 class="text-sm font-semibold">Gameday</h2>
 
                     <button type="button" x-on:click="close()" class="absolute end-2 rounded-md p-1 text-zinc-400 transition-colors hover:text-zinc-700 dark:hover:text-zinc-200" aria-label="Close">
                         <flux:icon.x-mark variant="mini" />
@@ -140,10 +140,17 @@
                                                 </span>
                                                 <span class="text-micro text-zinc-400">{{ $row->away_record }}</span>
                                             </span>
-                                            <x-team-logo :team="$row->awayTeam" size="xs" class="shrink-0" />
+                                            <x-team-logo :team="$row->awayTeam" size="md" class="shrink-0" />
                                         </span>
 
-                                        <span class="flex w-20 shrink-0 flex-col items-center text-center">
+                                        {{-- w-14, not w-20: measured, the widest
+                                             this column ever holds is "12:00pm"
+                                             over a network at 52px, and the 24px
+                                             that buys splits to the two name
+                                             columns — which is what keeps
+                                             "Eastern Michigan" off the ellipsis
+                                             now that the logos are 32px. --}}
+                                        <span class="flex w-14 shrink-0 flex-col items-center text-center">
                                             @if ($live)
                                                 <span class="tabular text-stat font-bold">{{ $row->away_score }}–{{ $row->home_score }}</span>
                                                 <span class="text-micro font-semibold text-red-600 dark:text-red-400">{{ $row->status_detail ?? 'Live' }}</span>
@@ -161,7 +168,7 @@
                                         </span>
 
                                         <span class="flex min-w-0 flex-1 items-center gap-1.5">
-                                            <x-team-logo :team="$row->homeTeam" size="xs" class="shrink-0" />
+                                            <x-team-logo :team="$row->homeTeam" size="md" class="shrink-0" />
                                             <span class="flex min-w-0 flex-col">
                                                 <span @class(['truncate text-stat', 'font-semibold' => ! $row->completed || $winner === $row->home_team_id, 'text-zinc-500' => $row->completed && $winner !== $row->home_team_id])>
                                                     {{ $row->homeTeam?->placeName() ?? 'TBD' }}
