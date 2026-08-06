@@ -70,7 +70,7 @@ class SyncArticleStory
             // Empty stays NULL, and `story_fetched_at` is what distinguishes
             // "asked, and there is genuinely no body" from "never asked".
             'story' => $story === '' ? null : $story,
-            'story_images' => $this->images($headline),
+            'story_images' => self::images($headline),
             'story_fetched_at' => now(),
         ])->save();
 
@@ -84,10 +84,14 @@ class SyncArticleStory
      * `photo1` onwards line up with the rest. Verified across three articles
      * carrying between one and three placeholders.
      *
+     * Public static because the game summary's inline recap carries the same
+     * `images` list, and the placeholder resolution must not depend on which
+     * feed delivered the story.
+     *
      * @param  array<string, mixed>  $headline
      * @return list<array{url: string, caption: ?string, credit: ?string, width: ?int, height: ?int}>
      */
-    private function images(array $headline): array
+    public static function images(array $headline): array
     {
         return collect($headline['images'] ?? [])
             ->filter(fn ($image) => ! empty($image['url']))

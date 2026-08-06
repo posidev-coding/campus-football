@@ -27,9 +27,14 @@ use Carbon\CarbonImmutable;
  *
  * Unlike odds, none of this is carried on the scoreboard. The predictor is a
  * per-game core-API resource costing one request per game, so a whole season
- * would be ~950 requests for data that only matters while a slate is being
- * built. This is deliberately scoped to upcoming games — 60-80 a week, once or
- * twice a week. Historical predictors are never fetched.
+ * would be ~950 requests. This is deliberately scoped to upcoming games —
+ * 80-100 a week, a few times a week. Historical predictors are never fetched:
+ * ESPN serves this feed for upcoming fixtures only, so anything not captured
+ * before kickoff is unrecoverable, the same one-way door as the opening line.
+ *
+ * Every fixture, not just Saturdays: the slate builder only cares about
+ * Saturday, but the game page's matchup predictor renders for a Tuesday
+ * MACtion fixture too, and skipping it there is a donut that never exists.
  */
 class SyncPredictors
 {
@@ -38,7 +43,7 @@ class SyncPredictors
     /**
      * Sync predictors for games kicking off in the next `$days` days.
      */
-    public function upcoming(int $days = 10, bool $saturdayOnly = true): int
+    public function upcoming(int $days = 10, bool $saturdayOnly = false): int
     {
         $now = CarbonImmutable::now();
 
@@ -88,6 +93,9 @@ class SyncPredictors
             return false;
         }
 
+        // teamChanceLoss is NOT stored — it is the complement of the
+        // projection, and a derived number written down can disagree with
+        // its source.
         GamePredictor::updateOrCreate(
             ['game_id' => $gameId],
             array_filter([
@@ -95,8 +103,14 @@ class SyncPredictors
                 'matchup_quality' => $matchupQuality,
                 'home_projection' => $home['gameProjection'] ?? null,
                 'away_projection' => $away['gameProjection'] ?? null,
+                'home_pred_pt_diff' => $home['teamPredPtDiff'] ?? null,
+                'away_pred_pt_diff' => $away['teamPredPtDiff'] ?? null,
                 'home_opp_strength' => $home['oppSeasonStrengthRating'] ?? null,
                 'away_opp_strength' => $away['oppSeasonStrengthRating'] ?? null,
+                'home_opp_strength_rank' => isset($home['oppSeasonStrengthFbsRank'])
+                    ? (int) $home['oppSeasonStrengthFbsRank'] : null,
+                'away_opp_strength_rank' => isset($away['oppSeasonStrengthFbsRank'])
+                    ? (int) $away['oppSeasonStrengthFbsRank'] : null,
                 'synced_at' => CarbonImmutable::now(),
             ], fn ($value) => $value !== null)
         );

@@ -8,7 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'game_id', 'game_quality', 'matchup_quality', 'home_projection',
-    'away_projection', 'home_opp_strength', 'away_opp_strength', 'synced_at',
+    'away_projection', 'home_pred_pt_diff', 'away_pred_pt_diff',
+    'home_opp_strength', 'away_opp_strength',
+    'home_opp_strength_rank', 'away_opp_strength_rank', 'synced_at',
 ])]
 class GamePredictor extends Model
 {
@@ -19,6 +21,8 @@ class GamePredictor extends Model
             'matchup_quality' => 'float',
             'home_projection' => 'float',
             'away_projection' => 'float',
+            'home_pred_pt_diff' => 'float',
+            'away_pred_pt_diff' => 'float',
             'synced_at' => 'datetime',
         ];
     }

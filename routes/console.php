@@ -113,16 +113,21 @@ Schedule::command('cfb:sync --only=rankings-current --year=current')
     ->withoutOverlapping();
 
 /*
- * Predictors cost one request per game, so they are scoped to upcoming Saturday
- * fixtures — 60-80 a week. Running Wednesday puts fresh matchup quality in
- * front of commissioners before the Wednesday-midnight slate deadline, and
- * ahead of Thursday's autopilot.
+ * Predictors cost one request per game, so they are scoped to upcoming
+ * fixtures — 80-100 a week per pass. Wednesday puts fresh matchup quality in
+ * front of commissioners before the Wednesday-midnight slate deadline and
+ * ahead of Thursday's autopilot; Thursday and Saturday morning keep the game
+ * page's matchup predictor current through the week ESPN actually re-models.
+ * The feed serves UPCOMING games only, so a projection not captured before
+ * kickoff is unrecoverable — the cadence is the capture.
  */
-Schedule::command('cfb:sync --only=predictors')
-    ->weeklyOn(ScheduleClass::WEDNESDAY, '06:00')
-    ->timezone($tz)
-    ->when($inSeason)
-    ->withoutOverlapping();
+foreach ([[ScheduleClass::WEDNESDAY, '06:00'], [ScheduleClass::THURSDAY, '06:00'], [ScheduleClass::SATURDAY, '08:00']] as [$day, $at]) {
+    Schedule::command('cfb:sync --only=predictors')
+        ->weeklyOn($day, $at)
+        ->timezone($tz)
+        ->when($inSeason)
+        ->withoutOverlapping();
+}
 
 // Standings follow the games, so they run after the nightly game pass. The
 // reconciler runs last and flags any disagreement for the admin panel.

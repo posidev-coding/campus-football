@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\FetchGameSummary;
+use App\Models\Article;
 use App\Models\Game;
 use App\Models\GameScoringPlay;
 use App\Models\GameSummary;
@@ -175,6 +176,95 @@ describe('the scoring-plays dirty guard', function () {
 
         expect($plays)->toHaveCount(1)
             ->and($plays->first()->text)->toContain('23 Yd');
+    });
+});
+
+describe('articles riding the summary', function () {
+    /** @return array<string, mixed> */
+    function summaryWithArticles(): array
+    {
+        return [
+            'boxscore' => ['teams' => [], 'players' => []],
+            'article' => [
+                'id' => 47667165,
+                'type' => 'Recap',
+                'headline' => 'Georgia survives Alabama in a classic',
+                'description' => 'A finish for the ages.',
+                'published' => '2025-09-28T04:17:59Z',
+                'links' => ['web' => ['href' => 'https://www.espn.com/ncf/recap?gameId=401']],
+                'story' => '<p>The whole story, inline.</p>',
+                'images' => [['url' => 'https://a.espncdn.com/photo/lead.jpg', 'caption' => 'Lead', 'width' => 608, 'height' => 342]],
+                'categories' => [['type' => 'team', 'teamId' => 61]],
+            ],
+            'news' => ['articles' => [
+                [
+                    'id' => 49546711,
+                    'type' => 'HeadlineNews',
+                    'headline' => 'What the win means for the East',
+                    'published' => '2025-09-28T10:00:00Z',
+                ],
+                // The recap can appear in its own related list; the recap
+                // role must win rather than being demoted to related.
+                ['id' => 47667165, 'type' => 'Recap', 'headline' => 'Georgia survives Alabama in a classic'],
+            ]],
+        ];
+    }
+
+    it('stores the recap and related list, roles intact', function () {
+        Http::fake(['*' => Http::response(summaryWithArticles())]);
+
+        app(SyncGameSummary::class)->handle($this->live);
+
+        $roles = $this->live->articles()->pluck('role', 'espn_id');
+
+        expect($roles->get(47667165))->toBe('recap')
+            ->and($roles->get(49546711))->toBe('related')
+            ->and($this->live->articles()->count())->toBe(2);
+    });
+
+    it('stores the inline recap body so the first reader costs no request', function () {
+        Http::fake(['*' => Http::response(summaryWithArticles())]);
+
+        app(SyncGameSummary::class)->handle($this->live);
+
+        $article = Article::where('espn_id', 47667165)->sole();
+
+        expect($article->story)->toBe('<p>The whole story, inline.</p>')
+            ->and($article->story_fetched_at)->not->toBeNull()
+            ->and($article->storyIsWorthFetching())->toBeFalse()
+            ->and($article->story_images)->toHaveCount(1)
+            ->and($article->teams()->pluck('teams.id')->all())->toBe([61]);
+    });
+
+    it('never overwrites a body already fetched', function () {
+        $article = Article::create([
+            'espn_id' => 47667165, 'headline' => 'Old headline', 'type' => 'Recap',
+        ]);
+        $article->forceFill(['story' => '<p>Fetched first.</p>', 'story_fetched_at' => now()])->save();
+
+        Http::fake(['*' => Http::response(summaryWithArticles())]);
+
+        app(SyncGameSummary::class)->handle($this->live);
+
+        expect(Article::where('espn_id', 47667165)->sole()->story)->toBe('<p>Fetched first.</p>');
+    });
+
+    it('keeps links a previous pass made when a later payload omits them', function () {
+        // The live sweep re-fetches every two minutes and mid-game payloads
+        // carry no recap yet — a re-fetch must not drop what an earlier,
+        // fuller pass linked.
+        Http::fake(['*' => Http::sequence()
+            ->push(summaryWithArticles())
+            ->push(['boxscore' => ['teams' => [], 'players' => []]]),
+        ]);
+
+        app(SyncGameSummary::class)->handle($this->live);
+
+        $this->live->summary?->update(['synced_at' => now()->subHour()]);
+
+        app(SyncGameSummary::class)->handle($this->live->fresh());
+
+        expect($this->live->articles()->count())->toBe(2);
     });
 });
 

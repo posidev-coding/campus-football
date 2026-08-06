@@ -32,7 +32,7 @@ beforeEach(function () {
     Team::factory()->create(['id' => 333, 'display_name' => 'Alabama']);
 });
 
-function scoreboardEvent(int $id, string $date, int $homeScore, int $awayScore, bool $completed = true, string $state = 'post'): array
+function scoreboardEvent(int $id, string $date, int $homeScore, int $awayScore, bool $completed = true, string $state = 'post', ?array $situation = null): array
 {
     return [
         'id' => (string) $id,
@@ -45,14 +45,15 @@ function scoreboardEvent(int $id, string $date, int $homeScore, int $awayScore, 
             'displayClock' => '0:00',
             'type' => ['state' => $state, 'completed' => $completed, 'shortDetail' => 'Final'],
         ],
-        'competitions' => [[
+        'competitions' => [array_filter([
             'neutralSite' => false,
             'conferenceCompetition' => true,
+            'situation' => $situation,
             'competitors' => [
                 ['id' => '61', 'homeAway' => 'home', 'score' => (string) $homeScore, 'curatedRank' => ['current' => 1]],
                 ['id' => '333', 'homeAway' => 'away', 'score' => (string) $awayScore, 'curatedRank' => ['current' => 99]],
             ],
-        ]],
+        ], fn ($value) => $value !== null)],
     ];
 }
 
@@ -253,6 +254,98 @@ it('stores an unranked team as null rather than ESPN 99 sentinel', function () {
 
     expect($game->home_rank)->toBe(1)
         ->and($game->away_rank)->toBeNull();
+});
+
+describe('the live situation block', function () {
+    /*
+     * Possession, down and distance, red zone, timeouts, the last play. It
+     * rides the scoreboard payload the live tier already fetches, so keeping
+     * it costs nothing — and like everything on that tier it cannot be
+     * re-observed after the fact.
+     */
+    it('stores the situation on a live game', function () {
+        fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 14, 10, completed: false, state: 'in', situation: [
+            'possession' => '61',
+            'down' => 3,
+            'distance' => 7,
+            'yardLine' => 34,
+            'shortDownDistanceText' => '3rd & 7',
+            'downDistanceText' => '3rd & 7 at ALA 34',
+            'isRedZone' => true,
+            'lastPlay' => ['text' => 'Pass incomplete deep right.'],
+            'homeTimeouts' => 2,
+            'awayTimeouts' => 3,
+        ])]);
+
+        app(SyncGames::class)->week($this->week);
+
+        $game = Game::whereKey(401)->sole();
+
+        expect($game->possession_team_id)->toBe(61)
+            ->and($game->down)->toBe(3)
+            ->and($game->distance)->toBe(7)
+            ->and($game->yard_line)->toBe(34)
+            ->and($game->down_distance_text)->toBe('3rd & 7')
+            ->and($game->is_red_zone)->toBeTrue()
+            ->and($game->last_play_text)->toBe('Pass incomplete deep right.')
+            ->and($game->home_timeouts)->toBe(2)
+            ->and($game->away_timeouts)->toBe(3);
+    });
+
+    it('keeps the last situation when a live payload omits the block', function () {
+        // A transient gap mid-game is "the feed returned nothing", and nulling
+        // real data over it is the default-writing mistake. Only a game that
+        // has left the in state clears.
+        Http::fake(['*scoreboard*' => Http::sequence()
+            ->push(['events' => [scoreboardEvent(401, '2025-09-27T19:30Z', 14, 10, completed: false, state: 'in', situation: [
+                'possession' => '61', 'down' => 2, 'distance' => 4, 'shortDownDistanceText' => '2nd & 4',
+            ])]])
+            ->push(['events' => [scoreboardEvent(401, '2025-09-27T19:30Z', 14, 13, completed: false, state: 'in')]]),
+        ]);
+
+        app(SyncGames::class)->week($this->week);
+        app(SyncGames::class)->week($this->week);
+
+        $game = Game::whereKey(401)->sole();
+
+        expect($game->down)->toBe(2)
+            ->and($game->down_distance_text)->toBe('2nd & 4')
+            ->and($game->possession_team_id)->toBe(61);
+    });
+
+    it('clears the situation when the game goes final', function () {
+        // A final must not carry a frozen "3rd & 7" forever.
+        Http::fake(['*scoreboard*' => Http::sequence()
+            ->push(['events' => [scoreboardEvent(401, '2025-09-27T19:30Z', 14, 10, completed: false, state: 'in', situation: [
+                'possession' => '61', 'down' => 3, 'distance' => 7, 'shortDownDistanceText' => '3rd & 7', 'isRedZone' => true,
+            ])]])
+            ->push(['events' => [scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]]),
+        ]);
+
+        Queue::fake();
+
+        app(SyncGames::class)->week($this->week);
+        app(SyncGames::class)->week($this->week);
+
+        $game = Game::whereKey(401)->sole();
+
+        expect($game->down)->toBeNull()
+            ->and($game->down_distance_text)->toBeNull()
+            ->and($game->possession_team_id)->toBeNull()
+            ->and($game->is_red_zone)->toBeFalse();
+    });
+
+    it('nulls a non-positive possession id rather than storing it', function () {
+        // Same rule as competitor ids and box-score pseudo-athletes: ESPN's
+        // non-positive ids are not real entities.
+        fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 14, 10, completed: false, state: 'in', situation: [
+            'possession' => '-1', 'down' => 1, 'distance' => 10,
+        ])]);
+
+        app(SyncGames::class)->week($this->week);
+
+        expect(Game::whereKey(401)->sole()->possession_team_id)->toBeNull();
+    });
 });
 
 describe('unannounced fixtures', function () {

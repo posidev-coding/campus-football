@@ -2,6 +2,7 @@
 
 namespace App\Services\Espn\Sync;
 
+use App\Models\Article;
 use App\Models\Athlete;
 use App\Models\AthleteGameStat;
 use App\Models\AthleteTeamSeason;
@@ -52,7 +53,7 @@ class SyncGameSummary
     /** Crash ceiling only — the lock is released in a finally. */
     private const IN_FLIGHT_SECONDS = 60;
 
-    public function __construct(private EspnClient $espn) {}
+    public function __construct(private EspnClient $espn, private SyncNews $news) {}
 
     /**
      * Whether this game's summary needs a fetch.
@@ -164,7 +165,85 @@ class SyncGameSummary
             );
         });
 
+        // Outside the transaction: articles are their own aggregate, and a
+        // failure linking one must not roll back a stored box score.
+        $this->storeArticles($game, $body);
+
         return true;
+    }
+
+    /**
+     * The recap article and ESPN's related list, both riding the summary
+     * payload we already paid for and previously discarded.
+     *
+     * The upsert is SyncNews::store — the same writer the news feed uses, so
+     * an article arriving from both cannot double or drift. Only the LINK
+     * belongs to this sync.
+     */
+    private function storeArticles(Game $game, array $body): void
+    {
+        $links = [];
+        $seen = [];
+
+        $recap = $body['article'] ?? null;
+
+        if (is_array($recap)) {
+            $article = $this->news->store($recap);
+
+            if ($article !== null) {
+                $this->storeInlineStory($article, $recap);
+                $links[$article->id] = ['role' => 'recap'];
+                $seen[(int) $recap['id']] = true;
+            }
+        }
+
+        foreach (data_get($body, 'news.articles', []) as $payload) {
+            // The recap can appear in its own related list, usually as a
+            // sparser copy — re-storing it would overwrite full fields with
+            // absent ones and demote its role.
+            if (! is_array($payload) || isset($seen[(int) ($payload['id'] ?? 0)])) {
+                continue;
+            }
+
+            $article = $this->news->store($payload);
+
+            if ($article !== null) {
+                $links[$article->id] = ['role' => 'related'];
+                $seen[(int) $payload['id']] = true;
+            }
+        }
+
+        if ($links !== []) {
+            // Without detaching: the live sweep re-runs this every two
+            // minutes, and a re-fetch must not drop links a previous pass
+            // made from a fuller payload.
+            $game->articles()->syncWithoutDetaching($links);
+        }
+    }
+
+    /**
+     * The recap carries its full body INLINE — 7.7 KB of the same raw markup
+     * the now endpoint serves — so storing it here saves the one request
+     * `SyncArticleStory` would otherwise spend on the game page's first
+     * reader. Never overwrites: a body already fetched is already right.
+     */
+    private function storeInlineStory(Article $article, array $payload): void
+    {
+        if ($article->story !== null) {
+            return;
+        }
+
+        $story = trim((string) ($payload['story'] ?? ''));
+
+        if ($story === '') {
+            return;
+        }
+
+        $article->forceFill([
+            'story' => $story,
+            'story_images' => SyncArticleStory::images($payload),
+            'story_fetched_at' => now(),
+        ])->save();
     }
 
     /**

@@ -110,39 +110,66 @@ class SyncNews
         $synced = 0;
 
         foreach ($articles as $payload) {
-            $espnId = $payload['id'] ?? null;
-
-            if ($espnId === null || ! isset($payload['headline'])) {
-                continue;
-            }
-
-            $article = Article::updateOrCreate(
-                ['espn_id' => (int) $espnId],
-                [
-                    'headline' => $payload['headline'],
-                    'description' => $payload['description'] ?? null,
-                    'byline' => $payload['byline'] ?? null,
-                    'type' => $payload['type'] ?? null,
-                    'image_url' => $this->image($payload),
-                    'url' => data_get($payload, 'links.web.href'),
-                    'premium' => (bool) ($payload['premium'] ?? false),
-                    'published_at' => isset($payload['published'])
-                        ? CarbonImmutable::parse($payload['published'])
-                        : null,
-                ]
-            );
-
             // Resolved once per batch rather than per article — a Top 25
             // listicle tags 25 teams and there are 50 articles, so this is the
             // difference between one query and hundreds.
             $known ??= Team::pluck('id')->flip();
 
-            $article->teams()->sync($this->teamIds($payload, $known));
-
-            $synced++;
+            if ($this->store($payload, $known) !== null) {
+                $synced++;
+            }
         }
 
         return $synced;
+    }
+
+    /**
+     * Upsert one article payload and its team links.
+     *
+     * Public because the news FEED is not the only place ESPN hands us an
+     * article: the game summary carries the recap and a related list in the
+     * same shape, and two writers with their own upserts is how the pivot
+     * doubles or the shapes drift.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  Collection<int, int>|null  $known
+     */
+    public function store(array $payload, ?Collection $known = null): ?Article
+    {
+        $espnId = $payload['id'] ?? null;
+
+        if ($espnId === null || ! isset($payload['headline'])) {
+            return null;
+        }
+
+        $article = Article::updateOrCreate(
+            ['espn_id' => (int) $espnId],
+            [
+                'headline' => $payload['headline'],
+                'description' => $payload['description'] ?? null,
+                'byline' => $payload['byline'] ?? null,
+                'type' => $payload['type'] ?? null,
+                'image_url' => $this->image($payload),
+                'url' => data_get($payload, 'links.web.href'),
+                'premium' => (bool) ($payload['premium'] ?? false),
+                'published_at' => isset($payload['published'])
+                    ? CarbonImmutable::parse($payload['published'])
+                    : null,
+            ]
+        );
+
+        // Only when the payload SPEAKS about teams. The summary's related
+        // list can name an article we already hold with no categories block
+        // at all, and syncing [] from that absence would strip links a fuller
+        // payload made — the cache-layer cousin of writing a default when a
+        // feed returns nothing.
+        if (array_key_exists('categories', $payload)) {
+            $known ??= Team::pluck('id')->flip();
+
+            $article->teams()->sync($this->teamIds($payload, $known));
+        }
+
+        return $article;
     }
 
     /**

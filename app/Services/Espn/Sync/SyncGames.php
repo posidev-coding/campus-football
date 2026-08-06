@@ -355,6 +355,7 @@ class SyncGames
             'period' => (int) ($status['period'] ?? 0),
             'clock' => $status['displayClock'] ?? null,
             'completed' => (bool) ($type['completed'] ?? false),
+            ...$this->situation($competition, $type['state'] ?? 'pre'),
         ]);
 
         /*
@@ -481,6 +482,59 @@ class SyncGames
         }
 
         return null;
+    }
+
+    /**
+     * The live situation — possession, down and distance, red zone, timeouts,
+     * the last play. Rides the scoreboard competition we already hold, so it
+     * costs nothing; it is also unobservable after the fact, which is why it
+     * is captured at all.
+     *
+     * Absence means two different things and they must not be conflated:
+     * on a game that is NOT in progress there is no situation to have, so the
+     * columns are cleared — a final must not carry a frozen "3rd & 7" forever.
+     * On a LIVE game a missing block is a transient gap in the feed, and
+     * writing nulls over real data is the "never write a default when a feed
+     * returns nothing" mistake, so the columns are left untouched.
+     *
+     * @return array<string, mixed>
+     */
+    private function situation(array $competition, string $state): array
+    {
+        $situation = $competition['situation'] ?? null;
+
+        if ($situation === null) {
+            return $state === 'in' ? [] : [
+                'possession_team_id' => null,
+                'down' => null,
+                'distance' => null,
+                'yard_line' => null,
+                'down_distance_text' => null,
+                'is_red_zone' => false,
+                'last_play_text' => null,
+                'home_timeouts' => null,
+                'away_timeouts' => null,
+            ];
+        }
+
+        // Same rule as competitor ids: ESPN's non-positive ids are not real
+        // entities, and `possession` is absent between plays anyway.
+        $possession = (int) ($situation['possession'] ?? 0);
+
+        return [
+            'possession_team_id' => $possession > 0 ? $possession : null,
+            'down' => isset($situation['down']) && (int) $situation['down'] > 0
+                ? (int) $situation['down'] : null,
+            'distance' => isset($situation['distance']) ? (int) $situation['distance'] : null,
+            'yard_line' => isset($situation['yardLine']) ? (int) $situation['yardLine'] : null,
+            'down_distance_text' => $situation['shortDownDistanceText']
+                ?? $situation['downDistanceText'] ?? null,
+            'is_red_zone' => (bool) ($situation['isRedZone'] ?? false),
+            'last_play_text' => isset($situation['lastPlay']['text'])
+                ? mb_substr($situation['lastPlay']['text'], 0, 255) : null,
+            'home_timeouts' => isset($situation['homeTimeouts']) ? (int) $situation['homeTimeouts'] : null,
+            'away_timeouts' => isset($situation['awayTimeouts']) ? (int) $situation['awayTimeouts'] : null,
+        ];
     }
 
     /**

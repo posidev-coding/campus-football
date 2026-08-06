@@ -132,13 +132,38 @@ it('writes nothing when ESPN has not modelled the game', function () {
         ->and(GamePredictor::count())->toBe(0);
 });
 
-it('only fetches predictors for upcoming Saturday games', function () {
+it('fetches predictors for every upcoming fixture, never completed ones', function () {
     Http::fake(['*predictor*' => Http::response([
         'homeTeam' => ['statistics' => [['name' => 'matchupQuality', 'value' => 50.0]]],
     ])]);
 
-    // A completed game, and a midweek fixture — neither is slate-eligible.
+    // Completed: its predictor window has closed and ESPN no longer serves it.
     Game::factory()->finished()->onSaturday()->create(['season_id' => $this->season->id]);
+
+    // A midweek fixture counts now — the game page's matchup predictor
+    // renders for a Tuesday MACtion game too, not just the pick'em slate.
+    $midweek = Game::factory()->create([
+        'season_id' => $this->season->id,
+        'completed' => false,
+        'kickoff_at' => now()->addDays(2),
+        'kickoff_day' => 'Wed',
+    ]);
+
+    $saturday = Game::factory()->onSaturday()->create([
+        'season_id' => $this->season->id,
+        'completed' => false,
+    ]);
+
+    expect(app(SyncPredictors::class)->upcoming(days: 10))->toBe(2)
+        ->and(GamePredictor::where('game_id', $saturday->id)->exists())->toBeTrue()
+        ->and(GamePredictor::where('game_id', $midweek->id)->exists())->toBeTrue();
+});
+
+it('can still narrow to slate-eligible Saturdays for the pick a slate is built from', function () {
+    Http::fake(['*predictor*' => Http::response([
+        'homeTeam' => ['statistics' => [['name' => 'matchupQuality', 'value' => 50.0]]],
+    ])]);
+
     Game::factory()->create([
         'season_id' => $this->season->id,
         'completed' => false,
@@ -151,6 +176,35 @@ it('only fetches predictors for upcoming Saturday games', function () {
         'completed' => false,
     ]);
 
-    expect(app(SyncPredictors::class)->upcoming(days: 10))->toBe(1)
+    expect(app(SyncPredictors::class)->upcoming(days: 10, saturdayOnly: true))->toBe(1)
         ->and(GamePredictor::where('game_id', $saturday->id)->exists())->toBeTrue();
+});
+
+it('stores the projected margin and opponent-strength ranks', function () {
+    Http::fake(['*predictor*' => Http::response([
+        'homeTeam' => ['statistics' => [
+            ['name' => 'gameProjection', 'value' => 51.5],
+            ['name' => 'matchupQuality', 'value' => 63.6],
+            ['name' => 'teamPredPtDiff', 'value' => 0.5],
+            ['name' => 'oppSeasonStrengthRating', 'value' => 4.9],
+            ['name' => 'oppSeasonStrengthFbsRank', 'value' => 42],
+            // The complement of the projection — must NOT be persisted.
+            ['name' => 'teamChanceLoss', 'value' => 48.5],
+        ]],
+        'awayTeam' => ['statistics' => [
+            ['name' => 'gameProjection', 'value' => 48.5],
+            ['name' => 'teamPredPtDiff', 'value' => -0.5],
+            ['name' => 'oppSeasonStrengthFbsRank', 'value' => 38],
+        ]],
+    ])]);
+
+    app(SyncPredictors::class)->game(999);
+
+    $predictor = GamePredictor::where('game_id', 999)->sole();
+
+    expect($predictor->home_pred_pt_diff)->toBe(0.5)
+        ->and($predictor->away_pred_pt_diff)->toBe(-0.5)
+        ->and($predictor->home_opp_strength_rank)->toBe(42)
+        ->and($predictor->away_opp_strength_rank)->toBe(38)
+        ->and($predictor->getAttributes())->not->toHaveKey('team_chance_loss');
 });

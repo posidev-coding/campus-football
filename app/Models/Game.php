@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Laravel\Scout\Searchable;
@@ -22,6 +23,8 @@ use Laravel\Scout\Searchable;
     'home_team_id', 'home_score', 'home_rank', 'home_record', 'home_line_scores', 'home_win_prob',
     'away_team_id', 'away_score', 'away_rank', 'away_record', 'away_line_scores', 'away_win_prob',
     'status', 'status_detail', 'period', 'clock', 'completed', 'attendance', 'broadcasts',
+    'possession_team_id', 'down', 'distance', 'yard_line', 'down_distance_text',
+    'is_red_zone', 'last_play_text', 'home_timeouts', 'away_timeouts',
 ])]
 class Game extends Model
 {
@@ -60,6 +63,7 @@ class Game extends Model
             'broadcasts' => 'array',
             'home_win_prob' => 'float',
             'away_win_prob' => 'float',
+            'is_red_zone' => 'boolean',
         ];
     }
 
@@ -116,6 +120,17 @@ class Game extends Model
     public function athleteStats(): HasMany
     {
         return $this->hasMany(AthleteGameStat::class);
+    }
+
+    /**
+     * Articles attached to this game by the summary sync — the recap
+     * (`pivot.role = 'recap'`) plus ESPN's related list (`'related'`).
+     */
+    public function articles(): BelongsToMany
+    {
+        return $this->belongsToMany(Article::class)
+            ->withPivot('role')
+            ->withTimestamps();
     }
 
     /**
