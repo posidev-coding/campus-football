@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['season_id', 'number', 'name', 'start_date', 'end_date', 'is_current'])]
+#[Fillable(['season_id', 'number', 'name', 'start_date', 'end_date'])]
 class Week extends Model
 {
     protected function casts(): array
@@ -15,7 +15,6 @@ class Week extends Model
         return [
             'start_date' => 'datetime',
             'end_date' => 'datetime',
-            'is_current' => 'boolean',
         ];
     }
 

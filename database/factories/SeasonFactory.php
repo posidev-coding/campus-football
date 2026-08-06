@@ -15,7 +15,6 @@ class SeasonFactory extends Factory
         return [
             'year' => fake()->numberBetween(2015, 2026),
             'type' => Season::REGULAR,
-            'is_current' => false,
         ];
     }
 

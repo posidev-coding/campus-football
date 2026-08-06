@@ -22,12 +22,19 @@ return new class extends Migration
              * Contests may only slate Saturday games, and deriving the ET day
              * from a UTC timestamp in SQL is both slow and wrong across the
              * EDT/EST boundary that every CFB season straddles. Written once at
-             * sync time by the app, in the correct zone, and indexed.
+             * sync time by the app, in the correct zone.
+             *
+             * NOT indexed, deliberately. Seven distinct values over 5,793 games
+             * and 83% of them 'Sat' — and the only query, `slateEligible()`,
+             * asks for exactly that 83%. An index returning most of the table
+             * is one the optimizer correctly refuses to use; measured, it took
+             * zero reads across every screen in the app.
              */
-            $table->string('kickoff_day', 3)->index();
+            $table->string('kickoff_day', 3);
 
-            $table->string('name');
-            $table->string('short_name')->nullable();
+            // "Alabama at Georgia" — 65 at the longest across 5,793 games.
+            $table->string('name', 120);
+            $table->string('short_name', 40)->nullable();
             $table->boolean('neutral_site')->default(false);
             $table->boolean('conference_game')->default(false);
 
@@ -48,7 +55,7 @@ return new class extends Migration
             $table->decimal('away_win_prob', 5, 2)->nullable();
 
             $table->string('status', 30)->nullable();
-            $table->string('status_detail')->nullable();
+            $table->string('status_detail', 60)->nullable();
             $table->unsignedTinyInteger('period')->default(0);
             $table->string('clock', 10)->nullable();
             $table->boolean('completed')->default(false);
@@ -62,10 +69,21 @@ return new class extends Migration
             $table->foreign('away_team_id')->references('id')->on('teams')->nullOnDelete();
 
             $table->index(['season_id', 'kickoff_at']);
+            // The scoreboard's own index: filters the week, and its second
+            // column satisfies the ORDER BY so the slate needs no filesort.
             $table->index(['week_id', 'kickoff_at']);
             $table->index(['completed', 'kickoff_at']);
-            // Slate eligibility: Saturday games in a given week.
-            $table->index(['week_id', 'kickoff_day']);
+
+            /*
+             * There is deliberately no (week_id, kickoff_day) index. It read
+             * as "Saturday games in a week", but `kickoff_day` is 83% 'Sat',
+             * so the second column excludes almost nothing that the first has
+             * not already narrowed — and (week_id, kickoff_at) above serves
+             * every week_id query anyway. Measured: zero reads.
+             *
+             * Both dropped indexes cost writes on the hottest table in the
+             * app, which the live tier rewrites every minute all Saturday.
+             */
         });
 
         /*
@@ -81,7 +99,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedInteger('game_id');
             $table->unsignedSmallInteger('provider_id')->nullable();
-            $table->string('provider')->nullable();
+            $table->string('provider', 40)->nullable();
             $table->string('phase', 10);
             $table->decimal('spread', 5, 1)->nullable();
             $table->decimal('over_under', 5, 1)->nullable();

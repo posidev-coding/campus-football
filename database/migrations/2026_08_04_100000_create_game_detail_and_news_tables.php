@@ -69,28 +69,50 @@ return new class extends Migration
         });
 
         /*
-         * The bulky, low-query-value halves of the summary. Drives run to 25 per
-         * game and win probability to nearly 200 points; neither is ever
-         * filtered or aggregated, only rendered whole. Keeping them out of
-         * `games` means the scoreboard — by far the hottest query in the app —
-         * never reads them.
+         * The summary's LIGHT half — what a game page actually renders, plus
+         * the freshness bookkeeping the sync turns on.
          *
          * `is_final` is what makes the throttle safe to skip: once a game is
          * final its summary can never change, so it is fetched exactly once and
          * every later page view is a pure database read.
+         *
+         * Measured, and the reason `drives` now lives in its own table: with
+         * drives inline this table was 1,764 MB from 4,844 rows — 86% of the
+         * whole database — and the game page's `summary()->first()` is a
+         * SELECT *, so every view dragged 306 KB of drive JSON across the wire
+         * to render a box score that never reads it.
          */
         Schema::create('game_summaries', function (Blueprint $table) {
             $table->unsignedInteger('game_id')->primary();
-            $table->json('drives')->nullable();
             $table->json('win_probability')->nullable();
             $table->json('leaders')->nullable();
             $table->unsignedMediumInteger('attendance')->nullable();
+            $table->string('scoring_plays_hash', 32)->nullable();
             $table->boolean('is_final')->default(false);
             $table->timestamp('synced_at')->nullable();
             $table->timestamps();
 
             $table->foreign('game_id')->references('id')->on('games')->cascadeOnDelete();
             $table->index(['is_final', 'synced_at']);
+        });
+
+        /*
+         * Drives — 306 KB per game on average, 600 KB at the worst, and the
+         * single largest thing this application stores.
+         *
+         * Split out rather than dropped: no screen renders them yet, but the
+         * game page promises them ("Box score, scoring summary and drives"),
+         * and re-fetching would cost one 544 KB request per game. In their own
+         * table they cost nothing until the play-by-play tab asks for them.
+         *
+         * Never eager-load this alongside a game.
+         */
+        Schema::create('game_drives', function (Blueprint $table) {
+            $table->unsignedInteger('game_id')->primary();
+            $table->json('drives')->nullable();
+            $table->timestamps();
+
+            $table->foreign('game_id')->references('id')->on('games')->cascadeOnDelete();
         });
 
         /*
@@ -110,7 +132,11 @@ return new class extends Migration
             $table->string('byline')->nullable();
             // HeadlineNews, Story, Media, Preview...
             $table->string('type', 40)->nullable();
-            $table->string('image_url')->nullable();
+            // Both 512, and image_url is NOT the place to save 250 bytes:
+            // measured at 242 characters across 6,153 articles, it was one
+            // long ESPN CDN URL away from throwing under strict mode while
+            // its sibling had already been widened.
+            $table->string('image_url', 512)->nullable();
             $table->string('url', 512)->nullable();
             $table->boolean('premium')->default(false);
             $table->timestamp('published_at')->nullable();
@@ -210,6 +236,7 @@ return new class extends Migration
         Schema::dropIfExists('national_leaders');
         Schema::dropIfExists('article_team');
         Schema::dropIfExists('articles');
+        Schema::dropIfExists('game_drives');
         Schema::dropIfExists('game_summaries');
         Schema::dropIfExists('game_scoring_plays');
         Schema::dropIfExists('game_team_stats');

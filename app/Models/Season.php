@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['year', 'type', 'name', 'start_date', 'end_date', 'is_current'])]
+#[Fillable(['year', 'type', 'name', 'start_date', 'end_date'])]
 class Season extends Model
 {
     use HasFactory;
@@ -26,7 +26,6 @@ class Season extends Model
         return [
             'start_date' => 'datetime',
             'end_date' => 'datetime',
-            'is_current' => 'boolean',
         ];
     }
 

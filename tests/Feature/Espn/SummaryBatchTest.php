@@ -3,6 +3,7 @@
 use App\Jobs\FetchGameSummary;
 use App\Jobs\Middleware\ThrottleEspn;
 use App\Models\Game;
+use App\Models\GameDrive;
 use App\Models\GameSummary;
 use App\Models\Season;
 use App\Models\Team;
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Schema;
 
 beforeEach(function () {
     $this->season = Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
@@ -148,6 +150,62 @@ it('actually stores a summary when the job runs', function () {
     expect(GameSummary::whereKey($game->id)->exists())->toBeTrue()
         ->and(GameSummary::find($game->id)->attendance)->toBe(92746)
         ->and($game->teamStats()->count())->toBe(1);
+});
+
+describe('drives live on their own table', function () {
+    /*
+     * Measured before the split: game_summaries was 1,764 MB from 4,844 rows
+     * — 86% of the entire database — because `drives` averages 306 KB a row.
+     * The game page loads its summary with a plain first(), a SELECT *, so
+     * every view of every game read all of it to render a box score that
+     * never touches it.
+     */
+    beforeEach(function () {
+        Http::fake(['*' => Http::response([
+            'boxscore' => ['teams' => [], 'players' => []],
+            'drives' => ['previous' => [['id' => '1', 'description' => '9 plays, 75 yards']]],
+            'header' => ['competitions' => [['status' => ['type' => ['completed' => true]]]]],
+            'gameInfo' => ['attendance' => 92746],
+        ])]);
+    });
+
+    it('writes drives to game_drives, not game_summaries', function () {
+        $game = $this->games->first();
+
+        (new FetchGameSummary($game->id, force: true))->handle(app(SyncGameSummary::class));
+
+        expect(GameDrive::whereKey($game->id)->exists())->toBeTrue()
+            ->and(GameDrive::find($game->id)->drives)->toHaveCount(1)
+            // The summary row keeps only what a game page renders.
+            ->and(Schema::hasColumn('game_summaries', 'drives'))->toBeFalse()
+            ->and(GameSummary::find($game->id)->attendance)->toBe(92746);
+    });
+
+    it('keeps the summary row small enough to read on every view', function () {
+        // The whole point of the split: loading a summary must not drag the
+        // drive chart with it. A relation exists for the screen that will
+        // render drives; nothing eager-loads it.
+        $game = $this->games->first();
+
+        (new FetchGameSummary($game->id, force: true))->handle(app(SyncGameSummary::class));
+
+        $summary = GameSummary::find($game->id);
+
+        expect($summary->relationLoaded('drives'))->toBeFalse()
+            ->and($summary->getAttributes())->not->toHaveKey('drives')
+            // ...and it is still reachable when something asks for it.
+            ->and($summary->drives()->first()->drives)->toHaveCount(1);
+    });
+
+    it('replaces drives rather than duplicating them on re-sync', function () {
+        $game = $this->games->first();
+        $sync = app(SyncGameSummary::class);
+
+        (new FetchGameSummary($game->id, force: true))->handle($sync);
+        (new FetchGameSummary($game->id, force: true))->handle($sync);
+
+        expect(GameDrive::where('game_id', $game->id)->count())->toBe(1);
+    });
 });
 
 it('does nothing for a game that no longer exists', function () {

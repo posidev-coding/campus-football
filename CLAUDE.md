@@ -1776,6 +1776,59 @@ reader.
 `short_name` is the display form, everywhere, including where a prop is called
 `abbr`.
 
+## Schema: what the audit measured, and the rules it left behind
+
+Audited against a fully seeded database — 5,793 games, 34,919 athletes,
+305,269 box-score lines, 182,100 season-stat rows. Most of the schema was
+already right: **all 45 foreign keys have matching types on both sides**, the
+ESPN-id primary keys are already narrow (`teams.id` mediumint, `athletes.id`
+int, `games.id` int, `conferences.id` smallint), 56 columns already carry
+deliberate lengths, and only two non-id integers anywhere exceed smallint.
+Four things were not.
+
+**`game_summaries.drives` was 86% of the database.** 306 KB per row average,
+600 KB at the worst, 1,408 MB in total — and the game page loads its summary
+with a plain `first()`, a SELECT *, so every view read all of it to render a
+box score that never touches it. Drives live in **`game_drives`** now, one row
+per game, loaded only by something that explicitly asks. Never eager-load it
+beside a game or a summary; that is the exact amplification the split removed.
+
+**An index is only worth what a query can use.** `athlete_season_stats` is read
+by every leaderboard, filtering `(season_year, season_type, category, team_id)`
+— but its unique index leads with `athlete_id`, so none of that could use it.
+MySQL fell back to the `team_id` foreign-key index and scanned 11,337 rows at
+**0.1% selectivity**; one pass of the app's screens cost 1,821,000 row reads.
+`athlete_season_stats_leaderboard` matches the filter exactly.
+
+**Three indexes were measured dead and dropped**, using
+`performance_schema.table_io_waits_summary_by_index_usage` after resetting the
+counters and exercising every screen:
+
+    games.kickoff_day            7 distinct values, 83% 'Sat', and its only
+                                 query (slateEligible) asks for that 83%
+    games (week_id,kickoff_day)  redundant: (week_id,kickoff_at) serves every
+                                 week query AND satisfies the ORDER BY
+    athletes.is_active           99.7% true over 34,919 rows; 1 read
+
+Two of those sit on `games`, which the live tier rewrites every minute all
+Saturday, so dropping them buys write throughput as well.
+
+**Narrowing a VARCHAR saves no disk.** InnoDB stores it variable-length — a
+`varchar(255)` holding "Georgia" already costs 8 bytes. What an oversized
+declaration costs is **sort and temp-table memory**, which MySQL allocates at
+the DECLARED width: utf8mb4 `varchar(255)` is 1,020 bytes per row in a
+filesort. So right-sizing is worth doing on columns that are indexed, sorted
+or grouped — `athletes.last_name`/`display_name`, which `/players` filesorts
+13,580 rows by — and is churn everywhere else. URLs and headlines stay wide;
+`articles.image_url` was WIDENED to 512 after measuring 242 characters across
+6,153 rows, one long CDN URL from throwing under strict mode.
+
+Re-run the audit with the scripts' method: `MAX(CHAR_LENGTH())` per column,
+`MIN`/`MAX` per integer against its type's ceiling, and index reads from
+performance_schema after driving real traffic. Statistics in
+`information_schema` are cached for 24h — `ANALYZE TABLE` first or the sizes
+lie.
+
 ## The game summary is the only source of a box score
 
 Box scores, scoring plays and drives exist in exactly one payload — `summary` —
@@ -1966,12 +2019,19 @@ out of refs without resolving them — a coach costs 2 + 2N requests, not 2 + 3N
 
 - `limit` is **clamped to 50** however much you ask for. There is no pagination
   parameter that lifts it.
-- The window is about **six days**, so article history is ACCUMULATED by syncing
-  on a schedule and cannot be backfilled. Nothing in the sync may delete.
+- The GENERAL feed's window is about **six days**, so history from it is
+  ACCUMULATED by syncing on a schedule. Nothing in the sync may delete.
 - **`?team=` is honoured** and returns a genuinely different set — Georgia shares
-  only 5 of 50 articles with the general feed, and reaches back weeks further.
-  **`?athlete=` on the same endpoint is silently ignored.** One parameter can be
-  trusted and its sibling cannot.
+  only 5 of 50 articles with the general feed. **`?athlete=` on the same
+  endpoint is silently ignored.** One parameter can be trusted and its sibling
+  cannot.
+- **History CAN be backfilled, through the team parameter.** This file used to
+  say it could not, and that was wrong: fanning `SyncTeamNews` across all 811
+  teams in the current season took the archive from 50 articles to **6,153,
+  spanning 2012-09-14 to 2026-08-05 — 13.9 years**, in one pass of 811
+  requests. Each team's own feed reaches back years, not days; only the
+  undifferentiated national feed is a six-day window. Worth re-running after
+  any data loss, and the reason a team's news tab has real depth.
 - Every article on the college-football path carries an `NCAA Football` tag, so
   no filtering is needed. Basketball tags appear as ADDITIONAL tags on
   multi-sport stories, not as off-topic articles.
@@ -2224,7 +2284,11 @@ Two fatals in one sitting, both at class-load time:
 ## Commands
 
 ```
-php artisan cfb:migrate --from=2021 --to=2026     # empty DB -> fully populated
+# ALWAYS raise the memory limit for a multi-season migrate. Memory accumulates
+# across steps in one process and PHP's CLI default is 128M — it dies partway
+# through with a fatal, not an error the command can report. --resume picks up
+# from sync_runs, so nothing is lost, but it costs a restart.
+php -d memory_limit=1024M artisan cfb:migrate --from=2021 --to=2026
 php artisan cfb:migrate --resume                  # after an interruption
 php artisan cfb:migrate --summaries               # opt in to the slow pass
 
@@ -2233,4 +2297,25 @@ php artisan cfb:games --tier=live|today|current|recent|season
 php artisan cfb:players [--only=rosters|stats] [--team=61]
 php artisan cfb:summaries --missing [--year=2025] # box scores, 1 req/game
 php artisan cfb:coaches [--missing|--current]     # careers + tenures, 2+2N req/coach
+php artisan cfb:aggregate                         # season totals, 0 requests
 ```
+
+**A seed is not finished when `cfb:migrate` exits.** Its `rosters` and `stats`
+steps QUEUE `SyncTeamSeason` jobs rather than running inline, and seeding
+completed games trips the just-final branch in `SyncGames::store()`, so a
+six-season run leaves ~4,800 summary jobs on `live` and ~1,600 roster jobs on
+`default`. With no worker running, the command reports success and exits 0
+while those tables stay empty — the same "looks done, did nothing" shape as a
+403. Start workers, then let the queues drain:
+
+```
+for i in $(seq 1 12); do
+  php -d memory_limit=512M artisan queue:work --queue=live,default,backfill \
+      --memory=200 --stop-when-empty &
+done
+```
+
+`--env=testing` does NOT switch databases — there is no `.env.testing`, so
+artisan loads `.env` and `migrate:fresh --env=testing` drops the DEVELOPMENT
+database. phpunit.xml's `<env>` block applies to PHPUnit runs only. Validate
+schema changes with `php artisan test`, never by rebuilding the dev database.

@@ -22,28 +22,26 @@ return new class extends Migration
             // 1 preseason, 2 regular, 3 postseason, 4 offseason — ESPN's own
             // season types, verified against the API.
             $table->unsignedTinyInteger('type');
-            $table->string('name');
+            // "Regular Season", "Postseason" — 14 characters at the longest.
+            $table->string('name', 40);
             $table->timestamp('start_date')->nullable();
             $table->timestamp('end_date')->nullable();
-            $table->boolean('is_current')->default(false);
             $table->timestamps();
 
             $table->unique(['year', 'type']);
-            $table->index('is_current');
         });
 
         Schema::create('weeks', function (Blueprint $table) {
             $table->id();
             $table->foreignId('season_id')->constrained()->cascadeOnDelete();
             $table->unsignedTinyInteger('number');
-            $table->string('name')->nullable();
+            // "Week 16", "Bowls" — 8 characters at the longest.
+            $table->string('name', 40)->nullable();
             $table->timestamp('start_date')->nullable();
             $table->timestamp('end_date')->nullable();
-            $table->boolean('is_current')->default(false);
             $table->timestamps();
 
             $table->unique(['season_id', 'number']);
-            $table->index('is_current');
             // Resolving "which week does this kickoff belong to" is a date-range
             // scan on every game upsert.
             $table->index(['start_date', 'end_date']);
@@ -84,8 +82,8 @@ return new class extends Migration
 
         Schema::create('venues', function (Blueprint $table) {
             $table->unsignedInteger('id')->primary();
-            $table->string('name');
-            $table->string('city')->nullable();
+            $table->string('name', 120);
+            $table->string('city', 80)->nullable();
             $table->string('state', 10)->nullable();
             $table->unsignedInteger('capacity')->nullable();
             $table->boolean('indoor')->default(false);
@@ -95,12 +93,13 @@ return new class extends Migration
 
         Schema::create('teams', function (Blueprint $table) {
             $table->unsignedMediumInteger('id')->primary();
-            $table->string('slug')->unique();
-            $table->string('location')->nullable();
-            $table->string('name')->nullable();
-            $table->string('nickname')->nullable();
+            // The route key: every team page resolves through this unique.
+            $table->string('slug', 80)->unique();
+            $table->string('location', 80)->nullable();
+            $table->string('name', 60)->nullable();
+            $table->string('nickname', 60)->nullable();
             $table->string('abbreviation', 20)->nullable();
-            $table->string('display_name');
+            $table->string('display_name', 80);
             $table->string('short_display_name')->nullable();
             // Drives the --team-accent custom property on team and player pages.
             $table->string('color', 8)->nullable();

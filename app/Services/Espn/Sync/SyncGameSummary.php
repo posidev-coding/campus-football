@@ -6,6 +6,7 @@ use App\Models\Athlete;
 use App\Models\AthleteGameStat;
 use App\Models\AthleteTeamSeason;
 use App\Models\Game;
+use App\Models\GameDrive;
 use App\Models\GameScoringPlay;
 use App\Models\GameSummary;
 use App\Models\GameTeamStat;
@@ -143,7 +144,6 @@ class SyncGameSummary
             GameSummary::updateOrCreate(
                 ['game_id' => $game->id],
                 [
-                    'drives' => data_get($body, 'drives.previous'),
                     'win_probability' => $body['winprobability'] ?? null,
                     'leaders' => $body['leaders'] ?? null,
                     'attendance' => data_get($body, 'gameInfo.attendance'),
@@ -154,6 +154,13 @@ class SyncGameSummary
                     'scoring_plays_hash' => $playsHash,
                     'synced_at' => now(),
                 ]
+            );
+
+            // Its own table and its own row: 306 KB on average, and keeping
+            // it beside the summary made every game-page view read it.
+            GameDrive::updateOrCreate(
+                ['game_id' => $game->id],
+                ['drives' => data_get($body, 'drives.previous')]
             );
         });
 

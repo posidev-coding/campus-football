@@ -28,24 +28,35 @@ return new class extends Migration
         Schema::create('athletes', function (Blueprint $table) {
             // ESPN athlete id.
             $table->unsignedInteger('id')->primary();
-            $table->string('slug')->nullable();
-            $table->string('first_name')->nullable();
-            $table->string('last_name')->nullable();
-            $table->string('display_name');
-            $table->string('short_name')->nullable();
+            $table->string('slug', 80)->nullable();
+            $table->string('first_name', 60)->nullable();
+            // last_name and display_name are both indexed AND are what
+            // /players filesorts 13,580 rows by. MySQL sizes a sort row from
+            // the DECLARED width, so 255 cost 1,020 bytes a row in utf8mb4
+            // for a measured maximum of 20 and 27.
+            $table->string('last_name', 60)->nullable();
+            $table->string('display_name', 80);
+            $table->string('short_name', 60)->nullable();
+            // Left wide on purpose: a URL, measured at 75 but not ours to cap.
             $table->string('headshot_url')->nullable();
             $table->unsignedSmallInteger('height_in')->nullable();
             $table->string('display_height', 20)->nullable();
             $table->unsignedSmallInteger('weight_lb')->nullable();
             $table->string('display_weight', 20)->nullable();
-            $table->string('birth_city')->nullable();
+            $table->string('birth_city', 80)->nullable();
             $table->string('birth_state', 40)->nullable();
             $table->string('birth_country', 40)->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
             $table->index('display_name');
-            $table->index('is_active');
+
+            /*
+             * `is_active` is NOT indexed. It is 99.7% true across 34,919
+             * athletes, so an index on it can only ever hand back almost the
+             * whole table — and search sorts by it rather than filtering on
+             * it. Measured across a pass of every screen: one read.
+             */
         });
 
         /*
@@ -93,6 +104,21 @@ return new class extends Migration
             $table->foreign('athlete_id')->references('id')->on('athletes')->cascadeOnDelete();
             $table->foreign('team_id')->references('id')->on('teams')->nullOnDelete();
             $table->unique(['athlete_id', 'season_year', 'season_type', 'category'], 'athlete_season_stats_unique');
+
+            /*
+             * Every leaderboard reads this table, and none of them knows an
+             * athlete id — they ask for a season, a type, a category and a set
+             * of teams. The unique above leads with `athlete_id`, so none of
+             * that could use it: MySQL fell back to the `team_id` foreign-key
+             * index and scanned 11,337 rows at 0.1% selectivity. Measured over
+             * one pass of the app's screens, this table served 1,821,000 row
+             * reads.
+             *
+             * Column order follows the filter exactly, most selective last:
+             * team_id trails because a division scope passes hundreds of ids
+             * while season/type/category are always single equality matches.
+             */
+            $table->index(['season_year', 'season_type', 'category', 'team_id'], 'athlete_season_stats_leaderboard');
         });
 
         Schema::create('athlete_game_stats', function (Blueprint $table) {
@@ -188,8 +214,8 @@ return new class extends Migration
             $table->unsignedSmallInteger('state_rank')->nullable();
             $table->string('status', 30)->nullable();
             $table->unsignedMediumInteger('committed_team_id')->nullable();
-            $table->string('high_school')->nullable();
-            $table->string('hometown_city')->nullable();
+            $table->string('high_school', 120)->nullable();
+            $table->string('hometown_city', 80)->nullable();
             $table->string('hometown_state', 40)->nullable();
             $table->unsignedSmallInteger('position_id')->nullable();
             $table->unsignedSmallInteger('height_in')->nullable();
