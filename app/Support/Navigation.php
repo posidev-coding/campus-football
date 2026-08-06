@@ -92,9 +92,16 @@ class Navigation
                 // Teams, players and conferences are all "who's who", so they
                 // keep League lit rather than dropping the tab bar's context.
                 'routes' => [
-                    'standings', 'rankings', 'teams', 'team', 'player', 'coach',
-                    'conference', 'stats', 'leaders', 'recruiting',
+                    'standings', 'rankings', 'teams', 'team', 'players', 'player',
+                    'coach', 'conference', 'stats', 'recruiting',
                 ],
+                /*
+                 * Team Stats and Player Stats were two sections answering one
+                 * question, which spent two of six slots and made "stats" a
+                 * place you had to guess at. They are now one screen with a
+                 * Team/Players sub-toggle, and the freed slot went to Players —
+                 * a player index, which the app did not have at all.
+                 */
                 'sections' => [
                     ['route' => 'standings', 'label' => 'Standings'],
                     ['route' => 'rankings', 'label' => 'Rankings'],
@@ -102,8 +109,11 @@ class Navigation
                     // the same way an area's `routes` lights its tab: a team
                     // page keeps Teams underlined.
                     ['route' => 'teams', 'label' => 'Teams', 'routes' => ['teams', 'team']],
-                    ['route' => 'stats', 'label' => 'Team Stats'],
-                    ['route' => 'leaders', 'label' => 'Player Stats'],
+                    // Same idea, and it fixes a real gap: `player` was in the
+                    // area's routes but belonged to no section, so a player
+                    // page lit League with the whole strip unlit.
+                    ['route' => 'players', 'label' => 'Players', 'routes' => ['players', 'player']],
+                    ['route' => 'stats', 'label' => 'Stats'],
                     ['route' => 'recruiting', 'label' => 'Recruiting'],
                 ],
                 'guest' => true,

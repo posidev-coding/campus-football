@@ -217,9 +217,9 @@ describe('scoped ranking', function () {
 });
 
 describe('screens', function () {
-    it('renders leaders and team stats for guests', function () {
-        $this->get(route('leaders'))->assertOk();
+    it('renders both halves of Stats for guests', function () {
         $this->get(route('stats'))->assertOk();
+        $this->get(route('stats', ['view' => 'players']))->assertOk();
     });
 
     it('offers no Top 25 scope on either', function () {
@@ -235,9 +235,12 @@ describe('screens', function () {
     });
 
     it('rewrites a bookmarked Top 25 url rather than honouring it', function () {
-        foreach (['leaders', 'stats'] as $component) {
-            expect(Livewire::test($component)->set('scope', Scope::TOP_25)->get('scope'))
-                ->not->toBe(Scope::TOP_25);
+        // Both halves, since either can be arrived at with the querystring
+        // still carrying `scope=top25` from Scores.
+        foreach (['team', 'players'] as $view) {
+            expect(
+                Livewire::test('stats')->set('view', $view)->set('scope', Scope::TOP_25)->get('scope')
+            )->not->toBe(Scope::TOP_25);
         }
     });
 
@@ -257,7 +260,8 @@ describe('screens', function () {
 
         app(AggregateAthleteStats::class)->handle(2025, AggregateAthleteStats::FULL_SEASON);
 
-        Livewire::test('leaders')->set('year', 2025)->set('side', StatCatalog::DEFENSE)
+        Livewire::test('stats')->set('view', 'players')
+            ->set('year', 2025)->set('side', StatCatalog::DEFENSE)
             ->assertSee('Tackles')
             ->assertSee('Test Linebacker')
             ->assertDontSee('Receiving Yards');
@@ -270,9 +274,42 @@ describe('screens', function () {
             'stats' => ['interceptions' => ['display' => '18', 'value' => 18, 'rank' => 2, 'label' => 'Interceptions']],
         ]);
 
+        // No `view` set: Team is the default, which is what makes this a team
+        // board group rather than a player one.
         Livewire::test('stats')->set('year', 2025)->set('side', StatCatalog::DEFENSE)
             ->assertOk()
             ->assertSee('Takeaways');
+    });
+
+    it('keeps the two halves out of each other\'s view', function () {
+        /*
+         * The screens were merged, so the one real risk is a board grid that
+         * shows the wrong side's rows — a team name under a player heading.
+         * `Takeaways` is a team-only group and `Tackles` a player-only one on
+         * this side, so each half must show exactly one of them.
+         */
+        TeamSeasonStat::create([
+            'team_id' => 61, 'season_year' => 2025, 'season_type' => Season::REGULAR,
+            'category' => 'defensiveInterceptions',
+            'stats' => ['interceptions' => ['display' => '18', 'value' => 18, 'rank' => 2, 'label' => 'Interceptions']],
+        ]);
+
+        Athlete::create(['id' => 921, 'slug' => 'lb2', 'display_name' => 'Second Linebacker']);
+
+        AthleteGameStat::create([
+            'athlete_id' => 921, 'game_id' => $this->game->id, 'team_id' => 61,
+            'category' => 'defensive', 'stats' => ['totalTackles' => '14'],
+        ]);
+
+        app(AggregateAthleteStats::class)->handle(2025, AggregateAthleteStats::FULL_SEASON);
+
+        $screen = Livewire::test('stats')->set('year', 2025)->set('side', StatCatalog::DEFENSE);
+
+        $screen->assertSee('Takeaways')->assertDontSee('Second Linebacker');
+
+        $screen->set('view', 'players')
+            ->assertSee('Second Linebacker')
+            ->assertDontSee('Takeaways');
     });
 
     it('keeps caught interceptions separate from thrown ones', function () {

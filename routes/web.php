@@ -16,8 +16,9 @@ Route::livewire('scoreboard', 'scoreboard')->name('scoreboard');
 Route::livewire('games/{game}', 'game')->name('game');
 Route::livewire('standings', 'standings')->name('standings');
 Route::livewire('rankings', 'rankings')->name('rankings');
+// One Stats screen, split by a Team/Players sub-toggle. `leaders` used to be
+// its own route and is gone: it was the same screen reading a different table.
 Route::livewire('stats', 'stats')->name('stats');
-Route::livewire('leaders', 'leaders')->name('leaders');
 Route::livewire('news', 'news')->name('news');
 /*
  * Article bodies are read HERE rather than on espn.com. Like the game page,
@@ -45,13 +46,15 @@ Route::livewire('search', 'search-page')->name('search');
 Route::livewire('teams', 'teams')->name('teams');
 Route::livewire('teams/{team}', 'team')->name('team');
 Route::livewire('conferences/{conference}', 'conference')->name('conference');
+// Index then detail, like teams. No collision — they differ in segment count.
+Route::livewire('players', 'players')->name('players');
 Route::livewire('players/{athlete}', 'player')->name('player');
 
 // By id, not slug, matching athletes: coaches have no slug column, and the
 // table grows as historical staffs sync, so slugs would be a collision
 // waiting to happen (326 athlete slugs already collide).
 Route::livewire('coaches/{coach}', 'coach')->name('coach');
-Route::livewire('recruiting/{class?}', 'recruiting')->name('recruiting');
+Route::livewire('recruiting/{year?}', 'recruiting')->name('recruiting');
 
 /*
  * Anything that reads or writes a user's own data sits behind BOTH `auth` and

@@ -6,10 +6,16 @@
     Sections WITHIN the current area, not the whole app.
 
     This used to list all nine sections regardless of where you were, which made
-    it a second copy of the bottom bar rather than a level below it. Now Scores
-    shows Scores · Bowls, League shows Standings · Rankings · Teams · Stats ·
-    Leaders · Recruiting, and single-screen areas show nothing at all — "when
+    it a second copy of the bottom bar rather than a level below it. Now League
+    shows Standings · Rankings · Teams · Players · Stats · Recruiting, and
+    single-screen areas — Home and Scores — show nothing at all: "when
     necessary" rather than always.
+
+    These underline classes are NOT unique to this strip. The Stats screen's
+    Team/Players toggle and the team page's use them verbatim, because a
+    sub-tab is legitimately the same visual language one level down. What keeps
+    the levels apart is the bleed: this strip spans the viewport, a control
+    inside content sits in the content column.
 
     Some overlap with the tab bar is deliberate: an area's landing route appears
     as its own first section, because it is both where the area starts and

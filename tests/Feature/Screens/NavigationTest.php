@@ -67,8 +67,8 @@ describe('areas', function () {
             'standings' => 'league',
             'rankings' => 'league',
             'teams' => 'league',
+            'players' => 'league',
             'stats' => 'league',
-            'leaders' => 'league',
             'recruiting' => 'league',
             // /search survives for deep links, but it is Home's search now.
             'search' => 'home',
@@ -101,7 +101,13 @@ describe('sections', function () {
         $this->get(route('standings'))
             ->assertOk()
             ->assertSee('Recruiting')
-            ->assertSee('Team Stats');
+            ->assertSee('Players')
+            // Team Stats and Player Stats were two sections answering one
+            // question. They are one Stats screen with a sub-toggle now, and
+            // the freed slot went to the player index.
+            ->assertSee('Stats')
+            ->assertDontSee('Team Stats')
+            ->assertDontSee('Player Stats');
     });
 
     it('lights the Teams section on an individual team page', function () {
@@ -119,11 +125,39 @@ describe('sections', function () {
             ->assertOk()
             ->assertSeeInOrder([$underlined, 'Teams'], escape: false);
 
-        // Exactly one section is current — the sections have not started
-        // claiming each other's detail pages.
-        $html = $this->get(route('standings'))->assertOk()->content();
+        /*
+         * Exactly one section is current — the sections have not started
+         * claiming each other's detail pages.
+         *
+         * Counted on /players deliberately, a section screen with no
+         * sub-tabs. Those underline classes are not unique to the section
+         * strip: x-sub-tabs reuses them verbatim, because a sub-view toggle
+         * is legitimately the same visual language one level down. Pointing
+         * this count at /stats, /standings, /recruiting or a team page reads
+         * 2 — a control, not a navigation bug. (/news would read 0: it is a
+         * League page but not a section, so nothing in the strip lights.)
+         */
+        $html = $this->get(route('players'))->assertOk()->content();
 
         expect(substr_count($html, $underlined))->toBe(1);
+    });
+
+    it('lights the Players section on an individual player page', function () {
+        /*
+         * `player` was in the League area's routes but belonged to no section,
+         * so a player page lit the League tab with the whole strip unlit —
+         * the reader could see they were in League and not where.
+         */
+        $athlete = Athlete::create([
+            'id' => 4242, 'slug' => 'test-player', 'display_name' => 'Test Player',
+        ]);
+
+        $this->get(route('player', $athlete))
+            ->assertOk()
+            ->assertSeeInOrder(
+                ['border-zinc-900 text-zinc-900 dark:border-zinc-100', 'Players'],
+                escape: false
+            );
     });
 
     it('renders no strip on Scores, which is the only screen in its area', function () {
@@ -141,7 +175,7 @@ describe('sections', function () {
     it('keeps a screen-reader heading on screens whose heading is hidden', function () {
         // The section strip names these screens, so the visible h1 was the same
         // word twice. It stays in the DOM for anyone not looking at the strip.
-        foreach (['standings', 'rankings', 'teams', 'news', 'stats', 'leaders'] as $route) {
+        foreach (['standings', 'rankings', 'teams', 'players', 'news', 'stats'] as $route) {
             $this->get(route($route))
                 ->assertOk()
                 ->assertSee('<h1 class="sr-only">', escape: false);
@@ -310,8 +344,9 @@ it('renders a player game log with ESPN column headings', function () {
         ],
     ]);
 
+    // The rows are already stored, so the page renders them without waiting on
+    // the refresh it dispatches.
     Livewire::test('player', ['athlete' => $athlete])
-        ->call('loadGameLog')
         ->assertOk()
         // ESPN's own headings, which beat anything we would name ourselves.
         ->assertSee('C/ATT')
