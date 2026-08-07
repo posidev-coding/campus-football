@@ -17,8 +17,27 @@ use App\Models\Week;
 use App\Support\RecruitingClasses;
 use Livewire\Livewire;
 
+/*
+ * Everything the whole file leans on is PINNED, including the columns the
+ * factory would otherwise randomize. Two of them reach the rendered page:
+ *
+ *   alt_color     drives TeamPalette's ladder, and a random secondary crosses
+ *                 the 7.0 rung often enough to swap --team-accent-contrast
+ *                 between white and the secondary from run to run — so the
+ *                 hero renders a different set of hex strings each time, on
+ *                 every screen in this file
+ *   abbreviation  TeamFactory derives it from a random city, not from the
+ *                 pinned location, so the fixture disagreed with itself
+ *
+ * Neither is what any test here is about, and an unpinned value in a shared
+ * fixture is only ever one `assertDontSee` away from a coin flip.
+ */
 beforeEach(function () {
-    Conference::factory()->create(['id' => 8, 'name' => 'Southeastern Conference', 'short_name' => 'SEC']);
+    Conference::factory()->create([
+        'id' => 8, 'name' => 'Southeastern Conference', 'short_name' => 'SEC',
+        // ESPN's URL slug, not an abbreviation — see conferences.abbreviation.
+        'abbreviation' => 'sec',
+    ]);
 
     $this->team = Team::factory()->create([
         'id' => 61,
@@ -29,7 +48,9 @@ beforeEach(function () {
         'name' => 'Bulldogs',
         'nickname' => 'Georgia',
         'display_name' => 'Georgia Bulldogs',
+        'abbreviation' => 'UGA',
         'color' => '154733',
+        'alt_color' => '000000',
     ]);
 
     TeamSeason::create([
@@ -161,7 +182,10 @@ describe('the roster squad tabs', function () {
          * from box scores, which carry a team and a jersey and NO position
          * group. A one-tab strip is chrome, not a filter.
          */
-        $bare = Team::factory()->create(['id' => 99, 'slug' => 'bare-college', 'display_name' => 'Bare College']);
+        $bare = Team::factory()->create([
+            'id' => 99, 'slug' => 'bare-college', 'location' => 'Bare', 'display_name' => 'Bare College',
+            'abbreviation' => 'BAR', 'color' => '1d4ed8', 'alt_color' => 'ffffff',
+        ]);
         $walkOn = Athlete::create(['id' => 9001, 'display_name' => 'Walk On']);
 
         AthleteTeamSeason::create([
@@ -198,6 +222,7 @@ describe('the tabs', function () {
         // What someone opening a team page came to see. Overview is gone —
         // its only content was the leaders, which now live under Stats.
         $game = Game::factory()->create([
+            'id' => 401_752_601,
             'season_id' => Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR])->id,
             'home_team_id' => 61, 'away_team_id' => null,
             'kickoff_at' => '2025-09-06 19:30:00',
@@ -314,6 +339,7 @@ describe('the recruiting tab', function () {
     beforeEach(function () {
         $this->rival = Team::factory()->create([
             'id' => 77, 'slug' => 'rival-college', 'location' => 'Rival', 'display_name' => 'Rival College',
+            'abbreviation' => 'RIV', 'color' => '7c2d12', 'alt_color' => 'ffffff',
         ]);
 
         // Georgia's class.
@@ -455,11 +481,24 @@ describe('the hero KPI line', function () {
     it('pairs the record with the conference position, dot-separated', function () {
         // "8-4 (4-4) · 6th in SEC" — the position phrase IS the conference
         // link, so the conference page stays one tap away.
-        Conference::factory()->create(['id' => 9, 'name' => 'Atlantic Coast Conference', 'short_name' => 'ACC']);
+        Conference::factory()->create([
+            'id' => 9, 'name' => 'Atlantic Coast Conference', 'short_name' => 'ACC', 'abbreviation' => 'acc',
+        ]);
 
-        // Five conference-mates with better records put Georgia 6th.
+        // Five conference-mates with better records put Georgia 6th. Pinned
+        // ids and names: a factory-minted team draws a random city, nickname
+        // and two hex colors, none of which this is about.
         foreach (range(1, 5) as $i) {
-            $rival = Team::factory()->create();
+            $rival = Team::factory()->create([
+                'id' => 200 + $i,
+                'slug' => "conference-mate-{$i}",
+                'location' => "Mate {$i}",
+                'name' => 'Rivals',
+                'display_name' => "Mate {$i} Rivals",
+                'abbreviation' => 'MT'.$i,
+                'color' => '3f3f46',
+                'alt_color' => 'ffffff',
+            ]);
             TeamSeason::create(['team_id' => $rival->id, 'season_year' => 2025, 'conference_id' => 8, 'classification' => 'FBS']);
             Standing::create([
                 'season_year' => 2025, 'conference_id' => 8, 'team_id' => $rival->id, 'source' => 'espn',
@@ -510,8 +549,12 @@ describe('the season it opens on', function () {
         ]);
 
         Game::factory()->create([
+            'id' => 401_800_001,
             'season_id' => $upcoming->id,
-            'home_team_id' => 61,
+            // Explicitly TBD rather than left to the factory, which would mint
+            // a whole random opponent — a team with a random name and colors
+            // that then renders into this very page.
+            'home_team_id' => 61, 'away_team_id' => null,
             'kickoff_at' => '2026-08-29 19:00:00',
             'completed' => false,
         ]);
@@ -527,7 +570,8 @@ describe('the season it opens on', function () {
             'start_date' => '2026-08-29', 'end_date' => '2026-12-12',
         ]);
         Game::factory()->create([
-            'season_id' => $upcoming->id, 'home_team_id' => 61,
+            'id' => 401_800_002,
+            'season_id' => $upcoming->id, 'home_team_id' => 61, 'away_team_id' => null,
             'kickoff_at' => '2026-08-29 19:00:00', 'completed' => false,
         ]);
 
@@ -551,7 +595,8 @@ describe('the season it opens on', function () {
             'start_date' => '2026-08-29', 'end_date' => '2026-12-12',
         ]);
         Game::factory()->create([
-            'season_id' => $upcoming->id, 'home_team_id' => 61,
+            'id' => 401_800_003,
+            'season_id' => $upcoming->id, 'home_team_id' => 61, 'away_team_id' => null,
             'kickoff_at' => '2026-08-29 19:00:00', 'completed' => false,
         ]);
 
@@ -573,6 +618,7 @@ describe('schedule dates', function () {
         ]);
 
         Game::factory()->create([
+            'id' => 401_800_004,
             'season_id' => $upcoming->id,
             'home_team_id' => 61, 'away_team_id' => null,
             // 00:30 UTC is still the 5th in ET — the date must be read in the
@@ -593,6 +639,7 @@ describe('schedule dates', function () {
         ]);
 
         Game::factory()->finished()->create([
+            'id' => 401_800_005,
             'season_id' => $played->id,
             'home_team_id' => 61, 'away_team_id' => null,
             'kickoff_at' => '2025-09-06 19:30:00',
@@ -613,6 +660,7 @@ describe('schedule dates', function () {
             'start_date' => '2026-09-01', 'end_date' => '2026-09-07',
         ]);
         Game::factory()->create([
+            'id' => 401_800_006,
             'season_id' => $season->id, 'week_id' => $week->id,
             'home_team_id' => 61, 'away_team_id' => null,
             'kickoff_at' => '2026-09-06 00:30:00', 'completed' => false,

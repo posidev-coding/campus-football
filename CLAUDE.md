@@ -1406,6 +1406,23 @@ served last season's bowls about one run in twelve. Derive in `configure()`'s
 `afterMaking`, which runs AFTER overrides are applied, and leave anything the
 caller pinned alone.
 
+`GameFactory` had the same shape in `kickoff_day`, computed in `definition()`
+from the random date an override was about to discard — so every fixture that
+pinned `kickoff_at` carried some other date's weekday. Nothing reads that column
+yet, which is precisely why it would have surfaced as a mystery: it is what
+`Game::slateEligible()` filters on. Derived in `afterMaking` now, in
+`cfb.timezone` rather than UTC, matching `SyncGames`. `tests/Feature/FactoryFixturesTest.php`
+holds both factories to the rule.
+
+**The other half is the fixture's own unpinned columns**, and they do not have
+to be dates. `TeamFactory` mints a random `alt_color`, which drives
+`TeamPalette`'s ladder: a light secondary crosses the 7.0 rung and swaps
+`--team-accent-contrast` from white to that hex, so a hero renders a different
+set of six-digit strings from run to run on every screen the fixture reaches.
+`abbreviation` is worse than random — it is derived from the faker city, so a
+team pinned to "Georgia" got some other place's letters. Pin what a shared
+`beforeEach` renders, or an `assertDontSee` is one coin flip from a red suite.
+
 ## An Alpine expression that starts with a comment never runs
 
 Alpine compiles a directive as `__self.result = <expr>` and only wraps it in an

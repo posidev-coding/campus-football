@@ -42,11 +42,15 @@ beforeEach(function () {
         ]);
     }
 
+    // kickoff PINNED: the factory otherwise scatters it across four months
+    // from `now`, which is a random date in a fixture every test in this file
+    // renders — and which drifts into every date-window query in the app.
     $this->game = Game::factory()->finished(31, 17)->create([
         'season_id' => $this->season->id,
         'week_id' => $this->week->id,
         'home_team_id' => 61,
         'away_team_id' => 333,
+        'kickoff_at' => '2025-09-27 19:30:00',
     ]);
 
     GameSummary::create([
