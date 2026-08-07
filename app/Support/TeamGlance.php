@@ -44,6 +44,13 @@ class TeamGlance
     /**
      * team_id => ['overall' => '11-2', 'conference' => '7-1', 'streak' => 'W9'].
      *
+     * A team holds several ESPN standings rows (see `inOwnConference`) and
+     * keying by team_id collapses them, so the last one read wins. Left that
+     * way on purpose: checked across every stored season, the duplicates never
+     * disagree on a single record or streak, and unlike a position a record
+     * needs no conference to mean anything — so there is no wrong answer
+     * available here to be protected from.
+     *
      * @return array<int, array{overall: string, conference: string, streak: ?string}>
      */
     public static function records(?int $year = null): array
@@ -66,7 +73,24 @@ class TeamGlance
     }
 
     /**
-     * team_id => position within its conference standings (1-based).
+     * team_id => position within its own conference's standings (1-based).
+     *
+     * The rank and the LABEL beside it must come from one grouping. Every
+     * caller writes "6th in SEC" by pairing this map with a conference name
+     * read from `team_seasons`, so a position counted over any other grouping
+     * is a number attached to the wrong noun. `inOwnConference()` is what
+     * makes the two agree by construction rather than by coincidence.
+     *
+     * It was counted over `standings.conference_id`, which is the group ESPN
+     * was ASKED for and not the team's conference, so a team appeared in
+     * several groups and whichever came last silently won:
+     *
+     *   2026 Tennessee   130th of the 138-team "FBS" group, labelled SEC
+     *   2025 Sun Belt    every team's EAST/WEST position, so a 14-team
+     *                    conference read two 1sts, two 2nds, two 3rds...
+     *
+     * The second is the one worth remembering: it was wrong in a fully played
+     * season, on a real conference, and looked entirely plausible.
      *
      * @return array<int, int>
      */
@@ -74,18 +98,41 @@ class TeamGlance
     {
         $year ??= self::year();
 
+        /*
+         * Key versioned: the shape is the same but the values are not, and a
+         * live entry would keep serving "130th in SEC" past the deploy.
+         *
+         * Cache::remember rather than Remember::filled, deliberately. An empty
+         * map here is the ANSWER — a league where nothing has kicked off has
+         * no standings, and it stays that way for months — not a backfill that
+         * has yet to land, which is the only thing filled() exists for.
+         */
         return self::$memo["positions:{$year}"] ??= Cache::remember(
-            "glance:positions:{$year}",
+            "glance:positions:v2:{$year}",
             self::CACHE_SECONDS,
             function () use ($year) {
                 $positions = [];
 
                 Standing::fromEspn()
                     ->where('season_year', $year)
+                    ->inOwnConference($year)
                     ->inStandingsOrder()
-                    ->get(['team_id', 'conference_id'])
+                    ->get(['team_id', 'conference_id', 'overall_wins', 'overall_losses', 'overall_ties'])
                     ->groupBy('conference_id')
                     ->each(function ($rows) use (&$positions) {
+                        /*
+                         * A conference nobody has played in yet is 0-0 all the
+                         * way down, so the order is whatever fell out of the
+                         * tiebreaks — insertion order, in practice. That is a
+                         * number, not a standing, and "1st in the SEC" in
+                         * August is a worse lie than saying nothing. Judged
+                         * per conference, because divisions do not all open on
+                         * the same weekend.
+                         */
+                        if ($rows->every(fn (Standing $standing) => $standing->gamesPlayed() === 0)) {
+                            return;
+                        }
+
                         foreach ($rows->values() as $index => $standing) {
                             $positions[$standing->team_id] = $index + 1;
                         }

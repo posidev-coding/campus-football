@@ -3,9 +3,11 @@
 use App\Actions\ReorderFollowedTeams;
 use App\Jobs\SyncTeamNews;
 use App\Models\Article;
+use App\Models\Conference;
 use App\Models\Game;
 use App\Models\GamePredictor;
 use App\Models\Season;
+use App\Models\Standing;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\User;
@@ -138,6 +140,80 @@ describe('the team swiper', function () {
             ->assertSee('Kentucky names a starter')
             ->assertSee('wire:key="team-news-2633"', escape: false)
             ->assertSee('wire:key="team-news-96"', escape: false);
+    });
+
+    it('writes the record line against the conference it names', function () {
+        /*
+         * The glance card builds "8-4 (4-4) · 2nd in SEC" from the same two
+         * sources the team hero does, and had the same disagreement: the name
+         * from `team_seasons`, the position from `standings`, where ESPN files
+         * every team again under the 138-team "FBS" division group.
+         *
+         * This holds the CARD to the conference number while both rows exist.
+         * Which row wins was a last-group-wins race decided in TeamGlance, so
+         * the deterministic reproduction lives in StandingPositionsTest; here
+         * it would land either way run to run.
+         */
+        Conference::factory()->create([
+            'id' => 8, 'name' => 'Southeastern Conference', 'short_name' => 'SEC', 'abbreviation' => 'sec',
+        ]);
+        Conference::factory()->create([
+            'id' => 80, 'name' => 'NCAA Division I FBS', 'short_name' => 'FBS',
+            'abbreviation' => 'fbs', 'is_conference' => false,
+        ]);
+
+        // A completed game is what makes 2025 the results year these maps read.
+        Game::factory()->finished(24, 17)->create([
+            'season_id' => $this->season->id,
+            'home_team_id' => 2633, 'away_team_id' => 96,
+            'kickoff_at' => '2025-09-06 19:30:00',
+        ]);
+
+        foreach ([[2633, 8, 4], [96, 11, 7]] as [$id, $wins, $confWins]) {
+            TeamSeason::create(['team_id' => $id, 'season_year' => 2025, 'conference_id' => 8, 'classification' => 'FBS']);
+
+            foreach ([8, 80] as $group) {
+                Standing::create([
+                    'season_year' => 2025, 'conference_id' => $group, 'team_id' => $id, 'source' => 'espn',
+                    'overall_wins' => $wins, 'overall_losses' => 12 - $wins,
+                    'conf_wins' => $confWins, 'conf_losses' => 8 - $confWins,
+                    'win_pct' => round($wins / 12, 4), 'conf_win_pct' => round($confWins / 8, 4),
+                ]);
+            }
+        }
+
+        $this->actingAs($this->user)->get(route('home'))
+            ->assertOk()
+            ->assertSee('8-4 (4-4) · 2nd in SEC')
+            ->assertSee('11-1 (7-1) · 1st in SEC');
+    });
+
+    it('drops the position from the record line before a season kicks off', function () {
+        /*
+         * Deterministic where the one above is not: an all-0-0 conference used
+         * to hand every card a position, so a card could read "1st in SEC" in
+         * February. The record stays — it is a fact — and so does the
+         * conference.
+         */
+        Conference::factory()->create([
+            'id' => 8, 'name' => 'Southeastern Conference', 'short_name' => 'SEC', 'abbreviation' => 'sec',
+        ]);
+
+        Game::factory()->finished(24, 17)->create([
+            'season_id' => $this->season->id,
+            'home_team_id' => 2633, 'away_team_id' => 96,
+            'kickoff_at' => '2025-09-06 19:30:00',
+        ]);
+
+        foreach ([2633, 96] as $id) {
+            TeamSeason::create(['team_id' => $id, 'season_year' => 2025, 'conference_id' => 8, 'classification' => 'FBS']);
+            Standing::create(['season_year' => 2025, 'conference_id' => 8, 'team_id' => $id, 'source' => 'espn']);
+        }
+
+        $this->actingAs($this->user)->get(route('home'))
+            ->assertOk()
+            ->assertSee('0-0 (0-0) · SEC')
+            ->assertDontSee(' in SEC');
     });
 
     it('issues the same number of queries for one followed team as for five', function () {
