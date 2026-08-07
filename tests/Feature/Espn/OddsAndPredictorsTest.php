@@ -208,3 +208,31 @@ it('stores the projected margin and opponent-strength ranks', function () {
         ->and($predictor->away_opp_strength_rank)->toBe(38)
         ->and($predictor->getAttributes())->not->toHaveKey('team_chance_loss');
 });
+
+it('reaches past the default window when a human asks it to', function () {
+    /*
+     * The default ten days is the scheduled cadence's, and in the preseason it
+     * correctly finds nothing — the 2026 opener was 23 days out when this was
+     * written, so a bare run reported "0 records" and looked broken. --days is
+     * the way to seed week 1 from August, and it exists because the seeding
+     * pass for this feature had to go through tinker to widen a window the
+     * command could not.
+     */
+    Http::fake(['*predictor*' => Http::response([
+        'homeTeam' => ['statistics' => [['name' => 'matchupQuality', 'value' => 50.0]]],
+    ])]);
+
+    Game::factory()->create([
+        'season_id' => $this->season->id,
+        'completed' => false,
+        'kickoff_at' => now()->addDays(20),
+    ]);
+
+    // Inside the default window nothing is in range...
+    $this->artisan('cfb:sync --only=predictors')->assertSuccessful();
+    expect(GamePredictor::count())->toBe(0);
+
+    // ...and widening it reaches the fixture.
+    $this->artisan('cfb:sync --only=predictors --days=25')->assertSuccessful();
+    expect(GamePredictor::count())->toBe(1);
+});

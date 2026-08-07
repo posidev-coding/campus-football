@@ -26,7 +26,8 @@ class SyncSeasonCommand extends Command
 
     protected $signature = 'cfb:sync
         {--year= : Season year, or current|results|next resolved at run time (defaults to CFB_SEASON)}
-        {--only= : One step: seasons|conferences|teams|games|rankings|rankings-current|predictors|recruiting|injuries|standings|compute|reconcile|leaders|athletes|news}';
+        {--only= : One step: seasons|conferences|teams|games|rankings|rankings-current|predictors|recruiting|injuries|standings|compute|reconcile|leaders|athletes|news}
+        {--days=10 : With --only=predictors, how far ahead to model}';
 
     protected $description = 'Sync a season of reference data from ESPN';
 
@@ -106,7 +107,17 @@ class SyncSeasonCommand extends Command
             'rankings' => app(SyncRankings::class)->season($year),
             // The weekly schedule uses this: one week, not all eighteen.
             'rankings-current' => app(SyncRankings::class)->current($year),
-            'predictors' => app(SyncPredictors::class)->upcoming(),
+            /*
+             * Year-independent, like news: the predictor feed is asked about
+             * upcoming FIXTURES, never about a season. The default ten-day
+             * window is the scheduled cadence's, and it means a bare run in
+             * the preseason reports zero — correctly, since nothing kicks off
+             * inside it. `--days` is how a human reaches week 1 from August,
+             * and it is the whole reason the option exists: the seeding pass
+             * for this feature had to go through tinker to widen a window the
+             * command could not.
+             */
+            'predictors' => app(SyncPredictors::class)->upcoming(days: max(1, (int) $this->option('days'))),
             'recruiting' => app(SyncRecruiting::class)->handle($year),
             'injuries' => app(SyncInjuries::class)->handle($year),
             'standings' => app(SyncStandings::class)->handle($year),
