@@ -9,6 +9,16 @@
     'label' => null,
     'keyPrefix' => 'opt',
     'align' => 'start',
+    /**
+     * `default` is the zinc text button that every screen's chrome uses.
+     * `accent` is for a control sitting ON a team's accent surface, where a
+     * fixed zinc would be unreadable against 136 different colors: it draws
+     * entirely in `currentColor`, which is the hero's computed text color and
+     * the one pairing TeamPalette already proved readable there. Same ring as
+     * the follow button's Following state, so the two read as a matched pair —
+     * one filled action, one outlined qualifier.
+     */
+    'variant' => 'default',
 ])
 
 @php
@@ -46,10 +56,22 @@
         <button
             type="button"
             @if ($label) aria-label="{{ $label }}" @endif
-            class="group flex w-fit items-center gap-1 py-0.5 text-sm font-medium text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            @class([
+                'group flex w-fit items-center gap-1 text-sm font-medium transition-colors',
+                'py-0.5 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100' => $variant === 'default',
+                'h-8 shrink-0 rounded-md px-3 ring-1 ring-current/50 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current' => $variant === 'accent',
+            ])
         >
             {{ $current['label'] ?? '' }}
-            <flux:icon name="chevron-down" variant="micro" class="text-zinc-400 transition-colors group-hover:text-current" />
+            <flux:icon
+                name="chevron-down"
+                variant="micro"
+                @class([
+                    'transition-colors',
+                    'text-zinc-400 group-hover:text-current' => $variant === 'default',
+                    'opacity-70' => $variant === 'accent',
+                ])
+            />
         </button>
 
         <flux:menu>

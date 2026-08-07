@@ -5,6 +5,8 @@
     'model' => 'year',
     /** The accessible name — the visible text is only the year itself. */
     'label' => 'Season',
+    /** `accent` when this rides a team's branded hero. See x-filter-menu. */
+    'variant' => 'default',
 ])
 
 @php
@@ -24,6 +26,7 @@
     :selected="(string) $selected"
     :model="$model"
     :label="$label"
+    :variant="$variant"
     key-prefix="season"
     align="end"
     {{ $attributes }}

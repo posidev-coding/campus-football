@@ -21,7 +21,6 @@
     {{ $attributes->class(['overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800']) }}
     @style([
         '--team-accent: '.$palette?->surface => $palette,
-        '--team-accent-far: '.$palette?->far => $palette,
         '--team-accent-contrast: '.$palette?->text => $palette,
         '--team-keyline: '.$team->altAccentColor() => $team->altAccentColor(),
     ])
@@ -32,18 +31,18 @@
 
          In light mode the logo sits on a white puck, never on the accent — a
          one-color mark in the team's own color vanishes into the surface. In
-         dark mode the whole header is neutral (see team-gradient), so the
+         dark mode the whole header is neutral (see team-accent), so the
          puck disappears and the dark-mode mark sits on the page itself. --}}
     <a
         href="{{ route('team', $team) }}"
         wire:navigate
-        class="team-gradient team-keyline flex items-center gap-3 px-4 py-3"
+        class="team-accent team-keyline flex items-center gap-3 px-4 py-3"
     >
         <span class="flex size-12 shrink-0 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/10 dark:bg-transparent dark:shadow-none dark:ring-0">
             <x-team-logo :team="$team" size="size-9" />
         </span>
 
-        <span @class(['min-w-0 flex-1', 'team-text-shadow' => $palette?->shadow])>
+        <span class="min-w-0 flex-1">
             <span class="flex min-w-0 items-baseline gap-1.5">
                 @if ($glance['rank'])
                     <span class="tabular shrink-0 text-sm font-bold opacity-75">{{ $glance['rank'] }}</span>

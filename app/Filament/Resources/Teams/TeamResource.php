@@ -112,6 +112,6 @@ class TeamResource extends Resource
             default => $palette->text,
         };
 
-        return "{$text} on {$palette->surface}".($palette->shadow ? ' + shadow' : '');
+        return "{$text} on {$palette->surface}";
     }
 }

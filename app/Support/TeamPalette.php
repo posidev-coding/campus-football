@@ -20,13 +20,18 @@ use App\Models\Team;
  *   0. teams.header_style set          -> the admin picked; render that
  *   1. secondary vs primary >= 7.0     -> primary surface, SECONDARY text
  *                                         (Michigan maize, Colorado gold)
- *   2. white vs primary     >= 4.5     -> white text, the sports default
- *   3. white vs primary     >= 2.2     -> white text plus a subtle dark
- *                                         shadow — the ESPN treatment for
- *                                         mid-tone brands like Tennessee
- *   4. white vs secondary   >= 4.5     -> SECONDARY as the surface
+ *   2. white vs primary     >= 2.2     -> white text, the sports default,
+ *                                         down to the mid-tone brands
+ *                                         (Tennessee, Clemson, Miami)
+ *   3. white vs secondary   >= 4.5     -> SECONDARY as the surface
  *                                         (Arizona State goes maroon)
- *   5. darken until white   >= 4.5     -> last resort; zero FBS teams today
+ *   4. darken until white   >= 4.5     -> last resort; zero FBS teams today
+ *
+ * Rungs 2 and 3 were once separate: white above 4.5 rendered plain, and white
+ * in the 2.2-4.5 band picked up a subtle dark text-shadow — the ESPN treatment
+ * for mid-tone brands. They always chose the same COLORS and differed only in
+ * that flourish, and the flourish is gone, so they are one rung. A header in
+ * that band now renders flat white, which is what the jersey does.
  *
  * Near-black text exists only behind the explicit dark-text override — the
  * algorithm never chooses it.
@@ -40,14 +45,11 @@ final class TeamPalette
     /** A secondary must EARN text duty; weak pairings fall back to white. */
     private const SECONDARY_TEXT_MIN = 7.0;
 
-    /** Comfortable white — no help needed. */
+    /** Comfortable white — what a surface must clear to be SWAPPED IN. */
     private const WHITE_COMFORT = 4.5;
 
-    /** Below this even the shadow treatment cannot honestly carry white. */
+    /** Below this a brand cannot honestly carry white at all. */
     private const WHITE_FLOOR = 2.2;
-
-    /** How far the gradient's far end travels away from the text. */
-    private const GRADIENT_SHIFT = 0.22;
 
     /** Surface correction for the last-resort rung. */
     private const NUDGE_STEP = 0.02;
@@ -60,9 +62,7 @@ final class TeamPalette
 
     public function __construct(
         public readonly string $surface,
-        public readonly string $far,
         public readonly string $text,
-        public readonly bool $shadow = false,
     ) {}
 
     /**
@@ -211,14 +211,8 @@ final class TeamPalette
             return self::assemble($primary, $secondary);
         }
 
-        $whiteOnPrimary = self::ratio($white, $primary);
-
-        if ($whiteOnPrimary >= self::WHITE_COMFORT) {
+        if (self::ratio($white, $primary) >= self::WHITE_FLOOR) {
             return self::assemble($primary, $white);
-        }
-
-        if ($whiteOnPrimary >= self::WHITE_FLOOR) {
-            return self::assemble($primary, $white, shadow: true);
         }
 
         if ($secondary !== null && self::ratio($white, $secondary) >= self::WHITE_COMFORT) {
@@ -252,16 +246,12 @@ final class TeamPalette
         $white = self::rgb(self::WHITE);
 
         return match ($style) {
-            HeaderStyle::White => self::assemble(
-                $primary,
-                $white,
-                shadow: self::ratio($white, $primary) < self::WHITE_COMFORT,
-            ),
+            HeaderStyle::White => self::assemble($primary, $white),
             HeaderStyle::SecondaryText => $secondary !== null
                 ? self::assemble($primary, $secondary)
                 : self::fromLadder($primary, null),
             HeaderStyle::SecondarySurface => $secondary !== null
-                ? self::assemble($secondary, $white, shadow: self::ratio($white, $secondary) < self::WHITE_COMFORT)
+                ? self::assemble($secondary, $white)
                 : self::fromLadder($primary, null),
             HeaderStyle::DarkText => self::assemble($primary, self::rgb(self::NEAR_BLACK)),
         };
@@ -271,32 +261,12 @@ final class TeamPalette
      * @param  array{int, int, int}  $surface
      * @param  array{int, int, int}  $text
      */
-    private static function assemble(array $surface, array $text, bool $shadow = false): self
+    private static function assemble(array $surface, array $text): self
     {
         return new self(
             surface: self::hex($surface),
-            far: self::hex(self::shiftAwayFrom($surface, $text, self::GRADIENT_SHIFT)),
             text: self::hex($text),
-            shadow: $shadow,
         );
-    }
-
-    /**
-     * Move a color away from another one — toward black if the other is light,
-     * toward white if it is dark. This is why the gradient can only ever help:
-     * the pure brand color is always its worst case.
-     *
-     * @param  array{int, int, int}  $color
-     * @param  array{int, int, int}  $from
-     * @return array{int, int, int}
-     */
-    private static function shiftAwayFrom(array $color, array $from, float $amount): array
-    {
-        $target = self::luminance($from) > self::luminance($color)
-            ? [0, 0, 0]
-            : [255, 255, 255];
-
-        return self::mix($color, $target, $amount);
     }
 
     /**

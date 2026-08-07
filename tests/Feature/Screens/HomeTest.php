@@ -45,17 +45,18 @@ describe('the team swiper', function () {
             /*
              * Gradient surface, neutral logo puck in light mode (gone in
              * dark), and Tennessee's actual branding: WHITE on orange —
-             * 2.49:1, below every WCAG bar and on every jersey — carried by
-             * the shadow treatment rather than swapped for a "correct"
-             * near-black nobody would recognize.
+             * 2.49:1, below every WCAG bar and on every jersey — rather than
+             * a "correct" near-black nobody would recognize. Flat: the
+             * text-shadow this band once carried is gone, and asserting its
+             * ABSENCE is what stops it creeping back in.
              */
-            ->assertSee('team-gradient', escape: false)
+            ->assertSee('team-accent', escape: false)
             ->assertSee('bg-white shadow-sm ring-1 ring-black/10 dark:bg-transparent', escape: false)
             ->assertSee('--team-accent-contrast: #ffffff', escape: false)
-            ->assertSee('team-text-shadow', escape: false)
-            // The gradient's far end comes from PHP, so it can move away from
-            // the text rather than always darkening.
-            ->assertSee('--team-accent-far:', escape: false)
+            ->assertDontSee('team-text-shadow', escape: false)
+            // Flat: the header's gradient read as a shadow falling across it,
+            // so there is no second surface color to set.
+            ->assertDontSee('--team-accent-far', escape: false)
             ->assertSee('--team-keyline: #FFFFFF', escape: false);
     });
 

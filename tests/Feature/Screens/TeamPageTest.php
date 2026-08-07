@@ -399,17 +399,18 @@ describe('the recruiting tab', function () {
 });
 
 describe('the branded hero', function () {
-    it('sets all three palette variables on the hero', function () {
-        // Surface, far end and text together — the far end must come from PHP
-        // because CSS cannot know which way to move it.
+    it('sets the palette variables on the hero, and only those', function () {
+        // Surface and text. There is no third: the header's gradient read as
+        // a shadow falling across it, so the surface is the brand color flat
+        // and --team-accent-far no longer exists to be set.
         $this->team->update(['color' => '154733', 'alt_color' => '000000']);
 
         $palette = $this->team->fresh()->palette();
 
         Livewire::test('team', ['team' => $this->team])
             ->assertSee('--team-accent: '.$palette->surface, escape: false)
-            ->assertSee('--team-accent-far: '.$palette->far, escape: false)
-            ->assertSee('--team-accent-contrast: '.$palette->text, escape: false);
+            ->assertSee('--team-accent-contrast: '.$palette->text, escape: false)
+            ->assertDontSee('--team-accent-far', escape: false);
     });
 
     it('never seats the logo on the accent surface', function () {
@@ -419,7 +420,7 @@ describe('the branded hero', function () {
         $this->team->update(['color' => '154733', 'alt_color' => '000000']);
 
         Livewire::test('team', ['team' => $this->team])
-            ->assertSee('team-gradient', escape: false)
+            ->assertSee('team-accent', escape: false)
             // White puck in light mode; in dark the header is neutral, so the
             // puck disappears entirely rather than going dark itself.
             ->assertSee('bg-white shadow-md ring-1 ring-black/10 dark:bg-transparent', escape: false)

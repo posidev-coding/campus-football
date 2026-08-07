@@ -1,6 +1,9 @@
 {{--
-    The matchup preview — what a reader wants before kickoff: who wins, how
-    the two stack up, whose players matter, and what happened last time.
+    The matchup preview — what a reader wants before kickoff: the line, who
+    wins, how the two stack up, whose players matter, and what happened last
+    time. It is the WHOLE pregame screen: there is no tab strip above it and
+    no separate odds tab beside it, so the order below is the reading order,
+    ending at the game-information card the parent renders at the foot.
 
     Chart marks draw in the pair TeamPalette::chartColors resolved together
     (a pale brand cannot vanish, two red teams cannot merge); dark mode
@@ -11,36 +14,15 @@
     class="chart-pair flex flex-col gap-4"
     style="--chart-away: {{ $this->chartColors[0] }}; --chart-home: {{ $this->chartColors[1] }}"
 >
+    {{-- The line leads: it is the one number a reader checks before kickoff
+         whether or not they bet, and it is what ESPN and every book put at
+         the top. `standalone: false` drops the partial's own quality table
+         and empty state — the donut below prints matchup quality, and this
+         screen's apology is at the bottom. --}}
+    @include('partials.game-odds', ['standalone' => false])
+
     @if ($game->predictor?->home_projection !== null)
         <x-matchup-donut :game="$game" :predictor="$game->predictor" />
-    @endif
-
-    <x-odds-strip :game="$game" class="text-sm" />
-
-    {{-- Each side's last five, side by side. Stacked at base and two-up from
-         `sm`: the additive rule — the wide layout adds a column, it is never
-         the only place the second team is reachable. --}}
-    @if ($this->trends !== [])
-        <div class="flex flex-col gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
-            <h3 class="text-micro font-semibold tracking-wide text-zinc-400 uppercase">Last five games</h3>
-
-            <div class="grid gap-4 sm:grid-cols-2 sm:gap-6 sm:divide-x sm:divide-zinc-100 sm:dark:divide-zinc-800/60">
-                @foreach ($this->sides as $side)
-                    @continue($side['team'] === null)
-
-                    {{-- The grid's gap and divide-x do the separating; a
-                         conditional padding class here would be a Blade
-                         directive inside a component attribute, which does
-                         not compile. --}}
-                    <x-last-five
-                        :team="$side['team']"
-                        :games="$this->trends[$side['team']->id] ?? collect()"
-                        :class="$loop->first ? '' : 'sm:ps-6'"
-                        wire:key="l5card-{{ $side['team']->id }}"
-                    />
-                @endforeach
-            </div>
-        </div>
     @endif
 
     {{-- Season comparison: two-sided bars in the chart pair. --}}
@@ -77,7 +59,36 @@
         </div>
     @endif
 
-    {{-- Season leaders — the probable-pitchers card of a football preview. --}}
+    {{-- Each side's last five, side by side. Stacked at base and two-up from
+         `sm`: the additive rule — the wide layout adds a column, it is never
+         the only place the second team is reachable. --}}
+    @if ($this->trends !== [])
+        <div class="flex flex-col gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+            <h3 class="text-micro font-semibold tracking-wide text-zinc-400 uppercase">Last five games</h3>
+
+            <div class="grid gap-4 sm:grid-cols-2 sm:gap-6 sm:divide-x sm:divide-zinc-100 sm:dark:divide-zinc-800/60">
+                @foreach ($this->sides as $side)
+                    @continue($side['team'] === null)
+
+                    {{-- The grid's gap and divide-x do the separating; a
+                         conditional padding class here would be a Blade
+                         directive inside a component attribute, which does
+                         not compile. --}}
+                    <x-last-five
+                        :team="$side['team']"
+                        :games="$this->trends[$side['team']->id] ?? collect()"
+                        :class="$loop->first ? '' : 'sm:ps-6'"
+                        wire:key="l5card-{{ $side['team']->id }}"
+                    />
+                @endforeach
+            </div>
+        </div>
+    @endif
+
+    {{-- Season leaders — the probable-pitchers card of a football preview.
+         Not in the reading order the screen was specified with, so it takes
+         the one unnamed slot: after the two teams have been compared as
+         teams, before the history. --}}
     @if ($this->seasonLeaders['rows'] !== [])
         <div class="flex flex-col gap-3 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
             <div class="flex items-baseline justify-between gap-2">
@@ -153,11 +164,19 @@
         </div>
     @endif
 
-    @if ($game->predictor === null && $this->comparison['rows'] === [] && $this->lastMeetings->isEmpty())
+    {{-- The apology, and it must account for the odds folded in at the top:
+         a fixture with a posted line has something to say even before ESPN
+         models it, and printing "nothing yet" above a spread is the same
+         mistake as an empty state above a followed team's game. --}}
+    @if ($game->predictor === null
+        && $this->comparison['rows'] === []
+        && $this->lastMeetings->isEmpty()
+        && $game->odds()->doesntExist())
         <flux:callout icon="clock">
             <flux:callout.heading>Not played yet</flux:callout.heading>
             <flux:callout.text>
-                The matchup predictor and comparison land as ESPN models the game.
+                The line, the matchup predictor and the comparison land as books post
+                this game and ESPN models it.
             </flux:callout.text>
         </flux:callout>
     @endif

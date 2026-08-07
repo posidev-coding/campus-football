@@ -235,26 +235,35 @@ new class extends Component
         return $this->state === 'live';
     }
 
-    /** @return array<string, string> */
+    /**
+     * A game that has not kicked off has exactly ONE tab, so it renders no
+     * strip at all: the preview is a single scrolling screen with the odds
+     * folded in at the top. Everything a pregame reader wants is a scroll
+     * rather than a tap, and a two-item strip whose second item is one table
+     * is a control charging for something the page can just show.
+     *
+     * Odds keep their own tab once a game is under way, where the preview's
+     * scroll belongs to the box score instead.
+     *
+     * @return array<string, string>
+     */
     #[Computed]
     public function tabs(): array
     {
-        $tabs = match ($this->state) {
-            'pre' => ['preview' => 'Preview'],
-            'live' => ['live' => 'Live'],
-            default => ['recap' => 'Recap'],
-        };
+        if ($this->state === 'pre') {
+            return ['preview' => 'Preview'];
+        }
 
-        if ($this->state !== 'pre') {
-            $tabs['box'] = 'Box';
+        $tabs = $this->state === 'live' ? ['live' => 'Live'] : ['recap' => 'Recap'];
 
-            if ($this->scoringPlays->isNotEmpty()) {
-                $tabs['scoring'] = 'Scoring';
-            }
+        $tabs['box'] = 'Box';
 
-            if ($this->hasDrives) {
-                $tabs['drives'] = 'Drives';
-            }
+        if ($this->scoringPlays->isNotEmpty()) {
+            $tabs['scoring'] = 'Scoring';
+        }
+
+        if ($this->hasDrives) {
+            $tabs['drives'] = 'Drives';
         }
 
         $tabs['odds'] = 'Odds';
@@ -1016,16 +1025,19 @@ new class extends Component
         </div>
     @endif
 
-    <div class="flex items-center justify-between gap-2">
-        <x-gutter-tabs
-            :items="$this->tabs"
-            :selected="$tab"
-            model="tab"
-            label="Game sections"
-            key-prefix="gametab"
-        />
-
-    </div>
+    {{-- One tab is not a tab set. A pregame screen has only its preview, so
+         the strip is omitted rather than rendered as a lone unpressable pad. --}}
+    @if (count($this->tabs) > 1)
+        <div class="flex items-center justify-between gap-2">
+            <x-gutter-tabs
+                :items="$this->tabs"
+                :selected="$tab"
+                model="tab"
+                label="Game sections"
+                key-prefix="gametab"
+            />
+        </div>
+    @endif
 
     @if ($tab === 'preview')
         @include('partials.game-preview')

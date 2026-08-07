@@ -28,13 +28,12 @@ describe('the ladder', function () {
          * The case this rework exists for. White on Tennessee orange is
          * 2.49:1, below every WCAG bar — and it is Tennessee, on every
          * jersey. A strict 4.5 rule chose near-black here: legible, and
-         * wrong to every fan. White stays, and the shadow flag carries the
-         * legibility the ratio alone cannot.
+         * wrong to every fan. White stays, flat: the band between the floor
+         * and comfort once carried a text-shadow and no longer does.
          */
         $tennessee = palette('ff8200', 'ffffff');
 
         expect($tennessee->text)->toBe('#ffffff')
-            ->and($tennessee->shadow)->toBeTrue()
             ->and($tennessee->surface)->toBe('#ff8200')
             ->and(TeamPalette::contrast('#ffffff', '#ff8200'))->toBeGreaterThan(WHITE_FLOOR);
     });
@@ -46,7 +45,6 @@ describe('the ladder', function () {
 
         expect(TeamPalette::contrast('#f26522', '#002b5c'))->toBeLessThan(7.0)
             ->and($auburn->text)->toBe('#ffffff')
-            ->and($auburn->shadow)->toBeFalse()
             ->and(TeamPalette::contrast($auburn->text, $auburn->surface))->toBeGreaterThan(10.0);
     });
 
@@ -100,9 +98,14 @@ describe('the override', function () {
             ->and(palette('ff8200', 'ffffff', HeaderStyle::DarkText)->text)->toBe('#18181b');
     });
 
-    it('flags the shadow when an override puts white below comfort', function () {
-        expect(palette('ff8200', 'ffffff', HeaderStyle::White)->shadow)->toBeTrue()
-            ->and(palette('002b5c', 'f26522', HeaderStyle::White)->shadow)->toBeFalse();
+    it('honours a preset the ladder would not have chosen', function () {
+        // The whole point of the override: white on Tennessee orange is
+        // 2.49:1 and renders anyway, because an admin asked for it. A preset
+        // cannot be configured unreadable, but it can be configured brave.
+        $forced = palette('ff8200', 'ffffff', HeaderStyle::White);
+
+        expect($forced->text)->toBe('#ffffff')
+            ->and($forced->surface)->toBe('#ff8200');
     });
 
     it('falls back to the ladder when a preset needs a secondary the team lacks', function () {
@@ -110,26 +113,22 @@ describe('the override', function () {
     });
 });
 
-describe('the gradient', function () {
-    it('moves the far end away from the text', function () {
-        $luminance = function (string $hex): float {
-            $hex = ltrim($hex, '#');
-            $channel = function (int $v): float {
-                $c = $v / 255;
+describe('the surface', function () {
+    it('is the brand color FLAT, with no second color derived from it', function () {
+        /*
+         * The header carried a 115deg gradient to the primary shifted 22%
+         * away from the text. It read as a shadow falling across the header
+         * rather than as depth — the failure mode of any gradient subtle
+         * enough to be tasteful. A palette now describes two colors and only
+         * two, so nothing can reintroduce a second surface tone by accident.
+         */
+        $palette = palette('ff8200', 'ffffff');
 
-                return $c <= 0.04045 ? $c / 12.92 : (($c + 0.055) / 1.055) ** 2.4;
-            };
-
-            return 0.2126 * $channel((int) hexdec(substr($hex, 0, 2)))
-                + 0.7152 * $channel((int) hexdec(substr($hex, 2, 2)))
-                + 0.0722 * $channel((int) hexdec(substr($hex, 4, 2)));
-        };
-
-        $lightText = palette('002b5c', 'f26522');                       // white on navy
-        $darkText = palette('cfb87c', '000000');                        // black on gold
-
-        expect($luminance($lightText->far))->toBeLessThan($luminance($lightText->surface))
-            ->and($luminance($darkText->far))->toBeGreaterThan($luminance($darkText->surface));
+        expect($palette->surface)->toBe('#ff8200')
+            ->and(get_object_vars($palette))->toBe([
+                'surface' => '#ff8200',
+                'text' => '#ffffff',
+            ]);
     });
 });
 
@@ -139,11 +138,12 @@ describe('robustness', function () {
             ->and(TeamPalette::for(Team::factory()->make(['color' => 'xyzzy!'])))->toBeNull();
     });
 
-    it('always lands readable or shadowed-white, for any colors at all', function () {
+    it('always lands readable, or white no worse than the floor', function () {
         /*
          * The invariant over generated input: every outcome either clears AA
-         * outright, or is white in the 2.2-4.5 band with the shadow flagged.
-         * A table of real teams only ever proves the table.
+         * outright, or is WHITE and no worse than 2.2 — the band the sport's
+         * own mid-tone brands live in. Nothing may land below the floor in
+         * any color. A table of real teams only ever proves the table.
          */
         mt_srand(20260804);
 
@@ -154,11 +154,9 @@ describe('robustness', function () {
             $palette = palette($color, $alt);
             $ratio = TeamPalette::contrast($palette->text, $palette->surface);
 
-            if ($palette->shadow) {
-                expect($palette->text)->toBe('#ffffff', "#{$color}/#{$alt} shadowed a non-white text")
-                    ->and($ratio)->toBeGreaterThanOrEqual(WHITE_FLOOR, "#{$color}/#{$alt} shadowed below the floor");
-            } else {
-                expect($ratio)->toBeGreaterThanOrEqual(AA, "#{$color}/#{$alt} came out unreadable");
+            if ($ratio < AA) {
+                expect($palette->text)->toBe('#ffffff', "#{$color}/#{$alt} put a non-white text below AA")
+                    ->and($ratio)->toBeGreaterThanOrEqual(WHITE_FLOOR, "#{$color}/#{$alt} landed below the floor");
             }
         }
     });

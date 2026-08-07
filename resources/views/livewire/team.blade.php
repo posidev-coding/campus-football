@@ -441,7 +441,6 @@ new class extends Component
     class="flex flex-col gap-5"
     @style([
         '--team-accent: '.$palette?->surface => $palette,
-        '--team-accent-far: '.$palette?->far => $palette,
         '--team-accent-contrast: '.$palette?->text => $palette,
         '--team-keyline: '.$team->altAccentColor() => $team->altAccentColor(),
     ])
@@ -455,14 +454,14 @@ new class extends Component
          The identity is TWO lines, never truncated: the place, then the
          mascot underneath in a lighter italic — "App State" over
          "Mountaineers". placeName() already guarantees the first line fits. --}}
-    <div class="team-gradient team-keyline -mx-4 -mt-5 flex items-center gap-3 px-4 py-5">
+    <div class="team-accent team-keyline -mx-4 -mt-5 flex items-center gap-3 px-4 py-5">
         {{-- The puck disappears in dark mode: the surface underneath is
              already neutral, and x-team-logo swaps in the dark-mode mark. --}}
         <span class="flex size-20 shrink-0 items-center justify-center rounded-full bg-white shadow-md ring-1 ring-black/10 dark:bg-transparent dark:shadow-none dark:ring-0">
             <x-team-logo :team="$team" size="xl" />
         </span>
 
-        <div @class(['flex min-w-0 flex-1 flex-col', 'team-text-shadow' => $palette?->shadow])>
+        <div class="flex min-w-0 flex-1 flex-col">
             <span class="text-xl font-bold leading-tight">{{ $team->placeName() }}</span>
 
             @if ($team->mascotName())
@@ -486,10 +485,29 @@ new class extends Component
             </span>
         </div>
 
-        {{-- Back in the hero, but drawing its own colors from it rather than
-             from a fixed Flux variant — see the component. Following
-             dispatches the per-team news fetch, which fills the News tab. --}}
-        <livewire:follow-button :team="$team" :key="'follow-'.$team->id" class="shrink-0 self-start" />
+        {{-- The hero's right column: the follow action, and the season the
+             whole screen is scoped to underneath it.
+
+             The season menu lives HERE rather than beside the tabs because it
+             does not fit there. Measured at 390: the five tabs are 350px in a
+             358px row, so a 52px control wrapped to a line of its own and cost
+             the screen a whole 32px band before any content. The hero already
+             had 48px of unused height beside an 80px logo. Both controls draw
+             from the accent — filled for the action, outlined for the
+             qualifier — so they read as one stack rather than two ideas.
+
+             One home at every width, deliberately: a control that sits in the
+             hero on a phone and beside the tabs on a laptop is two controls to
+             learn. Following dispatches the per-team news fetch. --}}
+        <div class="flex shrink-0 flex-col items-end gap-2">
+            <livewire:follow-button :team="$team" :key="'follow-'.$team->id" />
+
+            <x-season-menu
+                :years="range($this->latestYear, $this->latestYear - 4)"
+                :selected="$year"
+                variant="accent"
+            />
+        </div>
     </div>
 
     {{--
@@ -497,30 +515,23 @@ new class extends Component
         shrink variant. Nothing scrolls sideways except the week scroller:
         at 390px the five tabs take the full row — measured from the font
         itself, 350px in a 358px column, which is also why this tab says
-        "Recruits" (the full word tipped it to 362px) — and the year menu
-        wraps below, right-aligned. From `sm` they share one row.
+        "Recruits" (the full word tipped it to 362px). They have the row to
+        themselves; the season menu moved into the hero, which is the only
+        reason 350-in-358 is comfortable rather than one label from wrapping.
     --}}
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 sm:flex-nowrap sm:justify-between">
-        <x-gutter-tabs
-            :items="[
-                'schedule' => 'Schedule',
-                'roster' => 'Roster',
-                'stats' => 'Stats',
-                'recruiting' => 'Recruits',
-                'news' => 'News',
-            ]"
-            :selected="$tab"
-            model="tab"
-            label="Team page section"
-            key-prefix="tab"
-        />
-
-        <x-season-menu
-            :years="range($this->latestYear, $this->latestYear - 4)"
-            :selected="$year"
-            class="ml-auto shrink-0"
-        />
-    </div>
+    <x-gutter-tabs
+        :items="[
+            'schedule' => 'Schedule',
+            'roster' => 'Roster',
+            'stats' => 'Stats',
+            'recruiting' => 'Recruits',
+            'news' => 'News',
+        ]"
+        :selected="$tab"
+        model="tab"
+        label="Team page section"
+        key-prefix="tab"
+    />
 
     @if ($tab === 'schedule')
         <div class="flex flex-col gap-2">

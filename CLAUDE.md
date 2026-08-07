@@ -733,8 +733,8 @@ property on top of the cache, which outlives each test's application;
 
 ## The Game screen is one shell in three states, and the first tab IS the state
 
-    pre    Preview  — matchup predictor donut, comparison bars, season
-                      leaders, trends, last meetings, odds
+    pre    Preview  — odds, matchup predictor donut, comparison bars, last
+                      five, season leaders, last meetings, game information
     live   Live     — situation on the scorebug, win probability, drive feed
     final  Recap    — line score, recap article, game leaders, probability
                       swing, related reading
@@ -743,6 +743,19 @@ Box · Scoring · Drives · Odds ride behind whichever leads, each offered only
 when its data exists. `$tab` is `#[Url]`; mount() AND poll() normalize it, so
 `?tab=live` bookmarked mid-game resolves to Recap after the whistle instead of
 an empty pane.
+
+**A game that has not kicked off has exactly ONE tab, so it draws no strip at
+all** — the pregame screen is a single scroll in the order above. Odds LEAD it:
+the line is the one number a reader checks before kickoff whether or not they
+bet, and a two-item strip whose second item is one table charges a tap for
+something the page can just show. `partials/game-odds` takes `standalone`,
+false when folded in, which drops its quality table (the donut two cards below
+already prints matchup quality) and its empty state (the preview owns the
+apology, and that apology must check for ODDS too — printing "nothing yet"
+above a posted spread is the same mistake as an empty state above a followed
+team's game). Odds keep their own tab from kickoff on, where the scroll belongs
+to the box score. The game-information card is the parent's, rendered once at
+the foot of every state — the preview must never grow its own.
 
 Rules the screen keeps, each one paid for:
 
@@ -1635,10 +1648,31 @@ the components encode:
 
 The team page's five tabs FIT at 390 instead of scrolling — 350px measured
 against a 358px column, which is why that tab says "Recruits" (the full word
-tipped it to 362) — and the year menu wraps below them at base,
-right-aligned, sharing the row only from `sm`. Widths that marginal are
-measured from the font file (`fontTools` against `archivo-variable-latin`),
-not eyeballed.
+tipped it to 362). Widths that marginal are measured from the font file
+(`fontTools` against `archivo-variable-latin`), not eyeballed.
+
+**The team page's season menu is the ONE exception to rule 4, and it is in the
+hero.** It does not fit beside those tabs: 350px of strip plus a 12px gap plus
+a 52px menu is 414 in a 358px row, so it wrapped to a line of its own and cost
+the screen a 32px band before any content. The hero already had 48px of unused
+height beside its 80px logo, so the menu stacks under the follow button —
+measured after: the strip has its row to itself at both 390 and 768, the hero
+did not grow, and the document still does not scroll sideways.
+
+That needed `x-filter-menu`'s **`accent` variant**, because the default trigger
+is hardcoded `text-zinc-500` and no fixed zinc reads against 136 team colors.
+`accent` sets NO color at all — it inherits `currentColor`, which is the hero's
+computed text color and therefore the one pairing `TeamPalette` already proved
+readable (verified on Tennessee: the trigger resolves to the hero's exact
+white, 2.49:1 on the accent, identical to the follow button). It wears the same
+`ring-current/50` as the Following state, so action and qualifier read as one
+stack. One home at every width, deliberately — a control that sits in the hero
+on a phone and beside the tabs on a laptop is two controls to learn.
+
+Note the verification trap this turned up: stripping `.dark` from `<html>` at
+runtime to "check light mode" reports a color mid-transition — the trigger read
+zinc-100 against a light hero, which looks exactly like a broken inherit. Set
+`localStorage['flux.appearance']` and RELOAD instead.
 
 ## Position data exists for the CURRENT roster only
 
@@ -1774,9 +1808,23 @@ in the glance-card header and the team-page hero:
   ESPN's dark-variant logos are drawn for dark surfaces.
 - **Text color on an accent is COMPUTED, never assumed.** See below.
 
-The branding lives in the surface instead: the `team-gradient` utility and a
+The branding lives in the surface instead: the `team-accent` utility and a
 3px `alt_color` keyline along the header's bottom edge, jersey-piping style.
-The flat `team-accent` utility remains for surfaces that carry no logo.
+
+**That surface is FLAT, and the utility used to be called `team-gradient`.**
+It painted `linear-gradient(115deg, accent 35%, accent-far)`, where
+`--team-accent-far` was the primary shifted 22% away from the text color —
+darker under white text. It did not read as depth; it read as a shadow falling
+across the header, which is the failure mode of any gradient subtle enough to
+be tasteful: too weak to be a deliberate effect, too strong to go unnoticed.
+The color itself is the branding.
+
+So there is no second surface color anywhere now — `--team-accent-far`,
+`TeamPalette::$far`, `GRADIENT_SHIFT` and `shiftAwayFrom()` are all gone, and
+`TeamPaletteTest` asserts a palette has EXACTLY `surface` and `text` so nothing
+can reintroduce one. The old flat `team-accent` utility was dead (defined,
+never used in a single view) and its name was the right one, so it was
+absorbed rather than left as a near-duplicate.
 
 ## Legibility is the floor, not the target
 
@@ -1795,18 +1843,25 @@ The ladder, applied in light mode only:
     1. secondary vs primary >= 7.0   -> SECONDARY as text (Michigan maize,
                                         Colorado gold). A secondary must EARN
                                         text duty; Auburn's 4.2:1 does not.
-    2. white vs primary     >= 4.5   -> white, the sports default (92 teams)
-    3. white vs primary     >= 2.2   -> white + subtle dark text-shadow, the
-                                        ESPN treatment (14 mid-tone brands:
-                                        Tennessee, Clemson, Miami...)
-    4. white vs secondary   >= 4.5   -> SECONDARY as the surface (Arizona
+    2. white vs primary     >= 2.2   -> white, the sports default — down
+                                        through the mid-tone brands
+                                        (Tennessee, Clemson, Miami)
+    3. white vs secondary   >= 4.5   -> SECONDARY as the surface (Arizona
                                         State goes maroon)
-    5. darken primary                -> last resort; zero FBS teams today
+    4. darken primary                -> last resort; zero FBS teams today
 
-Near-black text exists ONLY behind the explicit `dark-text` override. The
-gradient far end still moves AWAY from the text (computed in PHP — CSS cannot
-know which way), and `--team-accent`, `--team-accent-far`,
-`--team-accent-contrast` and `--team-keyline` are all set per surface.
+**Rung 2 was two rungs.** White above 4.5 rendered plain; white in the 2.2-4.5
+band picked up a subtle dark text-shadow — the ESPN treatment, reaching 25
+teams. They always chose the same COLORS and differed only in that flourish,
+which is gone: a mid-tone header renders flat white, which is what the jersey
+does. `TeamPalette` no longer carries a `shadow` flag and there is no
+`team-text-shadow` utility; `HomeTest` asserts its ABSENCE on Tennessee, which
+is what stops it creeping back. `WHITE_COMFORT` (4.5) survives as the bar a
+SECONDARY must clear to be swapped in as the surface, not as a text rule.
+
+Near-black text exists ONLY behind the explicit `dark-text` override. A palette
+resolves exactly two colors, and `--team-accent`, `--team-accent-contrast` and
+`--team-keyline` are set per surface.
 
 **`teams.header_style` is the admin override** — a Filament "Team Branding"
 page with presets only (Auto / white / secondary-text / secondary-surface /
@@ -1815,8 +1870,8 @@ preset cannot be configured unreadable. It is not in the sync payload, so
 ESPN can never clobber a curated choice.
 
 **Dark mode is NEUTRAL — the palette is a light-mode concern.** Under `.dark`
-the `team-gradient`, `team-invert`, `team-keyline` and `team-text-shadow`
-utilities un-brand themselves: page-dark surface, no gradient, no logo puck,
+the `team-accent`, `team-invert` and `team-keyline`
+utilities un-brand themselves: page-dark surface, no logo puck,
 no keyline, zinc text, neutral buttons, and `x-team-logo`'s dark-mode mark
 sits directly on the page. A brand color block on a dark theme was the harder
 half of every contrast fight, so it no longer exists.

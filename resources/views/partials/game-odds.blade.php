@@ -1,14 +1,27 @@
 {{--
-    The odds tab: the current line, then how it MOVED — open against current
+    The odds block: the current line, then how it MOVED — open against current
     per book. Movement is our own observation history: ESPN's true opening
     line is not retrievable, so the first line we saw is frozen as `open`
     and everything after accumulates from there. An older game may only ever
     have one row, and the table renders honestly with whatever exists.
+
+    Rendered two ways. As its own TAB once a game is under way ($standalone),
+    where it carries the predictor's quality figures and its own empty state.
+    Folded into the top of the PREVIEW before kickoff, where the matchup donut
+    two cards below already prints matchup quality and the preview owns the
+    empty state — printing either again would say the same thing twice on one
+    scroll.
 --}}
 @php
+    $standalone ??= true;
+
     $byProvider = $game->odds()->orderBy('provider_id')->get()->groupBy('provider');
 @endphp
 
+{{-- Folded into the preview, an unposted game contributes NOTHING rather than
+     an empty wrapper: the parent is a flex column with a gap, so a childless
+     div is still a visible hole between the scorebug and the donut. --}}
+@if ($standalone || $byProvider->isNotEmpty())
 <div class="flex flex-col gap-3">
     <x-odds-strip :game="$game" class="text-sm" />
 
@@ -68,7 +81,7 @@
         </div>
     @endforeach
 
-    @if ($game->predictor)
+    @if ($standalone && $game->predictor)
         <div class="stat-grid rounded-lg border border-zinc-200 dark:border-zinc-800">
             <table class="w-full text-stat">
                 <tbody>
@@ -89,10 +102,11 @@
         </div>
     @endif
 
-    @if ($byProvider->isEmpty() && $game->predictor === null)
+    @if ($standalone && $byProvider->isEmpty() && $game->predictor === null)
         <flux:callout icon="chart-bar">
             <flux:callout.heading>No line yet</flux:callout.heading>
             <flux:callout.text>Odds ride along once books post this game.</flux:callout.text>
         </flux:callout>
     @endif
 </div>
+@endif

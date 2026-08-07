@@ -162,6 +162,87 @@ it('opens an upcoming game on the Preview tab, with no box tabs to fall into', f
         ->assertDontSee('Box Score');
 });
 
+describe('the pregame screen is one scroll', function () {
+    beforeEach(function () {
+        $this->upcoming = Game::factory()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'completed' => false, 'status' => 'pre',
+            'kickoff_at' => '2025-09-27 19:30:00',
+        ]);
+
+        GamePredictor::create([
+            'game_id' => $this->upcoming->id,
+            'home_projection' => 61.5,
+            'away_projection' => 38.5,
+            'matchup_quality' => 72.4,
+        ]);
+
+        $this->upcoming->odds()->create([
+            'phase' => 'current', 'provider' => 'DraftKings', 'provider_id' => 100,
+            'details' => 'UGA -7.5', 'spread' => -7.5, 'over_under' => 48.5,
+            'captured_at' => now(),
+        ]);
+    });
+
+    it('offers a single tab, so no strip is drawn at all', function () {
+        // A two-item strip whose second item is one table is a control charging
+        // for something the page can simply show. One tab renders none.
+        $component = Livewire::test('game', ['game' => $this->upcoming]);
+
+        expect($component->instance()->tabs())->toBe(['preview' => 'Preview']);
+
+        $component->assertDontSee('aria-label="Game sections"', escape: false);
+    });
+
+    it('folds the odds in rather than hiding them behind a tab', function () {
+        $html = Livewire::test('game', ['game' => $this->upcoming])->html();
+
+        // The line LEADS the scroll — it is the one number a reader checks
+        // before kickoff whether or not they bet — and it sits inside the
+        // preview, above the game-information card at the foot.
+        $gameInfo = strpos($html, $this->upcoming->kickoff_at
+            ->setTimezone(config('cfb.timezone'))
+            ->format('g:i A, F j, Y'));
+
+        expect(strpos($html, 'DraftKings'))->toBeLessThan(strpos($html, 'Matchup predictor'))
+            ->and(strpos($html, 'Matchup predictor'))->toBeLessThan($gameInfo);
+    });
+
+    it('prints matchup quality once, not beside itself', function () {
+        // The odds partial carries a quality table when it IS a tab. Folded
+        // into the preview the donut two cards below already says it, so the
+        // table is suppressed — otherwise one scroll states it twice.
+        $html = Livewire::test('game', ['game' => $this->upcoming])->html();
+
+        expect(substr_count($html, 'Matchup quality'))->toBe(1);
+    });
+
+    it('renders exactly one game-information card', function () {
+        // It is the parent's, at the foot of every state. The preview must not
+        // grow its own or a pregame reader gets the venue twice.
+        $html = Livewire::test('game', ['game' => $this->upcoming])->html();
+
+        expect(substr_count($html, 'Aer Lingus'))->toBeLessThanOrEqual(1)
+            ->and(substr_count($html, $this->upcoming->kickoff_at->setTimezone(config('cfb.timezone'))->format('g:i A, F j, Y')))->toBe(1);
+    });
+
+    it('lands a bookmarked ?tab=odds back on the preview', function () {
+        // The tab no longer exists here, and a URL carried from a game that
+        // has since kicked off must not open an empty pane.
+        Livewire::withUrlParams(['tab' => 'odds'])
+            ->test('game', ['game' => $this->upcoming])
+            ->assertSet('tab', 'preview');
+    });
+
+    it('keeps the odds tab once a game is under way', function () {
+        // The consolidation is pregame only: after kickoff the scroll belongs
+        // to the box score, and odds go back behind their own tab.
+        expect(Livewire::test('game', ['game' => $this->game])->instance()->tabs())
+            ->toHaveKey('odds');
+    });
+});
+
 it('never fetches ESPN synchronously, even for a live game', function () {
     /*
      * The page used to fetch the 544 KB summary INLINE in the Livewire
