@@ -103,18 +103,33 @@ new class extends Component
         return $this->team->seasonFor($this->year)->with('conference')->first();
     }
 
+    /**
+     * The team's own conference row, not whichever of its several ESPN
+     * standings rows came back first.
+     *
+     * "(4-4)" beside the word SEC is a claim about the SEC, and ESPN files a
+     * team under its division group as well — so an unscoped `first()` was
+     * reading a conference record off a row that need not be the conference's.
+     * The two agree in every season we hold, which is exactly why it would
+     * have gone unnoticed the season they stopped.
+     */
     #[Computed]
     public function standing(): ?Standing
     {
         return Standing::fromEspn()
             ->where('season_year', $this->year)
             ->where('team_id', $this->team->id)
+            ->inOwnConference($this->year)
             ->first();
     }
 
     /**
      * Where the team sits in its conference — "6th" — from the same cached
      * league-wide map search rows read, so this is never a per-page sort.
+     *
+     * Null is a real answer, and common: nobody has a position in a season
+     * that has not kicked off. The line drops the phrase and keeps the
+     * conference link.
      */
     #[Computed]
     public function standingPosition(): ?int
@@ -470,14 +485,20 @@ new class extends Component
 
             {{-- One subtle KPI pair: record, then where that record puts
                  them — "8-4 (4-4) · 6th in SEC". The position phrase is the
-                 conference link, so the conference page stays one tap away. --}}
+                 conference link, so the conference page stays one tap away.
+
+                 `short` because the position is often absent — nobody has a
+                 standing in a season that has not kicked off — and the link
+                 then falls back to its own text. Left at the default that
+                 would read "Southeastern Conference" here and "6th in SEC"
+                 the week after, which looks like two different lines. --}}
             <span class="flex flex-wrap items-center gap-x-1.5 pt-1 text-sm dark:text-zinc-400">
                 @if ($this->standing)
                     <span class="tabular">{{ $this->standing->overallRecord() }} ({{ $this->standing->conferenceRecord() }})</span>
                     <span aria-hidden="true">&middot;</span>
                 @endif
 
-                <x-conference-link :conference="$this->seasonRow?->conference" :year="$year">
+                <x-conference-link :conference="$this->seasonRow?->conference" :year="$year" label="short">
                     @if ($this->standingPosition !== null && $this->seasonRow?->conference?->short_name)
                         {{ Illuminate\Support\Number::ordinal($this->standingPosition) }} in {{ $this->seasonRow->conference->short_name }}
                     @endif

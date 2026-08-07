@@ -541,6 +541,111 @@ describe('the hero KPI line', function () {
             ->assertOk()
             ->assertDontSee(' in SEC');
     });
+
+    it('takes the position from the conference the label names, not the group ESPN files it under', function () {
+        /*
+         * The rank and the conference beside it come from two different
+         * tables: the name from `team_seasons` (SEC), the position from
+         * `standings`, under which ESPN files every team a SECOND time inside
+         * the 138-team "FBS" division group. Tennessee's hero read "130th in
+         * SEC" off the back of that.
+         *
+         * Georgia is 2nd of 3 in the SEC and 5th of 6 in the group. Only one
+         * of those numbers belongs next to the word SEC.
+         *
+         * This holds the HERO to the conference number while both rows exist;
+         * which row wins is decided in TeamGlance, so the reproduction of the
+         * bug itself lives in StandingPositionsTest, where it is deterministic.
+         * Left as a last-group-wins race it landed either way run to run —
+         * which is also why it survived in production for three seasons.
+         */
+        Conference::factory()->create([
+            'id' => 80, 'name' => 'NCAA Division I FBS', 'short_name' => 'FBS',
+            'abbreviation' => 'fbs', 'is_conference' => false,
+        ]);
+        Conference::factory()->create([
+            'id' => 5, 'name' => 'Big Ten Conference', 'short_name' => 'Big Ten', 'abbreviation' => 'big10',
+        ]);
+
+        $standing = function (int $teamId, int $group, int $wins, int $confWins) {
+            /*
+             * The division-group row carries a DIFFERENT conference record
+             * here. Constructed — measured over every season we hold, ESPN's
+             * two rows agree on every record and streak — because "(4-4)" next
+             * to the word SEC is a claim about the SEC, and the guarantee
+             * worth holding is that it is read off the SEC's row rather than
+             * off whichever row the database happened to return first.
+             */
+            Standing::create([
+                'season_year' => 2025, 'conference_id' => $group, 'team_id' => $teamId, 'source' => 'espn',
+                'overall_wins' => $wins, 'overall_losses' => 12 - $wins,
+                'conf_wins' => $group === 80 ? 0 : $confWins, 'conf_losses' => $group === 80 ? 8 : 8 - $confWins,
+                'win_pct' => round($wins / 12, 4), 'conf_win_pct' => $group === 80 ? 0.0 : round($confWins / 8, 4),
+            ]);
+        };
+
+        foreach ([[201, 11, 8], [61, 8, 4], [202, 4, 2]] as $i => [$id, $wins, $confWins]) {
+            if ($id !== 61) {
+                Team::factory()->create([
+                    'id' => $id, 'slug' => "sec-mate-{$id}", 'location' => "Mate {$id}",
+                    'name' => 'Rivals', 'display_name' => "Mate {$id} Rivals",
+                    'abbreviation' => 'MT'.$i, 'color' => '3f3f46', 'alt_color' => 'ffffff',
+                ]);
+                TeamSeason::create(['team_id' => $id, 'season_year' => 2025, 'conference_id' => 8, 'classification' => 'FBS']);
+            }
+
+            $standing($id, 8, $wins, $confWins);
+            $standing($id, 80, $wins, $confWins);
+        }
+
+        // Three Big Ten teams above Georgia in the division group only.
+        foreach ([[194, 12, 8], [130, 12, 8], [127, 12, 8]] as $i => [$id, $wins, $confWins]) {
+            Team::factory()->create([
+                'id' => $id, 'slug' => "b1g-{$id}", 'location' => "B1G {$id}",
+                'name' => 'Rivals', 'display_name' => "B1G {$id} Rivals",
+                'abbreviation' => 'BT'.$i, 'color' => '3f3f46', 'alt_color' => 'ffffff',
+            ]);
+            TeamSeason::create(['team_id' => $id, 'season_year' => 2025, 'conference_id' => 5, 'classification' => 'FBS']);
+            $standing($id, 5, $wins, $confWins);
+            $standing($id, 80, $wins, $confWins);
+        }
+
+        Livewire::test('team', ['team' => $this->team])
+            // Both halves of the line off the SEC's row: 4-4 and 2nd, not the
+            // group's 0-8 and not its 5th.
+            ->assertSee('8-4 (4-4)')
+            ->assertSee('2nd in SEC')
+            ->assertDontSee('8-4 (0-8)')
+            ->assertDontSee('5th in SEC');
+    });
+
+    it('drops the position phrase in a season nobody has played yet', function () {
+        /*
+         * Every team 0-0 until late August, so the standings order is whatever
+         * the tiebreaks fell out as. A record of 0-0 is a fact and stays; a
+         * position derived from it is not, and the line keeps the conference
+         * link either way.
+         */
+        foreach ([201, 202] as $i => $id) {
+            Team::factory()->create([
+                'id' => $id, 'slug' => "sec-mate-{$id}", 'location' => "Mate {$id}",
+                'name' => 'Rivals', 'display_name' => "Mate {$id} Rivals",
+                'abbreviation' => 'MT'.$i, 'color' => '3f3f46', 'alt_color' => 'ffffff',
+            ]);
+            TeamSeason::create(['team_id' => $id, 'season_year' => 2025, 'conference_id' => 8, 'classification' => 'FBS']);
+            Standing::create(['season_year' => 2025, 'conference_id' => 8, 'team_id' => $id, 'source' => 'espn']);
+        }
+
+        Standing::create(['season_year' => 2025, 'conference_id' => 8, 'team_id' => 61, 'source' => 'espn']);
+
+        Livewire::test('team', ['team' => $this->team])
+            ->assertSee('0-0 (0-0)')
+            ->assertDontSee(' in SEC')
+            // Short name, not "Southeastern Conference": with no position the
+            // link renders its own text, and it should read the same either way.
+            ->assertSee('SEC')
+            ->assertSee(route('conference', ['conference' => 8, 'year' => 2025]), escape: false);
+    });
 });
 
 describe('the season it opens on', function () {
