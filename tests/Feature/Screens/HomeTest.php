@@ -98,10 +98,10 @@ describe('the team swiper', function () {
 
     it('keeps the last result when the season being played has no games yet', function () {
         /*
-         * The offseason regression this exists for. The glance maps moved to
-         * the season being PLAYED — so the header can say SEC rather than last
-         * year's conference — and this query followed them, which emptied it:
-         * a season nobody has kicked off contains nothing completed. Last
+         * The offseason regression this pair exists for. The glance maps moved
+         * to the season being PLAYED — so the header can say SEC rather than
+         * last year's conference — and this query followed them, which emptied
+         * it: a season nobody has kicked off contains nothing completed. Last
          * results stay on `resultsYear()`, and the row names the season so a
          * 0-0 record above a loss does not read as a contradiction.
          */
@@ -169,8 +169,96 @@ describe('the team swiper', function () {
         $this->actingAs($this->user)->get(route('home'))
             ->assertOk()
             ->assertSee('LIVE')
-            ->assertSee('21-14')
+            ->assertSee('21')
+            ->assertSee('14')
             ->assertSee('wire:poll.30s.visible', escape: false);
+    });
+
+    describe('the live glance', function () {
+        beforeEach(function () {
+            $this->liveGame = Game::factory()->create([
+                'season_id' => $this->season->id,
+                'home_team_id' => 2633, 'away_team_id' => 96,
+                'kickoff_at' => now()->subHour(),
+                'completed' => false, 'status' => 'in',
+                'home_score' => 24, 'away_score' => 21,
+                'period' => 3, 'clock' => '8:42',
+                'possession_team_id' => 2633,
+                'down_distance_text' => '3rd & 7 at KY 42',
+                'last_play_text' => 'Stockton pass complete to Sampson for 12 yards',
+            ]);
+        });
+
+        it('replaces both the next game and the last result', function () {
+            // Three rows is a list, not a glance — while a team is playing,
+            // the next fixture and last week's score are both the wrong
+            // answer to "what is happening".
+            Game::factory()->create([
+                'season_id' => $this->season->id,
+                'home_team_id' => 96, 'away_team_id' => 2633,
+                'kickoff_at' => now()->addDays(7), 'completed' => false,
+            ]);
+
+            Game::factory()->finished(31, 17)->create([
+                'season_id' => $this->season->id,
+                'home_team_id' => 2633, 'away_team_id' => 96,
+                'kickoff_at' => now()->subWeek(),
+            ]);
+
+            $this->actingAs($this->user)->get(route('home'))
+                ->assertOk()
+                ->assertSee('LIVE')
+                ->assertDontSee('>Next<', escape: false)
+                ->assertDontSee('>Last<', escape: false);
+        });
+
+        it('carries the situation, and composes the clock from period', function () {
+            // "3rd · 8:42" is built by Game::liveStatusLine(); status_detail is
+            // deliberately absent on this fixture so the fallback cannot be
+            // what satisfies the assertion.
+            $this->actingAs($this->user)->get(route('home'))
+                ->assertOk()
+                ->assertSee('3rd · 8:42')
+                ->assertSee('3rd &amp; 7 at KY 42', escape: false)
+                ->assertSee('Stockton pass complete')
+                ->assertSee('Has possession');
+        });
+
+        it('renders with scores alone when ESPN sends no situation', function () {
+            /*
+             * A live payload omitting the situation block is a transient gap,
+             * not an absence — the sync leaves those columns alone rather than
+             * nulling real data over a momentary silence, so the card has to
+             * read correctly with any subset of them.
+             */
+            // `period` is NOT NULL and carries 0 for "no period" — which is
+            // what a halftime row actually holds, and what periodLabel()'s
+            // falsy guard is written against.
+            $this->liveGame->update([
+                'down_distance_text' => null,
+                'last_play_text' => null,
+                'possession_team_id' => null,
+                'clock' => null,
+                'period' => 0,
+                'status_detail' => 'Halftime',
+            ]);
+
+            $this->actingAs($this->user)->get(route('home'))
+                ->assertOk()
+                ->assertSee('LIVE')
+                ->assertSee('Halftime')
+                ->assertSee('24')
+                ->assertDontSee('Has possession');
+        });
+
+        it('links the block to the game while the header still links to the team', function () {
+            // The card cannot be one link — anchors do not nest — so the two
+            // destinations live on separate elements and both must survive.
+            $html = $this->actingAs($this->user)->get(route('home'))->assertOk()->content();
+
+            expect($html)->toContain(route('game', $this->liveGame))
+                ->and($html)->toContain(route('team', $this->tennessee));
+        });
     });
 
     it('does not poll when nothing is live', function () {

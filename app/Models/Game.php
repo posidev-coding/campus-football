@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Number;
 use Laravel\Scout\Searchable;
 
 /**
@@ -29,6 +30,9 @@ use Laravel\Scout\Searchable;
 class Game extends Model
 {
     use HasFactory, Searchable;
+
+    /** Four quarters. ESPN keeps counting, so period 5 is the first overtime. */
+    private const REGULATION_PERIODS = 4;
 
     public $incrementing = false;
 
@@ -183,6 +187,44 @@ class Game extends Model
     {
         return ! $this->completed
             && in_array($this->status, ['in', 'halftime', 'end-period'], true);
+    }
+
+    /**
+     * "3rd", "OT", "2OT" — the period as a football screen names it.
+     *
+     * Regulation is four quarters and ESPN keeps counting past them, so period
+     * 5 is the first overtime and every one after is numbered from there. A
+     * bare ordinal would print "5th quarter", which no scoreboard says.
+     */
+    public function periodLabel(): ?string
+    {
+        if (! $this->period) {
+            return null;
+        }
+
+        if ($this->period <= self::REGULATION_PERIODS) {
+            return Number::ordinal($this->period);
+        }
+
+        $overtime = $this->period - self::REGULATION_PERIODS;
+
+        return $overtime > 1 ? $overtime.'OT' : 'OT';
+    }
+
+    /**
+     * "3rd · 2:11", falling back to ESPN's own detail.
+     *
+     * The clock is absent at a period break and between the whistle and the
+     * next snap, and ESPN's `status_detail` covers those with "End of 3rd" or
+     * "Halftime" — which is the more useful thing to read at that moment.
+     */
+    public function liveStatusLine(): ?string
+    {
+        $period = $this->periodLabel();
+
+        return $period && $this->clock
+            ? $period.' · '.$this->clock
+            : $this->status_detail;
     }
 
     public function winnerTeamId(): ?int

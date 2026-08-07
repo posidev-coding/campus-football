@@ -59,32 +59,10 @@
     </a>
 
     <div class="flex flex-col gap-2.5 px-4 py-3">
+        {{-- In action: the game takes the card, and next and last both stand
+             down. See x-live-glance. --}}
         @if ($live)
-            @php
-                $opponent = $live->home_team_id === $team->id ? $live->awayTeam : $live->homeTeam;
-                $ownScore = $live->home_team_id === $team->id ? $live->home_score : $live->away_score;
-                $oppScore = $live->home_team_id === $team->id ? $live->away_score : $live->home_score;
-            @endphp
-
-            <a href="{{ route('game', $live) }}" wire:navigate class="flex items-center gap-2 text-sm" wire:key="glance-live-{{ $live->id }}">
-                <span class="flex items-center gap-1 text-micro font-semibold text-red-600 dark:text-red-400">
-                    <span class="relative flex size-1.5">
-                        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75 motion-reduce:hidden"></span>
-                        <span class="relative inline-flex size-1.5 rounded-full bg-red-500"></span>
-                    </span>
-                    LIVE
-                </span>
-                @if ($opponent)
-                    <x-team-logo :team="$opponent" size="xs" />
-                @endif
-                <span class="min-w-0 flex-1 truncate">
-                    {{ $live->home_team_id === $team->id ? 'vs' : 'at' }} {{ $opponent?->placeName() ?? 'TBD' }}
-                </span>
-                <span class="tabular shrink-0 font-semibold">{{ $ownScore }}-{{ $oppScore }}</span>
-                @if ($live->status_detail)
-                    <span class="shrink-0 text-micro text-zinc-500">{{ $live->status_detail }}</span>
-                @endif
-            </a>
+            <x-live-glance :game="$live" :team="$team" />
         @elseif ($next)
             @php $opponent = $next->home_team_id === $team->id ? $next->awayTeam : $next->homeTeam; @endphp
 
@@ -102,7 +80,11 @@
             </a>
         @endif
 
-        @if ($last)
+        {{-- Suppressed while live. `next` is already an @elseif above; this
+             one is separate markup and so needs saying explicitly — the two
+             used to render together, which put last week's result under a
+             game in progress. --}}
+        @if ($last && ! $live)
             @php
                 $opponent = $last->home_team_id === $team->id ? $last->awayTeam : $last->homeTeam;
                 $ownScore = $last->home_team_id === $team->id ? $last->home_score : $last->away_score;

@@ -112,7 +112,7 @@ new class extends Component
      *
      * No `trend`. The card carried a row of W/L pills built from the same
      * completed games, and it is deliberately gone rather than incidentally
-     * gone — the scope bug below had emptied it, and simply fixing the scope
+     * gone — the scope bug above had emptied it, and simply fixing the scope
      * would have brought the pills back by themselves the week the season
      * kicks off. A card says who a team is, when they play next, and how the
      * last one went; five circles restating the last five is the row a glance
@@ -373,6 +373,7 @@ new class extends Component
                 @if ($this->hasLiveGame) wire:poll.30s.visible @endif
                 x-data="{
                     active: 0,
+                    newsHeight: 0,
 
                     /*
                      * Re-observed on every childList change, not captured once:
@@ -385,7 +386,10 @@ new class extends Component
                     trackCards() {
                         const io = new IntersectionObserver((entries) => {
                             entries.forEach(e => {
-                                if (e.isIntersecting) this.active = [...this.$refs.track.children].indexOf(e.target)
+                                if (! e.isIntersecting) return
+                                this.active = [...this.$refs.track.children].indexOf(e.target)
+                                this.measureNews()
+                                this.settleNews()
                             })
                         }, { root: this.$refs.track, threshold: 0.6 })
 
@@ -393,6 +397,85 @@ new class extends Component
 
                         watch()
                         new MutationObserver(watch).observe(this.$refs.track, { childList: true })
+
+                        // Articles reflow at other widths and the panel heights
+                        // move with them, so the height is re-measured from the
+                        // content rather than cached from first paint.
+                        if (this.$refs.newsTrack) {
+                            new ResizeObserver(() => this.measureNews()).observe(this.$refs.newsTrack)
+                        }
+
+                        this.measureNews()
+                    },
+
+                    /** One panel plus one gap — the distance between snap points. */
+                    stepOf(el) {
+                        return el.children.length
+                            ? el.children[0].offsetWidth + (parseFloat(getComputedStyle(el).columnGap) || 0)
+                            : 0
+                    },
+
+                    /**
+                     * True only while one card fills the viewport, which is the
+                     * width the two tracks share a geometry at.
+                     */
+                    tracksAlign() {
+                        return Math.abs(this.stepOf(this.$refs.track) - this.stepOf(this.$refs.newsTrack)) <= 1
+                    },
+
+                    /*
+                     * The news follows the CARDS, frame for frame — scrollLeft
+                     * copied straight across, because at this width the panels
+                     * and gaps are identical and the mapping is 1:1.
+                     *
+                     * Driven off scroll rather than off the active index because
+                     * the swipe is a drag with momentum: anything keyed on the
+                     * snap lands after the gesture and reads as a lag.
+                     */
+                    syncNews() {
+                        if (! this.$refs.newsTrack || ! this.tracksAlign()) {
+                            return
+                        }
+
+                        this.$refs.newsTrack.scrollLeft = this.$refs.track.scrollLeft
+                    },
+
+                    /*
+                     * From `sm` the cards go TWO-UP at half width while a news
+                     * panel is still full width, and there mirroring is not
+                     * merely inexact — it is impossible. Measured at 768 with
+                     * five teams: panels 3 and 4 both sit at the track's maximum
+                     * scroll, so no function of scrollLeft can tell them apart.
+                     * Two visible cards cannot address one news list.
+                     *
+                     * So that width follows the ACTIVE INDEX instead, smoothly.
+                     * You do not swipe a two-up grid; you glance at it.
+                     */
+                    settleNews() {
+                        const news = this.$refs.newsTrack
+
+                        if (! news || this.tracksAlign()) {
+                            return
+                        }
+
+                        news.scrollTo({ left: this.active * this.stepOf(news), behavior: 'smooth' })
+                    },
+
+                    /*
+                     * The track is a flex row, so without an explicit height it
+                     * takes the TALLEST panel and a team with one article sits
+                     * under four articles of whitespace. Measured from the active
+                     * panel and eased.
+                     *
+                     * `items-start` on the track is what makes this measurable at
+                     * all: flex items stretch to the container by default, so a
+                     * panel inside a height-constrained track would report the
+                     * height we just set it — the measurement would feed itself.
+                     */
+                    measureNews() {
+                        const panel = this.$refs.newsTrack?.children[this.active]
+
+                        this.newsHeight = panel ? panel.offsetHeight : 0
                     },
                 }"
                 class="flex flex-col gap-3"
@@ -422,6 +505,7 @@ new class extends Component
                 <div
                     x-ref="track"
                     x-init="trackCards()"
+                    @scroll="syncNews()"
                     class="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 [scrollbar-width:none] motion-safe:scroll-smooth [&::-webkit-scrollbar]:hidden"
                 >
                     @foreach ($this->glances as $glance)
@@ -468,33 +552,62 @@ new class extends Component
                 @endif
 
                 {{--
-                    Every team's news is rendered up front and toggled by
-                    Alpine — at most 5 teams × 5 articles. A Livewire round
-                    trip per swipe would put a visible stall on the one
-                    interaction that has to feel instant. x-cloak everywhere
-                    except the first list, which must paint before Alpine.
-                --}}
-                @foreach ($this->glances as $i => $glance)
-                    <div
-                        x-show="active === {{ $i }}"
-                        @if ($i > 0) x-cloak @endif
-                        class="flex flex-col gap-2"
-                        wire:key="team-news-{{ $glance['team']->id }}"
-                    >
-                        <flux:subheading>{{ $glance['team']->placeName() }} news</flux:subheading>
+                    Every team's news is rendered up front — at most 5 teams ×
+                    5 articles. A Livewire round trip per swipe would put a
+                    visible stall on the one interaction that has to feel
+                    instant.
 
-                        @forelse ($this->newsByTeam[$glance['team']->id] ?? [] as $article)
-                            <x-article-card :article="$article" compact wire:key="tn-{{ $glance['team']->id }}-{{ $article->id }}" />
-                        @empty
-                            <flux:callout icon="newspaper">
-                                <flux:callout.heading>No news for {{ $glance['team']->short_display_name }}</flux:callout.heading>
-                                <flux:callout.text>
-                                    Nothing synced yet. ESPN's feed only reaches back a few days.
-                                </flux:callout.text>
-                            </flux:callout>
-                        @endforelse
-                    </div>
-                @endforeach
+                    It is a TRACK rather than a stack of `x-show` toggles, and
+                    it mirrors the card track's scroll (see `syncNews`) so the
+                    news slides with the cards under the finger instead of
+                    swapping after the snap. Its own overflow is hidden: it is
+                    a follower, and letting it scroll independently would let
+                    the two disagree about which team is showing.
+
+                    No `x-cloak` here, unlike the toggles this replaced — every
+                    panel is meant to be in the layout, and the one that shows
+                    before Alpine boots is panel 0 at scrollLeft 0, which is
+                    the right one.
+                --}}
+                <div
+                    x-ref="newsTrack"
+                    :style="newsHeight ? `height: ${newsHeight}px` : null"
+                    class="-mx-4 flex items-start gap-3 overflow-hidden px-4 transition-[height] duration-300 ease-out motion-reduce:transition-none"
+                >
+                    @foreach ($this->glances as $i => $glance)
+                        {{-- `inert` on everything but the active panel. These
+                             are clipped rather than `display: none` now, so
+                             without it every off-screen headline stays in the
+                             tab order and in the accessibility tree. --}}
+                        <div
+                            :inert="active !== {{ $i }}"
+                            class="flex w-full shrink-0 flex-col gap-2"
+                            wire:key="team-news-{{ $glance['team']->id }}"
+                        >
+                            <flux:subheading>{{ $glance['team']->placeName() }} news</flux:subheading>
+
+                            @forelse ($this->newsByTeam[$glance['team']->id] ?? [] as $article)
+                                <x-article-card :article="$article" compact wire:key="tn-{{ $glance['team']->id }}-{{ $article->id }}" />
+                            @empty
+                                <flux:callout icon="newspaper">
+                                    <flux:callout.heading>No news for {{ $glance['team']->short_display_name }}</flux:callout.heading>
+                                    <flux:callout.text>
+                                        Nothing synced yet. ESPN's feed only reaches back a few days.
+                                    </flux:callout.text>
+                                </flux:callout>
+                            @endforelse
+                        </div>
+                    @endforeach
+
+                    {{-- The add slot's counterpart. The card track has one more
+                         panel than there are teams, and the two tracks are
+                         mapped index for index — without this the news would
+                         run out before the cards do and sit a panel behind for
+                         the length of the swipe. --}}
+                    @if ($this->canFollowMore)
+                        <div class="w-full shrink-0" aria-hidden="true" wire:key="team-news-add"></div>
+                    @endif
+                </div>
             </section>
         @endif
     @else
