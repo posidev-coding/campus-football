@@ -1542,12 +1542,19 @@ Stats answers two different questions and so carries its own toggle:
     Team      how good the team is — categories bucketed into Offense,
               Defense, Special Teams
 
-**Two levels of navigation get two visual languages.** The tabs are a segmented
-pill group; the scope toggle inside Stats is UNDERLINED tabs, full width at
-390px and natural width from `sm`. Rendering both as segmented pills made a
-filter *within* a tab look like a sibling *of* the tabs. Its rule reaches both
-screen edges by cancelling the container's padding (`-mx-4 px-4`), the same
-trick the scoreboard chrome uses.
+**Two levels of navigation get two visual languages**, and on this screen the
+two languages SWAPPED. The section tabs are `x-team-nav` — underlined, ruled,
+edge to edge; the scope toggle inside Stats is a segmented pill gutter. It was
+the other way round, and the swap came with the nav: once the top row owns the
+underline-on-a-rule idiom, leaving the Stats toggle as a bleeding `x-plate` put
+two ruled underlined rows on one screen, a child that looks exactly like its
+parent. Which is the same confusion the rule has always been about, arriving
+from the other direction.
+
+So on a team page: **NAVIGATION underlines, a FILTER INSIDE a section is
+pills.** The roster's squad filter was already a gutter, so the two sub-filters
+now agree with each other. `/stats` keeps its plate — no hero, no nav above it
+to collide with.
 
 Both bucket maps keep an "Other" catch-all, because ESPN adds categories
 without telling anyone and a hardcoded list silently drops them. Reading
@@ -1565,10 +1572,28 @@ area nav (`x-area-nav`) — active section on a soft zinc chip, the rest muted
 text. It used to render BYTE-IDENTICAL underlined tabs to `x-plate`, which
 forced a "distinguished only by bleed" rule and a page-wide class count in
 `NavigationTest` that read 2 on any screen with a plate. Now the split is
-semantic: NAVIGATION (area nav, section strip, bottom bar) is chips and
-color; the UNDERLINE is exclusively `x-plate`'s in-content control idiom —
-a reader never has to ask whether an underlined row navigates or filters.
-`ChromeConsistencyTest` allowlists `border-b-2` in `plate.blade.php` alone.
+semantic: APP-LEVEL NAVIGATION (area nav, section strip, bottom bar) is chips
+and color; the UNDERLINE is the in-content idiom — a reader never has to ask
+whether an underlined row navigates or filters.
+
+`ChromeConsistencyTest` allowlists `border-b-2` in exactly two files:
+`plate.blade.php` and `team-nav.blade.php`. The second is the team page's own
+sub nav, which wants the plate's shape — a rule reaching both edges with the
+active tab's underline resting ON it — but has FIVE tabs, and the plate throws
+past three deliberately (a plate is a fork in a screen, not a menu of
+sections). The two never appear together: where the team nav rules a screen,
+the level beneath it is pills.
+
+**Its underline is NEUTRAL, not the team color.** `--team-accent` is the
+obvious choice and is wrong on real data — the palette ladder's rung 1 leaves
+a LIGHT surface behind dark text, so Colorado's gold rule would sit at 1.6:1
+against the page and vanish. Making it safe would need a second contrast
+ladder for a 2px line. The hero directly above already carries the brand.
+
+**Weight does not change between active and inactive** either, in this or the
+plate. Bolding the active tab reflows the row on every switch, so the labels
+visibly shift as the reader moves along them; color and the underline do the
+work.
 
 Two consequences worth keeping straight:
 
@@ -1625,31 +1650,42 @@ the components encode:
 5. **`x-plate`** is the ruled "which list am I looking at" row: two tabs,
    three at the very most (the component THROWS past three), resting their
    active underline directly on the rule, with the row doubling as the shelf
-   for right-aligned actions — typically the scope and season menus. The
-   underline is the plate's alone — navigation is chips (see above) — and
-   the bleed variant belongs only to hero-led screens whose tabs run the
-   viewport (team page). Standings, Stats, Recruiting and the team stats
-   toggle all speak it, value-compatible (`team`/`players`).
-6. **`x-gutter-tabs`** — the zinc track with the raised white pad — is for
-   tab sets a plate cannot hold: more than three (team page's five sections,
-   `shrink` variant) or a second row of categorical sub-scoping under a plate
-   (stat categories, `block` variant — full width, items share the row
-   equally). `shrink` drops into any flex row: centered over content (roster
-   squads), floated beside actions, or out on a plate. `block` runs `px-2`
-   where `shrink` runs `px-3` — "Special Teams" at `px-3` sits 0.03px from
-   clipping a three-up cell at 390. Neither scrolls; a set that cannot fit
-   either way belongs in a `filter-menu`.
-7. **Row order, top down**: plate → filter bar → gutter → content. The WHEN
-   menu rides the plate's actions slot when one exists, else the filter
-   bar's.
-8. **Names**: `$year`, `$q`, `$scope`, `$sort`, `$view`, `$position`;
+   for right-aligned actions — typically the scope and season menus.
+   Standings, Stats and Recruiting speak it, value-compatible
+   (`team`/`players`). Its `bleed` variant now has NO caller — the team page
+   was the only hero-led screen it existed for, and that screen has
+   `x-team-nav`; it stays for the next one.
+6. **`x-team-nav`** is the plate's shape for a hero-led screen with more tabs
+   than a plate holds: bled to both edges (`-mx-4 px-4`), pulled flush under
+   the hero (`-mt-5` cancelling the container's `gap-5`), one `border-b` the
+   full width with the active tab's `border-b-2` resting on it. Labels are
+   left-aligned with a shared gap and size to their own words — not equal
+   cells, which put the widest label over its padding at 390. Team page only,
+   and the level beneath it must then be pills.
+7. **`x-gutter-tabs`** — the zinc track with the raised white pad — is for
+   tab sets neither of those holds, and for any FILTER sitting under one:
+   `shrink` drops into a flex row (roster squads, centered over content),
+   `block` fills it and divides it equally (stat categories, the team page's
+   stats scope). `block` runs `px-2` where `shrink` runs `px-3` — "Special
+   Teams" at `px-3` sits 0.03px from clipping a three-up cell at 390, and
+   five equal cells put "Schedule" 5.4px over its padding, which is what sent
+   the team page's sections to `x-team-nav`. Neither scrolls; a set that
+   cannot fit either way belongs in a `filter-menu`.
+8. **Row order, top down**: plate or team nav → filter bar → gutter →
+   content. The WHEN menu rides the plate's actions slot when one exists,
+   else the filter bar's — or, on the team page, the hero.
+9. **Names**: `$year`, `$q`, `$scope`, `$sort`, `$view`, `$position`;
    `$perPage` never `#[Url]`; `wire:key` prefixes are per-screen (the team
    page and `/stats` once collided on `statsview-`).
 
-The team page's five tabs FIT at 390 instead of scrolling — 350px measured
-against a 358px column, which is why that tab says "Recruits" (the full word
-tipped it to 362). Widths that marginal are measured from the font file
-(`fontTools` against `archivo-variable-latin`), not eyeballed.
+The team page's five tabs FIT at 390 instead of scrolling, and the margin is
+the whole budget. Measured in the browser at a 358px row: 223.9px of labels
+(Schedule 59.8, Recruits 53.0, Roster 42.4, News 35.7, Stats 33.0) plus four
+20px gaps is 303.9, leaving 54px spare. That is also why the tab says
+"Recruits" rather than "Recruiting", and why a sixth tab or a longer word has
+to be measured before it ships — `x-team-nav` deliberately does not scroll.
+Widths this marginal come from the font file (`fontTools` against
+`archivo-variable-latin`) or the rendered document, never the eye.
 
 **The team page's season menu is the ONE exception to rule 4, and it is in the
 hero.** It does not fit beside those tabs: 350px of strip plus a 12px gap plus

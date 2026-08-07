@@ -167,9 +167,16 @@ describe('the roster squad tabs', function () {
     });
 
     it('offers the squads in ESPN order and filters to one', function () {
+        /*
+         * The FILTER says "Special", the heading over the players says
+         * "Special Teams". Equal cells are unforgiving — a four-up cell is
+         * 88px at 390 and the full label is 92.2px of text, so it would
+         * overhang its own active pad — and a heading has the whole row.
+         */
         Livewire::test('team', ['team' => $this->team])
             ->set('year', 2025)->set('tab', 'roster')
-            ->assertSeeInOrder(['>All<', '>Offense<', '>Defense<', '>Special Teams<'], escape: false)
+            ->assertSeeInOrder(['>All<', '>Offense<', '>Defense<', '>Special<'], escape: false)
+            ->assertSee('Special Teams')
             ->set('rosterGroup', 'defense')
             ->assertSee('Dax Backer')
             ->assertDontSee('Gunner Stockton')

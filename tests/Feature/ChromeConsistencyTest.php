@@ -97,6 +97,11 @@ it('renders underlined tabs only through x-plate', function () {
      */
     $allowed = [
         'components/plate.blade.php',
+        // The team page's sub nav owns the same idiom, because the plate
+        // throws past three tabs and that screen has five. The two never
+        // appear together: where the team nav rules a screen, the level
+        // beneath it is pills (see the team page's stats toggle).
+        'components/team-nav.blade.php',
     ];
 
     $violations = [];

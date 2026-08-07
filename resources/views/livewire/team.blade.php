@@ -511,16 +511,28 @@ new class extends Component
     </div>
 
     {{--
-        Five tabs are past the plate's two-or-three, so this is the gutter's
-        shrink variant. Nothing scrolls sideways except the week scroller:
-        at 390px the five tabs take the full row — measured from the font
-        itself, 350px in a 358px column, which is also why this tab says
-        "Recruits" (the full word tipped it to 362px). They have the row to
-        themselves; the season menu moved into the hero, which is the only
-        reason 350-in-358 is comfortable rather than one label from wrapping.
+        The team page's own sub nav — see x-team-nav for why it is not the
+        gutter and not a plate. It bleeds to both edges and tucks flush under
+        the hero, so hero and nav read as one block the way ESPN's team pages
+        do.
+
+        It replaced the gutter's `block` variant, which divided the row into
+        five equal cells and put the widest label 5.4px over its padding
+        budget at 390. Left-aligned labels with a shared gap size to their
+        own words instead, so no cell can be too small for what is in it.
+        Measured at 390 in a 358px row:
+
+            labels   Schedule 59.8 + Roster 42.4 + Stats 33.0
+                     + Recruits 53.0 + News 35.7   = 223.9
+            gaps     4 x 20                        =  80.0
+                                                     -----
+                                                      303.9 in 358, 54 spare
+
+        That headroom is the whole budget — a sixth tab or a longer word has
+        to be measured, because this row deliberately does not scroll.
     --}}
-    <x-gutter-tabs
-        :items="[
+    <x-team-nav
+        :tabs="[
             'schedule' => 'Schedule',
             'roster' => 'Roster',
             'stats' => 'Stats',
@@ -529,7 +541,6 @@ new class extends Component
         ]"
         :selected="$tab"
         model="tab"
-        label="Team page section"
         key-prefix="tab"
     />
 
@@ -558,9 +569,19 @@ new class extends Component
         @endif
 
         {{--
-            Squad filter as a centered shrink gutter — four items measure
-            315px at 390, so they fit as content-sized tabs where the block
-            variant's equal cells (88px each) could not hold "Special Teams".
+            Squad filter as a BLOCK gutter, matching the stats scope one tab
+            over: both are filters inside a section, so both fill their row
+            and divide it equally rather than one sitting centered and the
+            other spanning.
+
+            The FILTER shortens two labels that the section headings below
+            keep in full, because equal cells are unforgiving: measured at
+            390, a four-up cell is 88px and "Special Teams" is 92.2px of
+            text — over the CELL, not merely its padding, so the label would
+            overhang its own active pad. "Special" beside Offense and Defense
+            is the same three-phase idea in 50px and reads as the parallel it
+            is. `groupLabel()` is untouched, so the heading over the players
+            themselves still says Special Teams.
 
             Absent on a roster that has fewer than two squads — 119 teams'
             most recent roster predates the current one and is derived from
@@ -568,10 +589,17 @@ new class extends Component
         --}}
         @if ($this->rosterGroups !== [])
             @php
+                $squadFilterLabels = [
+                    'special_teams' => 'Special',
+                    'practice_squad' => 'Practice',
+                ];
+
                 $squadItems = collect(array_merge([''], $this->rosterGroups))
                     ->map(fn ($group) => [
                         'value' => $group,
-                        'label' => $group === '' ? 'All' : $this->groupLabel($group),
+                        'label' => $group === ''
+                            ? 'All'
+                            : ($squadFilterLabels[$group] ?? $this->groupLabel($group)),
                     ])
                     ->all();
             @endphp
@@ -582,7 +610,7 @@ new class extends Component
                 model="rosterGroup"
                 label="Squad"
                 key-prefix="squad"
-                class="mx-auto"
+                variant="block"
             />
         @endif
 
@@ -633,20 +661,27 @@ new class extends Component
                  good is this team?" — so they get a toggle rather than one
                  long scroll that answers both badly.
 
-                 Sub-tabs, NOT another segmented pill group: this is a scope
-                 filter INSIDE the tab the strip above already selected, and
-                 rendering both the same way made a child look like a sibling.
-                 The BLEED variant — full width at 390px, edge to edge — is
-                 allowed here because this is a hero-led screen whose tabs run
-                 the viewport; the League Stats screen sits in its content
-                 column and must not bleed. Value 'players' matches /stats, so
-                 one control means one thing app-wide. --}}
-            <x-plate
-                :tabs="['team' => 'Team', 'players' => 'Players']"
+                 PILLS, and this is the half of "two levels, two languages"
+                 that moved. It was a bleeding x-plate back when the section
+                 strip above was a pill gutter; now the section nav owns the
+                 underline-on-a-rule idiom, and leaving this as a plate would
+                 put two ruled underlined rows on one screen — a child that
+                 looks exactly like its parent, which is the same confusion
+                 the rule has always been about, only inverted.
+
+                 So on a team page: NAVIGATION underlines, FILTERS INSIDE a
+                 section are pills. The roster's squad filter below already
+                 reads that way, so the two sub-filters now agree. The League
+                 Stats screen keeps its plate — it has no hero and no nav
+                 above it to collide with. Value 'players' still matches
+                 /stats, so one control means one thing app-wide. --}}
+            <x-gutter-tabs
+                :items="['team' => 'Team', 'players' => 'Players']"
                 :selected="$statsView"
                 model="statsView"
+                label="Stats scope"
                 key-prefix="teamstats"
-                bleed
+                variant="block"
             />
 
             @if ($statsView === 'players')
