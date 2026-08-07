@@ -59,16 +59,6 @@
     </a>
 
     <div class="flex flex-col gap-2.5 px-4 py-3">
-        @if ($glance['trend']->isNotEmpty())
-            <div class="flex items-center justify-between gap-2">
-                <x-trend-pills :games="$glance['trend']" :team-id="$team->id" />
-
-                @if ($glance['record']['streak'] ?? null)
-                    <span class="text-micro font-medium text-zinc-500">{{ $glance['record']['streak'] }} streak</span>
-                @endif
-            </div>
-        @endif
-
         @if ($live)
             @php
                 $opponent = $live->home_team_id === $team->id ? $live->awayTeam : $live->homeTeam;
@@ -128,6 +118,14 @@
                 <span class="min-w-0 flex-1 truncate">
                     {{ $last->home_team_id === $team->id ? 'vs' : 'at' }} {{ $opponent?->placeName() ?? 'TBD' }}
                 </span>
+
+                {{-- Only when it is NOT the season the header describes: in
+                     August a 0-0 record above a loss reads as a contradiction
+                     until this says which season the loss was. --}}
+                @if ($glance['lastSeason'] ?? null)
+                    <span class="tabular shrink-0 text-micro text-zinc-400">{{ $glance['lastSeason'] }}</span>
+                @endif
+
                 <span @class([
                     'tabular shrink-0 font-semibold',
                     'text-emerald-700 dark:text-emerald-400' => $letter === 'W',
@@ -136,7 +134,7 @@
             </a>
         @endif
 
-        @if ($glance['trend']->isEmpty() && ! $live && ! $next && ! $last)
+        @if (! $live && ! $next && ! $last)
             <span class="text-sm text-zinc-500">No games on the schedule yet.</span>
         @endif
     </div>

@@ -70,8 +70,13 @@ describe('the team swiper', function () {
             ->and(strpos($html, 'wire:key="glance-2633"'))->toBeLessThan(strpos($html, 'wire:key="glance-96"'));
     });
 
-    it('derives trends from our own box of completed games, oldest to newest', function () {
-        // Three completed games: W, W, L in kickoff order.
+    it('shows the most recent completed game as the last result, and no trend pills', function () {
+        /*
+         * The card carried a row of W/L pills from the same games. They are
+         * gone deliberately rather than incidentally, which is what this
+         * asserts: a scope bug had emptied them, and fixing the scope alone
+         * would have brought them back by themselves once a season kicks off.
+         */
         foreach ([
             ['2025-09-06', 30, 10],
             ['2025-09-13', 24, 21],
@@ -86,9 +91,56 @@ describe('the team swiper', function () {
 
         $html = $this->actingAs($this->user)->get(route('home'))->assertOk()->content();
 
-        preg_match_all('/wire:key="trend-2633-\d+"[^>]*>(\w)</', $html, $pills);
+        // The NEWEST completed game, not the oldest — the row says "last".
+        expect($html)->toContain('L 13-27')
+            ->and($html)->not->toContain('wire:key="trend-2633-');
+    });
 
-        expect($pills[1])->toBe(['W', 'W', 'L']);
+    it('keeps the last result when the season being played has no games yet', function () {
+        /*
+         * The offseason regression this exists for. The glance maps moved to
+         * the season being PLAYED — so the header can say SEC rather than last
+         * year's conference — and this query followed them, which emptied it:
+         * a season nobody has kicked off contains nothing completed. Last
+         * results stay on `resultsYear()`, and the row names the season so a
+         * 0-0 record above a loss does not read as a contradiction.
+         */
+        $upcoming = Season::factory()->create([
+            'year' => 2026, 'type' => Season::REGULAR,
+            'start_date' => now()->subMonth()->toDateString(),
+            'end_date' => now()->addMonths(4)->toDateString(),
+        ]);
+
+        TeamSeason::create(['team_id' => 2633, 'season_year' => 2026, 'classification' => 'FBS']);
+        TeamSeason::create(['team_id' => 96, 'season_year' => 2026, 'classification' => 'FBS']);
+
+        /*
+         * 2026 needs a SCHEDULE for the two years to differ at all —
+         * `scoreboardYear()` falls back to `resultsYear()` for a season with
+         * no games, which collapses the very distinction under test.
+         */
+        Game::factory()->create([
+            'season_id' => $upcoming->id,
+            'home_team_id' => 2633, 'away_team_id' => 96,
+            'completed' => false, 'status' => 'pre',
+            'kickoff_at' => now()->addMonth()->toDateTimeString(),
+        ]);
+
+        // Last season's bowl — played in January, belonging to 2025.
+        Game::factory()->finished(21, 42)->create([
+            'season_id' => $this->season->id,
+            'home_team_id' => 2633, 'away_team_id' => 96,
+            'kickoff_at' => '2026-01-09 19:30:00',
+        ]);
+
+        TeamGlance::flush();
+
+        $this->actingAs($this->user)->get(route('home'))
+            ->assertOk()
+            ->assertSee('L 21-42')
+            // Labelled with the SEASON, which the date cannot give: that game
+            // was played in 2026 and belongs to 2025.
+            ->assertSee('2025');
     });
 
     it('shows the next game when none is live', function () {

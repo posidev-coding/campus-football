@@ -110,7 +110,15 @@ new class extends Component
     /**
      * Everything each card says, from two game queries and the glance maps.
      *
-     * @return list<array{team: Team, rank: ?int, record: ?array, conference: ?string, position: ?int, trend: mixed, live: ?Game, next: ?Game, last: ?Game}>
+     * No `trend`. The card carried a row of W/L pills built from the same
+     * completed games, and it is deliberately gone rather than incidentally
+     * gone — the scope bug below had emptied it, and simply fixing the scope
+     * would have brought the pills back by themselves the week the season
+     * kicks off. A card says who a team is, when they play next, and how the
+     * last one went; five circles restating the last five is the row a glance
+     * can most afford to lose.
+     *
+     * @return list<array{team: Team, rank: ?int, record: ?array, conference: ?string, position: ?int, live: ?Game, next: ?Game, last: ?Game}>
      */
     #[Computed]
     public function glances(): array
@@ -128,10 +136,24 @@ new class extends Component
             'awayTeam:'.self::TEAM_COLUMNS,
         ];
 
-        // Trends and last result: the season's completed games, oldest first.
-        // Scoped to the results year so this is ~65 rows for five teams, not
-        // a decade of history.
-        $seasonIds = Season::where('year', TeamGlance::year())->pluck('id');
+        /*
+         * The last result: completed games, oldest first.
+         *
+         * `resultsYear()` — the latest season that HAS games played — not
+         * `TeamGlance::year()`, which is the season being played and in the
+         * offseason contains nothing completed at all. Reading the glance
+         * year here emptied this query all summer, and with it the last
+         * result on every card. The two questions genuinely differ: the
+         * header states who a team IS this season, this states what they
+         * last DID, and in August that is a bowl from the season before.
+         *
+         * Still season-scoped, because the alternative is a decade of
+         * history per team — this is ~65 rows for five teams.
+         */
+        $glanceYear = TeamGlance::year();
+        $resultsYear = app(CfbCalendar::class)->resultsYear();
+
+        $seasonIds = Season::where('year', $resultsYear)->pluck('id');
 
         $completed = Game::query()
             ->with($with)
@@ -159,11 +181,8 @@ new class extends Component
         $conferences = TeamGlance::conferenceNames();
         $positions = TeamGlance::standingPositions();
 
-        return $teams->map(function (Team $team) use ($completed, $pending, $records, $ranks, $conferences, $positions) {
+        return $teams->map(function (Team $team) use ($completed, $pending, $records, $ranks, $conferences, $positions, $glanceYear, $resultsYear) {
             $involves = fn (Game $game) => $game->home_team_id === $team->id || $game->away_team_id === $team->id;
-
-            $theirs = $completed->filter($involves);
-            $trend = $theirs->slice(-5)->values();
 
             return [
                 'team' => $team,
@@ -171,10 +190,21 @@ new class extends Component
                 'record' => $records[$team->id] ?? null,
                 'conference' => $conferences[$team->id] ?? null,
                 'position' => $positions[$team->id] ?? null,
-                'trend' => $trend,
                 'live' => $pending->first(fn (Game $game) => $involves($game) && $game->isInProgress()),
                 'next' => $pending->first(fn (Game $game) => $involves($game) && ! $game->isInProgress()),
-                'last' => $theirs->last(),
+                'last' => $completed->last($involves),
+                /*
+                 * The season the last result belongs to, and null when it is
+                 * the one the header already describes.
+                 *
+                 * A card in August states a 0-0 record and then a loss, which
+                 * without this reads as a contradiction rather than as last
+                 * season's bowl. It cannot be derived from the game's DATE —
+                 * a January bowl is played in one calendar year and belongs
+                 * to the season before it, so "Jan 9" would be labelled 2026
+                 * while being part of 2025.
+                 */
+                'lastSeason' => $resultsYear === $glanceYear ? null : $resultsYear,
             ];
         })->all();
     }

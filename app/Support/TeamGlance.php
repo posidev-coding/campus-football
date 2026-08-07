@@ -35,10 +35,44 @@ class TeamGlance
     /** @var array<string, array<int|string, mixed>> */
     private static array $memo = [];
 
-    /** The season these maps describe — the latest one with games played. */
+    /** @var array<string, int> */
+    private static array $yearMemo = [];
+
+    /**
+     * The season these maps describe: the one we are IN or heading into,
+     * whenever we actually hold it.
+     *
+     * It was `resultsYear()` — the latest season with games PLAYED — and that
+     * is a year behind for the whole offseason. From February to kickoff a
+     * home card read a finished record beside a conference that may since have
+     * realigned, and it disagreed with the team page one tap away, which opens
+     * on `scoreboardYear()`. Two screens naming different seasons for the same
+     * team is the bug; which season is right is downstream of that.
+     *
+     * The fallback is real, not defensive: a season exists in the database
+     * months before it is played, but not before it is SYNCED, and pointing
+     * these maps at a year with no `team_seasons` rows empties every one of
+     * them at once — records, conference names, standings positions, the FBS
+     * picker. So the year has to be a season we hold, asked of the data.
+     *
+     * `Remember::filled` rather than `Cache::remember`, for the usual reason:
+     * a lookup that runs while the season's sync is still draining would
+     * otherwise pin "not held" for an hour and keep the whole app a year back.
+     */
     public static function year(): int
     {
-        return app(CfbCalendar::class)->resultsYear();
+        return self::$yearMemo['default'] ??= (function (): int {
+            $calendar = app(CfbCalendar::class);
+            $year = $calendar->scoreboardYear();
+
+            $held = Remember::filled(
+                "glance:held:{$year}",
+                self::CACHE_SECONDS,
+                fn (): ?bool => TeamSeason::where('season_year', $year)->exists() ?: null,
+            );
+
+            return $held ? $year : $calendar->resultsYear();
+        })();
     }
 
     /**
@@ -294,9 +328,15 @@ class TeamGlance
         );
     }
 
-    /** Reset per-request memoization — tests re-seed between assertions. */
+    /**
+     * Reset per-request memoization — tests re-seed between assertions.
+     *
+     * Both memos, or the resolved YEAR outlives the seasons a test just
+     * created and every map is then read for some previous test's year.
+     */
     public static function flush(): void
     {
         self::$memo = [];
+        self::$yearMemo = [];
     }
 }

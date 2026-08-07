@@ -4,9 +4,9 @@ use App\Models\Conference;
 use App\Models\Standing;
 use App\Models\Team;
 use App\Models\TeamSeason;
-use App\Services\CfbCalendar;
 use App\Support\Remember;
 use App\Support\Scope;
+use App\Support\TeamGlance;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -36,9 +36,21 @@ new class extends Component
     #[Url]
     public string $q = '';
 
-    public function mount(CfbCalendar $calendar): void
+    /**
+     * Opens on the season we are in or heading into, via `TeamGlance::year()`.
+     *
+     * It was `resultsYear()`, which is a year behind for the whole offseason:
+     * from February to kickoff this listed last season's conference membership
+     * — the one thing this screen exists to get right, since ESPN re-parents
+     * its group tree every year and 513 teams changed conference between 2021
+     * and 2025. The season menu still offers every year we hold.
+     *
+     * Shared with the home cards rather than re-derived here, so the two
+     * cannot name different seasons for the same team.
+     */
+    public function mount(): void
     {
-        $this->year ??= $calendar->resultsYear();
+        $this->year ??= TeamGlance::year();
 
         $this->normaliseScope();
     }

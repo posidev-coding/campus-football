@@ -2359,6 +2359,38 @@ Two different questions, and conflating them empties a screen:
 
 In August they differ. A scoreboard on `resultsYear()` shows last season's bowls.
 
+**`TeamGlance::year()` is the third answer, and it is the one league-wide TEAM
+facts use** — records, conference names, standings positions, conference sizes,
+the FBS picker. It is `scoreboardYear()` whenever we HOLD that season, falling
+back to `resultsYear()`. Both halves are load-bearing:
+
+- it was plain `resultsYear()`, which put a finished record on every home
+  glance card all offseason, beside a conference the team may since have left
+  — and disagreeing with the team page one tap away, which opens on
+  `scoreboardYear()`. Two screens naming different seasons for one team is the
+  bug; which season is right is downstream of that.
+- the fallback is not defensive. A season exists in the database months before
+  it is played but not before it is SYNCED, and pointing these maps at a year
+  with no `team_seasons` rows empties every one of them at once.
+
+`Remember::filled`, not `Cache::remember`: a lookup running while the season's
+sync drains would otherwise pin "not held" for the TTL and keep the whole app
+a year back. `/teams` calls `TeamGlance::year()` rather than re-deriving, so
+the cards and the list cannot name different seasons.
+
+`TeamGlance::flush()` must clear the YEAR memo as well as the map memo, or a
+test inherits the previous test's resolved season and reads every map for it.
+
+**Verify a fix like this by breaking it back.** `TeamGlanceYearTest` was written,
+passed, and then run again against a one-line revert to `resultsYear()` — three
+of its five tests fail there and the two fallback tests correctly still pass.
+A test for a default-season bug is exactly the kind that passes for the wrong
+reason, because the fixture has to place "now" inside a season that is
+SCHEDULED but unplayed, and that needs real games: `scoreboardYear()` asks
+whether the season has a schedule at all, `resultsYear()` asks for a COMPLETED
+game, and with neither present both fall through to the config default and the
+test measures nothing.
+
 **A screen that lets you PICK a season must feed the selector the same
 question it defaults on.** The team page defaulted with `resultsYear()` and
 built its year dropdown from it too, so from February to kickoff it showed a
