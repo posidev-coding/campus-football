@@ -264,7 +264,13 @@ describe('the shared surfaces', function () {
          * Flux's own input markup carries translucent surfaces, so a whole-tree
          * search for `bg-white/` finds those instead of this bar.
          */
-        $bar = 'class="sticky top-0 z-30 -mx-4 -mt-5 -mb-3 border-b border-zinc-200 bg-white/85 px-4 pt-5 pb-3 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/85"';
+        /*
+         * `-mt-6` cancels Home's `gap-6`, not the container's `py-5` — it was
+         * `-mt-5` while this bar was Home's FIRST child, and x-home-nav took
+         * that job when the brand arrived above it. Either way the rule is the
+         * same: nothing to travel through.
+         */
+        $bar = 'class="sticky top-0 z-30 -mx-4 -mt-6 -mb-3 border-b border-zinc-200 bg-white/85 px-4 pt-5 pb-3 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/85"';
 
         expect(Livewire::test('search-panel')->html())->toContain($bar);
 

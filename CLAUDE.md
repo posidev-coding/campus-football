@@ -1039,6 +1039,89 @@ Two Flux details this turned up:
   dots and capitals, so fixtures built a user the handle validation rejects —
   failing only on the runs where faker picked a name with a dot in it.
 
+## The brand: one resolver, shipped defaults, editable overrides
+
+The app's own identity is 1b Pennant — Ink `#0b0b0c`, Cream `#f5f2ea`, Lager
+`#e8a33c`, Archivo. It used to be a Flux `trophy` glyph beside
+`config('app.name')`, which was also the League tab's icon and the conference
+icon: the brand mark and a navigation glyph were the same picture.
+
+**Everything reads `App\Support\Brand`.** The files in `public/brand/` and the
+constants on that class are the shipped default and are in git; the one
+`brand_settings` row holds OVERRIDES, where a null column means "use the
+shipped value". So a partial change is safe, Reset is nulling columns rather
+than restoring a fixture, and an override whose uploaded file has gone missing
+degrades to the shipped brand rather than to a broken image. `/admin/branding`
+is the editor — labelled "App Branding" because `TeamResource` already owns
+"Team Branding", which is a different thing entirely.
+
+Six things this cost, each of which fails quietly:
+
+- **There must be exactly ONE `<meta name="theme-color">`.** The appearance
+  sync does `querySelector('meta[name=theme-color]')` and writes to whatever
+  comes back first. The brand's own head snippet ships a media-scoped PAIR, and
+  pasting it in hands the sync the dark tag and silently undoes the fix that
+  stopped a phone's address bar staying black in Light mode. `BrandingTest`
+  counts them.
+- **A tracked zero-byte `public/favicon.ico` shadowed its own route.** The web
+  server's `try_files` serves a real file before the request ever reaches PHP,
+  so the empty one won and the route was unreachable. It had to be DELETED, not
+  overwritten. Same for `site.webmanifest`: both are generated now, because
+  their contents are editable and a second copy of the icon list is how a
+  home-screen icon ends up disagreeing with the tab icon.
+- **There is no ICO encoder on this machine or in PHP, and none is needed.**
+  A 6-byte header, a 16-byte directory entry per image, then each PNG verbatim —
+  PNG-in-ICO, supported everywhere since Vista. `Brand::ico()` packs the 16 and
+  32px favicons. Verify with `file`, which reports the image count and sizes.
+- **`@theme`, never `@theme static`.** Tailwind emits a theme color as a custom
+  property and compiles `text-brand-ink` to `color: var(--color-brand-ink)`,
+  which is the whole mechanism behind runtime retinting — the head emits a
+  `:root` block ONLY for colors that differ, so a stock install carries no style
+  block at all. `static` inlines the literal and makes the override a no-op.
+- **The lockup is HTML text around an inline mark, never the vendor SVG.** Those
+  files name Archivo by family, and an SVG loaded through `<img>` cannot see the
+  page's fonts — the wordmark renders in system sans wherever it is used.
+  Verified the other way: the computed `font-family` of the rendered lead line
+  is `"Archivo Variable"`. An UPLOADED mark is the exception and is drawn as an
+  `<img>` pair rather than inlined, because echoing uploaded SVG unescaped is a
+  stored-XSS shape — which is why a custom mark needs both a light and a dark
+  variant, having given up `currentColor`.
+- **Filament gets the same brand through closures**, so an edit made in the
+  panel is live in the panel. `brandLogo()` takes an `Htmlable` and renders it
+  INLINE; a string renders as an `<img>` and hits the font problem above.
+  `LocalFontProvider` wants a STYLESHEET url, not a font file — hence
+  `public/brand/archivo.css` beside a stable copy of the woff2, since the front
+  end's `@fonts` build emits a hashed filename that moves every build.
+
+Uploads land on the `public` disk, which is ephemeral on Laravel Cloud. That is
+the intended workflow rather than a limitation: iterate in the panel, then commit
+the winner into `public/brand/` as the new shipped default.
+
+## Home's nav scrolls; the search bar is what pins
+
+The brand bar above Home's search (`x-home-nav`) is phone-only and deliberately
+NOT sticky. Pinning both would put ~44px of permanent chrome back at the top of
+a 390px screen, in an app that cut its chrome from 197px to 73px on purpose — so
+the brand greets you on arrival and gets out of the way, and the scrolled state
+is byte-identical to what it was before the nav existed. Measured: nav at
+`top: 0` height 54, search at 54; after scrolling 400px the nav is at -400 and
+the search bar sits at exactly 0.
+
+Its right-hand cluster is an empty slot reserved for gamification — currency, XP,
+streak. At `sm` the nav retires and those chips belong in the layout header
+instead, which is the same additive rule everything else follows.
+
+**The knock-on is one negative margin.** The search bar's wrapper was `-mt-5` to
+cancel the layout container's `py-5` while it was Home's FIRST child. It is not
+anymore, so it is `-mt-6`, cancelling Home's `gap-6`. Get it wrong in either
+direction and the bar rests below where it sticks, which shows up as the heading
+drifting on the first flick of a scroll rather than as a spacing bug.
+
+**Account lost its visible heading to the brand.** The tab that got you there
+already says "Account", so the word survives as `sr-only` — the same call every
+League screen makes. Scores keeps its heading and gains the mark beside it,
+because it is still the app's one non-redundant screen title.
+
 ## Prefer Bootstrap Icons
 
 Reach for [Bootstrap Icons](https://icons.getbootstrap.com) first. They are

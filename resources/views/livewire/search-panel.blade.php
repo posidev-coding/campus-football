@@ -83,11 +83,17 @@ new class extends Component
     chrome at z-40, so it wins on z-index and the blur is decoration rather
     than the thing holding the layer together.
 
-    Sticky offsets have to have nothing to travel through, so the container's
-    own padding is cancelled and re-applied INSIDE the sticky box: `-mx-4 px-4`
-    to reach both screen edges, `-mt-5 pt-5` so the space above travels with the
-    bar instead of scrolling away. `pb-3 -mb-3` gives content a gap to disappear
-    into without changing Home's `gap-6` rhythm.
+    Sticky offsets have to have nothing to travel through, so the space above is
+    cancelled and re-applied INSIDE the sticky box: `-mx-4 px-4` to reach both
+    screen edges, `-mt-6 pt-5` so the space above travels with the bar instead
+    of scrolling away. `pb-3 -mb-3` gives content a gap to disappear into
+    without changing Home's `gap-6` rhythm.
+
+    That negative margin cancels Home's `gap-6`, not the layout container's
+    `py-5` — it was `-mt-5` while this was Home's FIRST child, and x-home-nav
+    took that job. Get it wrong in either direction and the bar rests below
+    where it sticks, which shows up as the heading drifting upward on the first
+    flick of a scroll rather than as a spacing bug.
 
     ── Making it a header is what breaks the panel INSIDE it ──
 
@@ -119,7 +125,7 @@ new class extends Component
 <div
     x-data="{ open: false }"
     @keydown.escape.window="if (open) { open = false; $wire.clear(); document.activeElement?.blur() }"
-    class="sticky top-0 z-30 -mx-4 -mt-5 -mb-3 border-b border-zinc-200 bg-white/85 px-4 pt-5 pb-3 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/85"
+    class="sticky top-0 z-30 -mx-4 -mt-6 -mb-3 border-b border-zinc-200 bg-white/85 px-4 pt-5 pb-3 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/85"
     :class="{ 'sticky z-30 backdrop-blur': ! open }"
 >
     {{-- One wrapper that is either a row in Home's flow or the whole viewport.

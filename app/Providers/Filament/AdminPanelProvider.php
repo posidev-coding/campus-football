@@ -2,6 +2,8 @@
 
 namespace App\Providers\Filament;
 
+use App\Support\Brand;
+use Filament\FontProviders\LocalFontProvider;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -28,8 +30,36 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->colors([
-                'primary' => Color::Amber,
+            /*
+             * Every brand value is a CLOSURE, resolved per request, so an edit
+             * on the App Branding page reaches the panel it was made in without
+             * a deploy or a config cache clear.
+             *
+             * The logo is an Htmlable rather than a URL: Filament renders an
+             * Htmlable inline and an <img> for a string, and an SVG loaded
+             * through <img> cannot see the page's fonts — so a lockup file
+             * would render its wordmark in system sans, which is exactly the
+             * defect the brand's own README warns about.
+             */
+            ->brandName(fn (): string => Brand::name())
+            ->brandLogo(fn () => view('filament.brand-lockup'))
+            ->darkModeBrandLogo(fn () => view('filament.brand-lockup', ['dark' => true]))
+            ->brandLogoHeight('2rem')
+            ->favicon(fn (): ?string => Brand::asset('favicon-32'))
+            /*
+             * Archivo across the whole panel, not only the logo. LocalFontProvider
+             * wants a STYLESHEET url, not a font file, which is why
+             * public/brand/archivo.css exists — the front end's `@fonts` build
+             * emits a hashed filename that would move on every build.
+             */
+            ->font('Archivo Variable', url: asset('brand/archivo.css'), provider: LocalFontProvider::class)
+            /*
+             * Stock Amber was a near miss for Lager. Driving it from the brand
+             * means the admin's buttons move with the app's accent instead of
+             * being a fourth place the color has to be kept in step.
+             */
+            ->colors(fn (): array => [
+                'primary' => Color::hex(Brand::color('lager')),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')

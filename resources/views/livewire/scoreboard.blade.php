@@ -337,6 +337,13 @@ new class extends Component
     >
         <div class="flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-2">
+                {{-- Scores has no section strip, so this heading is the app's
+                     one non-redundant one — and the mark beside it is where a
+                     sports site puts its brand. The chrome's height is measured
+                     by the ResizeObserver above, so `--scores-chrome` follows
+                     this without a constant to keep in step. --}}
+                <x-brand.mark class="size-6 shrink-0" />
+
                 <flux:heading size="xl" class="truncate">Scoreboard</flux:heading>
 
                 @if ($this->hasLiveGames)

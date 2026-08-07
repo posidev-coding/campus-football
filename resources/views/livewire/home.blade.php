@@ -340,6 +340,9 @@ new class extends Component
 }; ?>
 
 <div class="flex flex-col gap-6">
+    {{-- The brand bar. Scrolls away; the search bar below it is what pins. --}}
+    <x-home-nav />
+
     {{-- Search lives here now, not on a tab. The bar expands into a
          full-screen panel in place; from `sm` up the header's ⌘K palette
          takes over and the bar retires. --}}
@@ -611,8 +614,13 @@ new class extends Component
             </section>
         @endif
     @else
+        {{-- The name used to be a heading here. It is now in the nav directly
+             above at base and in the layout header from `sm` up, so printing it
+             again put the same two words twice on one screen 40px apart. The
+             tagline leads instead, and the h1 goes sr-only — the same call
+             every League screen already makes. --}}
         <div class="flex flex-col gap-1">
-            <flux:heading size="xl">{{ config('app.name') }}</flux:heading>
+            <h1 class="sr-only">{{ App\Support\Brand::name() }}</h1>
             <flux:subheading>Scores, stats and standings — every team, every week.</flux:subheading>
         </div>
     @endauth

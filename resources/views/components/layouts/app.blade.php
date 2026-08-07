@@ -3,24 +3,9 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scroll-smooth">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    {{-- Kept in step with the chosen appearance by the sync element at the top
-         of <body>. Hardcoded dark, a phone's address bar stayed black after
-         switching to Light — which the appearance control made visible. --}}
-    <meta name="theme-color" content="#09090b">
-
-    <title>{{ $title ?? config('app.name') }}</title>
-
-    {{-- Emits the preload link and the @font-face block for the self-hosted
-         variable font. @vite does NOT do this on its own — the font was
-         declared in the theme and never actually loaded until this was added,
-         which reads as a font that "doesn't look right" rather than one that
-         is missing. --}}
-    @fonts
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
-    @fluxAppearance
+    {{-- Shared with layouts/auth so the two cannot drift. They held byte-identical
+         heads before, which is exactly how one layout ends up without a favicon. --}}
+    @include('partials.head')
 </head>
 <body class="min-h-dvh">
     {{-- Tints the mobile browser chrome to match. It lives in <body> because
@@ -74,9 +59,11 @@
             {{-- Reclaimed on mobile: 56px of brand mark, search icon and avatar
                  that the tab bar carries instead. --}}
             <div class="hidden h-14 items-center gap-4 px-4 sm:flex">
-                <a href="{{ route('home') }}" wire:navigate class="flex shrink-0 items-center gap-2 font-semibold tracking-tight">
-                    <flux:icon name="trophy" variant="micro" class="text-zinc-400" />
-                    <span>{{ config('app.name') }}</span>
+                {{-- This was a `trophy` glyph beside the app name — the same
+                     glyph the League tab and the conference rows use, so the
+                     brand mark and a navigation icon were one picture. --}}
+                <a href="{{ route('home') }}" wire:navigate class="shrink-0">
+                    <x-brand.lockup size="sm" />
                 </a>
 
                 <x-area-nav class="ml-4 hidden min-w-0 flex-1 md:flex" />

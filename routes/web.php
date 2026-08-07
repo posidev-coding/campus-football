@@ -1,8 +1,35 @@
 <?php
 
+use App\Support\Brand;
 use Illuminate\Support\Facades\Route;
 
 Route::livewire('/', 'home')->name('home');
+
+/*
+ * Brand artefacts, generated rather than served as static files, because their
+ * contents are editable from the App Branding admin page.
+ *
+ * A second copy of the icon list is how a home-screen icon ends up disagreeing
+ * with the tab icon, so both of these read App\Support\Brand — the same
+ * resolver the layouts and the Filament panel use.
+ *
+ * `public/favicon.ico` was a tracked ZERO-byte file, and had to be deleted for
+ * this route to be reachable at all: the web server's try_files serves a real
+ * file before it ever reaches PHP, so an empty one shadows the route silently.
+ */
+Route::get('site.webmanifest', fn () => response()
+    ->json(Brand::manifest())
+    ->header('Content-Type', 'application/manifest+json')
+)->name('manifest');
+
+Route::get('favicon.ico', function () {
+    abort_if(($ico = Brand::ico()) === null, 404);
+
+    return response($ico, 200, [
+        'Content-Type' => 'image/x-icon',
+        'Cache-Control' => 'public, max-age=86400',
+    ]);
+})->name('favicon');
 
 /*
  * Public sports data. These are read-only and served from cache, so a cold

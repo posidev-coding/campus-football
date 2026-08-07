@@ -12,6 +12,7 @@ use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\User;
 use App\Models\Week;
+use App\Support\Brand;
 use App\Support\TeamGlance;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -371,6 +372,12 @@ describe('the team swiper', function () {
         $countFor = function (User $user) {
             Cache::flush();
             TeamGlance::flush();
+            // Both measurements have to start from the same cold state.
+            // Cache::flush() alone does not do it for anything memoized in a
+            // STATIC property on top of the cache — the second run would skip
+            // the lookup the first one paid for and read one query cheaper,
+            // which looks exactly like the regression this test is for.
+            Brand::flush();
             DB::enableQueryLog();
             DB::flushQueryLog();
 

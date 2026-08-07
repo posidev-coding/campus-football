@@ -269,7 +269,13 @@ new class extends Component
          offset is 14 spacing units PLUS ONE PIXEL because the header is `h-14`
          plus its own `border-b`. --}}
     <div class="sticky top-0 z-30 -mx-4 -mt-5 flex items-center justify-between gap-3 bg-white px-4 pt-3 pb-2 sm:top-[calc(var(--spacing)*14+1px)] dark:bg-zinc-950">
-        <flux:heading size="xl">Account</flux:heading>
+        {{-- The word "Account" is gone from the page. The bottom tab that got
+             you here is already lit and already says it, so the heading was
+             the screen naming itself twice — the same reason every League
+             screen's h1 is sr-only. The brand takes the space instead, which
+             is what the top-left of an app screen is for. --}}
+        <x-brand.lockup size="md" />
+        <h1 class="sr-only">Account</h1>
 
         {{-- Icon-only. The three labels were the widest thing in the card and
              said less than the icons do; up here they would not fit beside the

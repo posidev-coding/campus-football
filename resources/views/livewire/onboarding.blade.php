@@ -285,11 +285,19 @@ new class extends Component
         {{-- Closable at every step, per the brief: nobody is trapped in a
              signup they changed their mind about. --}}
         <div class="flex items-center justify-between gap-2 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
-            @if ($step !== 'team' && $step !== 'name')
-                <flux:button wire:click="back" size="sm" variant="ghost" icon="chevron-left">Back</flux:button>
-            @else
-                <span></span>
-            @endif
+            {{-- The mark holds this slot on EVERY step, with Back beside it
+                 where there is one. Putting the brand in the slot only when
+                 Back is absent made it appear and disappear as the reader
+                 moved through signup, which reads as a rendering fault rather
+                 than as chrome. Measured at 390px: mark 20 + Back ~72 + the
+                 step counter ~60 + close ~32 sits well inside the row. --}}
+            <div class="flex items-center gap-1">
+                <x-brand.mark class="size-5 shrink-0" />
+
+                @if ($step !== 'team' && $step !== 'name')
+                    <flux:button wire:click="back" size="sm" variant="ghost" icon="chevron-left">Back</flux:button>
+                @endif
+            </div>
 
             @guest
                 @if ($step !== 'team')

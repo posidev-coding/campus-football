@@ -18,6 +18,22 @@
     --font-sans: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 
+    /* The app's own brand — 1b Pennant. Ink and Cream are the mark and
+       wordmark in light and dark; Lager is the accent the pennant's stripes
+       wear and the Filament panel's primary.
+
+       Deliberately NOT `@theme static`. Tailwind emits these as custom
+       properties and compiles `text-brand-ink` to `color:
+       var(--color-brand-ink)`, which is what lets the App Branding admin page
+       retint the whole app by overriding the same three properties in a head
+       style block. `static` would inline the literal and make that a no-op.
+
+       App\Support\Brand::COLORS holds the same three values as the shipped
+       default; they have to agree, and BrandingTest asserts that they do. */
+    --color-brand-ink: #0b0b0c;
+    --color-brand-cream: #f5f2ea;
+    --color-brand-lager: #e8a33c;
+
     /* Tight scale. Data density comes from typography, not from cramming. */
     --text-stat: 0.8125rem;
     --text-stat--line-height: 1.15;
