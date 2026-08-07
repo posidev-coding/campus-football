@@ -79,7 +79,7 @@ new class extends Component
             type="button"
             wire:click="unfollow"
             wire:loading.attr="disabled"
-            class="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-medium ring-1 ring-current/50 transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-50"
+            class="flex h-7 shrink-0 items-center gap-1 rounded-md px-2.5 text-sm font-medium ring-1 ring-current/50 transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-50"
         >
             <flux:icon name="check" variant="micro" />
             Following
@@ -92,7 +92,7 @@ new class extends Component
             type="button"
             wire:click="follow"
             wire:loading.attr="disabled"
-            class="team-invert flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm font-semibold shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-50"
+            class="team-invert flex h-7 shrink-0 items-center gap-1 rounded-md px-2.5 text-sm font-semibold shadow-sm transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current disabled:opacity-50"
         >
             <flux:icon name="plus" variant="micro" />
             Follow

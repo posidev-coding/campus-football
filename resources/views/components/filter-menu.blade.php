@@ -59,7 +59,7 @@
             @class([
                 'group flex w-fit items-center gap-1 text-sm font-medium transition-colors',
                 'py-0.5 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100' => $variant === 'default',
-                'h-8 shrink-0 rounded-md px-3 ring-1 ring-current/50 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current' => $variant === 'accent',
+                'h-7 shrink-0 rounded-md px-2.5 ring-1 ring-current/50 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current' => $variant === 'accent',
             ])
         >
             {{ $current['label'] ?? '' }}

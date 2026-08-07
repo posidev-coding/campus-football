@@ -499,7 +499,7 @@ new class extends Component
              One home at every width, deliberately: a control that sits in the
              hero on a phone and beside the tabs on a laptop is two controls to
              learn. Following dispatches the per-team news fetch. --}}
-        <div class="flex shrink-0 flex-col items-end gap-2">
+        <div class="flex shrink-0 flex-col items-end gap-2.5">
             <livewire:follow-button :team="$team" :key="'follow-'.$team->id" />
 
             <x-season-menu

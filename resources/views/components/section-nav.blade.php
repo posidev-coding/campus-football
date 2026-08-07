@@ -37,7 +37,12 @@
             },
         }"
         x-init="$nextTick(() => center())"
-        {{ $attributes->class(['border-t border-zinc-200 sm:border-t-0 dark:border-zinc-800']) }}
+        {{-- No top rule. Below `sm` this strip IS the header — the brand row
+             above it is `sm:flex` — so a `border-t` drew a 1px line across the
+             very top of the screen with nothing above it to separate from.
+             The header's own `border-b` underneath is the only rule the strip
+             needs, and it is the one doing real work. --}}
+        {{ $attributes }}
         aria-label="Sections"
     >
         <div
