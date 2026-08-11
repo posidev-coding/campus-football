@@ -125,6 +125,7 @@ new class extends Component
 <div
     x-data="{ open: false }"
     @keydown.escape.window="if (open) { open = false; $wire.clear(); document.activeElement?.blur() }"
+    data-tour="search"
     class="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-6 -mb-3 border-b border-zinc-200 bg-white/85 px-4 pt-5 pb-3 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/85"
     :class="{ 'sticky z-30 backdrop-blur': ! open }"
 >

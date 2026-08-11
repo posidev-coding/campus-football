@@ -10,7 +10,9 @@ use App\Support\Scope;
 use App\Support\TeamGlance;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Url;
 use Livewire\Component;
+use Laravel\Pennant\Feature;
 
 /**
  * The front door.
@@ -62,6 +64,36 @@ new class extends Component
         }
 
         unset($this->showOnboardingCta);
+    }
+
+    /**
+     * Replay flag from Account's "Replay the tour" — a URL param so the
+     * button is a plain link and a replay is shareable in a bug report.
+     */
+    #[Url(as: 'tour', except: false)]
+    public bool $tourReplay = false;
+
+    /**
+     * The guided tour mounts exactly when the signup wizard's hand-off lands:
+     * signed in, onboarded, first team followed, never toured. Gated by the
+     * app's first Pennant flag so it can be pulled without a deploy.
+     */
+    #[Computed]
+    public function showTour(): bool
+    {
+        $user = auth()->user();
+
+        if ($user === null || ! Feature::active('guided-tour')) {
+            return false;
+        }
+
+        if ($this->tourReplay) {
+            return true;
+        }
+
+        return $user->hasOnboarded()
+            && $this->followedTeams->isNotEmpty()
+            && ! $user->hasToured();
     }
 
     /**
@@ -359,10 +391,10 @@ new class extends Component
     @if ($this->showOnboardingCta)
         <x-onboarding-cta :guest="! auth()->check()" />
     @endif
+
     {{-- The install pitch rides below the front door, never instead of it.
          Hidden inside the installed app, gone for good once dismissed. --}}
     <x-install-banner />
-
 
     @auth
         @if ($this->glances !== [])
@@ -513,6 +545,7 @@ new class extends Component
                     x-ref="track"
                     x-init="trackCards()"
                     @scroll="syncNews()"
+                    data-tour="glance"
                     class="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 [scrollbar-width:none] motion-safe:scroll-smooth [&::-webkit-scrollbar]:hidden"
                 >
                     @foreach ($this->glances as $glance)
@@ -672,4 +705,11 @@ new class extends Component
             <x-article-card :article="$article" wire:key="home-news-{{ $article->id }}" />
         @endforeach
     </section>
+
+    {{-- The guided tour, LAST at the page root: `fixed inset-0` must never
+         sit inside a sticky/backdrop-filter ancestor (the search-panel
+         lesson), and being last keeps it above nothing it should be under. --}}
+    @if ($this->showTour)
+        <livewire:tour />
+    @endif
 </div>

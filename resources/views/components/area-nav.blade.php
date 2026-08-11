@@ -20,6 +20,9 @@
             href="{{ Navigation::href($area) }}"
             wire:navigate
             @if ($current) aria-current="page" @endif
+            {{-- The guided tour's desktop spotlight target — the bottom nav
+                 carries the same key below `sm`. --}}
+            data-tour="{{ $area['key'] }}"
             @class([
                 'rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors',
                 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100' => $current,

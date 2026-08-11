@@ -29,12 +29,16 @@
 >
     <div class="grid h-[var(--nav-height)]" style="grid-template-columns: repeat({{ count($areas) }}, minmax(0, 1fr));">
         @foreach ($areas as $area)
+            {{-- `data-tour` marks the guided tour's spotlight targets; the
+                 tour picks whichever element wearing a key is visible, so
+                 these tabs serve below `sm` and the header chips above. --}}
             <x-nav-tab
                 :href="Navigation::href($area)"
                 :icon="$area['icon']"
                 :label="Navigation::label($area)"
                 :active="Navigation::isCurrent($area)"
                 wire:key="area-{{ $area['key'] }}"
+                data-tour="{{ $area['key'] }}"
             />
         @endforeach
     </div>

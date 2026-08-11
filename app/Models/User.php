@@ -64,6 +64,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'onboarded_at' => 'datetime',
+            'tour_completed_at' => 'datetime',
             'password' => 'hashed',
             'admin' => 'boolean',
             'content_rating' => ContentRating::class,
@@ -194,6 +195,12 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     public function hasOnboarded(): bool
     {
         return $this->onboarded_at !== null;
+    }
+
+    /** Finished or skipped the guided tour — either way, it stays down. */
+    public function hasToured(): bool
+    {
+        return $this->tour_completed_at !== null;
     }
 
     /**

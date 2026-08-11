@@ -9,6 +9,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Pennant\Feature;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -37,5 +38,13 @@ class AppServiceProvider extends ServiceProvider
         Model::preventSilentlyDiscardingAttributes(! $this->app->isProduction());
 
         Date::use(CarbonImmutable::class);
+
+        /*
+         * Feature flags — the first Pennant use in the app, and the
+         * convention: closures HERE until a flag earns real logic, at which
+         * point it graduates to a class in app/Features. On for everyone now;
+         * the flag exists so the tour can be pulled without a deploy.
+         */
+        Feature::define('guided-tour', fn (): bool => true);
     }
 }

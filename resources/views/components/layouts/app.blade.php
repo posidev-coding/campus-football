@@ -82,7 +82,13 @@
                 <x-area-nav class="ml-4 hidden min-w-0 flex-1 sm:flex" />
 
                 <div class="ml-auto flex shrink-0 items-center gap-1">
-                    <livewire:search />
+                    {{-- The wrapper exists to carry the tour's spotlight
+                         target — attributes on a livewire: tag do not reach
+                         its root, and `display: contents` has no box to
+                         measure. --}}
+                    <div class="flex" data-tour="search">
+                        <livewire:search />
+                    </div>
 
                     @auth
                         <flux:dropdown position="bottom" align="end">
@@ -93,10 +99,12 @@
                                 :avatar="auth()->user()->avatarUrl()"
                                 :initials="auth()->user()->initials()"
                                 :chevron="false"
+                                data-tour="account"
                             />
 
                             <flux:menu>
                                 <flux:menu.item icon="user" :href="route('account')">{{ auth()->user()->name }}</flux:menu.item>
+                                <flux:menu.separator />
                                 {{-- Appearance, right where a desktop reader
                                      looks for it. `$flux.appearance` is the
                                      same per-browser store the Account
@@ -110,7 +118,6 @@
                                     <flux:menu.radio value="dark">Dark</flux:menu.radio>
                                     <flux:menu.radio value="system">Match system</flux:menu.radio>
                                 </flux:menu.radio.group>
-                                <flux:menu.separator />
                                 <flux:menu.separator />
                                 @if (auth()->user()->isAdmin())
                                     <flux:menu.item icon="wrench-screwdriver" href="/admin">Admin</flux:menu.item>

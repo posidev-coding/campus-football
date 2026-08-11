@@ -921,6 +921,19 @@ new class extends Component
             Get the app
         </flux:button>
 
+        {{-- A plain link: ?tour=1 makes Home mount the tour regardless of the
+             completed stamp, so a replay is also shareable in a bug report. --}}
+        <flux:button
+            :href="route('home', ['tour' => 1])"
+            wire:navigate
+            size="sm"
+            variant="ghost"
+            class="justify-start"
+        >
+            <flux:icon.arrow-repeat variant="micro" />
+            Replay the tour
+        </flux:button>
+
         @if (auth()->user()->isAdmin())
             <flux:button href="/admin" icon="wrench-screwdriver" size="sm" variant="ghost" class="justify-start">
                 Admin

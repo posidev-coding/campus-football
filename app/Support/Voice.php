@@ -132,6 +132,83 @@ class Voice
         ],
 
         /*
+         * The guided tour. Coach-mark chrome frames factual screens, so it
+         * may speak even while pointing at Scores — the facts underneath stay
+         * untouched, and the controls (Back, Next, Skip) stay plain.
+         */
+        'tour.glance.heading' => [
+            'pg' => 'Your teams, at a glance',
+            'pg13' => 'Your teams live here',
+            'r' => 'Your teams live here — all of them',
+        ],
+
+        'tour.glance.body' => [
+            'pg' => 'One card per team you follow — records, trends, next games. Swipe across to see them all.',
+            'pg13' => 'One card per team — records, trends, next games. Swipe through the whole roster, even the rebuilding ones.',
+            'r' => 'One card per team — records, trends, next games. Swipe the roster; what you did in the rankings stays between you and the card.',
+        ],
+
+        'tour.search.heading' => [
+            'pg' => 'Search everything',
+            'pg13' => 'Find anyone',
+            'r' => 'Find anyone, settle anything',
+        ],
+
+        'tour.search.body' => [
+            'pg' => 'Teams, players, coaches, games — start typing and it finds them.',
+            'pg13' => 'Teams, players, coaches, games. Start typing — "Geo" is enough to find Georgia.',
+            'r' => 'Teams, players, coaches, games. Settle the argument before they finish making their point.',
+        ],
+
+        'tour.scores.heading' => [
+            'pg' => 'Every score, every week',
+            'pg13' => 'Scores, live',
+            'r' => 'The scoreboard never lies',
+        ],
+
+        'tour.scores.body' => [
+            'pg' => 'The scoreboard covers every game, every week — live ones rise to the top.',
+            'pg13' => 'Every game, every week, live as it happens. Your teams pin themselves to the top.',
+            'r' => 'Every game, every week, live. Your teams pin to the top whether the score flatters them or not.',
+        ],
+
+        'tour.league.heading' => [
+            'pg' => 'The whole league',
+            'pg13' => 'The whole league',
+            'r' => 'The whole league, receipts included',
+        ],
+
+        'tour.league.body' => [
+            'pg' => 'Standings, rankings, teams, players, stats and recruiting — all under League.',
+            'pg13' => 'Standings, rankings, teams, players, stats, recruiting — the whole sport, one tab over.',
+            'r' => 'Standings, rankings, stats, recruiting — every number your rival pretends not to know.',
+        ],
+
+        'tour.account.heading' => [
+            'pg' => 'Make it yours',
+            'pg13' => 'Make it yours',
+            'r' => 'Set your tolerance',
+        ],
+
+        'tour.account.body' => [
+            'pg' => 'Account holds your teams, your look, and how much personality this app brings.',
+            'pg13' => "Account is where you reorder your teams, flip the look, and set how much grief we're allowed to give.",
+            'r' => 'Account is where you reorder your teams, flip the look, and crank the grief dial as far as it goes.',
+        ],
+
+        'tour.install.heading' => [
+            'pg' => 'One more thing',
+            'pg13' => 'Put us on your home screen',
+            'r' => 'Move us in already',
+        ],
+
+        'tour.install.body' => [
+            'pg' => 'Add the app to your home screen for the full-screen version — the next page shows you how.',
+            'pg13' => "Full screen, no browser bars, one tap from kickoff. We'll walk you through it.",
+            'r' => 'Full screen, no browser bars, kickoff one tap away — and it beats hunting for a lost tab mid-game.',
+        ],
+
+        /*
          * The install pitch. Chrome that frames the whole app rather than any
          * one screen, so it speaks — but the actual steps ("tap Share", "Add
          * to Home Screen") stay plain in the view: those are Apple's and

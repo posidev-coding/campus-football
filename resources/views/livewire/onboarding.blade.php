@@ -130,12 +130,17 @@ new class extends Component
         $this->redirect(route('home', ['start' => 'team']));
     }
 
-    /** Finish: stop the prompt coming back, and close. */
+    /** Finish: stop the prompt coming back, close, and hand off to the tour. */
     public function done(): void
     {
         $this->markOnboarded();
 
         $this->dispatch('close-onboarding');
+
+        // The wizard's last screen is the tour's first: Home now has their
+        // team on it, so the coach marks finally have something to point at.
+        // The tour component ignores this when it has nothing to show.
+        $this->dispatch('start-tour');
     }
 
     protected function afterTeamAdded(\App\Models\Team $team): void
@@ -281,7 +286,9 @@ new class extends Component
     @close-onboarding.window="open = false; clear()"
     @keydown.escape.window="open = false"
 >
-    <div x-cloak x-show="open" class="fixed inset-0 z-50 flex flex-col bg-white pt-[env(safe-area-inset-top)] dark:bg-zinc-950">
+    {{-- `data-onboarding-overlay` lets the tour hold back while the wizard
+         is on screen — two z-50 overlays fighting is worse than either. --}}
+    <div x-cloak x-show="open" data-onboarding-overlay class="fixed inset-0 z-50 flex flex-col bg-white pt-[env(safe-area-inset-top)] dark:bg-zinc-950">
         {{-- Closable at every step, per the brief: nobody is trapped in a
              signup they changed their mind about. --}}
         <div class="flex items-center justify-between gap-2 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
