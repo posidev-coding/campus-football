@@ -73,7 +73,14 @@
 
                     @auth
                         <flux:dropdown position="bottom" align="end">
-                            <flux:profile :initials="auth()->user()->initials()" :chevron="false" />
+                            {{-- `avatar` is null for most people and always will
+                                 be; initials are the normal state, not the
+                                 fallback state. --}}
+                            <flux:profile
+                                :avatar="auth()->user()->avatarUrl()"
+                                :initials="auth()->user()->initials()"
+                                :chevron="false"
+                            />
 
                             <flux:menu>
                                 <flux:menu.item icon="user" :href="route('account')">{{ auth()->user()->name }}</flux:menu.item>

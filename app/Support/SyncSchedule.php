@@ -127,6 +127,7 @@ class SyncSchedule
             str_starts_with($command, 'cfb:players') => 'players:'.($option('only') ?? 'all'),
             str_starts_with($command, 'cfb:coaches') => 'coaches',
             str_starts_with($command, 'cfb:aggregate') => 'aggregate',
+            str_starts_with($command, 'cfb:newsletter') => 'newsletter',
             default => null,
         };
     }

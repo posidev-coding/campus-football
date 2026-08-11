@@ -13,7 +13,20 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        /*
+         * One-click unsubscribe arrives as a POST from Gmail or Apple Mail
+         * (RFC 8058 List-Unsubscribe-Post) with no session and therefore no
+         * CSRF token. Exempting it is safe because the URL carries a signature
+         * bound to the user id — `signed` is the authentication, and a tampered
+         * link 403s before the controller runs.
+         */
+        $middleware->validateCsrfTokens(except: [
+            'unsubscribe/*',
+            /* Vonage posts an inbound SMS with no session and no token. Safe to
+               exempt because the handler can only turn SMS off — see
+               SmsWebhookController for why that is the whole defense. */
+            'webhooks/sms/*',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

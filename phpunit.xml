@@ -36,6 +36,11 @@
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
+        <!-- Pinned for the same reason as CFB_SEASON: left unpinned it inherits
+             whatever the developer's .env says, so configuring a real bucket
+             locally broke a test that had nothing to do with buckets. Anything
+             wanting the R2 shape sets it per test. -->
+        <env name="UPLOAD_DISK" value="public"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>

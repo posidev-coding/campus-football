@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\SmsStatusWebhookController;
+use App\Http\Controllers\SmsWebhookController;
+use App\Http\Controllers\UnsubscribeController;
 use App\Support\Brand;
 use Illuminate\Support\Facades\Route;
 
@@ -92,6 +95,49 @@ Route::livewire('recruiting/{year?}', 'recruiting')->name('recruiting');
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::livewire('account', 'account')->name('account');
 });
+
+/*
+ * One-click unsubscribe, and deliberately OUTSIDE the auth group.
+ *
+ * Somebody who wants the emails to stop is the least likely person in the world
+ * to log in to make that happen, and a login wall between them and the button
+ * is how an unsubscribe becomes a spam report instead. The signature is the
+ * authentication: it is bound to the user id, it cannot be edited into somebody
+ * else's, and `signed` rejects a tampered one with a 403.
+ *
+ * POST as well as GET, because RFC 8058 List-Unsubscribe-Post is what makes
+ * Gmail and Apple Mail show their own native unsubscribe control — and their
+ * one-click sends a POST with no session behind it.
+ */
+Route::match(['get', 'post'], 'unsubscribe/{user}', UnsubscribeController::class)
+    ->middleware('signed')
+    ->name('newsletter.unsubscribe');
+
+/*
+ * Inbound SMS from Vonage — a STOP reply, in practice.
+ *
+ * Unauthenticated because a webhook has no session, and safe to leave that way
+ * because the endpoint can only ever turn SMS OFF: forging it achieves what the
+ * user could have asked for anyway. Turning it back on requires signing in.
+ *
+ * GET as well as POST because Vonage's inbound method is an account setting and
+ * defaults have moved over the years; answering both means the setting cannot
+ * be the reason opt-outs silently stop working.
+ */
+Route::match(['get', 'post'], 'webhooks/sms/inbound', SmsWebhookController::class)
+    ->name('webhooks.sms.inbound');
+
+/*
+ * Delivery receipts. Vonage requires a status URL on an application, and it
+ * earns its place: the send API returns success for a message the carrier will
+ * go on to drop, so this is the only signal that separates "accepted and
+ * billed" from "actually arrived".
+ *
+ * Writes nothing, which makes it the safest endpoint in the app to leave open —
+ * a forged receipt costs one log line.
+ */
+Route::match(['get', 'post'], 'webhooks/sms/status', SmsStatusWebhookController::class)
+    ->name('webhooks.sms.status');
 
 /*
  * Local-only responsive preview. Chrome will not size a window below ~600px,

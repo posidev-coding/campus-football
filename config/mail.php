@@ -37,6 +37,31 @@ return [
 
     'mailers' => [
 
+        /*
+         * Cloudflare Email Service — production.
+         *
+         * An API transport rather than SMTP: a rejection comes back as a body
+         * naming the address and the reason instead of a numeric code, and a
+         * newsletter drain is one POST per message rather than one SMTP
+         * conversation per message.
+         *
+         * The HTML is posted verbatim as a JSON field, so the published mail
+         * templates render exactly as they do over SMTP — and custom headers
+         * pass through, which is what keeps List-Unsubscribe (and therefore
+         * Gmail's own unsubscribe control) working.
+         */
+        'cloudflare' => [
+            'transport' => 'cloudflare',
+        ],
+
+        /*
+         * Brevo, kept configured on purpose.
+         *
+         * Cloudflare Email Service only reached public beta in April 2026, so
+         * `MAIL_MAILER=smtp` with the Brevo credentials still in the
+         * environment is a one-variable rollback rather than a deploy. Cheap
+         * insurance; delete it once Cloudflare has a season behind it.
+         */
         'smtp' => [
             'transport' => 'smtp',
             'scheme' => env('MAIL_SCHEME'),

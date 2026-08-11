@@ -9,13 +9,19 @@ use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\User;
 use App\Services\CfbCalendar;
+use App\Support\PhoneNumber;
 use App\Support\Voice;
 use Flux\Flux;
+use App\Notifications\VerifyPhoneNotification;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 /**
  * Account settings, and the teams a user cares about.
@@ -29,6 +35,8 @@ use Livewire\Component;
  */
 new class extends Component
 {
+    use WithFileUploads;
+
     public string $first_name = '';
 
     public string $last_name = '';
@@ -36,6 +44,33 @@ new class extends Component
     public string $handle = '';
 
     public string $content_rating = '';
+
+    /**
+     * The weekly email.
+     *
+     * `live` rather than part of the profile modal: it is a switch, not a form
+     * — there is nothing to review before saving, and burying an email
+     * preference behind a save button is how somebody ends up unsubscribing
+     * through the footer link instead.
+     */
+    public bool $newsletter_opt_in = true;
+
+    /** The pending upload. Null unless a file is mid-flight. */
+    public $photo = null;
+
+    /* ── SMS ──────────────────────────────────────────────────────────────
+     *
+     * Three fields for what looks like one control, because consent and
+     * identity are separate claims: the number they typed, the code proving
+     * they hold it, and the explicit yes.
+     */
+    public string $phone = '';
+
+    /** The 6-digit code, shown only while a verification is outstanding. */
+    public string $phone_code = '';
+
+    public bool $sms_opt_in = false;
+
 
     /**
      * The follow search query.
@@ -71,6 +106,174 @@ new class extends Component
         $this->last_name = $user->last_name;
         $this->handle = $user->handle;
         $this->content_rating = $user->content_rating->value;
+        $this->newsletter_opt_in = $user->newsletter_opt_in;
+        $this->phone = PhoneNumber::format($user->phone) ?? '';
+        $this->sms_opt_in = $user->sms_opt_in;
+    }
+
+    /**
+     * Is there a code outstanding? Drives whether the form asks for a number or
+     * for the digits we just sent to it.
+     */
+    #[Computed]
+    public function awaitingCode(): bool
+    {
+        return Cache::has($this->codeKey());
+    }
+
+    /**
+     * Send a one-time code to the number they typed.
+     *
+     * The number is NOT stored yet. Writing it before it is proved would let
+     * anybody park a stranger's phone on their account, and every later send
+     * would then be to somebody who never heard of us.
+     */
+    public function sendPhoneCode(): void
+    {
+        /* A fresh attempt clears the previous complaint. Without this the last
+           error stays on screen through a successful retry, which reads as the
+           retry having failed too. */
+        $this->resetValidation();
+
+        $normalized = PhoneNumber::normalize($this->phone);
+
+        $this->validate(
+            ['phone' => ['required']],
+            ['phone.required' => 'Add a mobile number first.'],
+        );
+
+        if ($normalized === null) {
+            $this->addError('phone', 'That does not look like a mobile number. US numbers can be 10 digits; anything else needs a country code.');
+
+            return;
+        }
+
+        /*
+         * One code a minute, and the limit is per USER rather than per number:
+         * keyed on the number, somebody could walk through a range and use us
+         * as a free SMS cannon at our expense. This notification carries no
+         * daily budget middleware because it is transactional, so this rate
+         * limit is the only thing standing between a form and a bill.
+         */
+        $throttle = 'phone-code:'.auth()->id();
+
+        if (RateLimiter::tooManyAttempts($throttle, 1)) {
+            $this->addError('phone', 'Wait a moment before asking for another code.');
+
+            return;
+        }
+
+        RateLimiter::hit($throttle, 60);
+
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        Cache::put($this->codeKey(), ['code' => $code, 'phone' => $normalized], now()->addMinutes(10));
+
+        /* Addressed to the number directly: routeNotificationForVonage() gates
+           on the number already being verified, which is what this establishes. */
+        Notification::route('vonage', $normalized)
+            ->notify(new VerifyPhoneNotification($code));
+
+        unset($this->awaitingCode);
+    }
+
+    /**
+     * Check the code, and only then store the number.
+     */
+    public function confirmPhoneCode(): void
+    {
+        $this->resetValidation();
+
+        $pending = Cache::get($this->codeKey());
+
+        if ($pending === null) {
+            $this->addError('phone_code', 'That code has expired. Ask for another.');
+            unset($this->awaitingCode);
+
+            return;
+        }
+
+        if (! hash_equals($pending['code'], trim($this->phone_code))) {
+            $this->addError('phone_code', 'That code is not right.');
+
+            return;
+        }
+
+        auth()->user()->forceFill([
+            'phone' => $pending['phone'],
+            'phone_verified_at' => now(),
+        ])->save();
+
+        Cache::forget($this->codeKey());
+
+        $this->phone_code = '';
+        $this->phone = PhoneNumber::format($pending['phone']) ?? '';
+
+        unset($this->awaitingCode);
+    }
+
+    /**
+     * Forget the number entirely. Clears consent with it — consent to text a
+     * number we no longer hold means nothing, and leaving it set would text the
+     * NEXT number they add without asking again.
+     */
+    public function removePhone(): void
+    {
+        auth()->user()->forceFill([
+            'phone' => null,
+            'phone_verified_at' => null,
+            'sms_opt_in' => false,
+        ])->save();
+
+        Cache::forget($this->codeKey());
+
+        $this->phone = '';
+        $this->phone_code = '';
+        $this->sms_opt_in = false;
+
+        unset($this->awaitingCode);
+    }
+
+    /**
+     * The explicit yes, timestamped.
+     *
+     * `sms_opted_in_at` is stamped on the way IN and never cleared on the way
+     * out: it records that consent once happened, which stays true afterwards
+     * and is what a carrier asks to see when vetting the 10DLC campaign.
+     */
+    public function updatedSmsOptIn(bool $value): void
+    {
+        $user = auth()->user();
+
+        if ($value && $user->phone_verified_at === null) {
+            $this->sms_opt_in = false;
+            $this->addError('sms_opt_in', 'Add and confirm a mobile number first.');
+
+            return;
+        }
+
+        $user->forceFill([
+            'sms_opt_in' => $value,
+            'sms_opted_in_at' => $value ? now() : $user->sms_opted_in_at,
+        ])->save();
+    }
+
+    /** Cache key for the outstanding code — per user, never per number. */
+    private function codeKey(): string
+    {
+        return 'phone-verify:'.auth()->id();
+    }
+
+    /**
+     * Turning it back on clears nothing: `unsubscribed_at` records that they
+     * once said no, and that stays true.
+     */
+    public function updatedNewsletterOptIn(bool $value): void
+    {
+        auth()->user()->forceFill([
+            'newsletter_opt_in' => $value,
+            'unsubscribed_at' => $value ? auth()->user()->unsubscribed_at : now(),
+        ])->save();
     }
 
     public function saveProfile(): void
@@ -99,6 +302,46 @@ new class extends Component
         $user->update($validated);
 
         Flux::modal('edit-profile')->close();
+    }
+
+    /**
+     * Stored the moment a file is chosen, rather than behind the modal's save
+     * button: a photo is not a field somebody wants to review before
+     * committing, and seeing it appear is the confirmation.
+     */
+    public function updatedPhoto(): void
+    {
+        $this->validate([
+            /*
+             * A megabyte is generous for a 512px avatar and mean enough to stop
+             * somebody uploading a photo straight off a phone camera, which is
+             * five to ten times that. There is no resizing pipeline in this app
+             * and adding one is not this change's job — so the cap is the whole
+             * defense, and it has to be real.
+             */
+            'photo' => ['image', 'max:1024', 'dimensions:min_width=64,min_height=64'],
+        ], [
+            'photo.max' => 'That photo is over 1MB. Crop it or pick a smaller one.',
+            'photo.dimensions' => 'That image is too small to read at avatar size.',
+        ]);
+
+        $user = auth()->user();
+        $previous = $user->avatar;
+
+        $path = $this->photo->store('avatars', config('cfb.upload_disk'));
+
+        $user->forceFill(['avatar' => $path])->save();
+
+        /*
+         * Delete AFTER the new path is committed, never before. Reversed, a
+         * failed upload leaves the user with no avatar and no way back to the
+         * one they had.
+         */
+        if (filled($previous) && $previous !== $path) {
+            Storage::disk(config('cfb.upload_disk'))->delete($previous);
+        }
+
+        $this->photo = null;
     }
 
     /**
@@ -294,7 +537,34 @@ new class extends Component
 
     <flux:card class="flex flex-col gap-3">
         <div class="flex items-center gap-3">
-            <flux:avatar :initials="auth()->user()->initials()" />
+            {{-- The avatar IS the control. A separate "change photo" button
+                 would be a second thing to place on a row that is already
+                 tight at 390px, and tapping your own face to change it is the
+                 gesture every other app has taught. The label wraps a hidden
+                 input so it stays keyboard-reachable and screen-reader-named,
+                 which a click handler on a div would not be. --}}
+            <label class="group relative shrink-0 cursor-pointer" title="Change your photo">
+                <flux:avatar
+                    :src="auth()->user()->avatarUrl()"
+                    :initials="auth()->user()->initials()"
+                />
+
+                {{-- Only on hover and focus, so the face is not permanently
+                     wearing a badge. --}}
+                <span
+                    class="absolute inset-0 flex items-center justify-center rounded-full bg-zinc-900/60 text-white opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
+                    aria-hidden="true"
+                >
+                    <flux:icon name="camera" variant="micro" />
+                </span>
+
+                <input type="file" wire:model="photo" accept="image/*" class="sr-only" aria-label="Upload a profile photo">
+            </label>
+
+            {{-- The one place the upload can report on itself. `wire:target`
+                 keeps it from firing on every other write this component
+                 makes. --}}
+            <flux:icon.loading wire:loading wire:target="photo" class="size-4 shrink-0 text-zinc-400" />
 
             <div class="flex min-w-0 flex-col">
                 <span class="truncate font-medium">{{ auth()->user()->name }}</span>
@@ -318,6 +588,12 @@ new class extends Component
             </flux:modal.trigger>
         </div>
 
+        {{-- Below the row rather than beside the avatar: the messages are a
+             sentence long and there is no width for them at 390px. Without
+             this the upload validation has nowhere to land and a rejected
+             photo looks like nothing happened at all. --}}
+        <flux:error name="photo" />
+
         <flux:separator />
 
         <div class="flex items-center justify-between gap-3 text-sm">
@@ -325,6 +601,91 @@ new class extends Component
             <flux:badge size="sm" class="shrink-0">
                 {{ auth()->user()->content_rating->label() }} · {{ auth()->user()->content_rating->subLabel() }}
             </flux:badge>
+        </div>
+
+        <flux:separator />
+
+        {{-- Saves on change rather than behind the profile modal's save button.
+             It is a switch, not a form: there is nothing to review, and an
+             email preference that takes three taps to reach is one people give
+             up on and unsubscribe from the footer instead. --}}
+        <flux:switch
+            wire:model.live="newsletter_opt_in"
+            label="Weekly email"
+            description="How your teams did, and what's next. One a week, and you can stop it any time."
+            align="right"
+        />
+
+        <flux:separator />
+
+        {{--
+            Text messages.
+
+            Three steps, shown one at a time, because they are three different
+            claims: a number, proof it is yours, and an explicit yes. Collapsing
+            them into one control is how an app ends up texting a stranger whose
+            number somebody fat-fingered.
+
+            The switch stays hidden until the number is confirmed. Offering
+            consent before there is a verified number to attach it to means
+            capturing a "yes" that cannot lawfully be acted on.
+        --}}
+        <div class="flex flex-col gap-3">
+            @if (auth()->user()->phone_verified_at)
+                <flux:switch
+                    wire:model.live="sms_opt_in"
+                    label="Text messages"
+                    description="Reminders and alerts about your teams. Message and data rates may apply, and you can reply STOP to any message to end them."
+                    align="right"
+                />
+
+                <div class="flex items-center justify-between gap-3 text-sm">
+                    <span class="min-w-0 truncate text-zinc-500">
+                        {{ $this->phone }}
+                        <flux:badge size="sm" color="green" class="ms-1">Confirmed</flux:badge>
+                    </span>
+
+                    <flux:button wire:click="removePhone" size="xs" variant="ghost" class="shrink-0">
+                        Remove
+                    </flux:button>
+                </div>
+
+                <flux:error name="sms_opt_in" />
+            @elseif ($this->awaitingCode)
+                <form wire:submit="confirmPhoneCode" class="flex flex-col gap-2">
+                    <flux:input
+                        wire:model="phone_code"
+                        label="Enter the code"
+                        description="Sent to {{ $this->phone }}. It expires in ten minutes."
+                        inputmode="numeric"
+                        autocomplete="one-time-code"
+                        maxlength="6"
+                    />
+
+                    <div class="flex gap-2">
+                        <flux:button type="submit" size="sm" variant="primary">Confirm</flux:button>
+                        <flux:button wire:click="removePhone" size="sm" variant="ghost">Cancel</flux:button>
+                    </div>
+                </form>
+            @else
+                <form wire:submit="sendPhoneCode" class="flex flex-col gap-2">
+                    {{-- `inputmode="tel"` raises the phone keypad rather than the
+                         full keyboard, which is the difference between typing a
+                         number and composing one. --}}
+                    <flux:input
+                        wire:model="phone"
+                        label="Mobile number"
+                        description="Optional. We'll text a code to confirm it before anything else is sent."
+                        placeholder="(415) 555-0123"
+                        inputmode="tel"
+                        autocomplete="tel"
+                    />
+
+                    <flux:button type="submit" size="sm" variant="ghost" class="self-start">
+                        Send me a code
+                    </flux:button>
+                </form>
+            @endif
         </div>
     </flux:card>
 

@@ -1122,6 +1122,199 @@ already says "Account", so the word survives as `sr-only` — the same call ever
 League screen makes. Scores keeps its heading and gains the mark beside it,
 because it is still the app's one non-redundant screen title.
 
+## Uploads live on R2, and S3-compatible is not S3
+
+`config('cfb.upload_disk')` chooses where user uploads go — `public` locally,
+`r2` on Laravel Cloud, whose own filesystem does not survive a deploy. One key,
+three call sites (`Brand::asset`, `Brand::bytes`, the Filament FileUpload), so
+the move is one env var to undo.
+
+**The SHIPPED brand is not on it and must not be.** `Brand::bytes()` reads
+`public_path()` for the git-tracked defaults, so a stock install's favicon never
+depends on a bucket being reachable — which is the state every fresh clone and
+every CI run is in.
+
+Four things R2 does differently, and none of them announces itself:
+
+- **The S3 endpoint is AUTHENTICATED.** `Storage::url()` composes a URL from the
+  endpoint when `AWS_URL` is unset, and every image 401s. Laravel Cloud does not
+  inject `AWS_URL` even for a public bucket — it has to be copied in by hand, and
+  it is the only thing deciding what an asset URL looks like, so pointing it at
+  `cdn.campusfootball.net` is a one-line change.
+- **R2 implements no object ACLs and REJECTS them** — Laravel Cloud's own docs
+  say `visibility: 'public'` fails with `NotImplemented`. Visibility belongs to
+  the BUCKET, chosen when it is created. Filament only calls
+  `setVisibility($path, 'public')` when its own `getVisibility()` resolves to
+  `public`, which happens when the disk is literally named `public` or when
+  `->visibility('public')` was called — so dropping that call is what makes an
+  upload safe, and `UploadDiskTest` asserts the framework's default rather than
+  our source, because the risk is Filament changing it.
+- **The AWS SDK sends checksum headers by default.** `request_checksum_calculation`
+  defaults to `when_supported` (S3Client.php:295 in the installed 3.390.5),
+  putting `x-amz-checksum-crc32` on every PutObject. Both checksum options are
+  pinned to `when_required`.
+- **`league/flysystem-aws-s3-v3` is a separate package** and was not installed —
+  `aws/aws-sdk-php` was only there for Cloud's queue driver. Without the adapter
+  `Storage::disk('r2')` throws.
+
+**On Cloud, Livewire's temp disk matters too.** A Filament upload writes to the
+temporary disk on one request and moves the file on a SECOND, which can land on
+a different container — `LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK` has to point at the
+bucket or uploads fail intermittently, looking like a flaky browser rather than a
+topology problem.
+
+**`Storage::fake()` cannot test a URL.** It replaces the disk definition with a
+local one, taking the configured public URL with it. Assertions about what an
+asset URL looks like configure a bucket-shaped disk with dummy credentials
+instead — `url()` is string building and touches no network.
+
+## Mail: branded, queued, and budgeted
+
+Cloudflare Email Service, through Laravel 13's first-party `cloudflare`
+transport — an API rather than SMTP, so a rejection comes back as a body naming
+the address and the reason instead of a numeric code, and a newsletter drain is
+one POST per message rather than one SMTP conversation per message. Templates are
+Laravel's own published mail views, restyled — that buys CSS inlining and
+client-tested table markup, which is most of the work in an HTML email.
+
+**The Brevo `smtp` mailer stays configured on purpose.** Cloudflare Email Service
+reached public beta in April 2026, and with the credentials still in the
+environment `MAIL_MAILER=smtp` is a one-variable rollback rather than a deploy.
+
+Two things about the Cloudflare transport, both verified in the framework source
+rather than assumed: it posts `getHtmlBody()` VERBATIM as a JSON field, so the
+templates render exactly as they did over SMTP; and `getCustomHeaders()` passes
+everything through except a small bypass list that does not include
+`List-Unsubscribe` — so Gmail's own unsubscribe control survives the move.
+
+**The daily budget starts LOW (100) here, and that is the opposite of what it
+looks like.** Cloudflare gives a new account a deliberately conservative daily
+quota and raises it as sending reputation builds, so the first newsletter is the
+run most likely to meet a ceiling. `ThrottleMail` releases rather than fails, so
+anything over the budget arrives tomorrow instead of erroring.
+
+- **The mark in an email is a PNG, never the inline SVG.** Gmail strips `<svg>`
+  entirely, so `x-brand.mark` cannot be reused; the header is
+  `Brand::asset('icon-192')` as an `<img>` beside HTML text. `AuthMailTest`
+  asserts the rendered mail contains no `<svg`, because the failure is silent
+  and in one client.
+- **The theme CSS is `file_get_contents`, not Blade.** It cannot call `Brand`,
+  so anything the admin can retint is an inline `style` on the Blade component
+  instead. Buttons are the app's action BLUE rather than Lager — white on Lager
+  is about 2:1, and the app already decided it has one action color.
+- **The framework's `ResetPassword` and `VerifyEmail` are not queued**, so they
+  send inside the web request — free against `log`, a visible stall behind real
+  SMTP. Both are overridden on `User` with `ShouldQueue` versions rather than
+  restyled via `toMailUsing()`, which would not have moved them off the request.
+  Both reproduce the framework's own URL signature, so `password.reset` and
+  `EmailVerificationRequest` needed no changes.
+- **Transactional mail carries no unsubscribe and no throttle.** A password reset
+  is not a list, and an unsubscribe control on it invites turning off the one
+  email that gets an account back.
+
+**The daily budget exists because Brevo's 300/day is SHARED** between marketing
+and transactional. An unthrottled blast can spend the allowance and leave a
+password reset with nowhere to go — which reads as an auth bug, not a mail one.
+`ThrottleMail` mirrors `ThrottleEspn` (check the limiter, RELEASE the job, never
+sleep) against `MAIL_DAILY_BUDGET`, set below the provider's ceiling so the
+headroom belongs to transactional. It counts BEFORE the send: a message that
+throws still consumed the allowance.
+
+**`now()->addDay()->diffInSeconds()` is NEGATIVE 86400.** Carbon 3 made the diff
+methods signed, so that idiom — the obvious way to say "a day" — expires the
+limiter key the instant it is written, every attempt reads zero, and the throttle
+silently permits everything. It fails OPEN, which is the worst direction for a
+guard protecting somebody else's password reset. The window is a spelled-out
+constant.
+
+**`Voice::line()` must be passed `for: $user` in anything queued.** It falls back
+to `auth()->user()`, which is null in a job — so a missing argument does not
+error, it renders the PG-13 line to everybody regardless of what they chose. The
+test for it deliberately does NOT `actingAs` the recipient, because that would
+make the fallback resolve correctly by accident and pass while the bug was there.
+
+**Unsubscribe is a signed route outside the auth group**, answering GET and POST.
+Somebody who wants the emails to stop is the least likely person to log in to do
+it, and RFC 8058's one-click arrives as a POST with no session — it must return a
+bare 200, since a redirect or a rendered page makes the client report a failure.
+`List-Unsubscribe` and `List-Unsubscribe-Post` are what make Gmail and Apple Mail
+show their own control, which is the largest deliverability lever we hold.
+
+**A time-dependent fixture fails one day a week.** `PlayerPageTest` set a game
+log fetched "an hour ago" and called it fresh — true Sunday to Friday, false on
+Saturday, where the poll window is 15 minutes. Pin fixtures to a value that holds
+under the TIGHTEST window, not the usual one.
+
+## SMS: the one thing that could not be consolidated
+
+Cloudflare has no SMS product — their own Workers docs demonstrate calling Twilio,
+which is the answer. So SMS is Vonage, through
+`laravel/vonage-notification-channel`, which is the channel Laravel's own
+notification docs use and therefore drops into the existing `Notification`
+classes as one entry in `via()`.
+
+**The provider barely affects the cost; the CARRIER does.** Since February 2025
+US carriers block unregistered numbers outright, so A2P 10DLC registration is
+mandatory whoever you use: ~$20 one-time, $1.50-$10/mo per campaign, ~$1.15/mo
+for a number, and a $0.003-$0.005 surcharge per message on top of Vonage's
+$0.0079. Vonage and Twilio are the same per message; Telnyx is ~35% cheaper.
+Choose for how well it disappears into Laravel, because that is the only axis
+with real variance. An unapproved number does not fail loudly — messages simply
+never arrive.
+
+**Consent is three separate claims, and they fail differently:**
+
+- `sms_opt_in` defaults to FALSE, unlike `newsletter_opt_in`. Signing up for a
+  football app can fairly be read as wanting email about football; it cannot be
+  read as handing over a phone.
+- `phone_verified_at` is not consent, it is identity. One mistyped digit is a
+  stranger's phone, and unlike a bounced email they experience it as spam from a
+  company they have never heard of. The number is NOT stored until a code proves
+  it — writing it first would let anybody park a stranger's phone on their own
+  account.
+- `sms_opted_in_at` survives an opt-out. It records that consent once happened,
+  which stays true afterwards and is what a carrier asks to see when vetting the
+  campaign.
+
+The gate lives on `User::routeNotificationForVonage()`, not in each `via()`, so
+a new notification cannot forget it — Laravel skips a channel whose route is
+falsy, so a user without consent is not an error, they are simply not on that
+channel and still get the mail.
+
+**Phone numbers are stored E.164 and only E.164.** An inbound STOP arrives as a
+number and nothing else; if the carrier's format and ours differ by a character
+the opt-out matches no user and we keep paying to text somebody who told us to
+stop. `App\Support\PhoneNumber` normalizes, and REFUSES to guess — a number it
+cannot parse is rejected at the form, because a guessed country code is a
+stranger's phone.
+
+**The STOP webhook only ever turns SMS OFF, and that is its whole security
+model.** It is unauthenticated, because an inbound webhook has no session. Rather
+than defend a signature, it is built so forging it is pointless: STOP is
+honoured, START is not, so the worst a forged request achieves is what the user
+could have asked for anyway. Turning SMS back on requires signing in — an
+opt-out must be easy and an opt-IN must be provably the account holder, which is
+what consent means. It matches on the WHOLE trimmed message, so "don't stop" is
+not an opt-out.
+
+**Vonage's send API returns success for a message the carrier will drop.**
+`status 0` means accepted and billed, not delivered — so the delivery-receipt
+webhook (`webhooks/sms/status`, required on a Vonage application anyway) is the
+only place the truth appears. An unregistered 10DLC campaign shows up there as
+`rejected`, which is the failure shape worth recognising: accepted upstream,
+charged, silently never arriving. It LOGS and changes no user state: a receipt
+describes one message, most non-delivery is transient, and unverifying a number
+on a single expiry would quietly disable a channel somebody consented to. Acting
+on receipts needs a message log and a threshold across several of them.
+
+`ThrottleSms` is the third of its kind after `ThrottleEspn` and `ThrottleMail`,
+and the first where the ceiling is MONEY rather than somebody else's rate limit:
+a loop that would merely be rude against the ESPN feed is a bill against this
+one. The verification code carries no daily budget — it is transactional, like a
+password reset — so a per-USER rate limit on the form is the only thing between
+a form and an invoice. Per user, never per number: keyed on the number, somebody
+could walk a range and use us as a free SMS cannon.
+
 ## Prefer Bootstrap Icons
 
 Reach for [Bootstrap Icons](https://icons.getbootstrap.com) first. They are

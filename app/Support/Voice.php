@@ -154,6 +154,48 @@ class Voice
             'pg13' => 'We roast your picks, your team and your record — never you. This sets how hard.',
             'r' => "We roast your picks, your team and your record — never you. This sets how hard, and you've picked hard.",
         ],
+
+        /*
+         * Mail.
+         *
+         * Every one of these is rendered from a QUEUED job, where there is no
+         * authenticated user for `line()` to fall back to — so every caller
+         * must pass `for: $user` or the reader silently gets the PG-13 line.
+         *
+         * Verification is the one transactional email allowed a personality:
+         * it is the first thing a new account ever receives. A password reset
+         * is not on this list on purpose — somebody locked out of their account
+         * is not in the mood, and the reset mail stays plain.
+         */
+        'mail.verify.intro' => [
+            'pg' => 'One tap and your account is ready to go.',
+            'pg13' => "One tap and you're in. Then we can start arguing about your team.",
+            'r' => "One tap and you're in. Then we can talk about whatever it is you call a team.",
+        ],
+
+        'mail.newsletter.subject' => [
+            'pg' => 'Your week in college football',
+            'pg13' => 'Your week, and how your teams did',
+            'r' => 'Your week, and the damage report',
+        ],
+
+        'mail.newsletter.intro' => [
+            'pg' => "Here's how your teams got on this week.",
+            'pg13' => "Here's how your teams got on. No editorialising. Much.",
+            'r' => "Here's the damage. Read it standing up.",
+        ],
+
+        'mail.newsletter.empty' => [
+            'pg' => 'Nothing on the schedule for your teams this week — back soon.',
+            'pg13' => 'Your teams had the week off. Enjoy the break from the stress.',
+            'r' => 'Nobody played. Nothing to yell about. Savor it.',
+        ],
+
+        'mail.unsubscribed' => [
+            'pg' => "You're unsubscribed. We won't email you about the week anymore.",
+            'pg13' => 'Done — no more weekly emails. Your scores will have to find you some other way.',
+            'r' => "Done. No more weekly emails. You're on your own out there.",
+        ],
     ];
 
     /**

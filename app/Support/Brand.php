@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\BrandSetting;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
@@ -154,7 +155,7 @@ class Brand
         $path = $settings['assets'][$key] ?? null;
 
         if ($path !== null && $path !== '') {
-            return Storage::disk('public')->url($path).'?v='.($settings['version'] ?? 0);
+            return self::disk()->url($path).'?v='.($settings['version'] ?? 0);
         }
 
         $shipped = self::SHIPPED[$key] ?? null;
@@ -282,17 +283,31 @@ class Brand
     {
         $path = self::settings()['assets'][$key] ?? null;
 
-        if ($path !== null && $path !== '' && Storage::disk('public')->exists($path)) {
-            return Storage::disk('public')->get($path);
+        if ($path !== null && $path !== '' && self::disk()->exists($path)) {
+            return self::disk()->get($path);
         }
 
         $shipped = self::SHIPPED[$key] ?? null;
 
+        /*
+         * The shipped fallback is read from the LOCAL filesystem, never through
+         * the upload disk — those files are in git and deploy with the app, so
+         * a stock install's favicon must not depend on a bucket being reachable.
+         */
         if ($shipped === null || ! is_file($file = public_path($shipped))) {
             return null;
         }
 
         return file_get_contents($file) ?: null;
+    }
+
+    /**
+     * Where uploads live: the local `public` disk, or R2 on a deploy target
+     * whose own filesystem does not survive a release.
+     */
+    private static function disk(): Filesystem
+    {
+        return Storage::disk(config('cfb.upload_disk'));
     }
 
     public static function flush(): void

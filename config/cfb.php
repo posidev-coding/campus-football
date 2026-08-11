@@ -15,4 +15,43 @@ return [
      */
     'timezone' => env('CFB_TIMEZONE', 'America/New_York'),
 
+    /*
+     * Where user uploads live — brand overrides and avatars.
+     *
+     * `public` locally, `r2` on Laravel Cloud, whose local filesystem is
+     * ephemeral and would drop an upload on the next deploy. One key rather
+     * than a disk name spread across call sites, so the move is reversible and
+     * a test can point it at a fake.
+     *
+     * The SHIPPED brand is not affected by this and must not be: those files
+     * are in git under public/brand and are read from the local filesystem, so
+     * a favicon never depends on a network call.
+     */
+    'upload_disk' => env('UPLOAD_DISK', 'public'),
+
+    /*
+     * How many emails a day we will spend on things nobody asked for
+     * individually — the newsletter, and later any digest.
+     *
+     * Below the provider's own ceiling on purpose, so the headroom is what
+     * transactional mail spends and a blast can never leave a password reset
+     * with nowhere to go. Same reasoning as ESPN_RATE_LIMIT: the budget is
+     * ours, not theirs.
+     *
+     * Starts LOW because Cloudflare gives a new account a deliberately
+     * conservative daily quota and raises it as sending reputation builds — so
+     * the first newsletter is the run most likely to meet a ceiling.
+     * ThrottleMail releases rather than fails, so anything over it arrives
+     * tomorrow instead of erroring. Raise as the account settles.
+     */
+    'mail_daily_budget' => (int) env('MAIL_DAILY_BUDGET', 100),
+
+    /*
+     * The same idea for SMS, and the first budget here that is about MONEY
+     * rather than somebody else's rate limit: a message costs about a cent
+     * all-in once the carrier surcharge is counted, so a loop that would merely
+     * be rude against the ESPN feed is a bill against this one.
+     */
+    'sms_daily_budget' => (int) env('SMS_DAILY_BUDGET', 200),
+
 ];

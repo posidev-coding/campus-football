@@ -195,9 +195,16 @@ describe('the on-demand refresh', function () {
     it('offers the button when nothing is outstanding', function () {
         Queue::fake();
 
-        // Fetched an hour ago: not stale, so nothing was dispatched and the
-        // reader gets the control immediately.
-        $this->athlete->forceFill(['game_log_fetched_at' => now()->subHour()])->save();
+        /*
+         * Fresh under BOTH windows, which is what makes this a test about the
+         * button rather than about what day it runs on.
+         *
+         * It was `subHour()`, which is fresh Sunday to Friday and STALE on a
+         * Saturday — the game log polls every 15 minutes on gameday and every
+         * 24 hours otherwise. So the suite went red one day a week, on the day
+         * somebody is most likely to be working on the scoreboard.
+         */
+        $this->athlete->forceFill(['game_log_fetched_at' => now()->subMinutes(5)])->save();
 
         Livewire::test('player', ['athlete' => $this->athlete->fresh()])
             ->assertSee('Refresh')

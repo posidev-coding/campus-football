@@ -154,15 +154,21 @@ class Branding extends Page
                         ]),
 
                     Section::make('Icons')
-                        ->description('Every slot falls back to the shipped file when empty. Uploads land on the public disk — on a deploy target with an ephemeral filesystem, treat these as a way to try a design and commit the winner into public/brand.')
+                        ->description('Every slot falls back to the shipped file when empty, so a partial set is safe and clearing one restores the default.')
                         ->schema(
                             collect(self::ICONS)
+                                /*
+                                 * No ->visibility('public'). Flysystem turns that
+                                 * into an `ACL: public-read` header, and R2 — the
+                                 * upload disk in production — implements no object
+                                 * ACLs at all. The bucket is public through its own
+                                 * hostname instead, which is what AWS_URL points at.
+                                 */
                                 ->map(fn (array $icon, string $key): FileUpload => FileUpload::make("assets.{$key}")
                                     ->label($icon['label'])
                                     ->helperText($icon['hint'])
-                                    ->disk('public')
+                                    ->disk(config('cfb.upload_disk'))
                                     ->directory('brand')
-                                    ->visibility('public')
                                     ->acceptedFileTypes($icon['types'])
                                     ->maxSize(2048))
                                 ->values()

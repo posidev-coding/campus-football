@@ -311,6 +311,24 @@ Schedule::call(fn () => app(SyncNews::class)->followed())
     ->withoutOverlapping();
 
 /*
+ * The weekly email.
+ *
+ * Sunday morning, AFTER the 04:00-05:40 nightly block has landed games,
+ * standings and box scores — sending before it would report Saturday's slate
+ * from Friday's data, which is the one mistake a results email cannot make.
+ *
+ * Deliberately NOT `->when($inSeason)`. Almost everything else in this file is
+ * gated, because there is nothing upstream to fetch in June; this is the
+ * opposite case. The offseason is precisely when a football app has to keep
+ * turning up, and the digest degrades on its own — no games means the empty
+ * line, not an empty email.
+ */
+Schedule::command('cfb:newsletter')
+    ->weeklyOn(ScheduleClass::SUNDAY, '08:00')
+    ->timezone($tz)
+    ->withoutOverlapping();
+
+/*
  * Box scores for games that have finished.
  *
  * One request per game at 544 KB, so this is capped and runs after the nightly

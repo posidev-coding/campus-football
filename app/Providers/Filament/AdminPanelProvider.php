@@ -61,6 +61,15 @@ class AdminPanelProvider extends PanelProvider
             ->colors(fn (): array => [
                 'primary' => Color::hex(Brand::color('lager')),
             ])
+            /*
+             * The admin bell. One line, and it means a failed sync or a stalled
+             * queue can reach somebody without a second delivery mechanism.
+             *
+             * The USER-facing equivalent is deliberately not built yet: an inbox
+             * designed before anything writes to it is an inbox designed against
+             * guesses. It arrives with gamification, which is what will fill it.
+             */
+            ->databaseNotifications()
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
