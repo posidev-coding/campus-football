@@ -1,0 +1,68 @@
+---
+paths:
+  - resources/views/**
+  - resources/css/**
+---
+
+# Blade, layout and chrome
+
+Long-form reference: `docs/ui-system.md` (system) and `docs/screens.md` (per screen).
+
+## Rebuild assets after touching Blade
+Tailwind 4 only emits utilities it finds in source. A new class silently does
+nothing until `npm run build` — and it fails looking like a design bug.
+
+## Mobile-first, always
+Design at 390px, then widen. Every breakpoint above base is ADDITIVE: it may add
+a column, a rail or a label, but must never be the only place something is
+reachable. Below `sm` there is no top bar, so anything added to the desktop
+header needs a phone route too.
+
+## Verify at real device widths, not a resized window
+Chrome will not size below ~600px, so every query below `sm` evaluates wrong.
+Use `/__device?path=/scoreboard&w=390,768&h=800[&dark=1]`.
+
+## truncate cannot clip a box that is free to grow
+A flex/grid item keeps its min-content width, which for nowrap text is the whole
+string — so it grows instead of clipping and the document scrolls sideways,
+which reads as the nav coming apart. Add `min-w-0` to the item; in a TABLE cell
+use `w-full max-w-0`, which `min-w-0` does not fix. Check by scrolling the
+document, not by eye: `scrollTo({left:999}); window.scrollX === 0`.
+
+## An opaque background does not win a z-index tie
+`position: relative` with `z-index: auto` opens no stacking context, so children
+tie in the root context and later DOM wins. The ladder: 40 app chrome, 30 screen
+chrome, 20 day headings, 10 card contents.
+
+## backdrop-filter, transform and sticky are containing blocks for fixed children
+A `fixed inset-0` panel inside any of them resolves against the parent, not the
+viewport — full-screen search once opened as a 390x32 strip. Note `sticky`
+always creates a stacking context even at `z-index: auto`; `relative` does not.
+
+## A sticky block must have nothing to travel through
+Cancel the container's padding (`-mt-5`), move inner spacing inside the sticky
+element, and remember the header is `h-14` PLUS a 1px border —
+`sm:top-[calc(var(--spacing)*14+1px)]`. Measure offsets into a CSS variable on
+`document.documentElement`, never on the component root (Livewire's morph
+strips inline styles it did not render).
+
+## Screen chrome speaks one vocabulary
+Build from `filter-menu` / `scope-filter` / `season-menu`, `plate`,
+`gutter-tabs`, `filter-bar`, `week-scroller`. No `<flux:select>` in a screen.
+Nothing scrolls horizontally except the week scroller, the section nav and
+Home's swiper. Navigation is chips; the underline is the in-content idiom.
+`ChromeConsistencyTest` sweeps for violations.
+
+## Say the PLACE, not the mascot, in dense lists
+`x-team-link label="location"` / `Team::placeName()`. Include `location` (and
+the route key) in every constrained eager load, or teams silently fall back to
+the display name.
+
+## A team logo never sits on the team's color
+Logos ride a neutral puck. Text on an accent is COMPUTED by `TeamPalette`, never
+assumed — and verifying that a color was APPLIED is not verifying it is
+READABLE. Dark mode un-brands: the palette is a light-mode concern.
+
+## Prefer Bootstrap Icons, passed as a child
+`icon="..."` resolves against Flux's own set and falls back silently. Pass
+`<flux:icon.pin-angle />` as a child instead. `variant` controls SIZE only.
