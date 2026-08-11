@@ -242,6 +242,12 @@ new class extends Component
         </x-slot:actions>
     </x-plate>
 
+    {{-- Two conference tables abreast from `lg` — the "dense sports site"
+         read the desktop aspiration in docs/ui-system.md names. The tables
+         keep their abbreviated headers on purpose: each grid cell is barely
+         wider than the phone width the abbreviations were measured for, and
+         full-word headers would spend the team column's gain again. --}}
+    <div class="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-6 lg:gap-y-5">
     @forelse ($this->standings as $conferenceName => $rows)
         <div class="flex flex-col gap-2">
             <flux:subheading>
@@ -336,9 +342,10 @@ new class extends Component
             </div>
         </div>
     @empty
-        <flux:callout icon="table-cells">
+        <flux:callout icon="table-cells" class="lg:col-span-2">
             <flux:callout.heading>No standings yet</flux:callout.heading>
             <flux:callout.text>Nothing published for this season and division.</flux:callout.text>
         </flux:callout>
     @endforelse
+    </div>
 </div>

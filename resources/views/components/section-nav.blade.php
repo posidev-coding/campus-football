@@ -11,15 +11,22 @@
     single-screen areas — Home and Scores — show nothing at all: "when
     necessary" rather than always.
 
-    The strip speaks the CHIP language of `x-area-nav` one level up — all
-    navigation is chips and color, and the underline is exclusively x-plate's
-    in-content control idiom. That is what keeps the levels apart: a reader
-    never has to ask whether an underlined row navigates or filters.
+    Below `lg` the strip speaks the CHIP language of `x-area-nav` one level up
+    — all navigation is chips and color, and the underline is exclusively
+    x-plate's in-content control idiom, so a reader never has to ask whether
+    an underlined row navigates or filters.
 
-    The active chip classes are therefore shared with the area nav's current
-    tab, which is in the DOM (md:flex-hidden) on every League page — so a test
-    must scope to `aria-label="Sections"` rather than count the string
-    page-wide.
+    From `lg` the same strip restyles as an UNDERLINED TAB ROW, the classic
+    sports-desktop second header row. Two chip rows stacked in one header read
+    as one nav wrapped onto two lines; the underline is what makes the section
+    level a different species from the area chips beside the brand. The
+    in-content rule survives because this row lives in the HEADER: chrome may
+    wear the underline at `lg`, a control inside content still may not —
+    ChromeConsistencyTest allowlists exactly this file for it.
+
+    The active chip classes are shared with the area nav's current tab, which
+    is in the DOM (sm:flex-hidden) on every League page — so a test must scope
+    to `aria-label="Sections"` rather than count the string page-wide.
 
     Some overlap with the tab bar is deliberate: an area's landing route appears
     as its own first section, because it is both where the area starts and
@@ -47,7 +54,7 @@
     >
         <div
             x-ref="strip"
-            class="flex gap-1 overflow-x-auto px-4 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            class="flex gap-1 overflow-x-auto px-4 py-1 lg:gap-5 lg:py-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
             @foreach ($sections as $section)
                 {{-- A section lights on its detail pages too — a team page
@@ -61,8 +68,15 @@
                     @if ($current) aria-current="page" @endif
                     @class([
                         'shrink-0 rounded-md px-2.5 py-1.5 text-sm font-medium whitespace-nowrap transition-colors',
+                        {{-- The lg restyle: square, transparent, drawn on the
+                             header's own rule. The underline carries the
+                             active state, so the chip fill retires with the
+                             rounding. --}}
+                        'lg:rounded-none lg:border-b-2 lg:bg-transparent lg:px-1 lg:pt-1.5 lg:pb-2 lg:hover:bg-transparent lg:dark:bg-transparent lg:dark:hover:bg-transparent',
                         'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100' => $current,
+                        'lg:border-zinc-900 lg:dark:border-zinc-100' => $current,
                         'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100' => ! $current,
+                        'lg:border-transparent' => ! $current,
                     ])
                 >{{ $section['label'] }}</a>
             @endforeach

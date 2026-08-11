@@ -75,7 +75,11 @@
                     <x-brand.lockup size="sm" />
                 </a>
 
-                <x-area-nav class="ml-4 hidden min-w-0 flex-1 md:flex" />
+                {{-- From `sm`, not `md`: the bottom tab bar retires at `sm`,
+                     so a 640-767px window with `md:flex` here had NO primary
+                     navigation at all — the exact failure the additive rule
+                     exists to prevent. --}}
+                <x-area-nav class="ml-4 hidden min-w-0 flex-1 sm:flex" />
 
                 <div class="ml-auto flex shrink-0 items-center gap-1">
                     <livewire:search />
@@ -93,6 +97,20 @@
 
                             <flux:menu>
                                 <flux:menu.item icon="user" :href="route('account')">{{ auth()->user()->name }}</flux:menu.item>
+                                {{-- Appearance, right where a desktop reader
+                                     looks for it. `$flux.appearance` is the
+                                     same per-browser store the Account
+                                     screen's segmented control writes — two
+                                     controls, one localStorage truth, so
+                                     they can never disagree. Account keeps
+                                     its own because below `sm` this menu
+                                     does not exist. --}}
+                                <flux:menu.radio.group x-data x-model="$flux.appearance">
+                                    <flux:menu.radio value="light">Light</flux:menu.radio>
+                                    <flux:menu.radio value="dark">Dark</flux:menu.radio>
+                                    <flux:menu.radio value="system">Match system</flux:menu.radio>
+                                </flux:menu.radio.group>
+                                <flux:menu.separator />
                                 <flux:menu.separator />
                                 @if (auth()->user()->isAdmin())
                                     <flux:menu.item icon="wrench-screwdriver" href="/admin">Admin</flux:menu.item>

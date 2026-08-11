@@ -89,11 +89,13 @@ it('renders the gutter track only through x-gutter-tabs', function () {
 
 it('renders underlined tabs only through x-plate', function () {
     /*
-     * The section nav used to share these classes byte-for-byte; it speaks
-     * the area nav's chip language now, so the underline is exclusively the
-     * plate's in-content idiom — a reader never has to ask whether an
-     * underlined row navigates or filters. A border-b-2 reappearing in
-     * section-nav is a regression to the two-idiom chrome.
+     * Below `lg` the underline is exclusively the plate's in-content idiom —
+     * a reader never has to ask whether an underlined row navigates or
+     * filters. The one sanctioned exception is the section nav's `lg:`
+     * restyle: at desktop widths the second header row wears the underline
+     * to differentiate sections from the area chips beside the brand, and it
+     * can, because it lives in the HEADER rather than in content. Any other
+     * border-b-2 is still a regression to the two-idiom chrome.
      */
     $allowed = [
         'components/plate.blade.php',
@@ -102,6 +104,9 @@ it('renders underlined tabs only through x-plate', function () {
         // appear together: where the team nav rules a screen, the level
         // beneath it is pills (see the team page's stats toggle).
         'components/team-nav.blade.php',
+        // The desktop restyle above — chrome may wear the underline at lg,
+        // a control inside content still may not.
+        'components/section-nav.blade.php',
     ];
 
     $violations = [];

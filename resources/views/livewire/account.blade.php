@@ -516,8 +516,10 @@ new class extends Component
              you here is already lit and already says it, so the heading was
              the screen naming itself twice — the same reason every League
              screen's h1 is sr-only. The brand takes the space instead, which
-             is what the top-left of an app screen is for. --}}
-        <x-brand.lockup size="md" />
+             is what the top-left of an app screen is for — below `sm` only,
+             because from `sm` the header's own lockup is a line above and two
+             brands in two rows is the same screen naming itself twice again. --}}
+        <x-brand.lockup size="md" class="sm:hidden" />
         <h1 class="sr-only">Account</h1>
 
         {{-- Icon-only. The three labels were the widest thing in the card and
