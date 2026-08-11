@@ -9,6 +9,13 @@ use Illuminate\Support\Facades\Route;
 Route::livewire('/', 'home')->name('home');
 
 /*
+ * The install walkthrough. iOS never fires `beforeinstallprompt`, so for most
+ * phones a page of per-browser steps IS the install experience — reached from
+ * Home's banner, Account, and the tour, and hidden inside the installed app.
+ */
+Route::livewire('app', 'get-app')->name('get-app');
+
+/*
  * Brand artefacts, generated rather than served as static files, because their
  * contents are editable from the App Branding admin page.
  *
@@ -33,6 +40,32 @@ Route::get('favicon.ico', function () {
         'Cache-Control' => 'public, max-age=86400',
     ]);
 })->name('favicon');
+
+/*
+ * iOS launch screens, one per declared device size — see Brand::SPLASH. The
+ * spec is validated against that list rather than parsed permissively, so
+ * this cannot be asked to render arbitrary-size images.
+ */
+Route::get('brand/splash/{spec}.png', function (string $spec) {
+    abort_unless(preg_match('/^(\d+)x(\d+)@(\d)$/', $spec, $m) === 1, 404);
+
+    $size = [(int) $m[1], (int) $m[2], (int) $m[3]];
+    abort_unless(in_array($size, Brand::SPLASH, true), 404);
+
+    abort_if(($png = Brand::splash(...$size)) === null, 404);
+
+    return response($png, 200, [
+        'Content-Type' => 'image/png',
+        'Cache-Control' => 'public, max-age=86400',
+    ]);
+})->name('brand.splash');
+
+/*
+ * The service worker's offline fallback — precached by public/sw.js at
+ * install and served for any navigation the network cannot answer. A plain
+ * self-contained view, outside every layout on purpose.
+ */
+Route::view('offline', 'offline')->name('offline');
 
 /*
  * Public sports data. These are read-only and served from cache, so a cold

@@ -52,3 +52,6 @@ URL with it. Configure a bucket-shaped disk with dummy credentials instead.
 ## Flush static memoization between tests
 `TeamGlance` memoizes on top of the cache in a static property that outlives the
 application; `tests/Pest.php` flushes it in `beforeEach`, year memo included.
+
+## Livewire's asset injector leaks across the test process
+Once any Livewire::test() has run in the Pest process, Livewire injects `<script src="/livewire/livewire.js">` into every later full-page HTML response — including plain Route::view pages that render no component. A test asserting a page has no script tags therefore reports the PREVIOUS test, passes under --filter, and fails in the full suite. Assert what the page must contain (inline `<style>`, no `/build/` reference) rather than the absence of scripts; a real request to a component-free page gets no injection.

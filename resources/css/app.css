@@ -62,6 +62,13 @@
 
         --team-accent: var(--color-zinc-900);
         --team-accent-contrast: white;
+
+        /* The layout header's REAL height from `sm` up: `h-14` plus its 1px
+           border, plus the status-bar inset a standalone install draws under
+           (zero in a browser tab). Screen chrome sticks against this variable
+           rather than restating the sum — the header pads itself by the same
+           inset, so the two can never disagree. */
+        --header-offset: calc(var(--spacing) * 14 + 1px + env(safe-area-inset-top));
     }
 
     .dark {
@@ -99,6 +106,15 @@
     .tabular {
         font-variant-numeric: tabular-nums;
         font-feature-settings: 'tnum' 1;
+    }
+}
+
+/* Anything selling the install disappears inside the installed app. A media
+   query rather than JS, so the banner can never flash at an installed user
+   in the beat before Alpine boots. */
+@media (display-mode: standalone) {
+    [data-install-only] {
+        display: none !important;
     }
 }
 

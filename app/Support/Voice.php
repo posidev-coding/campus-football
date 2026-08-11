@@ -131,6 +131,36 @@ class Voice
             'r' => 'Search and tap. Five slots. Choose your allegiances carefully.',
         ],
 
+        /*
+         * The install pitch. Chrome that frames the whole app rather than any
+         * one screen, so it speaks — but the actual steps ("tap Share", "Add
+         * to Home Screen") stay plain in the view: those are Apple's and
+         * Google's own labels, and the user is hunting for them verbatim.
+         */
+        'install.banner.heading' => [
+            'pg' => 'Add this app to your home screen',
+            'pg13' => 'Put us on your home screen',
+            'r' => 'Put us on your home screen already',
+        ],
+
+        'install.banner.body' => [
+            'pg' => 'Full screen, quick to open, one tap from your first game. It takes about ten seconds.',
+            'pg13' => 'Full screen, no browser bars, one tap from kickoff. Takes about ten seconds.',
+            'r' => 'Full screen, zero browser clutter, one tap from kickoff. Ten seconds, tops.',
+        ],
+
+        'install.screen.heading' => [
+            'pg' => 'The best way to use this app is from your home screen — full screen, fast, and one tap away on game day.',
+            'pg13' => 'The best seat in the house is your home screen — full screen, instant, one tap from kickoff.',
+            'r' => 'The best seat in the house is your home screen — full screen, instant, and no address bar between you and the damage.',
+        ],
+
+        'install.screen.installed' => [
+            'pg' => "You're all set — you're using the installed app right now.",
+            'pg13' => "You're already in the app. Nothing left to install — go check a score.",
+            'r' => "You're already in the app. Installing it twice won't fix your team's defense.",
+        ],
+
         'home.pickem' => [
             'pg' => "Groups, weekly picks and bragging rights with your friends. It's on the way.",
             'pg13' => "Groups, weekly slates, and a season-long paper trail of everyone's bad calls. It's coming.",

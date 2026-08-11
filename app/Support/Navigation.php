@@ -55,8 +55,10 @@ class Navigation
                 // search experience now, and /search survives only for deep
                 // links and shared URLs.
                 // `article` rides along so reading a story keeps Home lit, the
-                // same way a game page keeps Scores lit.
-                'routes' => ['home', 'news', 'search', 'article'],
+                // same way a game page keeps Scores lit. `get-app` is reached
+                // from Home's install banner (and Account's row), so Home
+                // staying lit is the honest answer to "where am I".
+                'routes' => ['home', 'news', 'search', 'article', 'get-app'],
                 /*
                  * No sections. "For You" and "News" made a two-tab strip whose
                  * first tab was the screen you were already on, and the search

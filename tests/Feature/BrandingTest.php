@@ -19,11 +19,34 @@ describe('the head', function () {
             ->assertSee('type="image/svg+xml"', escape: false)
             ->assertSee('rel="apple-touch-icon"', escape: false)
             ->assertSee(route('manifest'), escape: false)
-            ->assertSee('apple-mobile-web-app-title', escape: false);
+            ->assertSee('apple-mobile-web-app-title', escape: false)
+            // Both spellings: iOS before 17.4 reads only the apple- one.
+            ->assertSee('name="apple-mobile-web-app-capable"', escape: false)
+            ->assertSee('name="mobile-web-app-capable"', escape: false);
     })->with([
         'app layout' => fn () => route('home'),
         'auth layout' => fn () => route('login'),
     ]);
+
+    it('keeps chrome and content out from under the status bar in standalone', function () {
+        /*
+         * `black-translucent` + `viewport-fit=cover` means an installed app
+         * draws under the Dynamic Island. Three things keep that safe, and each
+         * regressed silently once: the header pads the top inset (the veil),
+         * the content spacer counts the tab bar's bottom inset, and screen
+         * chrome offsets by `--header-offset`, which restates the same inset.
+         * In a browser tab every env() is 0, so no browser test can SEE the
+         * failure — asserting the class strings is the layer a test can hold.
+         */
+        $html = $this->get(route('home'))->assertOk()->content();
+
+        expect($html)->toContain('pt-[env(safe-area-inset-top)]')
+            ->and($html)->toContain('env(safe-area-inset-bottom)');
+
+        $css = file_get_contents(resource_path('css/app.css'));
+
+        expect($css)->toContain('--header-offset: calc(var(--spacing) * 14 + 1px + env(safe-area-inset-top));');
+    });
 
     it('carries exactly one theme-color tag', function () {
         /*
@@ -91,6 +114,35 @@ describe('the generated artefacts', function () {
     it('rebuilds the ico from an uploaded favicon', function () {
         expect(strlen(Brand::ico()))->toBeGreaterThan(1000);
     });
+
+    it('serves an iOS launch screen at the exact pixel size it declares', function () {
+        [$w, $h, $dpr] = Brand::SPLASH[0];
+
+        $png = $this->get("/brand/splash/{$w}x{$h}@{$dpr}.png")
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png')
+            ->getContent();
+
+        // iOS matches a startup image by exact device pixels; an off-by-one
+        // splash is silently ignored and the launch flashes white instead.
+        [$width, $height] = getimagesizefromstring($png);
+
+        expect($width)->toBe($w * $dpr)
+            ->and($height)->toBe($h * $dpr);
+    });
+
+    it('refuses a splash size it did not declare', function (string $spec) {
+        $this->get("/brand/splash/{$spec}.png")->assertNotFound();
+    })->with(['999x999@3', '440x956@9', '440x956@2', '0x0@2']);
+
+    it('links a startup image per declared size on both layouts', function (string $route) {
+        $html = $this->get($route)->assertOk()->content();
+
+        expect(substr_count($html, 'apple-touch-startup-image'))->toBe(count(Brand::SPLASH));
+    })->with([
+        'app layout' => fn () => route('home'),
+        'auth layout' => fn () => route('login'),
+    ]);
 });
 
 describe('placement', function () {
@@ -121,7 +173,7 @@ describe('placement', function () {
         // The nav scrolls away and the search bar is what sticks — two pinned
         // bars would put ~44px of permanent chrome back on a 390px screen.
         expect($html)->toContain('-mt-5 flex items-center justify-between gap-3 pt-3 sm:hidden')
-            ->and($html)->toContain('sticky top-0 z-30 -mx-4 -mt-6');
+            ->and($html)->toContain('sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-6');
     });
 
     it('renders the wordmark as real text, so it can be read and restyled', function () {

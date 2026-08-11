@@ -511,7 +511,7 @@ new class extends Component
          where it sticks instead of drifting up on the first scroll, and the `sm`
          offset is 14 spacing units PLUS ONE PIXEL because the header is `h-14`
          plus its own `border-b`. --}}
-    <div class="sticky top-0 z-30 -mx-4 -mt-5 flex items-center justify-between gap-3 bg-white px-4 pt-3 pb-2 sm:top-[calc(var(--spacing)*14+1px)] dark:bg-zinc-950">
+    <div class="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-5 flex items-center justify-between gap-3 bg-white px-4 pt-3 pb-2 sm:top-[var(--header-offset)] dark:bg-zinc-950">
         {{-- The word "Account" is gone from the page. The bottom tab that got
              you here is already lit and already says it, so the heading was
              the screen naming itself twice — the same reason every League
@@ -905,6 +905,20 @@ new class extends Component
         this navigation rework exists to remove.
     --}}
     <flux:card class="flex flex-col gap-2">
+        {{-- Hidden by stylesheet inside the installed app — a "Get the app"
+             row in the app is furniture pointing at itself. --}}
+        <flux:button
+            :href="route('get-app')"
+            wire:navigate
+            size="sm"
+            variant="ghost"
+            class="justify-start"
+            data-install-only
+        >
+            <flux:icon.phone variant="micro" />
+            Get the app
+        </flux:button>
+
         @if (auth()->user()->isAdmin())
             <flux:button href="/admin" icon="wrench-screwdriver" size="sm" variant="ghost" class="justify-start">
                 Admin

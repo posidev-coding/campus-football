@@ -270,7 +270,7 @@ describe('the shared surfaces', function () {
          * that job when the brand arrived above it. Either way the rule is the
          * same: nothing to travel through.
          */
-        $bar = 'class="sticky top-0 z-30 -mx-4 -mt-6 -mb-3 border-b border-zinc-200 bg-white/85 px-4 pt-5 pb-3 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/85"';
+        $bar = 'class="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-6 -mb-3 border-b border-zinc-200 bg-white/85 px-4 pt-5 pb-3 backdrop-blur sm:hidden dark:border-zinc-800 dark:bg-zinc-950/85"';
 
         expect(Livewire::test('search-panel')->html())->toContain($bar);
 

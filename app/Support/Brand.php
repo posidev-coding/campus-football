@@ -63,6 +63,34 @@ class Brand
         'mark-dark' => null,
     ];
 
+    /**
+     * The iOS launch-screen matrix: CSS points wide and tall, then the device
+     * pixel ratio, portrait only — iPhones launch standalone web apps in
+     * portrait whatever the device is doing, and the iPad sizes cover the
+     * rotation that matters there. Kept to the X-class-and-later iPhones plus
+     * the current iPad shapes rather than every historical size: an unmatched
+     * device simply launches without a splash, which is what every device gets
+     * today.
+     *
+     * @var list<array{int, int, int}>
+     */
+    public const SPLASH = [
+        [440, 956, 3],   // iPhone 16/17 Pro Max
+        [430, 932, 3],   // iPhone 15 Pro Max / 15 Plus / 14 Pro Max
+        [428, 926, 3],   // iPhone 14 Plus / 13 Pro Max / 12 Pro Max
+        [414, 896, 3],   // iPhone 11 Pro Max / XS Max
+        [414, 896, 2],   // iPhone 11 / XR
+        [402, 874, 3],   // iPhone 16/17 Pro
+        [393, 852, 3],   // iPhone 14/15/16 Pro
+        [390, 844, 3],   // iPhone 12/13/14
+        [375, 812, 3],   // iPhone X / XS / 11 Pro / 12-13 mini
+        [375, 667, 2],   // iPhone SE / 8
+        [1024, 1366, 2], // iPad Pro 12.9" / 13"
+        [834, 1194, 2],  // iPad Pro 11" / Air 11"
+        [820, 1180, 2],  // iPad 10.9"
+        [744, 1133, 2],  // iPad mini
+    ];
+
     private const CACHE_KEY = 'brand:settings';
 
     private const TTL = 86400;
@@ -274,6 +302,67 @@ class Brand
         }
 
         return $header.$directory.$payload;
+    }
+
+    /**
+     * One iOS launch screen, composed on demand: the brand's ink, the app
+     * icon centered at an icon's scale rather than a poster's.
+     *
+     * iOS ignores the manifest recipe Android builds its splash from — it
+     * wants a pre-rendered PNG per device size, declared as
+     * `apple-touch-startup-image` links. Composing them through this resolver
+     * (the Brand::ico() discipline) is what keeps a rebrand's launch screen
+     * in step with its icons; a shipped static set would be one more asset
+     * list to forget.
+     *
+     * Cached under the settings row's version, so saving the App Branding
+     * page starts a fresh set and the stale entries age out with the TTL.
+     * Returns null when the icon cannot be read, so the route can 404.
+     */
+    public static function splash(int $width, int $height, int $dpr): ?string
+    {
+        $version = self::settings()['version'] ?? 0;
+
+        return Cache::remember(
+            "brand:splash:{$version}:{$width}x{$height}@{$dpr}",
+            self::TTL,
+            function () use ($width, $height, $dpr): ?string {
+                if (($bytes = self::bytes('icon-512')) === null) {
+                    return null;
+                }
+
+                if (($icon = imagecreatefromstring($bytes)) === false) {
+                    return null;
+                }
+
+                $canvas = imagecreatetruecolor($width * $dpr, $height * $dpr);
+
+                [$r, $g, $b] = sscanf(self::color('ink'), '#%02x%02x%02x');
+                imagefill($canvas, 0, 0, imagecolorallocate($canvas, $r, $g, $b));
+
+                $size = (int) round(min($width, $height) * $dpr * 0.28);
+
+                imagecopyresampled(
+                    $canvas,
+                    $icon,
+                    intdiv($width * $dpr - $size, 2),
+                    intdiv($height * $dpr - $size, 2),
+                    0,
+                    0,
+                    $size,
+                    $size,
+                    imagesx($icon),
+                    imagesy($icon),
+                );
+                imagedestroy($icon);
+
+                ob_start();
+                imagepng($canvas);
+                imagedestroy($canvas);
+
+                return ob_get_clean() ?: null;
+            },
+        );
     }
 
     /**

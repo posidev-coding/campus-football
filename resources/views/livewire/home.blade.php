@@ -359,6 +359,10 @@ new class extends Component
     @if ($this->showOnboardingCta)
         <x-onboarding-cta :guest="! auth()->check()" />
     @endif
+    {{-- The install pitch rides below the front door, never instead of it.
+         Hidden inside the installed app, gone for good once dismissed. --}}
+    <x-install-banner />
+
 
     @auth
         @if ($this->glances !== [])

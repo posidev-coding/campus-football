@@ -51,9 +51,18 @@
              so the bar is `sm:flex` and the strip renders nothing. An
              unconditional `border-b` left a 1px rule floating at the top of the
              screen with nothing above or below it, and gave anything sticking
-             underneath 1px of travel before it settled. --}}
+             underneath 1px of travel before it settled.
+
+             `pt-[env(safe-area-inset-top)]` is the standalone status-bar veil:
+             installed to a home screen, the app draws under the Dynamic Island
+             (`viewport-fit=cover` + `black-translucent`), and this padding is
+             what keeps chrome and content out from behind it. The header
+             renders on EVERY screen — even "empty" below `sm` — so in
+             standalone its translucent blur is exactly a status-bar backdrop,
+             and in a browser tab the inset is 0 and nothing changes. Screen
+             chrome at z-30 offsets by the same inset via `--header-offset`. --}}
         <header @class([
-            'sticky top-0 z-40 border-zinc-200 bg-white/85 backdrop-blur sm:border-b dark:border-zinc-800 dark:bg-zinc-950/85',
+            'sticky top-0 z-40 border-zinc-200 bg-white/85 pt-[env(safe-area-inset-top)] backdrop-blur sm:border-b dark:border-zinc-800 dark:bg-zinc-950/85',
             'border-b' => $hasSections,
         ])>
             {{-- Reclaimed on mobile: 56px of brand mark, search icon and avatar
@@ -112,7 +121,11 @@
             <x-section-nav />
         </header>
 
-        <div class="flex flex-1 gap-6 px-4 py-5 pb-[calc(var(--nav-height)+1.5rem)] sm:pb-6">
+        {{-- The bottom pad counts the tab bar's own safe-area padding too — the
+             bar is `--nav-height` PLUS the home-indicator inset on a notched
+             phone, and counting only the height trapped the last ~34px of
+             every screen behind it in standalone. --}}
+        <div class="flex flex-1 gap-6 px-4 py-5 pb-[calc(var(--nav-height)+1.5rem+env(safe-area-inset-bottom))] sm:pb-[calc(var(--spacing)*6+env(safe-area-inset-bottom))]">
             <main class="min-w-0 flex-1">
                 {{ $slot }}
             </main>
@@ -122,7 +135,7 @@
                      above, and its absence below changes nothing about the
                      primary content. --}}
                 <aside class="hidden w-72 shrink-0 flex-col gap-4 lg:flex">
-                    <x-rankings-panel class="sticky top-[4.5rem]" />
+                    <x-rankings-panel class="sticky top-[calc(var(--header-offset)+1rem)]" />
                 </aside>
             @endif
         </div>

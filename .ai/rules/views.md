@@ -66,3 +66,6 @@ READABLE. Dark mode un-brands: the palette is a light-mode concern.
 ## Prefer Bootstrap Icons, passed as a child
 `icon="..."` resolves against Flux's own set and falls back silently. Pass
 `<flux:icon.pin-angle />` as a child instead. `variant` controls SIZE only.
+
+## Sticky chrome offsets ride --header-offset and the top safe-area inset
+The layout header pads `env(safe-area-inset-top)` (the standalone status-bar veil), and `:root` defines `--header-offset` = h-14 + 1px border + that inset. Screen chrome at z-30 must stick at `top-[env(safe-area-inset-top)]` below `sm` and `sm:top-[var(--header-offset)]` above — never a hardcoded `top-0` or `top-14` sum. In a browser tab every env() is 0, so no browser test can see a regression; the class strings are pinned in BrandingTest/ScoreboardTest/SearchTest instead. Chrome selling the install wears `data-install-only`, which a `display-mode: standalone` media query removes inside the installed app.

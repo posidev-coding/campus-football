@@ -72,6 +72,8 @@ describe('areas', function () {
             'recruiting' => 'league',
             // /search survives for deep links, but it is Home's search now.
             'search' => 'home',
+            // The install walkthrough is reached from Home's banner.
+            'get-app' => 'home',
         ];
 
         foreach ($cases as $route => $expected) {

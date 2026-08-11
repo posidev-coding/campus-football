@@ -321,10 +321,12 @@ new class extends Component
          the chrome and travels with it rather than scrolling away. Net space
          above the title goes from 24px to 12px.
 
-         The `sm` offset is 14 spacing units PLUS ONE PIXEL, because that is the
-         header's real height: `h-14` plus its own `border-b`. Sticking at a
-         flat `top-14` left the block one pixel of travel, which is small but
-         is still the drift this is meant to remove.
+         The offsets are shared: `--header-offset` is the header's real height
+         from `sm` up — `h-14` plus its own `border-b` plus the standalone
+         status-bar inset — and below `sm` the bare inset keeps the chrome out
+         from under the Dynamic Island. Sticking at a flat `top-14` once left
+         the block one pixel of travel, which is small but is still the drift
+         this is meant to remove.
 
          Still `sticky`, not `fixed`. With zero travel the two are visually
          identical, but `fixed` would take the block out of flow and drop the
@@ -333,7 +335,7 @@ new class extends Component
          `--scores-chrome` exists to measure. --}}
     <div
         x-ref="chrome"
-        class="sticky top-0 z-30 -mx-4 -mt-5 flex flex-col gap-3 bg-white px-4 pt-3 pb-0 sm:top-[calc(var(--spacing)*14+1px)] dark:bg-zinc-950"
+        class="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-5 flex flex-col gap-3 bg-white px-4 pt-3 pb-0 sm:top-[var(--header-offset)] dark:bg-zinc-950"
     >
         <div class="flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-2">

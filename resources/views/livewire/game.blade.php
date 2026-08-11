@@ -787,7 +787,7 @@ new class extends Component
         The sheet is NOT nested in here — backdrop-blur makes this the
         containing block for fixed descendants, the search-panel lesson.
     --}}
-    <div class="sticky top-0 z-30 -mx-4 -mt-5 border-b border-zinc-200 bg-white/95 px-4 pt-4 pb-3 backdrop-blur sm:top-[calc(var(--spacing)*14+1px)] dark:border-zinc-800 dark:bg-zinc-950/95">
+    <div class="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-5 border-b border-zinc-200 bg-white/95 px-4 pt-4 pb-3 backdrop-blur sm:top-[var(--header-offset)] dark:border-zinc-800 dark:bg-zinc-950/95">
         {{--
             A navigation bar, not a caption: Done · Gameday · Scores.
 

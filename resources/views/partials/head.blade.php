@@ -26,12 +26,29 @@
 
 {{-- Add to Home Screen on iOS. `apple-mobile-web-app-title` is the label under
      the icon; the capability metas make the launched app standalone, matching
-     the manifest's own `display`. `black-translucent` draws under the status
-     bar, which is safe because the viewport is already `viewport-fit=cover` and
-     the body already pads by `env(safe-area-inset-*)`. --}}
+     the manifest's own `display` — both spellings, because iOS before 17.4
+     reads only the `apple-` prefixed one. `black-translucent` draws under the
+     status bar, which is safe because the viewport is `viewport-fit=cover`,
+     the body pads the side insets, the layout header pads
+     `env(safe-area-inset-top)` and screen chrome offsets by the same inset
+     via `--header-offset`. --}}
 <meta name="apple-mobile-web-app-title" content="{{ Brand::shortName() }}">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+{{-- Launch screens. Android composes its own from the manifest; iOS instead
+     wants a pre-rendered image per device size, matched by media query, and
+     shows a white flash without one. Generated through Brand like the favicon
+     and manifest, so a rebrand retints the launch screen with everything
+     else. `?v=` for the same reason every uploaded asset carries one. --}}
+@foreach (Brand::SPLASH as [$w, $h, $dpr])
+    <link
+        rel="apple-touch-startup-image"
+        media="(device-width: {{ $w }}px) and (device-height: {{ $h }}px) and (-webkit-device-pixel-ratio: {{ $dpr }}) and (orientation: portrait)"
+        href="{{ route('brand.splash', ['spec' => "{$w}x{$h}@{$dpr}"]) }}?v={{ Brand::settings()['version'] ?? 0 }}"
+    >
+@endforeach
 
 <meta name="description" content="{{ Brand::tagline() }}">
 <meta property="og:type" content="website">
