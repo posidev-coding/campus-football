@@ -85,7 +85,7 @@
                      exists to prevent. --}}
                 <x-area-nav class="ml-4 hidden min-w-0 flex-1 sm:flex" />
 
-                <div class="ml-auto flex shrink-0 items-center gap-1">
+                <div class="ml-auto flex shrink-0 items-center gap-1 lg:gap-2">
                     {{-- The wrapper exists to carry the tour's spotlight
                          target — attributes on a livewire: tag do not reach
                          its root, and `display: contents` has no box to

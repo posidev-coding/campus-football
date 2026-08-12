@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use Livewire\Livewire;
 
 /**
  * The desktop and tablet chrome: additive restyles of the same mobile-first
@@ -23,6 +24,45 @@ describe('the header', function () {
             ->get(route('scoreboard'))
             ->assertOk()
             ->assertSee('$flux.appearance', escape: false);
+    });
+
+    it('aligns the search trigger with the actions beside it', function () {
+        /*
+         * The palette's root has to be a flex container. `<ui-modal>` is an
+         * inline custom element, so in a block root it opens a line box whose
+         * strut adds descender space beneath the trigger — the root then
+         * measures taller than the trigger, and the header cluster's
+         * `items-center` centres that taller box, which left the icon a couple
+         * of pixels above the avatar. No test runner can measure the offset,
+         * so the class that prevents it is what is pinned.
+         */
+        Livewire::test('search')
+            ->assertSeeHtml('class="flex items-center"');
+    });
+
+    it('wears the field it opens, and lets go of focus to open it', function () {
+        /*
+         * From `lg` the trigger takes `flux:input size="sm"`'s geometry, so
+         * the header reads as the same object as the phone's Home bar — one
+         * control restyled, never a second trigger.
+         *
+         * The two guards underneath it are what make opening on FOCUS
+         * survivable, and neither is measurable from here:
+         *
+         *   - a native <dialog> restores focus to whatever held it when
+         *     `showModal()` ran, so the trigger blurs BEFORE dispatching, or
+         *     every close re-focuses it and reopens the modal — Escape
+         *     included, since the dialog's `close` event fires in a later task
+         *     than the focus restore and so cannot suppress it;
+         *   - `showModal()` throws InvalidStateError on an open dialog, which
+         *     a plain mouse click can reach on its own: it focuses the button
+         *     before it fires the click.
+         */
+        Livewire::test('search')
+            ->assertSeeHtml('lg:w-64')
+            ->assertSeeHtml('Search teams, players…')
+            ->assertSeeHtml('document.activeElement?.blur()')
+            ->assertSeeHtml('if (dialog?.open) { return }');
     });
 
     it('offers a guest no appearance control it cannot anchor', function () {
