@@ -55,3 +55,6 @@ application; `tests/Pest.php` flushes it in `beforeEach`, year memo included.
 
 ## Livewire's asset injector leaks across the test process
 Once any Livewire::test() has run in the Pest process, Livewire injects `<script src="/livewire/livewire.js">` into every later full-page HTML response — including plain Route::view pages that render no component. A test asserting a page has no script tags therefore reports the PREVIOUS test, passes under --filter, and fails in the full suite. Assert what the page must contain (inline `<style>`, no `/build/` reference) rather than the absence of scripts; a real request to a component-free page gets no injection.
+
+## No feature test can catch a missing eager load
+`Model::preventLazyLoading()` is on in testing (the static reads true), but the PER-INSTANCE `$preventsLazyLoading` flag on a model retrieved during a test is false, so an unloaded relation resolves silently and only throws in dev/production. A `<x-game-card>` in a new rail panel shipped a 500 on /rankings through a fully green suite. Two consequences: a fixture whose FK is null (GameFactory leaves `venue_id` null) hides it twice over, and a render assertion proves nothing. Guard this class of bug with a SOURCE sweep asserting the query loads what the view reads, the way RailTest does.

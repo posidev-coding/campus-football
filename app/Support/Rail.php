@@ -32,24 +32,24 @@ class Rail
      */
     private const MAP = [
         // ── With a rail ──────────────────────────────────────────────────
-        'home' => ['rail.top-25'],
-        'scoreboard' => ['rail.top-25'],
-        // The rail persists across all five team-nav tabs, so what it holds
-        // stays on screen while a reader is on Roster, Stats or News.
-        'team' => ['rail.top-25'],
+        'home' => ['rail.top-25', 'rail.leaders'],
+        'scoreboard' => ['rail.top-25', 'rail.leaders'],
+        // The rail persists across all five team-nav tabs, so the next
+        // kickoff stays on screen while a reader is on Roster, Stats or News.
+        'team' => ['rail.team-next', 'rail.top-25'],
         'stats' => ['rail.top-25'],
         // The sparsest screen in the app — a hero and one ruled list.
-        'coach' => ['rail.top-25'],
+        'coach' => ['rail.top-25', 'rail.news'],
         // The strongest case anywhere: article prose self-caps at 68ch, so a
         // full-width article is ~590px of text sitting in a 1248px box.
-        'article' => ['rail.top-25'],
+        'article' => ['rail.news', 'rail.top-25'],
         // Search results are ordered by demand, so they cannot be split into
         // columns — the rail is the only honest use of the width.
         'search' => ['rail.top-25'],
         // Never top-25 here: that IS the screen. Full width would instead
         // stretch one 25-row table's name column across ~900px of nothing,
         // and this screen may not grow desktop-only columns.
-        'rankings' => [],
+        'rankings' => ['rail.this-week', 'rail.leaders'],
 
         // ── Full width, no aside emitted ─────────────────────────────────
         // game        in-content sidecar; the league sheet must stay a root sibling
