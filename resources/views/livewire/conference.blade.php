@@ -220,7 +220,9 @@ new class extends Component
         <div class="flex flex-col gap-2">
             <flux:subheading>Recent conference games</flux:subheading>
 
-            <div class="grid gap-2 sm:grid-cols-2">
+            {{-- Three across only at the widest shell, where a card is still
+                 above the ~300px floor the `sm` two-up card set. --}}
+            <div class="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
                 @foreach ($this->games as $game)
                     <x-game-card :game="$game" wire:key="cgame-{{ $game->id }}" />
                 @endforeach
@@ -232,7 +234,7 @@ new class extends Component
         <div class="flex flex-col gap-2">
             <flux:subheading>National leaders from the {{ $conference->short_name ?: $conference->name }}</flux:subheading>
 
-            <div class="grid gap-3 sm:grid-cols-2">
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 @foreach ($this->leaders as $category => $rows)
                     <div class="flex flex-col gap-1 rounded-lg border border-zinc-200 p-3 dark:border-zinc-800"
                          wire:key="cat-{{ $category }}">

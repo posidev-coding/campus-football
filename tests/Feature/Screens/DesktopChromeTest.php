@@ -96,3 +96,46 @@ describe('league density', function () {
             ->toContain('grid gap-2 sm:grid-cols-2 xl:grid-cols-3');
     });
 });
+
+describe('the structural screens', function () {
+    it('gives Account two columns while the drag list stays one', function () {
+        // `wire:sort` must keep a single-column list: SortableJS reports an
+        // index, and a grid reflow makes that index mean something else.
+        $this->actingAs(User::factory()->create())
+            ->get(route('account'))
+            ->assertOk()
+            ->assertSee('lg:grid lg:grid-cols-2', escape: false)
+            ->assertSee('wire:sort="reorder"', escape: false);
+    });
+
+    it('sidecars the game screen without nesting the league sheet', function () {
+        /*
+         * The sheet must stay a SIBLING of the scorebug. The scorebug carries
+         * `backdrop-blur`, and a backdrop-filter is a containing block for
+         * `fixed` descendants — a sheet inside the grid would resolve
+         * `inset-0` against the scorebug instead of the viewport and open as
+         * a strip, exactly as full-screen search once did.
+         */
+        $source = file_get_contents(resource_path('views/livewire/game.blade.php'));
+
+        $grid = strpos($source, 'lg:grid-cols-[minmax(0,1fr)_20rem]');
+        $sheet = strpos($source, "@include('partials.game-league-sheet')");
+
+        expect($grid)->not->toBeFalse()
+            ->and($sheet)->toBeGreaterThan($grid);
+    });
+
+    it('columns the long index screens only where the sentinel still clears', function (string $view) {
+        // `xl` and not `lg`: two columns halve a chunk's ~3,200px push to
+        // ~1,600px, which still clears a viewport plus the 600px margin.
+        // Three would leave ~1,067px and let the observer re-enter early.
+        expect(file_get_contents(resource_path("views/livewire/{$view}.blade.php")))
+            ->toContain('-mt-1 grid gap-1.5 xl:grid-cols-2')
+            ->toContain('wire:key="load-more"');
+    })->with(['players', 'recruiting']);
+
+    it('centres the article measure rather than stranding it left', function () {
+        expect(file_get_contents(resource_path('views/livewire/article.blade.php')))
+            ->toContain('article-body lg:mx-auto');
+    });
+});

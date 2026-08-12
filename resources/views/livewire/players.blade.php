@@ -434,7 +434,13 @@ new class extends Component
     </x-filter-bar>
 
     @if ($this->players->isNotEmpty())
-        <div class="-mt-1 flex flex-col gap-1.5">
+        {{-- Two columns at `xl` only, and the ceiling is arithmetic rather
+             than taste: a chunk is 50 rows at ~64px, so one load pushes the
+             sentinel ~3,200px down, far past any viewport plus its 600px
+             margin. Two columns halve that to ~1,600px, which still clears.
+             Three would leave ~1,067px and let the observer re-enter before
+             the guard settles. --}}
+        <div class="-mt-1 grid gap-1.5 xl:grid-cols-2">
             @foreach ($this->players as $row)
                 {{-- The season is passed explicitly rather than left to default
                      to `latestSeason`: that would lazy-load a relation per row,

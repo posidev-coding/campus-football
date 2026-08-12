@@ -502,7 +502,16 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-4">
+{{-- Two columns from `lg`: three stacked cards on a wide screen is a metre of
+     scrolling past a lot of nothing. `items-start` so a short card does not
+     stretch to match a tall one, and `gap-y-4` rather than `gap-6` so the
+     vertical rhythm still matches the base `gap-4` the sticky heading's
+     `-mt-5` was measured against.
+
+     The followed-teams card keeps its list in ONE column whatever this does —
+     it is a `wire:sort` drag target, and reflowing a sortable list into a grid
+     breaks the ordering semantics SortableJS reports back. --}}
+<div class="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-6 lg:gap-y-4">
     {{-- Sticky, because this screen only grows — the heading has to stay put
          once settings run past a viewport.
 
@@ -511,7 +520,7 @@ new class extends Component
          where it sticks instead of drifting up on the first scroll, and the `sm`
          offset is 14 spacing units PLUS ONE PIXEL because the header is `h-14`
          plus its own `border-b`. --}}
-    <div class="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-5 flex items-center justify-between gap-3 bg-white px-4 pt-3 pb-2 sm:top-[var(--header-offset)] dark:bg-zinc-950">
+    <div class="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-5 flex items-center justify-between gap-3 bg-white px-4 pt-3 pb-2 sm:top-[var(--header-offset)] lg:col-span-2 dark:bg-zinc-950">
         {{-- The word "Account" is gone from the page. The bottom tab that got
              you here is already lit and already says it, so the heading was
              the screen naming itself twice — the same reason every League
@@ -906,7 +915,9 @@ new class extends Component
         dropdown would be unreachable on a phone — which is exactly the failure
         this navigation rework exists to remove.
     --}}
-    <flux:card class="flex flex-col gap-2">
+    {{-- Spans both columns: a row of four ghost buttons in a half-width cell
+         leaves the other half empty at the very bottom of the screen. --}}
+    <flux:card class="flex flex-col gap-2 lg:col-span-2">
         {{-- Hidden by stylesheet inside the installed app — a "Get the app"
              row in the app is furniture pointing at itself. --}}
         <flux:button

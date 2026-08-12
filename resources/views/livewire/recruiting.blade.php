@@ -393,7 +393,12 @@ new class extends Component
         </x-filter-bar>
 
         @if ($this->prospects->isNotEmpty())
-            <div class="-mt-1 flex flex-col gap-1.5">
+            {{-- Two columns at `xl` only. The row needs 516px to render its
+                 high school and hometown without truncating, which a 621px
+                 half-column at `xl` clears and a `lg` one would not — and the
+                 sentinel arithmetic is the same as Players': halving a chunk's
+                 ~3,200px push still clears the viewport plus its margin. --}}
+            <div class="-mt-1 grid gap-1.5 xl:grid-cols-2">
                 @foreach ($this->prospects as $recruit)
                     {{-- `min-w-0` because this is a flex item, whose automatic
                          minimum size is its MIN-CONTENT width: the inner column

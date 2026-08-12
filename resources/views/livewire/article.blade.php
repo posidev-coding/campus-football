@@ -113,7 +113,12 @@ new class extends Component
         {{-- `prose` is not available here, so the story's own tags are styled
              through a scoped block in app.css. Rendered unescaped, which is
              only safe because ArticleStory runs an allowlist over it. --}}
-        <div class="article-body">{!! $this->body !!}</div>
+        {{-- `lg:mx-auto` centres the measure in the column. The body caps
+             itself at 68ch (~590px) in app.css, so on a wide screen it
+             otherwise sat hard left with a few hundred pixels of nothing to
+             its right — which reads as a broken layout rather than as a
+             deliberate reading width. --}}
+        <div class="article-body lg:mx-auto">{!! $this->body !!}</div>
 
         <div class="flex flex-col gap-2 border-t border-zinc-200 pt-4 text-stat text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
             <span>Story by ESPN{{ $article->byline ? ', '.$article->byline : '' }}.</span>

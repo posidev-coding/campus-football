@@ -1039,27 +1039,44 @@ new class extends Component
         </div>
     @endif
 
-    @if ($tab === 'preview')
-        @include('partials.game-preview')
-    @elseif ($tab === 'live')
-        @include('partials.game-live')
-    @elseif ($tab === 'recap')
-        @include('partials.game-recap')
-    @elseif ($tab === 'box')
-        @include('partials.game-box-score')
-    @elseif ($tab === 'scoring')
-        @include('partials.game-scoring')
-    @elseif ($tab === 'drives')
-        @include('partials.game-drives')
-    @elseif ($tab === 'odds')
-        @include('partials.game-odds')
-    @endif
+    {{-- The desktop sidecar, and note WHERE it starts: this grid wraps only
+         the tab body and the info column. The screen root stays a flex column
+         so the scorebug above and the league sheet below remain siblings —
+         the scorebug's `backdrop-blur` is a containing block for `fixed`
+         descendants, so a sheet nested inside this grid would resolve
+         `inset-0` against the scorebug rather than the viewport, which is the
+         lesson the search panel already paid for.
 
-    {{-- When, where and how to watch — once, at the foot of every tab. It
-         replaced a caption line under the tab strip, and sits here rather
-         than back up there so it is always available without pushing a box
-         score down the screen to reach it. --}}
-    <x-game-info :game="$game" :attendance="$this->summary?->attendance ?? $game->attendance" />
+         `minmax(0,1fr)` rather than `1fr`: a bare `1fr` track is
+         `minmax(auto,1fr)` and keeps its min-content width, which is the same
+         overflow trap `min-w-0` fixes on a flex item. --}}
+    <div class="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6">
+        <div class="flex min-w-0 flex-col gap-4">
+            @if ($tab === 'preview')
+                @include('partials.game-preview')
+            @elseif ($tab === 'live')
+                @include('partials.game-live')
+            @elseif ($tab === 'recap')
+                @include('partials.game-recap')
+            @elseif ($tab === 'box')
+                @include('partials.game-box-score')
+            @elseif ($tab === 'scoring')
+                @include('partials.game-scoring')
+            @elseif ($tab === 'drives')
+                @include('partials.game-drives')
+            @elseif ($tab === 'odds')
+                @include('partials.game-odds')
+            @endif
+        </div>
+
+        {{-- When, where and how to watch — once, for every tab. Below `lg` it
+             is still the foot of the screen, so nothing moved for a phone;
+             from `lg` it rides alongside instead of pushing a box score down
+             the page to reach it. --}}
+        <div class="flex flex-col gap-4">
+            <x-game-info :game="$game" :attendance="$this->summary?->attendance ?? $game->attendance" />
+        </div>
+    </div>
 
     @include('partials.game-league-sheet')
 </div>
