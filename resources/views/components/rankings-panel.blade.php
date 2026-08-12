@@ -7,7 +7,7 @@
     use App\Enums\Poll;
     use App\Models\Ranking;
     use App\Models\Season;
-    use Illuminate\Support\Facades\Cache;
+    use App\Support\Remember;
 
     // CFP once the committee has released one, AP until then.
     $calendar = app(App\Services\CfbCalendar::class);
@@ -15,38 +15,57 @@
     $pollLabel = (Poll::tryFrom($pollKey) ?? Poll::Ap)->label();
 
     /*
-     * The right rail's anchor. Cached as plain arrays rather than models —
-     * Eloquent collections round-trip through Redis as __PHP_Incomplete_Class
-     * and fail on the second request, not the first.
+     * Resolved OUTSIDE the cache and folded into the key. A calendar fallback
+     * pinned inside a cache entry is how a screen keeps serving last season
+     * for a full TTL, and keying on the release is what lets a new poll
+     * publish without waiting the TTL out.
      */
-    $rankings = Cache::remember("panel:rankings:{$pollKey}:{$limit}", 900, function () use ($pollKey, $limit) {
-        // CfbCalendar knows which season actually has this poll — an upcoming
-        // season exists long before a poll is published for it.
-        $year = app(App\Services\CfbCalendar::class)->rankingsYear($pollKey);
-        $season = Season::where('year', $year)->where('type', Season::REGULAR)->first();
+    $year = $calendar->rankingsYear($pollKey);
+    $release = $calendar->latestRankingRelease($year, $pollKey);
 
-        if ($season === null) {
-            return [];
+    /*
+     * Remember::filled rather than Cache::remember: this list gates the whole
+     * rail, and in August the only poll published is the preseason one. An
+     * empty answer here is a moment, not a fact — pinning it for 900s while a
+     * sync drains is the exact bug Remember exists to prevent. Recomputing an
+     * empty costs two indexed queries returning no rows.
+     *
+     * Cached as plain arrays rather than models — Eloquent collections
+     * round-trip through Redis as __PHP_Incomplete_Class and fail on the
+     * second request, not the first.
+     */
+    $rankings = Remember::filled(
+        "rail:top25:{$pollKey}:{$year}:{$release}:{$limit}",
+        900,
+        function () use ($pollKey, $year, $release, $limit) {
+            /*
+             * Spans season types. The preseason poll lives on the type 1
+             * season row and the final rankings on type 3, so filtering to
+             * REGULAR empties this panel for the whole summer — which is
+             * exactly what it did.
+             */
+            $seasonIds = Season::where('year', $year)->pluck('id');
+
+            if ($seasonIds->isEmpty()) {
+                return [];
+            }
+
+            return Ranking::query()
+                ->whereIn('season_id', $seasonIds)
+                ->where('poll', $pollKey)
+                ->when($release, fn ($q) => $q->where('week_id', $release))
+                ->orderBy('rank')
+                ->limit($limit)
+                ->get(['rank', 'previous_rank', 'record', 'team_id'])
+                ->map(fn (Ranking $r) => [
+                    'rank' => $r->rank,
+                    'previous' => $r->previous_rank,
+                    'record' => $r->record,
+                    'team_id' => $r->team_id,
+                ])
+                ->all();
         }
-
-        $latestWeek = Ranking::where('season_id', $season->id)->where('poll', $pollKey)->max('week_id');
-
-        return Ranking::query()
-            ->with('team:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark')
-            ->where('season_id', $season->id)
-            ->where('poll', $pollKey)
-            ->when($latestWeek, fn ($q) => $q->where('week_id', $latestWeek))
-            ->orderBy('rank')
-            ->limit($limit)
-            ->get()
-            ->map(fn (Ranking $r) => [
-                'rank' => $r->rank,
-                'previous' => $r->previous_rank,
-                'record' => $r->record,
-                'team_id' => $r->team_id,
-            ])
-            ->all();
-    });
+    );
 
     $teams = $rankings === []
         ? collect()
