@@ -75,7 +75,8 @@
 @endphp
 
 @if ($rankings !== [])
-    <section {{ $attributes->class(['flex flex-col rounded-lg border border-zinc-200 dark:border-zinc-800']) }}>
+    {{-- No sticky here: the rail's own wrapper sticks the whole stack. --}}
+    <section {{ $attributes->class(['flex shrink-0 flex-col rounded-lg border border-zinc-200 dark:border-zinc-800']) }}>
         <header class="flex items-baseline justify-between gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
             <h2 class="text-sm font-semibold">{{ $pollLabel }}</h2>
             <a href="{{ route('rankings') }}" wire:navigate

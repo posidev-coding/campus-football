@@ -194,5 +194,17 @@ it('keeps the right rail additive rather than load-bearing', function () {
 it('caps content width at a laptop rather than stretching', function () {
     $this->get(route('scoreboard'))
         ->assertOk()
-        ->assertSee('max-w-7xl', escape: false);
+        ->assertSee('max-w-7xl', escape: false)
+        // 1440 from `xl`, not from `2xl`: Tailwind's 2xl is 1536px, so gating
+        // the step there leaves every laptop on the narrow shell.
+        ->assertSee('xl:max-w-[90rem]', escape: false);
+});
+
+it('gives a full-width screen no column to leave blank', function () {
+    // The rail is contextual now. A screen that declares no panels must emit
+    // no <aside> at all — reserving 288px and rendering nothing into it is
+    // what made every screen look narrow beside dead space.
+    $this->get(route('news'))
+        ->assertOk()
+        ->assertDontSee('<aside', escape: false);
 });

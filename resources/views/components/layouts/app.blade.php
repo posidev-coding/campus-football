@@ -1,5 +1,3 @@
-@props(['rail' => true])
-
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scroll-smooth">
 <head>
@@ -39,7 +37,13 @@
         when the bottom nav was auth-gated and a signed-out phone visitor had no
         navigation at all.
     --}}
-    <div class="mx-auto flex min-h-dvh w-full max-w-7xl flex-col">
+    {{-- 1280px through `lg`, 1440px from `xl` up. The step is at `xl` and not
+         `2xl` on purpose: Tailwind's `2xl` is 1536px, so gating there would
+         leave every laptop — a 14" MacBook is 1512pt — on the narrow shell
+         and make the wider layout invisible on the machines it was built for.
+         The extra 160px goes to the rail and to grid columns; line length is
+         unchanged, and article prose stays capped at 68ch regardless. --}}
+    <div class="mx-auto flex min-h-dvh w-full max-w-7xl flex-col xl:max-w-[90rem]">
         {{-- z-40 puts app chrome above anything a screen sticks to its own
              viewport. A screen may stack internally (the scoreboard runs
              chrome 30 / day heading 20 / card contents 10); none of it may
@@ -149,18 +153,50 @@
         {{-- The bottom pad counts the tab bar's own safe-area padding too — the
              bar is `--nav-height` PLUS the home-indicator inset on a notched
              phone, and counting only the height trapped the last ~34px of
-             every screen behind it in standalone. --}}
+             every screen behind it in standalone.
+
+             `px-4` is CONSTANT at every width, deliberately. A dozen blocks
+             across eleven files cancel it with `-mx-4` to bleed to the edge of
+             the content column — the scoreboard and game chrome, the day
+             headings, the team hero, the week scroller, Home's two swiper
+             tracks — and only three of them revert at a breakpoint. A
+             responsive gutter would mean re-deriving all twelve, plus the
+             `w-[calc(100%+2rem)]` on the article lead image, to buy nothing:
+             at 1280 the content box is already 1248px and every card carries
+             its own border and padding, so 16px of page gutter reads as
+             deliberate edge-to-edge density. --}}
         <div class="flex flex-1 gap-6 px-4 py-5 pb-[calc(var(--nav-height)+1.5rem+env(safe-area-inset-bottom))] sm:pb-[calc(var(--spacing)*6+env(safe-area-inset-bottom))]">
             <main class="min-w-0 flex-1">
                 {{ $slot }}
             </main>
 
-            @if ($rail)
-                {{-- Desktop-only and purely additive: it appears at lg and
-                     above, and its absence below changes nothing about the
-                     primary content. --}}
+            {{-- CONTEXTUAL, and desktop-only. App\Support\Rail is the single
+                 source of truth for which screens carry one, the same
+                 route-keyed shape App\Support\Navigation uses for the tab bar
+                 and the section strip. An empty list emits no <aside> at all,
+                 so the screen renders full width rather than beside a dead
+                 column — which is exactly what every screen did while the
+                 Top 25 panel was silently returning nothing.
+
+                 Purely additive: the whole thing is `lg:flex`, and every
+                 panel's content is reachable from a phone through a tab. --}}
+            @php $railPanels = App\Support\Rail::panels(); @endphp
+
+            @if ($railPanels !== [])
                 <aside class="hidden w-72 shrink-0 flex-col gap-4 lg:flex">
-                    <x-rankings-panel class="sticky top-[calc(var(--header-offset)+1rem)]" />
+                    {{-- The STACK sticks, not each panel: two sticky siblings
+                         cannot both hold the top, and the second would scroll
+                         away. Capped to the viewport and scrollable, so a
+                         stack taller than the screen is still reachable —
+                         `overflow-y` is fine, the app-wide ban is on
+                         horizontal scroll. Nothing inside may be a dropdown
+                         or a menu: this box clips them, and `sticky` opens a
+                         stacking context a `fixed` child cannot escape. --}}
+                    <div class="sticky top-[calc(var(--header-offset)+1rem)] flex max-h-[calc(100dvh-var(--header-offset)-2rem)] flex-col gap-4 overflow-y-auto overscroll-contain">
+                        @foreach ($railPanels as $panel)
+                            <x-dynamic-component :component="$panel" wire:key="rail-{{ $panel }}" />
+                        @endforeach
+                    </div>
                 </aside>
             @endif
         </div>
