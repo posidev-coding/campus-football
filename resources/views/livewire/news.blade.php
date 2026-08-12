@@ -30,16 +30,28 @@ new class extends Component
 <div class="flex flex-col gap-4">
     <h1 class="sr-only">News</h1>
 
-    @forelse ($this->articles as $article)
-        <x-article-card :article="$article" wire:key="article-{{ $article->id }}" />
-    @empty
-        <flux:callout icon="newspaper">
-            <flux:callout.heading>No news yet</flux:callout.heading>
-            <flux:callout.text>
-                Nothing synced. Run <code>php artisan cfb:sync --only=news</code>.
-            </flux:callout.text>
-        </flux:callout>
-    @endforelse
+    {{-- An order-preserving grid, never CSS columns: the feed is sorted
+         newest-first, and a column flow would read 1-2-3 down the left before
+         4-5-6 down the right, which puts the second-newest story below the
+         fold and the seventh at the top of the page.
 
+         This screen carries no rail, so the columns are the width's whole
+         job — 322px cells at `lg`, 343px at four across the widest shell.
+         Cards stretch to their row: `article-card` already pushes its meta
+         line down with `mt-auto`, so an equal-height row fills correctly. --}}
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+        @forelse ($this->articles as $article)
+            <x-article-card :article="$article" wire:key="article-{{ $article->id }}" />
+        @empty
+            <flux:callout icon="newspaper" class="sm:col-span-2 lg:col-span-3 2xl:col-span-4">
+                <flux:callout.heading>No news yet</flux:callout.heading>
+                <flux:callout.text>
+                    Nothing synced. Run <code>php artisan cfb:sync --only=news</code>.
+                </flux:callout.text>
+            </flux:callout>
+        @endforelse
+    </div>
+
+    {{-- Outside the grid: a paginator is not a card and must not take a cell. --}}
     {{ $this->articles->links() }}
 </div>

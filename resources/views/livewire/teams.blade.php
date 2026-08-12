@@ -156,7 +156,11 @@ new class extends Component
                 <x-conference-link :conference="$group['conference']" :year="$year" />
             </flux:subheading>
 
-            <div class="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+            {{-- Single-line rows are the least width-sensitive thing in the
+                 app, and this screen carries no rail, so it takes the most
+                 columns anywhere: 327px cells at `lg`, 347px at four across
+                 the widest shell. --}}
+            <div class="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 @foreach ($group['teams'] as $membership)
                     <div class="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700"
                          wire:key="team-{{ $membership->team_id }}">

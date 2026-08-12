@@ -279,7 +279,11 @@ new class extends Component
         <div class="flex flex-col gap-2" wire:key="grp-{{ $view }}-{{ $side }}-{{ $group['group'] }}">
             <flux:subheading>{{ $group['group'] }}</flux:subheading>
 
-            <div class="grid gap-3 lg:grid-cols-2">
+            {{-- Boards are variable-height lists, which is what makes them
+                 good grid citizens — a ragged bottom row is the honest shape.
+                 Three across only at `2xl`, where the rail still leaves
+                 346px per board. --}}
+            <div class="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                 @foreach ($group['boards'] as $board)
                     <div class="flex flex-col rounded-lg border border-zinc-200 dark:border-zinc-800"
                          wire:key="brd-{{ $view }}-{{ $board['meta']['category'] }}-{{ $board['meta']['stat'] }}">

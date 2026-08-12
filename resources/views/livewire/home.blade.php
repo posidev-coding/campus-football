@@ -679,7 +679,10 @@ new class extends Component
                 </a>
             </div>
 
-            <div class="grid gap-2 sm:grid-cols-2">
+            {{-- Three across from `xl`, where the column beside the rail is
+                 936px and a card is still 306px — the same three-up the
+                 scoreboard's day groups use, and the same floor. --}}
+            <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                 {{-- Dated: this grid is a flat six across a Thursday-to-Saturday
                      week, with no day headings to say which is which. --}}
                 @foreach ($this->games as $game)

@@ -18,7 +18,12 @@
 <a
     href="{{ $readable ? route('article', $article) : $article->url }}"
     @if ($readable) wire:navigate @else target="_blank" rel="noopener noreferrer" @endif
-    {{ $attributes->class(['group flex gap-3 rounded-lg border border-zinc-200 p-3 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700']) }}
+    {{-- `min-w-0` on the card itself rather than at each call site: a grid
+         item keeps its min-content width exactly as a flex item does, so a
+         long headline inside would widen its track and scroll the document
+         sideways. It is a no-op in a block or flex-column parent, and
+         load-bearing the moment this card lands in a grid. --}}
+    {{ $attributes->class(['group flex min-w-0 gap-3 rounded-lg border border-zinc-200 p-3 transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700']) }}
 >
     @if ($article->image_url)
         <img

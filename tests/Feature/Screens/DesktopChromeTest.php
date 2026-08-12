@@ -62,9 +62,37 @@ describe('screen branding', function () {
 });
 
 describe('league density', function () {
-    it('sets standings tables two abreast from lg', function () {
+    it('sets standings tables two abreast from lg and three at the widest', function () {
+        // Two-up only works because this screen carries no rail: beside one,
+        // the cells were 328px — narrower than the 390px phone the six-column
+        // table was measured to fit.
         $this->get(route('standings'))
             ->assertOk()
-            ->assertSee('lg:grid-cols-2', escape: false);
+            ->assertSee('lg:grid-cols-2', escape: false)
+            ->assertSee('2xl:grid-cols-3', escape: false);
+    });
+
+    /*
+     * These three grids live inside their screen's own `@forelse`/`@if`, so an
+     * empty database renders no grid to assert against — and standing up
+     * conference memberships, season stat rows and a scheduled week to prove a
+     * class ladder would test the fixtures, not the layout. The column ladder
+     * is a static styling decision, so it is held at the layer that owns it:
+     * the view source, the same layer ChromeConsistencyTest sweeps.
+     */
+    it('columns the team index up to four', function () {
+        // Single-line rows, no rail — the most columns anywhere in the app.
+        expect(file_get_contents(resource_path('views/livewire/teams.blade.php')))
+            ->toContain('grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4');
+    });
+
+    it('columns the stat boards to three beside the rail', function () {
+        expect(file_get_contents(resource_path('views/livewire/stats.blade.php')))
+            ->toContain('grid gap-3 lg:grid-cols-2 2xl:grid-cols-3');
+    });
+
+    it("columns home's slate to three inside the rail column", function () {
+        expect(file_get_contents(resource_path('views/livewire/home.blade.php')))
+            ->toContain('grid gap-2 sm:grid-cols-2 xl:grid-cols-3');
     });
 });

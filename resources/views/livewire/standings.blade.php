@@ -243,11 +243,20 @@ new class extends Component
     </x-plate>
 
     {{-- Two conference tables abreast from `lg` — the "dense sports site"
-         read the desktop aspiration in docs/ui-system.md names. The tables
-         keep their abbreviated headers on purpose: each grid cell is barely
-         wider than the phone width the abbreviations were measured for, and
-         full-word headers would spend the team column's gain again. --}}
-    <div class="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-6 lg:gap-y-5">
+         read the desktop aspiration in docs/ui-system.md names, and three from
+         the widest. The tables keep their abbreviated headers on purpose:
+         full-word headers would spend the team column's gain again.
+
+         The cell arithmetic is the whole reason this screen carries no rail.
+         Six columns were measured to fit exactly at 390px, so a cell narrower
+         than that breaks them. Beside a 288px rail this grid gave 328px cells
+         at `lg` — narrower than the phone it was designed for. Full width
+         gives 484px at `lg` and 453px in three columns at `2xl`.
+
+         `items-start` because these are panels, not cards: stretching a
+         four-row conference to match a sixteen-row one paints a tall empty
+         box under the short table. --}}
+    <div class="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-6 lg:gap-y-5 2xl:grid-cols-3">
     @forelse ($this->standings as $conferenceName => $rows)
         <div class="flex flex-col gap-2">
             <flux:subheading>
@@ -342,7 +351,9 @@ new class extends Component
             </div>
         </div>
     @empty
-        <flux:callout icon="table-cells" class="lg:col-span-2">
+        {{-- Spans whatever the grid is, or an empty state reads as a layout
+             bug sitting in the first column. --}}
+        <flux:callout icon="table-cells" class="lg:col-span-2 2xl:col-span-3">
             <flux:callout.heading>No standings yet</flux:callout.heading>
             <flux:callout.text>Nothing published for this season and division.</flux:callout.text>
         </flux:callout>
