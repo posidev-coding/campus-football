@@ -59,6 +59,7 @@ class Game extends Model
     {
         return [
             'kickoff_at' => 'datetime',
+            'kickoff_alert_sent_at' => 'datetime',
             'neutral_site' => 'boolean',
             'conference_game' => 'boolean',
             'completed' => 'boolean',
@@ -181,6 +182,17 @@ class Game extends Model
     public function scopeUpcoming(Builder $query): Builder
     {
         return $query->where('completed', false)->where('kickoff_at', '>=', now());
+    }
+
+    /**
+     * Games kicking off inside the next $minutes — the kickoff-alert sweep's
+     * window. Bounded on BOTH ends (upcoming() is not), and it rides the
+     * (completed, kickoff_at) index.
+     */
+    public function scopeStartingSoon(Builder $query, int $minutes = 15): Builder
+    {
+        return $query->where('completed', false)
+            ->whereBetween('kickoff_at', [now(), now()->addMinutes($minutes)]);
     }
 
     public function isInProgress(): bool

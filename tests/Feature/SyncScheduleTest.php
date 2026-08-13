@@ -17,6 +17,18 @@ use Illuminate\Console\Scheduling\Schedule;
  * resolves them at run time.
  */
 
+it('schedules the kickoff sweep on the five-minute cadence the stamp assumes', function () {
+    // The command's per-game stamp is sized to a 15-minute window swept
+    // every 5 — a slower cadence starts missing games, a faster one just
+    // burns wakes. The entry rides the live window the score tier keeps
+    // awake, so it must never grow its own year-round schedule.
+    $entry = collect(app(Schedule::class)->events())
+        ->first(fn (Event $event) => str_contains($event->command ?? '', 'cfb:kickoff-alerts'));
+
+    expect($entry)->not->toBeNull()
+        ->and($entry->expression)->toBe('*/5 * * * *');
+});
+
 it('schedules recruiting by relative token, never a resolved year', function () {
     $commands = collect(app(Schedule::class)->events())
         ->map(fn (Event $event) => $event->command ?? '')

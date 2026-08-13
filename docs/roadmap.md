@@ -178,10 +178,16 @@ streak your group can see is a stake.
 
 ## Phase 8 — Notifications and the weekly loop
 
-Partly built already — `WeeklyDigest`, `SendWeeklyNewsletter` and the SMS
-channel exist. What is missing is the loop that makes them matter: pick
-reminders before lock, results when a slate settles, and a rival's result when
-it stings.
+Partly built already — `WeeklyDigest`, `SendWeeklyNewsletter`, the SMS
+channel, and now WEB PUSH end to end: VAPID + `push_subscriptions`
+(subscription = consent, device-scoped, no server flag), the service worker's
+`push`/`notificationclick` handlers (a tapped push opens the INSTALLED app —
+the only true deep link an iOS PWA has), the Account device switch and Home's
+standalone-only nudge, a welcome push proving the pipe, and `cfb:kickoff-alerts`
+sweeping the live window for followed teams. What is missing is the loop that
+makes them matter: pick reminders before lock, results when a slate settles,
+and a rival's result when it stings — all of which ride the same plumbing
+with nothing to unwind.
 
 Reverb is installed and only the default private user channel is registered.
 Live pick'em standings during a Saturday are the case that would justify it.

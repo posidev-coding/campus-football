@@ -656,6 +656,85 @@ new class extends Component
         <flux:separator />
 
         {{--
+            Push notifications — this DEVICE's, which is the honest unit: the
+            permission and the subscription both live on the phone in hand,
+            so there is no server column for a switch to disagree with (the
+            subscription IS the consent — see User's trait comment).
+
+            Alpine rather than wire:model because the whole flow is client
+            capability: the switch's on position runs the permission prompt
+            inside the tap (a spent prompt never re-asks), then subscribes
+            and stores. A browser with no push support hides the row; a
+            denied permission swaps the switch for the one honest sentence,
+            since flipping a switch we know cannot prompt would be theater.
+        --}}
+        <div
+            data-push-control
+            x-cloak
+            x-show="supported"
+            x-data="{
+                supported: false,
+                denied: false,
+                on: false,
+                busy: false,
+
+                async init() {
+                    this.supported = window.cfbPush.supported();
+
+                    if (! this.supported) return;
+
+                    this.denied = window.cfbPush.permission() === 'denied';
+                    this.on = await window.cfbPush.subscribed();
+
+                    this.$watch('on', (value) => this.apply(value));
+                },
+
+                async apply(value) {
+                    if (this.busy) return;
+
+                    this.busy = true;
+
+                    if (value) {
+                        let result = await window.cfbPush.enable(
+                            @js(config('webpush.vapid.public_key')),
+                            @js(route('push.store')),
+                        );
+
+                        if (result !== 'granted') {
+                            this.denied = result === 'denied';
+                            this.on = false;
+                        }
+                    } else {
+                        await window.cfbPush.disable(@js(route('push.destroy')));
+                    }
+
+                    this.busy = false;
+                },
+            }"
+            class="flex flex-col gap-2"
+        >
+            <template x-if="! denied">
+                <flux:switch
+                    x-model="on"
+                    label="Notifications"
+                    description="Kickoff alerts for your teams, and what's coming with Pick'em. This device only."
+                    align="right"
+                />
+            </template>
+
+            <template x-if="denied">
+                <div class="flex flex-col gap-1 text-sm">
+                    <span class="font-medium">Notifications</span>
+                    <span class="text-zinc-500 dark:text-zinc-400">
+                        Notifications are blocked for this app in your device settings — flip them on there and this switch comes back.
+                    </span>
+                </div>
+            </template>
+        </div>
+
+        <flux:separator />
+
+        {{--
             Text messages.
 
             Three steps, shown one at a time, because they are three different

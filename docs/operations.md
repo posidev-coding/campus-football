@@ -236,6 +236,34 @@ log fetched "an hour ago" and called it fresh — true Sunday to Friday, false o
 Saturday, where the poll window is 15 minutes. Pin fixtures to a value that holds
 under the TIGHTEST window, not the usual one.
 
+## Web push: VAPID keys, and the subscription is the consent
+
+Push rides `laravel-notification-channels/webpush` (over `minishlink/web-push`;
+`ext-gmp` speeds the signing but openssl suffices — check the Cloud runtime
+when sends feel slow). `php artisan webpush:vapid` generates the key pair into
+the env: the PUBLIC key ships to the browser inside Blade via
+`config('webpush.vapid.public_key')`, the PRIVATE key signs every send and is
+a real secret, and ROTATING them silently orphans every existing subscription
+— treat them like a signing cert. They must exist in the Cloud env before the
+first deploy that sends.
+
+There is deliberately NO push consent column. A `push_subscriptions` row can
+only exist through an explicit permission grant on a device, so the
+subscription IS the consent, device-scoped like the install itself: the
+Account switch manages this device's row, `whereHas('pushSubscriptions')` is
+the send gate, and no second flag can drift out of agreement with the
+browser. The permission prompt is spent the moment it shows — every ask lives
+inside a real tap (Account's switch, Home's standalone-only nudge), never on
+load.
+
+`cfb:kickoff-alerts` sweeps every five minutes across a fifteen-minute
+lookahead, confined to the live window the score tier already keeps awake and
+season-gated with it, so it adds no scale-to-zero wakes of its own. The
+per-game `kickoff_alert_sent_at` stamp is what makes the overlapping window
+send once — and a game with zero reachable followers is stamped too, so
+"checked, nothing to send" can never become "retry forever". `--dry` reports
+the would-send set without sending or stamping.
+
 ## SMS: the one thing that could not be consolidated
 
 Cloudflare has no SMS product — their own Workers docs demonstrate calling Twilio,

@@ -435,3 +435,18 @@ Schedule::command('cfb:verification-reminders')
     ->dailyAt('07:00')
     ->timezone($tz)
     ->withoutOverlapping();
+
+/*
+ * Kickoff alerts, swept every five minutes across a fifteen-minute
+ * lookahead — an alert lands ten to fifteen minutes before kick. Confined
+ * to the live window the every-minute score tier already keeps awake, and
+ * season-gated with it, so this adds no scale-to-zero wakes of its own.
+ * The per-game stamp inside the command is what makes the overlap of
+ * window and cadence send once.
+ */
+Schedule::command('cfb:kickoff-alerts')
+    ->everyFiveMinutes()
+    ->timezone($tz)
+    ->between('11:00', '03:00')
+    ->when($inSeason)
+    ->withoutOverlapping();
