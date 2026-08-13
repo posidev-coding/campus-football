@@ -91,6 +91,15 @@ describe('the screen', function () {
         expect(substr_count($html, 'tap <strong>More</strong> first'))->toBeGreaterThanOrEqual(2);
     });
 
+    it('makes the case against the tab, in so many words', function () {
+        // "Objectively better" is the brief: the walkthrough leads with WHY
+        // before the how, and the claims stay factual — full screen, its own
+        // icon, never buried in tabs — so insisting stays honest.
+        $this->get(route('get-app'))
+            ->assertOk()
+            ->assertSee(Voice::line('install.screen.case'));
+    });
+
     it('carries an already-installed state for standalone visits', function () {
         // assertSee escapes its argument the way Blade escaped the line.
         $this->get(route('get-app'))
@@ -156,7 +165,7 @@ describe('the voice', function () {
     it('speaks each register, and never the same line up the ladder', function () {
         // LOUD chrome: all three registers exist side by side, and R actually
         // escalates rather than repeating PG-13 with a shrug.
-        foreach (['install.banner.heading', 'install.banner.body', 'install.screen.heading', 'install.screen.installed'] as $key) {
+        foreach (['install.banner.heading', 'install.banner.body', 'install.screen.heading', 'install.screen.case', 'install.screen.installed'] as $key) {
             $pg = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::Pg]));
             $r = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::R]));
 

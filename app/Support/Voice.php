@@ -359,6 +359,18 @@ class Voice
             'r' => 'The best seat in the house is the installed app — full screen, instant, and no address bar between you and the damage.',
         ],
 
+        /*
+         * The case against the tab, made plainly: installed is not a nicer
+         * option, it is the better one, and the copy is allowed to insist.
+         * The claims stay factual — full screen, own icon, never buried —
+         * so the insistence never outruns what the install actually does.
+         */
+        'install.screen.case' => [
+            'pg' => 'Installed genuinely beats a browser tab: full screen with no address bar, its own icon on your home screen, and it never gets lost behind your other tabs.',
+            'pg13' => "Installed is objectively better than a tab: full screen, no browser chrome, one tap from your home screen — and it can't get buried under forty other tabs by Saturday.",
+            'r' => 'A tab is where apps go to get lost. Installed is full screen, no chrome, one tap from your home screen — and come kickoff it will not be hiding behind forty other tabs.',
+        ],
+
         'install.screen.installed' => [
             'pg' => "You're all set — you're using the installed app right now.",
             'pg13' => "You're already in the app. Nothing left to install — go check a score.",

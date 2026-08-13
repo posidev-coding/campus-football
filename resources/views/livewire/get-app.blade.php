@@ -89,6 +89,12 @@ new class extends Component {}; ?>
     <div x-show="! standalone" class="flex flex-col gap-5">
         <flux:subheading>{{ App\Support\Voice::line('install.screen.heading') }}</flux:subheading>
 
+        {{-- The case against the tab, and it is allowed to insist — the
+             claims are factual, so the emphasis never outruns the product. --}}
+        <p class="rounded-xl bg-blue-50 px-4 py-3 text-sm font-medium text-blue-900 ring-1 ring-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:ring-blue-900">
+            {{ App\Support\Voice::line('install.screen.case') }}
+        </p>
+
         {{-- Chromium has handed us a real install prompt — one tap, no steps. --}}
         <div x-cloak x-show="installReady">
             <flux:button x-on:click="install()" variant="primary" class="w-full sm:w-auto">
