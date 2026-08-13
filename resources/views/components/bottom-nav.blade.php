@@ -16,8 +16,8 @@
     navigation at this width, so a tab that vanishes for a signed-out visitor
     takes the sign-in route with it.
 
-    The column count comes from the area list rather than being hardcoded, so
-    adding Pick'em as a sixth area is a one-line change here.
+    The column count comes from the area list rather than being hardcoded —
+    which is how Picks arrived as the fifth tab without this file changing.
 --}}
 <nav
     {{-- z-40, matching the header: app chrome always sits above whatever a

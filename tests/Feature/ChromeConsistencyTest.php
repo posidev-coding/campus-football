@@ -61,9 +61,12 @@ it('scrolls horizontally only where the rule allows', function () {
 it('renders the gutter track only through x-gutter-tabs', function () {
     /*
      * The zinc track with the raised active pad replaced the blue pill
-     * strips. Account keeps Flux\'s own segmented radio group for the
-     * appearance toggle — it binds $flux.appearance through Alpine, which a
-     * wire:click gutter cannot do, and the two render identically.
+     * strips. The one sanctioned segmented radio group is the appearance
+     * switcher — it binds $flux.appearance through Alpine, which a wire:click
+     * gutter cannot do, and the two render identically. It lives in exactly
+     * ONE partial (rendered by Account and the avatar menu), so this
+     * allowlist names one file and the control cannot drift between its two
+     * homes by construction.
      */
     $violations = [];
 
@@ -78,7 +81,7 @@ it('renders the gutter track only through x-gutter-tabs', function () {
             $violations[] = $path;
         }
 
-        if (str_contains($contents, 'variant="segmented"') && $path !== 'livewire/account.blade.php') {
+        if (str_contains($contents, 'variant="segmented"') && $path !== 'components/appearance-switcher.blade.php') {
             $violations[] = $path.' (segmented radio group)';
         }
     }

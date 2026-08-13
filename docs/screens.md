@@ -31,17 +31,32 @@ game belongs to the season that has not started counting yet. The card polls
 (`wire:poll.30s.visible`) only while one of the teams is actually live, and
 reads only our own database.
 
-The Pick'em teaser card is designed and deliberately INERT — the app should
-read as a pick'em host from the first screen without promising a screen that
-does not exist. It becomes the entry point when Pick'em ships.
+The Pick'em teaser card WAS deliberately inert; the Picks screen exists now
+(`/picks`, the fifth nav area, a designed coming-soon page), so the whole
+card navigates there — the entry point it always planned to become. The
+wallet chips (`x-wallet-chips`: Beast Latte balance and XP are REAL sums
+from the wallet ledger now — verification pays 100 XP + 1 latte, the
+onboarding moment seeds 25 XP — while the rank stays the literal "Rookie"
+until Phase 7 defines the ladder) ride `x-home-nav`'s reserved slot
+below `sm` and the layout header above, both wearing `data-tour="wallet"`.
 
-**The last card is an empty SLOT until five teams are followed.** Onboarding
-happens in place: a signed-in user with no teams gets a swiper holding one
-add-card, searches, taps, and the slot becomes a real glance card. The
-callout that sent them to Account is gone — it pushed people off the page
-they were trying to fill. **The first team added also becomes the FAVORITE**
-(`SetFavoriteTeam`, which follows as part of setting), because nobody picks
-their one and only team and expects it not to lead the page.
+**The last card is an empty SLOT until five teams are followed, and the
+first is Bandwagon State until ONE is.** Onboarding happens in place: a
+signed-in user with no teams gets a swiper holding the placeholder card
+(`x-team-placeholder-card`, dashed, absurd on purpose — see
+`App\Support\PlaceholderTeam`) and one add-card. The placeholder is a button
+that opens the picker, keeps the news track index-aligned with its own joke
+panel, and is what lets the guided tour run for someone who skipped the
+picker. **There is no separate favorite mechanism** — follows are an ordered
+list, position 1 IS the favorite, and the picker now says so out loud.
+
+**A horizontal swipe works ANYWHERE in the team section** — dots, news
+panels, subheadings — not only on the card track. Touch handlers on the
+section converge on the dots' own `scrollIntoView` idiom (guarded so touches
+beginning on the card track stay native, and gated on clear horizontal
+intent so a page scroll never advances the swiper). The news track stays
+`overflow-hidden`: it is a follower, and two scrollers can disagree about
+which team is showing.
 
 That makes the swiper's card list DYNAMIC, which broke the original
 IntersectionObserver: it captured `[...track.children]` once in `x-init`, so

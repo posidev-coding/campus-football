@@ -16,7 +16,13 @@ Route::livewire('/', 'home')->name('home');
 Route::livewire('app', 'get-app')->name('get-app');
 
 /*
- * Brand artefacts, generated rather than served as static files, because their
+ * Pick'em's front door, ahead of Pick'em itself — the fifth tab needs a
+ * destination that says what is coming rather than a dead slot.
+ */
+Route::livewire('picks', 'picks')->name('picks');
+
+/*
+ * Brand artifacts, generated rather than served as static files, because their
  * contents are editable from the App Branding admin page.
  *
  * A second copy of the icon list is how a home-screen icon ends up disagreeing

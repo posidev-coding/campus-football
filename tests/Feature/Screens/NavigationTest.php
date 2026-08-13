@@ -39,11 +39,12 @@ describe('areas', function () {
          * reachable from the tab bar or it is unreachable on a phone — brand
          * goes to Home, the avatar to Account. Search is deliberately NOT a
          * tab anymore: the bar at the top of Home carries it, and the freed
-         * slot is reserved for Pick'em.
+         * slot went to Picks — center, because the product's point takes the
+         * middle of a five-tab bar.
          */
         $keys = collect(Navigation::areas())->pluck('key');
 
-        expect($keys->all())->toBe(['home', 'scores', 'league', 'account']);
+        expect($keys->all())->toBe(['home', 'scores', 'picks', 'league', 'account']);
     });
 
     it('keeps a tab lit on detail pages inside its area', function () {
@@ -64,6 +65,7 @@ describe('areas', function () {
             'home' => 'home',
             'news' => 'home',
             'scoreboard' => 'scores',
+            'picks' => 'picks',
             'standings' => 'league',
             'rankings' => 'league',
             'teams' => 'league',

@@ -62,6 +62,7 @@ class Rail
         // news        the ideal three-to-four column grid
         // account     in-content two-column; the drag list stays one column
         // get-app     a walkthrough, not data
+        // picks       a promise, not data
         'game' => [],
         'standings' => [],
         'teams' => [],
@@ -72,6 +73,7 @@ class Rail
         'news' => [],
         'account' => [],
         'get-app' => [],
+        'picks' => [],
     ];
 
     /**

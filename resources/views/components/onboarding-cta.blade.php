@@ -4,8 +4,10 @@
     The front door. One blue button, and a quiet way to make it go away.
 
     Guests and signed-in users land in different places — an account flow
-    versus the team picker — but the card is the same, because the promise is
-    the same: this page becomes yours.
+    versus the team picker — and the card now makes two different promises to
+    match: a guest is sold the whole app (scores, teams, Pick'em on the way),
+    a signed-in reader is sold the one thing left to do — put their favorite
+    up top. Same card, same button, different pitch.
 --}}
 {{-- Deliberately louder than the cards around it: a tinted surface and a blue
      ring, so the one thing a new user should press does not read as another
@@ -17,8 +19,8 @@
 ]) }}>
     <div class="flex items-start justify-between gap-3">
         <div class="flex min-w-0 flex-col gap-1">
-            <flux:heading size="lg">{{ App\Support\Voice::line('onboarding.heading') }}</flux:heading>
-            <flux:subheading>{{ App\Support\Voice::line('onboarding.body') }}</flux:subheading>
+            <flux:heading size="lg">{{ App\Support\Voice::line($guest ? 'onboarding.guest.heading' : 'onboarding.member.heading') }}</flux:heading>
+            <flux:subheading>{{ App\Support\Voice::line($guest ? 'onboarding.guest.body' : 'onboarding.member.body') }}</flux:subheading>
         </div>
 
         {{-- Dismissible, and deliberately understated: an X rather than a

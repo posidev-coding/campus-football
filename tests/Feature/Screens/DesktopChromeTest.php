@@ -18,12 +18,15 @@ describe('the header', function () {
     });
 
     it('puts appearance in the avatar menu for signed-in readers', function () {
-        // Same `$flux.appearance` store the Account screen writes — two
-        // controls, one localStorage truth.
+        // Same `$flux.appearance` store the Account screen writes — one
+        // shared partial, one localStorage truth. The visible "Appearance"
+        // heading is the name the icon-only control needs in a menu of
+        // labeled rows; only the menu renders it.
         $this->actingAs(User::factory()->create())
             ->get(route('scoreboard'))
             ->assertOk()
-            ->assertSee('$flux.appearance', escape: false);
+            ->assertSee('$flux.appearance', escape: false)
+            ->assertSee('>Appearance<', escape: false);
     });
 
     it('aligns the search trigger with the actions beside it', function () {
@@ -63,6 +66,16 @@ describe('the header', function () {
             ->assertSeeHtml('Search teams, players…')
             ->assertSeeHtml('document.activeElement?.blur()')
             ->assertSeeHtml('if (dialog?.open) { return }');
+    });
+
+    it('carries the wallet chips on every screen for a signed-in reader', function () {
+        // The gamification placeholders are app chrome from `sm` — scoreboard
+        // rather than Home proves the header, not the brand bar, renders them.
+        $this->actingAs(User::factory()->create())
+            ->get(route('scoreboard'))
+            ->assertOk()
+            ->assertSee('data-tour="wallet"', escape: false)
+            ->assertSee('Rookie');
     });
 
     it('offers a guest no appearance control it cannot anchor', function () {

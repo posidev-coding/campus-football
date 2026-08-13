@@ -23,9 +23,9 @@
         <x-brand.lockup size="md" />
     </a>
 
-    {{-- Reserved for gamification: currency, XP, streak. Empty today and the
-         row still reads as a nav, because the lockup is carrying it — which is
-         the point of building the shelf before the things that stand on it. --}}
+    {{-- The gamification shelf, now carrying what it was built for: Home
+         passes the wallet chips (currency, rank, XP) into this slot. Streak
+         joins them when the real thing ships. --}}
     <div class="flex shrink-0 items-center gap-2">
         {{ $slot }}
     </div>

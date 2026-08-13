@@ -22,10 +22,11 @@ namespace App\Support;
  * landing route usually appears as its own first section, because "Scores" is
  * both where the Scores area starts and a thing you navigate back to.
  *
- * Room is left for a fifth area. Pick'em is the product's point and will earn
- * the freed slot when it ships — Search gave its tab up for exactly that,
- * moving into the bar at the top of Home. The tab bar sizes itself from the
- * count rather than hardcoding it, so the addition is a one-entry change.
+ * The fifth area is Picks — the slot Search gave its tab up for, claimed ahead
+ * of Pick'em shipping so the destination, the tour stop and the muscle memory
+ * exist before the product does. The tab bar sizes itself from the count
+ * rather than hardcoding it, which is what made the addition a one-entry
+ * change.
  */
 class Navigation
 {
@@ -83,6 +84,22 @@ class Navigation
                  * the strip would be a single tab, which is chrome, not
                  * navigation.
                  */
+                'sections' => [],
+                'guest' => true,
+            ],
+            [
+                // The product's point takes the center of the five-tab bar:
+                // Home and Scores keep their muscle-memory slots on the left,
+                // League and Account stay right. "Picks" rather than
+                // "Pick'em" — the short form is the nav label, the product
+                // name lives on the screen itself.
+                'key' => 'picks',
+                'label' => 'Picks',
+                'icon' => 'check-badge',
+                'route' => 'picks',
+                'routes' => ['picks'],
+                // No sections: one coming-soon screen. When Pick'em ships,
+                // its screens (slate, standings, groups) become sections.
                 'sections' => [],
                 'guest' => true,
             ],

@@ -86,6 +86,14 @@
                 <x-area-nav class="ml-4 hidden min-w-0 flex-1 sm:flex" />
 
                 <div class="ml-auto flex shrink-0 items-center gap-1 lg:gap-2">
+                    {{-- The gamification chips' `sm`-and-up home — the same
+                         chips Home's brand bar carries below `sm`, where this
+                         header does not exist. Same `data-tour` key on both:
+                         the tour spotlights whichever is visible. --}}
+                    @auth
+                        <x-wallet-chips data-tour="wallet" />
+                    @endauth
+
                     {{-- The wrapper exists to carry the tour's spotlight
                          target — attributes on a livewire: tag do not reach
                          its root, and `display: contents` has no box to
@@ -110,18 +118,19 @@
                                 <flux:menu.item icon="user" :href="route('account')">{{ auth()->user()->name }}</flux:menu.item>
                                 <flux:menu.separator />
                                 {{-- Appearance, right where a desktop reader
-                                     looks for it. `$flux.appearance` is the
-                                     same per-browser store the Account
-                                     screen's segmented control writes — two
-                                     controls, one localStorage truth, so
-                                     they can never disagree. Account keeps
-                                     its own because below `sm` this menu
-                                     does not exist. --}}
-                                <flux:menu.radio.group x-data x-model="$flux.appearance">
-                                    <flux:menu.radio value="light">Light</flux:menu.radio>
-                                    <flux:menu.radio value="dark">Dark</flux:menu.radio>
-                                    <flux:menu.radio value="system">Match system</flux:menu.radio>
-                                </flux:menu.radio.group>
+                                     looks for it — the same shared control the
+                                     Account screen renders, which keeps its
+                                     own copy because below `sm` this menu does
+                                     not exist. The heading is the name the
+                                     icon-only control loses when the text
+                                     radios go; the partial explains why it
+                                     must be a radio group and not buttons
+                                     (menu items close the popover per click,
+                                     ui-radio is skipped by the walker). --}}
+                                <flux:menu.heading>Appearance</flux:menu.heading>
+                                <div class="px-1 pb-1">
+                                    <x-appearance-switcher class="w-full" />
+                                </div>
                                 <flux:menu.separator />
                                 @if (auth()->user()->isAdmin())
                                     <flux:menu.item icon="wrench-screwdriver" href="/admin">Admin</flux:menu.item>
