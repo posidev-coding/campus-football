@@ -323,6 +323,40 @@ describe('the closing pitch', function () {
         expect(strpos($source, 'FxiOS'))->not->toBeFalse()
             ->and(strpos($source, 'FxiOS'))->toBeLessThan(strpos($source, 'CriOS'));
     });
+
+    it('stamps completion on ARRIVING at the pitch, not only on Done', function () {
+        /*
+         * The install stop's happy path exits through the OS: the reader
+         * follows the share-sheet steps, taps the new icon, and never
+         * touches another tour control. The web clip inherits the session
+         * cookie but no client state, so the server-side stamp is the only
+         * completion signal the installed app can see — unwritten, it
+         * relaunched into a replay of the tour just finished. The stamp is
+         * client wiring inside go(), so the source position is what a
+         * feature test can hold: complete() must fire inside the install
+         * branch BEFORE the card renders.
+         */
+        $source = file_get_contents(resource_path('views/livewire/tour.blade.php'));
+
+        $branch = strpos($source, "if (key === 'install')");
+        $stamp = strpos($source, 'this.$wire.complete()', $branch);
+        $render = strpos($source, 'this.step = index', $branch);
+
+        expect($branch)->not->toBeFalse()
+            ->and($stamp)->not->toBeFalse()
+            ->and($render)->not->toBeFalse()
+            ->and($stamp)->toBeLessThan($render);
+    });
+
+    it('closes as installed the moment Chromium announces one', function () {
+        // `appinstalled` (relayed by app.js as cfb:install-done) can fire
+        // mid-tour when the captured prompt is accepted; the card closes as
+        // installed instead of pitching over the install animation.
+        $this->actingAs(freshlyOnboarded())
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee('x-on:cfb:install-done.window', escape: false);
+    });
 });
 
 describe('the voice', function () {

@@ -54,8 +54,14 @@ new class extends Component
     }
 
     /**
-     * Finishing and skipping both land here: either way the tour stays down.
-     * First stamp wins, so a replay does not rewrite history.
+     * Stamped on ARRIVING at the install stop as well as on finishing or
+     * skipping. The install stop's happy path never taps another tour
+     * control: the reader follows the share-sheet steps, adds the icon and
+     * relaunches standalone — and since the web clip inherits the session
+     * cookie but no client state, this stamp is the only completion signal
+     * the installed app can see. Unwritten, it relaunched into a replay of
+     * the tour it had just finished. First stamp wins, so no path rewrites
+     * history.
      */
     public function complete(): void
     {
@@ -194,6 +200,15 @@ new class extends Component
                     return
                 }
 
+                /* Arriving here IS the tour completed — every informative
+                   stop is behind the reader and this card is a pitch. Stamp
+                   NOW, not on Done: the reader this card convinces leaves
+                   through the OS share sheet without tapping another tour
+                   control, and with the stamp unwritten the freshly
+                   installed app relaunched straight into the tour it had
+                   just finished. Idempotent server-side; first stamp wins. */
+                this.$wire.complete()
+
                 this.step = index
                 this.box = null
                 this.place()
@@ -262,6 +277,11 @@ new class extends Component
         },
     }"
     x-on:start-tour.window="startSoon()"
+    {{-- Chromium announces a finished install (`appinstalled`, relayed by
+         app.js). The card closes as installed rather than keeping its pitch
+         up over the install animation; iOS never fires this and is covered
+         by the arrival stamp in go(). --}}
+    x-on:cfb:install-done.window="if (open) finish()"
     x-on:keydown.escape.window="if (open) finish()"
     x-on:resize.window="if (open) go(step, 1)"
 >
