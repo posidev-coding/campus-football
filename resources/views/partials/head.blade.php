@@ -18,9 +18,16 @@
 
 {{-- Icons. Every URL comes from Brand, so an upload on the App Branding page
      reaches the tab, the home screen and the share card together — three
-     hardcoded paths is how they end up being three different brands. --}}
+     hardcoded paths is how they end up being three different brands.
+
+     The 192px PNG rides `rel="icon"` as well as the manifest, for the icon
+     pipelines that never read `apple-touch-icon`: Firefox on iOS builds its
+     home-screen web clip from its OWN favicon store, and with only the 32px
+     ico and an SVG to choose from it fell back to the gray letter monogram.
+     A real bitmap under rel="icon" is the biggest thing that store can hold. --}}
 <link rel="icon" href="{{ route('favicon') }}" sizes="32x32">
 <link rel="icon" href="{{ Brand::asset('favicon-svg') }}" type="image/svg+xml">
+<link rel="icon" href="{{ Brand::asset('icon-192') }}" type="image/png" sizes="192x192">
 <link rel="apple-touch-icon" sizes="180x180" href="{{ Brand::asset('apple-touch') }}">
 <link rel="manifest" href="{{ route('manifest') }}">
 

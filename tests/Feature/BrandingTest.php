@@ -17,6 +17,11 @@ describe('the head', function () {
             ->assertOk()
             ->assertSee('rel="icon"', escape: false)
             ->assertSee('type="image/svg+xml"', escape: false)
+            // The 192 PNG under rel="icon" is for the pipelines that never
+            // read apple-touch-icon — Firefox iOS builds its web clip from
+            // its own favicon store, and an ico + an SVG left it with only
+            // the gray letter monogram to offer.
+            ->assertSee('type="image/png" sizes="192x192"', escape: false)
             ->assertSee('rel="apple-touch-icon"', escape: false)
             ->assertSee(route('manifest'), escape: false)
             ->assertSee('apple-mobile-web-app-title', escape: false)
