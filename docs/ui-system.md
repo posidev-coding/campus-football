@@ -618,3 +618,52 @@ generalizes the FLIP lesson ("animations do not advance"). Verify
 frame-driven behavior by driving the reactive END state — set the Alpine
 property directly and assert what it toggles — and scroll with
 `behavior: 'instant'`; the trigger itself only fires on a real device.
+
+## Standalone has no browser chrome — every dead end needs a built-in exit
+
+Installed to a home screen, the app runs with no back button, no address bar
+and no reload control. Three consequences, each of which shipped as its own
+fix; undoing any of them re-opens a trap.
+
+**Escape hatches.** The auth layout floats a depth-aware Back control over
+every auth screen (login, register, both password flows, verify, confirm) —
+the same idiom as the game scorebug's Back: `window.cfbAppDepth > 1` walks our
+own history, anything else lands on Home, because a cold launch straight onto
+`/login` has nothing behind it and `history.back()` would exit the app. The
+depth counter lives in `partials/head` beside the standalone stamp, not in a
+layout: defined by only one layout it reset to `undefined` whenever a cold
+load landed on the other, and Back fell back to Home even with real history
+behind it. The `errors/` pages (404 · 403 · 419 · 500 · 503) exist for the
+same reason — the framework defaults are chrome-less dead ends. They follow
+the offline page's contract: self-contained (an error page that can itself
+error collapses to the bare framework screen, so `Brand` reads are
+`rescue()`d down to the shipped constants), static PG copy (Voice reads the
+session, and the session may be the broken part), and every page ends in a
+way out. 419 matters most here: a session that sat on a home screen for days,
+then submitted the plain logout POST, used to strand the reader on Laravel's
+"Page Expired". `PwaTest` pins all of it.
+
+**Pull-to-refresh** (`components/pull-to-refresh`, app layout only — a stray
+pull on an auth form would eat a half-typed password). Polling keeps a live
+game honest on its own; the gesture exists because every native app trained
+the hand to pull anyway, and a pull that does nothing reads as a frozen app.
+It engages only in standalone — BOTH signals, media query plus
+`navigator.standalone` — because in a browser tab the browser's own
+pull-to-refresh must keep winning. Every listener is passive and nothing is
+`preventDefault()`ed, so scrolling never pays for it; on iOS the rubber band
+stretches under the puck, which is where a native refresh control rides
+anyway. An 8px axis lock leaves Home's swiper and the week scroller owning
+horizontal drags, and a pull that starts inside a `dialog`, an open popover
+or any inner scroller belongs to that surface, not the page. Release past
+the threshold hands over a REAL `location.reload()` — fresh HTML, fresh
+assets after a deploy, a fresh CSRF token — not a Livewire poke.
+
+**The zoom lock.** iOS auto-zooms any focused input under 16px, and in
+standalone there is no chrome to un-zoom with: after adding a team from
+Home's swiper the app sat slightly enlarged and scrolling sideways,
+permanently. `maximum-scale=1, user-scalable=no` in the shared head retires
+the focus zoom everywhere and pinch inside the installed app, while a browser
+tab on iOS deliberately ignores `user-scalable=no` and keeps accessibility
+pinch — exactly the split we want. `touch-action: manipulation` on `html` is
+the other half: double-tap is two taps, never a zoom. Do not "fix" a zoom
+complaint by loosening the meta; the complaint the lock answers is worse.

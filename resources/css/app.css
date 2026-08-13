@@ -84,6 +84,11 @@
     html {
         scrollbar-gutter: stable;
         -webkit-tap-highlight-color: transparent;
+        /* Half of the zoom lock (the viewport meta is the other half): retires
+           double-tap-to-zoom so a fast second tap on a card is two taps, not a
+           zoom — while panning and, in a browser tab, accessibility pinch
+           behave exactly as before. */
+        touch-action: manipulation;
     }
 
     /* Alpine's own convention: hide x-show elements until Alpine initialises,

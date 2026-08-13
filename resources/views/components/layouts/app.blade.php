@@ -213,27 +213,14 @@
         <x-bottom-nav />
     </div>
 
+    {{-- App layout only, on purpose: a stray pull on an auth screen would
+         reload a half-typed form into a blank one. --}}
+    <x-pull-to-refresh />
+
     @fluxScripts
 
-    {{--
-        How deep into the app this tab is — the only honest answer to "is
-        there one of our own pages behind me in history".
-
-        Neither signal you would reach for first works. `history.length`
-        counts the blank new-tab page, so a shared link opened in a new tab
-        reads as "go back" and walks the reader out of the site. And
-        `document.referrer` does not change across a wire:navigate hop, so an
-        in-app move looks identical to a cold load.
-
-        `data-navigate-once` is what makes this work: the script runs once per
-        DOCUMENT and is not re-executed by navigate, so the counter survives
-        SPA hops and resets on a real load or reload. livewire:navigated fires
-        on the initial render too, so 1 means "cold load, nothing behind us"
-        and anything above it means back() lands on one of our pages.
-    --}}
-    <script data-navigate-once>
-        window.cfbAppDepth = 0;
-        document.addEventListener('livewire:navigated', () => window.cfbAppDepth++);
-    </script>
+    {{-- The depth counter behind every Back control lives in partials/head,
+         beside the standalone stamp — shared, so a cold load on an auth page
+         counts exactly like a cold load here. --}}
 </body>
 </html>

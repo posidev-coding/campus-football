@@ -32,6 +32,101 @@ describe('the offline page', function () {
     });
 });
 
+describe('the viewport lock', function () {
+    /*
+     * Installed, there is no browser chrome to un-zoom with: iOS auto-zooms a
+     * focused sub-16px input and the app stays enlarged and side-scrolling
+     * forever. The lock rides the shared head partial, so asserting it on one
+     * screen per layout proves it everywhere.
+     */
+    it('pins the zoom lock on both layouts and the offline floor', function (string $path) {
+        $this->get($path)
+            ->assertOk()
+            ->assertSee('maximum-scale=1, user-scalable=no', false)
+            ->assertSee('viewport-fit=cover', false);
+    })->with([
+        'app layout' => '/',
+        'auth layout' => '/login',
+        'offline floor' => '/offline',
+    ]);
+
+    it('retires double-tap zoom in the stylesheet', function () {
+        expect(file_get_contents(resource_path('css/app.css')))
+            ->toContain('touch-action: manipulation');
+    });
+});
+
+describe('pull to refresh', function () {
+    it('rides the app layout, gated on both standalone signals', function () {
+        /*
+         * The gesture must engage ONLY inside the installed app — in a
+         * browser tab the browser's own pull-to-refresh wins. Both signals,
+         * because iOS meta-driven web clips report `browser` in the media
+         * query and only set `navigator.standalone`.
+         */
+        $html = $this->get(route('home'))->assertOk()->content();
+
+        expect($html)->toContain('data-pull-to-refresh')
+            ->and($html)->toContain("matchMedia('(display-mode: standalone)')")
+            ->and($html)->toContain('window.navigator.standalone === true');
+    });
+
+    it('stays off the auth screens, where a stray pull would eat a half-typed form', function () {
+        $html = $this->get(route('login'))->assertOk()->content();
+
+        expect($html)->not->toContain('data-pull-to-refresh');
+    });
+});
+
+describe('escape hatches', function () {
+    /*
+     * Standalone has no back button, no address bar and no reload control:
+     * any screen without an in-app way out is a trap. These pin the exits.
+     */
+    it('gives every auth-layout screen a depth-aware Back control', function (string $path) {
+        // The same idiom as the game scorebug: our own history when there is
+        // one, Home when the auth screen IS the history (a cold launch).
+        $this->get($path)
+            ->assertOk()
+            ->assertSee('window.cfbAppDepth > 1', false)
+            ->assertSee('>Back</button>', false);
+    })->with([
+        'login' => '/login',
+        'register' => '/register',
+        'forgot password' => '/forgot-password',
+    ]);
+
+    it('counts navigation depth on both layouts through the shared head', function (string $path) {
+        // Defined by one layout only, the counter reset to undefined whenever
+        // a cold load landed on the other, and Back fell back to Home even
+        // with real history behind it.
+        $this->get($path)
+            ->assertOk()
+            ->assertSee('window.cfbAppDepth = 0', false);
+    })->with([
+        'app layout' => '/',
+        'auth layout' => '/login',
+    ]);
+
+    it('serves a 404 that walks the reader home', function () {
+        $this->get('/this-page-does-not-exist')
+            ->assertNotFound()
+            ->assertSee('Take me home')
+            ->assertSee(route('home'));
+    });
+
+    it('renders an exit on every status page', function (string $view, string $exit) {
+        // 419 is the likeliest inside an installed app: a session that sat on
+        // a home screen for days, then submitted the plain logout POST.
+        $this->view("errors.{$view}")->assertSee($exit);
+    })->with([
+        '403 offers home' => ['403', 'Take me home'],
+        '419 offers a fresh page' => ['419', 'Keep going'],
+        '500 offers a retry' => ['500', 'Try again'],
+        '503 offers a retry' => ['503', 'Try again'],
+    ]);
+});
+
 describe('the service worker', function () {
     it('ships at the public root and precaches the offline page', function () {
         // Scope: a worker served under a subpath can only control that

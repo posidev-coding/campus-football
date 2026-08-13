@@ -1,7 +1,14 @@
 @php use App\Support\Brand; @endphp
 
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+{{-- `maximum-scale=1, user-scalable=no` is the zoom lock. Installed, there is
+     no browser chrome to un-zoom with: iOS auto-zooms any focused input whose
+     text is under 16px, and after adding a team from Home's swiper the app was
+     left slightly enlarged and scrolling sideways, permanently. In a browser
+     TAB iOS ignores `user-scalable=no` (accessibility pinch survives there);
+     what this retires is the focus auto-zoom everywhere and pinch inside the
+     installed app — exactly the split we want. --}}
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 {{-- Kept in step with the chosen appearance by the sync element at the top of
@@ -21,6 +28,34 @@
      pitched its own install. Stamping the root BEFORE first paint keeps the
      hide stylesheet-driven and flash-free on that signal too. --}}
 <script>if (navigator.standalone) document.documentElement.setAttribute('data-standalone', '')</script>
+
+{{--
+    How deep into the app this tab is — the only honest answer to "is there
+    one of our own pages behind me in history", and what every Back control
+    (the game scorebug, the auth screens) decides with.
+
+    Neither signal you would reach for first works. `history.length` counts
+    the blank new-tab page, so a shared link opened in a new tab reads as "go
+    back" and walks the reader out of the site. And `document.referrer` does
+    not change across a wire:navigate hop, so an in-app move looks identical
+    to a cold load.
+
+    It lives in the shared head, not a layout: the auth layout's Back needs
+    the count too, and a counter defined by only ONE layout resets to
+    undefined whenever a cold load lands on the other. The undefined-guard
+    makes re-evaluation a no-op, so however Livewire treats this element on a
+    navigate hop, the count survives and the listener stays single.
+
+    livewire:navigated fires on the initial render too, so 1 means "cold
+    load, nothing behind us" and anything above it means back() lands on one
+    of our pages.
+--}}
+<script>
+    if (window.cfbAppDepth === undefined) {
+        window.cfbAppDepth = 0;
+        document.addEventListener('livewire:navigated', () => window.cfbAppDepth++);
+    }
+</script>
 
 <title>{{ $title ?? Brand::name() }}</title>
 

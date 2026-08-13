@@ -14,6 +14,28 @@
         hidden
     ></div>
 
+    {{-- The way OUT. Installed to a home screen there is no browser chrome,
+         so a guest who tapped "Log in" and changed their mind was stuck: the
+         lockup below does link home, but nothing about a logo says so. Same
+         depth-aware behavior as the game scorebug's Back — our own history
+         when there is one, Home when this screen IS the history (a cold
+         launch straight onto /login). Offsets ride the safe-area insets so
+         standalone's status bar and notch cannot swallow it. --}}
+    <div class="fixed top-[calc(env(safe-area-inset-top)+0.5rem)] left-[calc(env(safe-area-inset-left)+0.5rem)] z-40">
+        <button
+            type="button"
+            x-data="{
+                back() {
+                    window.cfbAppDepth > 1
+                        ? window.history.back()
+                        : Livewire.navigate(@js(route('home')));
+                },
+            }"
+            x-on:click="back()"
+            class="rounded-md px-2.5 py-1.5 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+        >Back</button>
+    </div>
+
     <div class="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
         <div class="w-full max-w-sm">
             <a href="{{ route('home') }}" wire:navigate class="mb-8 flex justify-center">
