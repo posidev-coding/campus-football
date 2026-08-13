@@ -84,3 +84,51 @@ self.addEventListener('fetch', (event) => {
         );
     }
 });
+
+/* Web push. The payload is WebPushMessage::toArray() — flat: `title` plus
+ * showNotification options (body, icon, badge, tag, data). No title means a
+ * payload we did not send, and we show nothing rather than invent one.
+ * VERSION stays untouched by these handlers on purpose: the bump contract
+ * above is scoped to the caching strategy and the offline page, and a worker
+ * update rides the byte diff on the next navigation regardless. */
+self.addEventListener('push', (event) => {
+    if (!event.data) return;
+
+    let payload;
+
+    try {
+        payload = event.data.json();
+    } catch {
+        return;
+    }
+
+    if (!payload.title) return;
+
+    const { title, ...options } = payload;
+
+    event.waitUntil(self.registration.showNotification(title, options));
+});
+
+/* The only real deep link a home-screen web app has: tapping a notification
+ * lands INSIDE the installed app, never in a browser tab. Prefer the window
+ * that already exists (the manifest's launch_handler makes captured links do
+ * the same), and fall back to opening one. */
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+
+    const url = event.notification.data && event.notification.data.url;
+
+    if (!url) return;
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+            const client = windows.find((w) => w.url.startsWith(self.location.origin));
+
+            if (client) {
+                return client.focus().then(() => client.navigate(url)).catch(() => clients.openWindow(url));
+            }
+
+            return clients.openWindow(url);
+        })
+    );
+});
