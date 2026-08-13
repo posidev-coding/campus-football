@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs><clipPath id="band"><rect x="30" y="38" width="40" height="22"></rect></clipPath></defs>
+  <rect x="32" y="5" width="36" height="4.6" rx="1.6" fill="#1E5C8F"></rect>
+  <polygon points="34,9.6 66,9.6 70,20 30,20" fill="#1E5C8F"></polygon>
+  <rect x="30" y="15" width="40" height="81" rx="3.5" fill="#1E5C8F"></rect>
+  <rect x="34.5" y="21" width="5" height="16" rx="2.5" fill="#3E88C0"></rect>
+  <rect x="34.5" y="61" width="5" height="26" rx="2.5" fill="#3E88C0"></rect>
+  <rect x="30" y="88.5" width="40" height="2" fill="#123F63"></rect>
+  <g clip-path="url(#band)">
+    <rect x="30" y="38" width="40" height="22" fill="#F5F2EA"></rect>
+    <polygon points="30,60 38,48 44,55 52,44 60,53 70,60" fill="#1E5C8F"></polygon>
+  </g>
+</svg>

@@ -45,8 +45,8 @@ class VerifyEmailNotification extends Notification implements ShouldQueue
             ->subject('Confirm your email — '.Brand::name())
             ->greeting('Welcome, '.$notifiable->first_name.'.')
             ->line(Voice::line('mail.verify.intro', for: $notifiable))
+            ->line(Voice::line('mail.verify.reward', for: $notifiable))
             ->action('Confirm my email', $this->verificationUrl($notifiable))
-            ->line('Until you do, the parts of the app that are yours stay locked.')
             ->line('If you did not create an account, you can ignore this and nothing happens.')
             ->salutation('— '.Brand::name());
     }

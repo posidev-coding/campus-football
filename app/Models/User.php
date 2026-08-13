@@ -11,9 +11,12 @@ use Filament\Panel;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
@@ -33,7 +36,7 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, Prunable;
 
     /**
      * Mirrors the database defaults so a newly-created model is usable before
@@ -63,6 +66,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'verification_reminded_at' => 'datetime',
             'onboarded_at' => 'datetime',
             'tour_completed_at' => 'datetime',
             'password' => 'hashed',
@@ -85,6 +89,48 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
      * team's news feed.
      */
     public const MAX_FOLLOWED_TEAMS = 5;
+
+    /**
+     * How long a never-verified account lives, and how far ahead of deletion
+     * the reminder mail goes out. The reminder rides the difference (day 11);
+     * prunable() enforces the promise (never sooner than reminder + lead).
+     */
+    public const VERIFICATION_GRACE_DAYS = 14;
+
+    public const VERIFICATION_REMINDER_LEAD_DAYS = 3;
+
+    /**
+     * Never-verified accounts self-destruct.
+     *
+     * Verification is lenient — nothing but Pick'em participation and XP is
+     * gated on it — so the backstop is time, not a wall. Four conditions and
+     * all four are load-bearing: never a verified account (obviously), never
+     * an admin (belt and braces — a seeded admin predating verification must
+     * not be collectable damage), never inside the grace window, and NEVER an
+     * account that was not warned. The reminder mail promises "3 days"; making
+     * `verification_reminded_at` a precondition means a mail outage pauses
+     * deletion instead of breaking the promise, and accounts already old at
+     * deploy time still get warned before they go.
+     */
+    public function prunable(): Builder
+    {
+        return static::query()
+            ->whereNull('email_verified_at')
+            ->where('admin', false)
+            ->where('created_at', '<', now()->subDays(self::VERIFICATION_GRACE_DAYS))
+            ->whereNotNull('verification_reminded_at')
+            ->where('verification_reminded_at', '<', now()->subDays(self::VERIFICATION_REMINDER_LEAD_DAYS));
+    }
+
+    /**
+     * `team_follows` and `wallet_entries` cascade by foreign key; the
+     * notifications table is morphs with no FK, so its rows must go by hand
+     * or they orphan forever.
+     */
+    protected function pruning(): void
+    {
+        $this->notifications()->delete();
+    }
 
     /**
      * Teams this user follows, in the order THEY chose.
@@ -175,6 +221,45 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         }
 
         return Storage::disk(config('cfb.upload_disk'))->url($this->avatar);
+    }
+
+    public function walletEntries(): HasMany
+    {
+        return $this->hasMany(WalletEntry::class);
+    }
+
+    /**
+     * Memoized within one request so the two wallet-chip render sites (layout
+     * header and home nav) cost one query between them.
+     *
+     * @var array{xp: int, lattes: int}|null
+     */
+    protected ?array $walletTotalsMemo = null;
+
+    /**
+     * The wallet, summed from the ledger.
+     *
+     * One combined SUM rather than a query per chip, and never durably cached
+     * — a payout must show the moment the verify link lands, and a per-user
+     * cache key for two integers costs more than the indexed SUM it saves.
+     * Per-instance memo only, so a fresh request always reads fresh totals.
+     *
+     * @return array{xp: int, lattes: int}
+     */
+    public function walletTotals(): array
+    {
+        if ($this->walletTotalsMemo !== null) {
+            return $this->walletTotalsMemo;
+        }
+
+        $sums = $this->walletEntries()
+            ->selectRaw('coalesce(sum(xp), 0) as xp_total, coalesce(sum(lattes), 0) as latte_total')
+            ->first();
+
+        return $this->walletTotalsMemo = [
+            'xp' => (int) $sums->xp_total,
+            'lattes' => (int) $sums->latte_total,
+        ];
     }
 
     public function isAdmin(): bool

@@ -52,3 +52,6 @@ everything. It fails OPEN — the worst direction for a guard.
 `Cache::lock()` acquired for the fetch and released in a `finally`. A
 never-released `Cache::add($key, true, 60)` is a freshness gate wearing an
 in-flight label, and it silently swallows any hand-asked refresh.
+
+## Wallet writes go through GrantWalletEntry, keyed when one-time
+Never insert wallet_entries directly. One-time grants pass `key` (the (user_id, key) unique index makes double fires a zero-row no-op); repeatable entries (spends, weekly wins) pass no key. Totals are SUMs via User::walletTotals() — there is deliberately no balance column to drift. Earning requires a verified email, with ONE documented exception: the 25 XP first-team seed in the onboarding moment (key `first-team`).

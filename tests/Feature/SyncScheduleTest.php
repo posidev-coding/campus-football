@@ -263,6 +263,33 @@ describe('the live window covers West Coast night games', function () {
     });
 });
 
+describe('the verification self-destruct is scheduled as a pair', function () {
+    it('prunes users alongside the feed ledger in both halves of the year', function () {
+        // Two entries — the in-season daily and the off-season weekly — and
+        // both must name User, or unverified accounts quietly live forever in
+        // one half of the calendar.
+        $prunes = collect(app(Schedule::class)->events())
+            ->map(fn (Event $event) => $event->command ?? '')
+            ->filter(fn (string $c) => str_contains($c, 'model:prune'))
+            ->values();
+
+        expect($prunes)->toHaveCount(2)
+            ->and($prunes->every(fn (string $c) => str_contains($c, 'FeedRun') && str_contains($c, 'User')))
+            ->toBeTrue('Both prune entries must cover FeedRun and User.');
+    });
+
+    it('runs the reminder daily, year-round', function () {
+        // Ungated like the newsletter: signups are year-round, so the
+        // three-day warning that ARMS the prune has to be too.
+        $reminder = collect(app(Schedule::class)->events())
+            ->first(fn (Event $event) => str_contains($event->command ?? '', 'cfb:verification-reminders'));
+
+        expect($reminder)->not->toBeNull()
+            ->and($reminder->expression)->toBe('0 7 * * *')
+            ->and($reminder->filtersPass(app()))->toBeTrue();
+    });
+});
+
 it('schedules the live summary sweep inside the live window', function () {
     // The sweep rides the live tier's window; its own first query is the
     // guard that makes a quiet tick free.

@@ -128,6 +128,7 @@ class SyncSchedule
             str_starts_with($command, 'cfb:coaches') => 'coaches',
             str_starts_with($command, 'cfb:aggregate') => 'aggregate',
             str_starts_with($command, 'cfb:newsletter') => 'newsletter',
+            str_starts_with($command, 'cfb:verification-reminders') => 'verification-reminders',
             default => null,
         };
     }

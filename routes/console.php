@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\FeedRun;
+use App\Models\User;
 use App\Services\Espn\Sync\SyncNews;
 use Illuminate\Console\Scheduling\Schedule as ScheduleClass;
 use Illuminate\Support\Facades\Schedule;
@@ -400,19 +401,37 @@ Schedule::command('cfb:aggregate --year=results')
     ->withoutOverlapping();
 
 /*
- * The feed-run ledger keeps a fortnight; the live tier writes a row a minute
- * all Saturday, so in season this trims daily. Off season the writers are
- * monthly and the trim rides an hour the news sync is already keeping the
- * cluster awake for, costing no extra wake of its own.
+ * Two prunables ride the same wake. The feed-run ledger keeps a fortnight —
+ * the live tier writes a row a minute all Saturday, so in season this trims
+ * daily; off season the writers are monthly and the trim rides an hour the
+ * news sync is already keeping the cluster awake for.
+ *
+ * Users joins the pass for the verification self-destruct: never-verified
+ * accounts older than User::VERIFICATION_GRACE_DAYS go, and only ever AFTER
+ * the reminder below has warned them — prunable() refuses anyone without a
+ * three-day-old `verification_reminded_at`, so the weekly off-season cadence
+ * can only ever delay past the promise, never beat it.
  */
-Schedule::command('model:prune', ['--model' => [FeedRun::class]])
+Schedule::command('model:prune', ['--model' => [FeedRun::class, User::class]])
     ->dailyAt('04:50')
     ->timezone($tz)
     ->when($inSeason)
     ->withoutOverlapping();
 
-Schedule::command('model:prune', ['--model' => [FeedRun::class]])
+Schedule::command('model:prune', ['--model' => [FeedRun::class, User::class]])
     ->weeklyOn(ScheduleClass::SUNDAY, '07:10')
     ->timezone($tz)
     ->when($offSeason)
+    ->withoutOverlapping();
+
+/*
+ * The self-destruct warning, three days ahead of the prune above. Ungated
+ * like the newsletter — signups are year-round, so the countdown has to be —
+ * and at 07:00 it rides a wake the followed-news sync already pays for in
+ * both halves of the year. Sending is what ARMS the purge: an account the
+ * mail never reached is never deleted.
+ */
+Schedule::command('cfb:verification-reminders')
+    ->dailyAt('07:00')
+    ->timezone($tz)
     ->withoutOverlapping();

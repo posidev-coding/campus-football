@@ -120,12 +120,17 @@ Route::livewire('coaches/{coach}', 'coach')->name('coach');
 Route::livewire('recruiting/{year?}', 'recruiting')->name('recruiting');
 
 /*
- * Anything that reads or writes a user's own data sits behind BOTH `auth` and
- * `verified`. The previous version of this app declared `verified` on its route
- * group but never applied `auth`, and its verify middleware body was commented
- * out — so the entire application was publicly reachable. Both are real here.
+ * `auth` is real here — v3's lesson was a "protected" group that declared
+ * `verified` but never applied `auth`, with the verify middleware body
+ * commented out, so every "protected" page was publicly reachable.
+ *
+ * `verified` is deliberately NOT applied: verification is reserved for
+ * PARTICIPATION — Pick'em actions and XP earning — not for reading your own
+ * settings. An unverified account is nudged on Home and Account, rewarded
+ * (Beast Latte + XP) the moment it verifies, and pruned after
+ * User::VERIFICATION_GRACE_DAYS instead of being walled out on day one.
  */
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth'])->group(function () {
     Route::livewire('account', 'account')->name('account');
 });
 

@@ -1,9 +1,10 @@
 ---
 paths:
-  - app/Services/Espn/**
-  - app/Console/Commands/**
-  - app/Jobs/**
+  - 'app/Services/Espn/**'
+  - 'app/Console/Commands/**'
+  - 'app/Jobs/**'
   - routes/console.php
+  - 'routes/**'
 ---
 
 # ESPN sync
@@ -57,3 +58,6 @@ A custom agent gets 403 from the `site` host (scoreboard, summaries) while
 `config('cfb.season')` and do not select "the latest season" — a season exists
 in the database months before it is played. `currentYear()`, `resultsYear()` and
 `scoreboardYear()` answer different questions; conflating them empties a screen.
+
+## verified middleware is reserved for participation surfaces
+Email verification gates Pick'em actions and XP earning ONLY — never reading your own data. /account sits behind auth alone; never re-add `verified` to it. Unverified accounts are nudged (Home/Account/Picks callouts), rewarded on verify (100 XP + 1 Beast Latte), and pruned after User::VERIFICATION_GRACE_DAYS instead of being walled out. The v3 lesson in the route comment is "middleware actually applied", not "verify early".

@@ -17,12 +17,17 @@ it('redirects guests away from protected routes', function () {
     $this->get(route('account'))->assertRedirect(route('login'));
 });
 
-it('does not let unverified users reach protected routes', function () {
+it('lets an unverified user into their own account — verified is reserved for participation', function () {
+    // Policy, not an oversight: verification gates Pick'em actions and XP
+    // earning, never reading your own settings. The backstop for a
+    // never-verified account is the reminder-then-prune cycle, not a wall on
+    // day one. The v3 regression this file guards — middleware declared but
+    // never applied — is covered by the guest-redirect case above.
     $user = User::factory()->unverified()->create();
 
     $this->actingAs($user)
         ->get(route('account'))
-        ->assertRedirect(route('verification.notice'));
+        ->assertOk();
 });
 
 it('lets verified users reach protected routes', function () {

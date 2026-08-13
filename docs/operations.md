@@ -193,6 +193,15 @@ anything over the budget arrives tomorrow instead of erroring.
 - **Transactional mail carries no unsubscribe and no throttle.** A password reset
   is not a list, and an unsubscribe control on it invites turning off the one
   email that gets an account back.
+- **The verification reminder ARMS the purge.** `cfb:verification-reminders`
+  (daily 07:00, riding the followed-news wake, tracked under ledger key
+  `verification-reminders`, `--dry` supported) warns never-verified accounts at
+  day 11 of `User::VERIFICATION_GRACE_DAYS` (14) and stamps
+  `verification_reminded_at`. `User::prunable()` — User rides both existing
+  `model:prune` entries beside `FeedRun` — refuses anyone unwarned or warned
+  under 3 days ago, so a mail outage PAUSES deletion rather than breaking the
+  "3 days" the mail promised. Admins are never pruned; the FK-less
+  notifications rows are cleaned in `pruning()`.
 
 **The daily budget exists because Brevo's 300/day is SHARED** between marketing
 and transactional. An unthrottled blast can spend the allowance and leave a
