@@ -152,8 +152,12 @@ describe('the guest flow', function () {
             ->call('register');
 
         // A FULL redirect, not navigate: registering flips the page's auth
-        // state and every @auth region has to re-render.
-        $component->assertRedirect(route('home', ['start' => 'team']));
+        // state and every @auth region has to re-render. The hand-off rides
+        // a session flash, never the URL — a query param was captured into
+        // installed web clips and reopened the picker on every launch.
+        $component->assertRedirect(route('home'));
+
+        expect(session()->has('onboarding.moment'))->toBeTrue();
 
         $user = User::where('email', 'peyton@example.com')->first();
 
@@ -453,21 +457,20 @@ describe('the device draft', function () {
          * "Easy as 1-2-3" is the promise: guests fill a three-segment bar
          * (the count survives as sr-only text), and the team moment shows NO
          * counter for anyone — it sits past registration and is an arrival,
-         * not a fourth chore. That includes the registration hand-off
-         * (`start=team`), which used to advertise itself as "Step 5 of 5".
+         * not a fourth chore. That includes the registration hand-off,
+         * which used to advertise itself as "Step 5 of 5".
          */
         Livewire::test('onboarding')
             ->assertSee('Step 1 of 3')
             ->assertSeeHtml('wire:key="progress-1"');
 
-        // The clean case FIRST: withQueryParams() below leaks into every
-        // later test() call in this method, so order is load-bearing.
         Livewire::actingAs(User::factory()->create())
             ->test('onboarding')
             ->assertDontSee('of 3');
 
+        session()->flash('onboarding.moment', true);
+
         Livewire::actingAs(User::factory()->create())
-            ->withQueryParams(['start' => 'team'])
             ->test('onboarding')
             ->assertDontSee('of 3');
     });
@@ -536,12 +539,13 @@ describe('the device draft', function () {
 
     it('lands the registration hand-off with the wizard already painted', function () {
         /*
-         * register() full-redirects to home?start=team, and Alpine boots
-         * with `open` true — but an unconditional x-cloak hid the overlay
-         * until that boot, so the HOME SCREEN flashed between steps four
-         * and five. On the hand-off URL the server renders the overlay
-         * visible from the first frame; everywhere else the cloak stays,
-         * preventing the opposite flash.
+         * register() flashes `onboarding.moment` and full-redirects to a
+         * CLEAN home URL; on that landing Alpine boots with `open` true —
+         * but an unconditional x-cloak hid the overlay until that boot, so
+         * the HOME SCREEN flashed between steps four and five. On the
+         * hand-off load the server renders the overlay visible from the
+         * first frame; everywhere else the cloak stays, preventing the
+         * opposite flash.
          */
         $overlayTag = function (string $html): string {
             preg_match('/<div[^>]*data-onboarding-overlay[^>]*>/', $html, $m);
@@ -549,14 +553,43 @@ describe('the device draft', function () {
             return $m[0] ?? '';
         };
 
-        $handoff = $this->actingAs(User::factory()->create())
-            ->get(route('home', ['start' => 'team']))->assertOk()->content();
-
+        // Plain case FIRST: withSession() data persists across requests
+        // within one test, so the hand-off's flag would leak into a later
+        // plain GET and dissolve the comparison.
         $plain = $this->actingAs(User::factory()->create())
+            ->get(route('home'))->assertOk()->content();
+
+        $handoff = $this->actingAs(User::factory()->create())
+            ->withSession(['onboarding.moment' => true])
             ->get(route('home'))->assertOk()->content();
 
         expect($overlayTag($handoff))->not->toBe('')->not->toContain('x-cloak')
             ->and($overlayTag($plain))->toContain('x-cloak');
+    });
+
+    it('never reopens the moment for a stale ?start=team — web clips captured that URL', function () {
+        /*
+         * The hand-off used to BE the querystring, and a home-screen install
+         * captures the tab's URL — so the installed app launched into
+         * "Who's your team?" forever, over a Home that already had the team,
+         * and pull-to-refresh did the same in the tab. The flag lives in a
+         * one-load session flash now; the param must be dead code, not
+         * merely gated, so any clip that already captured it goes quiet.
+         */
+        $user = User::factory()->create(['onboarded_at' => now()]);
+        $user->followedTeams()->attach([2633 => ['position' => 1]]);
+
+        $overlayTag = function (string $html): string {
+            preg_match('/<div[^>]*data-onboarding-overlay[^>]*>/', $html, $m);
+
+            return $m[0] ?? '';
+        };
+
+        $html = $this->actingAs($user)
+            ->get(route('home', ['start' => 'team']))->assertOk()->content();
+
+        expect($overlayTag($html))->not->toBe('')->toContain('x-cloak')
+            ->and($html)->not->toContain('open: true');
     });
 
     it('clears a finished draft for anyone already signed in', function () {

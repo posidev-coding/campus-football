@@ -59,9 +59,24 @@ new class extends Component
     public function mount(): void
     {
         // Signed in, there is nothing to sign up for — the whole flow IS the
-        // picker. A guest who somehow arrives with ?start=team still has to
-        // make an account first, so auth decides, not the querystring.
+        // picker. A guest carrying a stale hand-off flag still has to make
+        // an account first, so auth decides which pane an open overlay shows.
         $this->step = auth()->check() ? 'team' : 'name';
+    }
+
+    /**
+     * True only on the registration hand-off: register() flashes the flag
+     * and redirects, so the landing render — and ONLY that render — opens
+     * straight onto the moment; the very next request has already consumed
+     * it. This used to be `?start=team`, which was a landmine: a home-screen
+     * install captures the tab's URL, so the query rode into the web clip
+     * and "Who's your team?" reopened on every launch of the installed app
+     * (and every pull-to-refresh). A flash cannot be bookmarked, and the
+     * URL stays the clean `/` the manifest's start_url promises.
+     */
+    public function opensToMoment(): bool
+    {
+        return auth()->check() && session()->has('onboarding.moment');
     }
 
     /**
@@ -146,8 +161,14 @@ new class extends Component
          * page's auth state — the bottom tab bar, the header, Home's own
          * branches — and a hard load re-renders all of it rather than hoping
          * a morph catches every `@auth` region.
+         *
+         * The hand-off rides a session FLASH, never the URL: the landing
+         * load consumes it, so nothing about "open the picker" can be
+         * bookmarked, refreshed, or captured into an installed app's URL.
          */
-        $this->redirect(route('home', ['start' => 'team']));
+        session()->flash('onboarding.moment', true);
+
+        $this->redirect(route('home'));
     }
 
     /** Finish: stop the prompt coming back, close, and hand off to the tour. */
@@ -258,7 +279,7 @@ new class extends Component
 <div
     class="contents"
     x-data="{
-        open: @js(request()->query('start') === 'team' && auth()->check()),
+        open: @js($this->opensToMoment()),
 
         /*
          * The in-progress answers survive a closed overlay, so an abandoned
@@ -331,19 +352,20 @@ new class extends Component
          fills the screen.
 
          `x-cloak` is CONDITIONAL, and that condition kills a real glitch:
-         on the post-registration redirect (`home?start=team`) Alpine boots
-         with `open` already true, so cloaking until boot painted the HOME
-         SCREEN for a beat between steps four and five. On that URL the
-         server renders the overlay visible from the first frame; everywhere
-         else the cloak still prevents the opposite flash. Livewire update
-         requests re-render the cloak (their URL has no ?start), which is
-         the same post-boot no-op it has always been.
+         on the post-registration redirect Alpine boots with `open` already
+         true, so cloaking until boot painted the HOME SCREEN for a beat
+         between steps four and five. On the hand-off load (the session
+         flash, via opensToMoment()) the server renders the overlay visible
+         from the first frame; everywhere else the cloak still prevents the
+         opposite flash. Livewire update requests re-render the cloak (the
+         flash died with the landing load), which is the same post-boot
+         no-op it has always been.
 
          The fade matters on the way OUT: closing reveals Home underneath,
          and the tour waits a beat before claiming it — the reader should
          plainly SEE they are back on their home screen between the two. --}}
     <div
-        @if (! (request()->query('start') === 'team' && auth()->check())) x-cloak @endif
+        @if (! $this->opensToMoment()) x-cloak @endif
         x-show="open"
         x-transition.opacity.duration.200ms
         data-onboarding-overlay
@@ -483,9 +505,10 @@ new class extends Component
                                 @endforelse
                             </div>
                         @else
-                            {{-- Reachable only by URL: a full roster arriving
-                                 at ?start=team. A friendly line beats a screen
-                                 that is all heading and no input. --}}
+                            {{-- Reachable only if something reopens the
+                                 overlay for a full roster (a replay event, a
+                                 stale hand-off). A friendly line beats a
+                                 screen that is all heading and no input. --}}
                             <p class="text-center text-sm text-zinc-500">
                                 {{ Voice::line('teams.at_limit', ['max' => \App\Models\User::MAX_FOLLOWED_TEAMS]) }}
                             </p>

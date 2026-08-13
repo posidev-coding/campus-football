@@ -51,12 +51,17 @@ new #[Layout('components.layouts.auth')] class extends Component
 
         /*
          * The default lands on Home with the team picker OPEN — the same
-         * hand-off the overlay wizard makes. Without `start=team`, everyone
-         * arriving from the header's Sign up button finished with zero teams
-         * and, because the tour needs something to point at, never saw the
-         * tour either. An intended URL still wins.
+         * session-flash hand-off the overlay wizard makes (never a query
+         * param: an install captures the tab URL, and a flag in the URL
+         * reopened the picker on every launch of the installed app).
+         * Without the hand-off, everyone arriving from the header's Sign up
+         * button finished with zero teams and, because the tour needs
+         * something to point at, never saw the tour either. An intended URL
+         * still wins — the flash dies unread on that landing.
          */
-        $this->redirectIntended(default: route('home', ['start' => 'team'], absolute: false), navigate: true);
+        session()->flash('onboarding.moment', true);
+
+        $this->redirectIntended(default: route('home', absolute: false), navigate: true);
     }
 }; ?>
 

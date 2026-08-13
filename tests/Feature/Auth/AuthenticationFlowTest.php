@@ -71,7 +71,9 @@ it('hands a fresh registrant to the team picker, same as the wizard', function (
      * The gap this pins shut: header-form registrants used to land on plain
      * Home with the picker closed, finished with zero teams, and — because
      * the tour needs something to point at — never saw the tour either.
-     * `start=team` opens the picker exactly like the overlay's own hand-off.
+     * The session flash opens the picker exactly like the overlay's own
+     * hand-off — and the redirect is a CLEAN url, because a query param
+     * here was captured into installed web clips and haunted every launch.
      */
     Livewire::test('auth.register')
         ->set('first_name', 'Gunner')
@@ -80,7 +82,9 @@ it('hands a fresh registrant to the team picker, same as the wizard', function (
         ->set('password', 'password-that-passes')
         ->set('password_confirmation', 'password-that-passes')
         ->call('register')
-        ->assertRedirect(route('home', ['start' => 'team'], absolute: false));
+        ->assertRedirect(route('home', absolute: false));
+
+    expect(session()->has('onboarding.moment'))->toBeTrue();
 });
 
 it('will not register a duplicate email', function () {

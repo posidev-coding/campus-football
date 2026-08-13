@@ -229,7 +229,7 @@ z-40) rather than navigating — the same reason the search panel expands in
 place.
 
 - **The team picker is a MOMENT, not a step.** It sits past registration,
-  wears no counter (including on the `start=team` hand-off, which used to
+  wears no counter (including on the registration hand-off, which used to
   advertise itself as "Step 5 of 5"), and is styled as an arrival — centered
   mark, one question, one promise ("your favorite headlines your home page —
   you can add more later"). It collects EXACTLY ONE team: the first pick
@@ -263,10 +263,10 @@ place.
   joke). The tour waits on anything wearing `data-tour-holdoff` (wizard +
   splash), checked with `getClientRects()` — never `offsetParent`, which is
   null for `fixed` elements even while they fill the screen.
-- **The registration hand-off renders the wizard pre-painted.** On
-  `home?start=team` the overlay's `x-cloak` is omitted server-side; waiting
-  for Alpine to boot flashed the home screen between registration and the
-  moment.
+- **The registration hand-off renders the wizard pre-painted.** On the
+  hand-off load (`opensToMoment()`) the overlay's `x-cloak` is omitted
+  server-side; waiting for Alpine to boot flashed the home screen between
+  registration and the moment.
 - **Credentials come LAST**, which is a conversion choice and a security one:
   an abandoned signup has no password or email to leave anywhere. No handle
   anywhere in the flow — see the identity section.
@@ -282,12 +282,20 @@ place.
   Livewire morphs step one's input into step two's — same tag, same position —
   and the reused node kept its old binding long enough for a keystroke to land
   on the previous field.
-- **`register()` does a FULL redirect** to `home?start=team`, not
+- **`register()` does a FULL redirect** to a CLEAN `home` URL, not
   `navigate: true`: registering flips the whole page's auth state and every
   `@auth` region has to re-render. The redirect also means nothing client-side
   runs afterwards, which is why an authenticated load clears the draft. The
-  classic `/register` screen defaults to the SAME destination, so header-form
+  classic `/register` screen makes the SAME hand-off, so header-form
   registrants reach the moment (and therefore the tour) too.
+- **The hand-off is a one-load session flash (`onboarding.moment`), never a
+  URL.** It used to be `?start=team`, and that query was a landmine: a
+  home-screen install captures the tab's URL, so the param rode into the web
+  clip and "Who's your team?" reopened on every launch of the installed app
+  — and on every pull-to-refresh. The flash is consumed by the landing load,
+  cannot be bookmarked, and keeps the address bar showing the same clean `/`
+  the manifest's `start_url` promises. The old param is dead code, not
+  gated: clips that already captured it go quiet on their own.
 - **Dismissal reuses `onboarded_at`** (guests: a session flag) **and stamps
   `tour_completed_at`** — declining the front door declines the coach marks,
   or the relaxed tour gate would answer the X with an uninvited tour on the
