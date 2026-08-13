@@ -75,20 +75,29 @@ left alone there:
 developer message for logs; what the user reads comes from `Voice`, because a
 string baked into an exception can only ever speak in one register.
 
-## Identity: first/last name, a handle, and a content rating
+## Identity: first/last name, a claimed handle, and a content rating
 
-Registration collects **first and last name separately**, a **handle**, and a
-**content rating**; all four are editable from Account. There is no `name`
-column — `$user->name` is an accessor over the two halves, which is why nothing
-that printed a user had to change.
+Registration collects **first and last name separately** and a **content
+rating** — and deliberately NOT a handle. Nothing consumes a handle until
+Pick'em and chat exist, so asking up front was a signup toll for a feature
+that does not; the column is nullable and **null means never claimed** —
+never a generated stand-in (the mistake that broke three previous versions
+wears many hats). All of it is editable from Account. There is no `name`
+column — `$user->name` is an accessor over the two halves, which is why
+nothing that printed a user had to change.
 
-**Handle, not username.** It is the sport's own vernacular, and it sets the
-expectation that this is the name you are shouted at by rather than a login
-credential. Unique, and case-insensitively so: the column's
-`utf8mb4_unicode_ci` collation makes the unique index reject `@Taylor` when
-`@taylor` exists, which is the confusion a handle is for preventing. On edit the
-rule needs `Rule::unique(...)->ignore($user->id)` or saving any other field
-fails against your own row.
+**Handle, not username — CLAIMED, not collected.** It is the sport's own
+vernacular, and it sets the expectation that this is the name you are shouted
+at by rather than a login credential. Account shows a "claim your handle"
+affordance (`profile.claim_handle`) in place of the `@handle` row until one
+exists; the same edit-profile modal is the future seam for claiming at the
+first Pick'em entry or chat message. Once claimed it can change but never
+blank back to null (`nullable`-until-claimed, `required` after). Unique, and
+case-insensitively so: the column's `utf8mb4_unicode_ci` collation makes the
+unique index reject `@Taylor` when `@taylor` exists, which is the confusion a
+handle is for preventing — multiple NULLs coexist under that index fine. On
+edit the rule needs `Rule::unique(...)->ignore($user->id)` or saving any
+other field fails against your own row.
 
 **Mask the handle on the CLIENT, validate on the server.** Livewire will not
 overwrite a focused input — that is what stops it clobbering your typing — so a
@@ -205,35 +214,162 @@ rebuilds the full order from it so the drag path gets the same validation as
 the keyboard path. Drag is not keyboard-reachable, so the up/down buttons are
 not optional.
 
-## Onboarding is one blue button, then four small screens
+## Onboarding is one blue button, three small screens, then the moment
 
-Home's getting-started card is the front door: guests see `Get started` and
-step through name → handle → trash talk → email+password; signed-in users see
-`Add your team` and go straight to the picker. Both land in the same
-full-screen overlay (`livewire/onboarding.blade.php`, `fixed inset-0 z-50`
-over app chrome at z-40) rather than navigating — the same reason the search
-panel expands in place.
+Home's getting-started card is the front door, and it makes two different
+promises: guests see `Get started` under copy selling the whole app
+(`onboarding.guest.*`) and step through **name → trash talk →
+email+password** — "easy as 1-2-3" is the product promise, and a slim
+three-segment progress bar (`x-signup-progress`, count kept as sr-only text)
+says it wordlessly; signed-in users see `Add your team` under
+favorite-forward copy (`onboarding.member.*`) and go straight to the
+favorite-team moment. Both land in the same full-screen overlay
+(`livewire/onboarding.blade.php`, `fixed inset-0 z-50` over app chrome at
+z-40) rather than navigating — the same reason the search panel expands in
+place.
 
+- **The team picker is a MOMENT, not a step.** It sits past registration,
+  wears no counter (including on the `start=team` hand-off, which used to
+  advertise itself as "Step 5 of 5"), and is styled as an arrival — centered
+  mark, one question, one promise ("your favorite headlines your home page —
+  you can add more later"). It collects EXACTLY ONE team: the first pick
+  auto-completes the moment (`afterTeamAdded()` grants, stamps, and
+  dispatches `team-followed` + `signup-splash` + `close-onboarding`). The
+  "stack up to five" state is gone; the TOUR teaches the five slots now
+  (`tour.glance.body`). There is deliberately no Back from it, and `next()`
+  refuses to cross the credentials boundary; `register()` is that door.
+- **The first pick pays 25 XP** (`GrantWalletEntry::FIRST_TEAM_XP`, key
+  `first-team`) — the sole earn allowed before verification, a number in the
+  wallet worth protecting. Once-ever by idempotency key; skipping pays
+  nothing; Home's quick-add slot pays nothing.
+- **Every primary button sits under its fields, not in a bottom rail.** The
+  old rail pinned the button to the viewport bottom — a reach from the
+  inputs, behind the keyboard on phones, with a gulf of whitespace above.
+  Skip stays a whisper: at zero teams the picker is the action, and there is
+  no Done at all anymore.
+- **Skipping still costs nothing.** Home seats **Bandwagon State**
+  (`App\Support\PlaceholderTeam`) in the swiper at zero follows, so the
+  `glance` anchor exists and the tour runs either way. `done()` remains the
+  skip path and dispatches `onboarding-finished` alongside `start-tour`.
+- **Both exits play the signup splash — slower, darker.** ~13s now: 2400ms a
+  phrase, ordered as a road trip — travel, field, song, THEN the high-five —
+  with the Beast Lattes closing and holding ~2900ms before the 500ms fade to
+  a plainly visible Home. The pace was slowed TWICE on real-phone review
+  (850 → 1500 → 2400ms): this screen is the app introducing its whole
+  personality, and it is allowed the seconds that takes — if it ever feels
+  long, cut phrases, don't speed up. Forced dark
+  (`class="dark" … bg-zinc-950`) whatever the theme: it is a curtain moment.
+  Phrases personalize to the favorite (or to Bandwagon State, which is the
+  joke). The tour waits on anything wearing `data-tour-holdoff` (wizard +
+  splash), checked with `getClientRects()` — never `offsetParent`, which is
+  null for `fixed` elements even while they fill the screen.
+- **The registration hand-off renders the wizard pre-painted.** On
+  `home?start=team` the overlay's `x-cloak` is omitted server-side; waiting
+  for Alpine to boot flashed the home screen between registration and the
+  moment.
 - **Credentials come LAST**, which is a conversion choice and a security one:
-  an abandoned signup has no password or email to leave anywhere.
+  an abandoned signup has no password or email to leave anywhere. No handle
+  anywhere in the flow — see the identity section.
 - **The device draft (`localStorage['cfb.signup']`) stores only the first
-  three screens.** Two independent protections, because either alone can be
-  undone by a later edit: an explicit allowlist of the three fields, AND no
-  save handler on the credentials screen at all. Verify by READING storage,
-  not by reading the code.
+  two screens' fields** (`first_name`, `last_name`, `content_rating`). Two
+  independent protections, because either alone can be undone by a later
+  edit: the explicit allowlist, AND no save handler on the credentials
+  screen at all. Verify by READING storage, not by reading the code.
 - **The draft saves from the ELEMENT that fired, never from `$wire`.** These
-  bindings are deferred, so `$wire.handle` is still empty while the user types
-  into it — saving from component state wrote a step behind.
-- **Every step needs its own `wire:key`.** Without one Livewire morphs step
-  one's input into step two's — same tag, same position — and the reused node
-  kept its old binding long enough for a keystroke to land on the previous
-  field. Found in the browser: typing a handle wrote to `first_name`.
+  bindings are deferred, so `$wire.first_name` is still empty while the user
+  types into it — saving from component state wrote a step behind.
+- **Every step needs its own `wire:key`** — `step-team` included. Without one
+  Livewire morphs step one's input into step two's — same tag, same position —
+  and the reused node kept its old binding long enough for a keystroke to land
+  on the previous field.
 - **`register()` does a FULL redirect** to `home?start=team`, not
   `navigate: true`: registering flips the whole page's auth state and every
   `@auth` region has to re-render. The redirect also means nothing client-side
-  runs afterwards, which is why an authenticated load clears the draft.
-- **Dismissal reuses `onboarded_at`** (guests: a session flag). Adding a team
-  stamps it too, so the prompt cannot return on a page that now has their team.
+  runs afterwards, which is why an authenticated load clears the draft. The
+  classic `/register` screen defaults to the SAME destination, so header-form
+  registrants reach the moment (and therefore the tour) too.
+- **Dismissal reuses `onboarded_at`** (guests: a session flag) **and stamps
+  `tour_completed_at`** — declining the front door declines the coach marks,
+  or the relaxed tour gate would answer the X with an uninvited tour on the
+  next load. Account keeps "Replay the tour". Adding a team stamps
+  `onboarded_at` too, so the prompt cannot return on a page that now has
+  their team.
+
+## Verification pays first, then the clock runs
+
+Email verification is deliberately LENIENT: it gates **participation** —
+Pick'em actions and XP earning (bar the seeded first-team grant) — never
+reading your own data. `/account` sits behind `auth` alone; the v3 lesson in
+that route comment is "middleware actually applied", not "verify early".
+
+- **Verifying pays**: `Illuminate\Auth\Events\Verified` →
+  `GrantVerificationReward` → one idempotent `wallet_entries` row (100 XP +
+  1 Beast Latte, key `email-verified`). The unique `(user_id, key)` index
+  absorbs double fires; repeatable entries (future spends, weekly wins) pass
+  no key. All wallet writes go through `App\Actions\GrantWalletEntry`.
+- **The nudge is reward-first and ONE ROW** (`x-verify-email-callout`,
+  `verify.callout.body` — a single sentence, no heading) on Home and Account —
+  a stacked card there taxed the screen it was selling. Dismissable to
+  SESSIONSTORAGE only, because it must return next visit; the Picks screen
+  carries a non-dismissable variant (`verify.picks.body`) explaining the one
+  gate verification actually holds.
+- **Never-verified accounts self-destruct**: `User::VERIFICATION_GRACE_DAYS`
+  (14) after signup, warned at day 11 by `cfb:verification-reminders`
+  (`VerificationReminderNotification`, LOUD, stamps
+  `verification_reminded_at`). `User::prunable()` refuses anyone unwarned or
+  warned under `VERIFICATION_REMINDER_LEAD_DAYS` (3) ago — a mail outage
+  pauses deletion rather than breaking the mail's promise — plus never
+  verified accounts, never admins. Pruning rides the existing `model:prune`
+  wakes; the FK-less notifications rows go in `pruning()`.
+
+## The install pitch waits for demonstrated interest
+
+Install language, not bookmark language — it IS a real web-app install
+(Chromium's own UI says Install; Apple's "Add to Home Screen" stays verbatim
+inside the steps). The banner (`x-install-banner`, one slim row) renders for
+**members only, after the tour completes** — the tour's last stop makes the
+case; the banner reinforces. Guests never see it: the front door outranks the
+shell. Dismissal is `$persist` to localStorage **namespaced by user id**
+(`cfb.install.dismissed.{id}`): install state is a property of the DEVICE —
+a new phone should hear the pitch again — and the id keeps two people on one
+phone from answering for each other. No table, no cookie.
+
+**The tour's closing stop sells NOW, and carries the how.** On a detected
+phone, the card renders that browser's actual steps inline (via
+`x-install-guide`, the shared per-platform steps both surfaces consume, so
+the two can never teach different instructions) with a quiet
+"Different browser?" link out to `/app`; undetected falls back to the
+"Show me how" button. The copy is aggressive on purpose
+(`tour.install.*` — "Install it. Right now.") because the steps are one
+glance away, not one page away.
+
+`/app` (get-app) focuses a confidently detected phone down to ONE platform's
+steps (FxiOS before CriOS before the Safari default — every iOS browser is
+WebKit wearing a badge) with a "Using a different browser?" toggle, plus a
+bouncing arrow cue (`x-install-arrow`) toward the control the first step
+names — only when the platform on screen is the one detection FOUND, phone
+widths only, `motion-safe:` only. Cue positions are one tweakable map in
+get-app: browser chrome moves between OS versions, so verify them on real
+devices, not in a resized window. Two learned-on-a-real-phone facts live in
+the steps: **iPhone Chrome and Firefox both tuck Add to Home Screen behind
+More** on a stock share sheet, so both walkthroughs route through it; and
+**Firefox's web clip ignores the `apple-touch-icon` link**, so the root
+convention paths (`/apple-touch-icon.png` + sized/precomposed variants) are
+real routes serving the branded PNG through `Brand` — a 404 there is a
+generic gray letter tile on someone's home screen. Desktop Firefox gets the
+honest line (no install there).
+
+## The example team is the reader's team
+
+When copy needs a school as an example ("start typing and it finds…"), use
+the **reader's own first team** (`tour.search.body_team` — `:prefix`/`:team`
+from their follows) or name nobody (`tour.search.body`, the skipped-picker
+fallback). Never a canned school: a hardcoded example is somebody's rival,
+and the pilot audience — Tennessee alumni — taught us which one. **Georgia in
+particular must never appear as example or joke copy**; the only way it
+reaches a screen is as the reader's own followed team. Where personalization
+is not plumbed (the Search screen's empty state), the static example is
+Tennessee. `GuidedTourTest` sweeps every tour line for the word.
 
 ## Say TRENDS, not "form"
 
@@ -241,7 +377,7 @@ A team's recent W/L run is **trends** — `x-trend-pills`, `$glance['trend']`.
 "Form" is the soccer word for it and reads as borrowed in an American football
 app, the same instinct as favorite-not-favourite.
 
-While in the neighbourhood: **plural nouns read better in this copy.**
+While in the neighborhood: **plural nouns read better in this copy.**
 "Records, trends, next games" beats "record, form, next game" — a season is
 a run of things, not one of each.
 

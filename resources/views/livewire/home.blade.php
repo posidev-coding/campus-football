@@ -6,6 +6,7 @@ use App\Models\Game;
 use App\Models\Season;
 use App\Models\Team;
 use App\Services\CfbCalendar;
+use App\Support\PlaceholderTeam;
 use App\Support\Scope;
 use App\Support\TeamGlance;
 use Livewire\Attributes\Computed;
@@ -60,7 +61,17 @@ new class extends Component
         if ($user === null) {
             session(['onboarding.dismissed' => true]);
         } elseif (! $user->hasOnboarded()) {
-            $user->forceFill(['onboarded_at' => now()])->save();
+            /*
+             * Declining the front door declines the coach marks too. The
+             * tour no longer waits for a first team (the placeholder card
+             * gives it a target), so without this stamp the X would be
+             * answered by an uninvited tour on the very next load. Account
+             * keeps "Replay the tour" for anyone who changes their mind.
+             */
+            $user->forceFill([
+                'onboarded_at' => now(),
+                'tour_completed_at' => $user->tour_completed_at ?? now(),
+            ])->save();
         }
 
         unset($this->showOnboardingCta);
@@ -74,9 +85,12 @@ new class extends Component
     public bool $tourReplay = false;
 
     /**
-     * The guided tour mounts exactly when the signup wizard's hand-off lands:
-     * signed in, onboarded, first team followed, never toured. Gated by the
-     * app's first Pennant flag so it can be pulled without a deploy.
+     * The guided tour mounts once the signup wizard's hand-off lands: signed
+     * in, onboarded, never toured. No followed-team requirement anymore —
+     * the Bandwagon State placeholder means a zero-team Home still has a
+     * glance card for the coach marks to point at, so skipping the picker no
+     * longer silently costs the walkthrough. Gated by the app's first
+     * Pennant flag so it can be pulled without a deploy.
      */
     #[Computed]
     public function showTour(): bool
@@ -91,17 +105,22 @@ new class extends Component
             return true;
         }
 
-        return $user->hasOnboarded()
-            && $this->followedTeams->isNotEmpty()
-            && ! $user->hasToured();
+        return $user->hasOnboarded() && ! $user->hasToured();
     }
 
     /**
      * Everything the page renders from the follow list is stale once a team
      * lands, whether it came from the swiper's own slot or the onboarding
      * overlay next door.
+     *
+     * `onboarding-finished` matters most on the SKIP path: the page rendered
+     * before `onboarded_at` existed, so the tour is not yet in the DOM, and
+     * the wizard's `start-tour` event lands on nothing. This re-render is
+     * what mounts the tour — whose own autoStart() then finds the overlay
+     * closed and begins, spotlighting the placeholder card.
      */
     #[On('team-followed')]
+    #[On('onboarding-finished')]
     public function refreshTeams(): void
     {
         unset(
@@ -157,8 +176,16 @@ new class extends Component
     {
         $teams = $this->followedTeams;
 
+        /*
+         * Zero follows, signed in: Bandwagon State. The placeholder keeps the
+         * swiper — and with it the tour's `glance` anchor — on screen, and
+         * costs nothing: `PlaceholderTeam::glance()` is a made model and
+         * literals, no queries, so the one-team-vs-five query-parity
+         * invariant holds at zero too. Guests keep the empty array; the
+         * section is @auth and a balanceless visitor gets the front door.
+         */
         if ($teams->isEmpty()) {
-            return [];
+            return auth()->check() ? [PlaceholderTeam::glance()] : [];
         }
 
         $ids = $teams->pluck('id')->all();
@@ -372,8 +399,14 @@ new class extends Component
 }; ?>
 
 <div class="flex flex-col gap-6">
-    {{-- The brand bar. Scrolls away; the search bar below it is what pins. --}}
-    <x-home-nav />
+    {{-- The brand bar. Scrolls away; the search bar below it is what pins.
+         The slot carries the gamification chips it was reserved for — signed
+         in only, because the balance is yours. --}}
+    <x-home-nav>
+        @auth
+            <x-wallet-chips data-tour="wallet" />
+        @endauth
+    </x-home-nav>
 
     {{-- Search lives here now, not on a tab. The bar expands into a
          full-screen panel in place; from `sm` up the header's ⌘K palette
@@ -385,6 +418,11 @@ new class extends Component
          into. It is inert until something dispatches `start-onboarding`. --}}
     <livewire:onboarding />
 
+    {{-- The verify nudge leads the page for an unverified account: it pays
+         (the first Beast Latte and XP), and the clock under it is real. The
+         component renders nothing for guests and the verified. --}}
+    <x-verify-email-callout />
+
     {{-- One blue button is the whole front door at zero teams. The swiper's
          own quiet slot takes over once they have at least one — that is a
          convenience for someone already onboarded, not a prompt. --}}
@@ -392,9 +430,15 @@ new class extends Component
         <x-onboarding-cta :guest="! auth()->check()" />
     @endif
 
-    {{-- The install pitch rides below the front door, never instead of it.
-         Hidden inside the installed app, gone for good once dismissed. --}}
-    <x-install-banner />
+    {{-- The install pitch waits for demonstrated interest: members only, and
+         only once the tour has finished making the app's own case. Guests
+         never see it — the front door above outranks the shell. Hidden inside
+         the installed app; dismissal is per user, per device. --}}
+    @auth
+        @if (auth()->user()->hasToured())
+            <x-install-banner />
+        @endif
+    @endauth
 
     @auth
         @if ($this->glances !== [])
@@ -410,9 +454,12 @@ new class extends Component
             --}}
             <section
                 @if ($this->hasLiveGame) wire:poll.30s.visible @endif
+                @touchstart.passive="beginSwipe($event)"
+                @touchend.passive="endSwipe($event)"
                 x-data="{
                     active: 0,
                     newsHeight: 0,
+                    swipeFrom: null,
 
                     /*
                      * Re-observed on every childList change, not captured once:
@@ -516,6 +563,48 @@ new class extends Component
 
                         this.newsHeight = panel ? panel.offsetHeight : 0
                     },
+
+                    /*
+                     * Swipe ANYWHERE in this section — the dots row, the news
+                     * panels, the subheadings — not only on the card track.
+                     * The news track is overflow-hidden on purpose (a follower
+                     * can never disagree with the cards about which team is
+                     * showing), so it cannot scroll; these two methods give
+                     * the dead zones the gesture instead, by converging on the
+                     * dots' own scrollIntoView idiom. The card track drives,
+                     * the observer updates `active`, the news follows — no
+                     * second sync path, nothing new to disagree.
+                     *
+                     * Touches that BEGIN on the card track are ignored: it
+                     * already swipes natively, and a second handler on top of
+                     * a native drag would advance twice per gesture.
+                     */
+                    beginSwipe(e) {
+                        this.swipeFrom = e.target.closest('[x-ref=track]')
+                            ? null
+                            : { x: e.touches[0].clientX, y: e.touches[0].clientY }
+                    },
+
+                    /*
+                     * Act only on clear horizontal intent — a finger travels
+                     * diagonally, and a vertical page scroll must never
+                     * advance the swiper. `.passive` on both bindings means
+                     * nothing here can preventDefault, so native scrolling
+                     * and link taps inside the news cards stay native (a drag
+                     * past slop already suppresses the click on its own).
+                     */
+                    endSwipe(e) {
+                        if (! this.swipeFrom) return
+
+                        const dx = e.changedTouches[0].clientX - this.swipeFrom.x
+                        const dy = e.changedTouches[0].clientY - this.swipeFrom.y
+                        this.swipeFrom = null
+
+                        if (Math.abs(dx) < 48 || Math.abs(dx) <= Math.abs(dy) * 1.5) return
+
+                        this.$refs.track.children[this.active + (dx < 0 ? 1 : -1)]
+                            ?.scrollIntoView({ inline: 'center', block: 'nearest' })
+                    },
                 }"
                 class="flex flex-col gap-3"
             >
@@ -549,19 +638,33 @@ new class extends Component
                     class="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 [scrollbar-width:none] motion-safe:scroll-smooth [&::-webkit-scrollbar]:hidden"
                 >
                     @foreach ($this->glances as $glance)
-                        <x-team-glance-card
-                            :glance="$glance"
-                            class="w-full shrink-0 snap-center sm:w-[calc(50%-0.375rem)]"
-                            wire:key="glance-{{ $glance['team']->id }}"
-                        />
+                        {{-- Bandwagon State gets its own card, never the
+                             glance card wearing a costume — the real one is
+                             a factual surface whose header links to a team
+                             page this team does not have. --}}
+                        @if ($glance['placeholder'] ?? false)
+                            <x-team-placeholder-card
+                                class="w-full shrink-0 snap-center sm:w-[calc(50%-0.375rem)]"
+                                wire:key="glance-placeholder"
+                            />
+                        @else
+                            <x-team-glance-card
+                                :glance="$glance"
+                                class="w-full shrink-0 snap-center sm:w-[calc(50%-0.375rem)]"
+                                wire:key="glance-{{ $glance['team']->id }}"
+                            />
+                        @endif
                     @endforeach
 
                     {{-- The empty slot, last: swipe past your teams and there
-                         is always somewhere to add the next one, until five. --}}
+                         is always somewhere to add the next one, until five.
+                         Counted from FOLLOWS, not glances — the placeholder
+                         is not a team, and it must not eat a slot or make
+                         this copy claim four when all five are free. --}}
                     @if ($this->canFollowMore)
                         <x-team-add-card
-                            :first="$this->glances === []"
-                            :remaining="App\Models\User::MAX_FOLLOWED_TEAMS - count($this->glances)"
+                            :first="$this->followedTeams->isEmpty()"
+                            :remaining="App\Models\User::MAX_FOLLOWED_TEAMS - $this->followedTeams->count()"
                             :query="$teamQuery"
                             :matches="$this->teamMatches"
                             :error="$followError"
@@ -619,6 +722,28 @@ new class extends Component
                              are clipped rather than `display: none` now, so
                              without it every off-screen headline stays in the
                              tab order and in the accessibility tree. --}}
+                        @if ($glance['placeholder'] ?? false)
+                            {{-- Bandwagon State's panel keeps the two tracks
+                                 mapped index for index — card 0 must pair
+                                 with panel 0 — and carries the joke's second
+                                 verse instead of a news lookup for a team id
+                                 no article will ever tag. --}}
+                            <div
+                                :inert="active !== {{ $i }}"
+                                class="flex w-full shrink-0 flex-col gap-2"
+                                wire:key="team-news-placeholder"
+                            >
+                                <flux:subheading>{{ $glance['team']->placeName() }} news</flux:subheading>
+
+                                <flux:callout icon="newspaper">
+                                    <flux:callout.text>
+                                        {{ App\Support\Voice::line('placeholder.news', ['name' => App\Support\PlaceholderTeam::LOCATION]) }}
+                                    </flux:callout.text>
+                                </flux:callout>
+                            </div>
+                            @continue
+                        @endif
+
                         <div
                             :inert="active !== {{ $i }}"
                             class="flex w-full shrink-0 flex-col gap-2"

@@ -104,7 +104,10 @@ new class extends Component
 
         $this->first_name = $user->first_name;
         $this->last_name = $user->last_name;
-        $this->handle = $user->handle;
+        // Coalesced: the column is null until claimed, and this is a typed
+        // string property — a bare null assignment is a TypeError, not a
+        // validation message.
+        $this->handle = $user->handle ?? '';
         $this->content_rating = $user->content_rating->value;
         $this->newsletter_opt_in = $user->newsletter_opt_in;
         $this->phone = PhoneNumber::format($user->phone) ?? '';
@@ -288,9 +291,16 @@ new class extends Component
              * collision with yourself. The rule sits on a unique index over a
              * case-insensitive collation, so the database is the real guarantee
              * — this is the readable error, not the enforcement.
+             *
+             * `nullable` only until claimed: registration stopped asking for a
+             * handle, so a handleless user must be able to save their name and
+             * rating without being marched through the claim. Once claimed it
+             * is `required` — a handle can change, but never blank back to
+             * nothing with mentions of it possibly in the wild.
              */
             'handle' => [
-                'required', 'string', 'min:3', 'max:20',
+                $user->handle === null ? 'nullable' : 'required',
+                'string', 'min:3', 'max:20',
                 'regex:/^[a-z0-9_]+$/',
                 Rule::unique('users')->ignore($user->id),
             ],
@@ -298,6 +308,12 @@ new class extends Component
         ], [
             'handle.regex' => 'Handles use lowercase letters, numbers and underscores.',
         ]);
+
+        // An empty field means "not claiming yet", never a write of '' — the
+        // column stays null so the claim affordance knows to keep offering.
+        if (($validated['handle'] ?? '') === '') {
+            $validated['handle'] = $user->handle;
+        }
 
         $user->update($validated);
 
@@ -531,20 +547,16 @@ new class extends Component
         <x-brand.lockup size="md" class="sm:hidden" />
         <h1 class="sr-only">Account</h1>
 
-        {{-- Icon-only. The three labels were the widest thing in the card and
-             said less than the icons do; up here they would not fit beside the
-             heading at 390px at all.
-
-             `$flux.appearance` is Flux's own store — it writes the `.dark` class
-             on <html>, persists to localStorage, and keeps listening to the OS
-             preference after load so "System" keeps tracking rather than
-             freezing at whatever it was when the page rendered. --}}
-        <flux:radio.group x-data variant="segmented" size="sm" x-model="$flux.appearance" class="shrink-0">
-            <flux:radio value="light" icon="sun" aria-label="Light" />
-            <flux:radio value="dark" icon="moon" aria-label="Dark" />
-            <flux:radio value="system" icon="computer-desktop" aria-label="Match system" />
-        </flux:radio.group>
+        {{-- Icon-only, and shared with the avatar menu — the partial owns the
+             full rationale. Up here because the three labels would not fit
+             beside the heading at 390px at all. --}}
+        <x-appearance-switcher class="shrink-0" />
     </div>
+
+    {{-- The verify nudge, spanning both columns: Account is where the email
+         lives, so its absence of a checkmark is most conspicuous here. The
+         component renders nothing once verified. --}}
+    <x-verify-email-callout class="lg:col-span-2" />
 
     <flux:card class="flex flex-col gap-3">
         <div class="flex items-center gap-3">
@@ -580,8 +592,22 @@ new class extends Component
             <div class="flex min-w-0 flex-col">
                 <span class="truncate font-medium">{{ auth()->user()->name }}</span>
                 {{-- The handle leads, the email follows: the handle is what
-                     other people see, the email is only how you sign in. --}}
-                <span class="truncate text-sm text-zinc-500">&#64;{{ auth()->user()->handle }}</span>
+                     other people see, the email is only how you sign in.
+                     Null means never claimed — never a fabricated stand-in;
+                     the claim opens the same modal the pencil does. --}}
+                @if (auth()->user()->handle !== null)
+                    <span class="truncate text-sm text-zinc-500">&#64;{{ auth()->user()->handle }}</span>
+                @else
+                    <flux:modal.trigger name="edit-profile">
+                        <button
+                            type="button"
+                            wire:click="fillProfileForm"
+                            class="truncate text-start text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+                        >
+                            {{ Voice::line('profile.claim_handle') }}
+                        </button>
+                    </flux:modal.trigger>
+                @endif
                 <span class="truncate text-micro text-zinc-400">{{ auth()->user()->email }}</span>
             </div>
 
@@ -726,6 +752,7 @@ new class extends Component
                 x-mask:dynamic="$input.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20)"
                 label="Handle"
                 autocomplete="username"
+                placeholder="dawgpound99"
                 description="Lowercase letters, numbers and underscores."
             />
 

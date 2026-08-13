@@ -1,6 +1,8 @@
 <?php
 
+use App\Actions\GrantWalletEntry;
 use App\Actions\ReorderFollowedTeams;
+use App\Enums\ContentRating;
 use App\Jobs\SyncTeamNews;
 use App\Models\Article;
 use App\Models\Conference;
@@ -14,6 +16,7 @@ use App\Models\User;
 use App\Models\Week;
 use App\Support\Brand;
 use App\Support\TeamGlance;
+use App\Support\Voice;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -69,6 +72,25 @@ describe('the team swiper', function () {
         expect(substr_count($html, 'wire:key="glance-'))->toBe(2)
             // The favorite leads regardless of follow order or alphabet.
             ->and(strpos($html, 'wire:key="glance-2633"'))->toBeLessThan(strpos($html, 'wire:key="glance-96"'));
+    });
+
+    it('accepts the swipe anywhere in the section, and keeps the news a follower', function () {
+        /*
+         * The gesture layer: touch handlers on the SECTION so the dots row
+         * and the news panels swipe too, a guard so touches beginning on the
+         * card track stay native (it already swipes; a second handler would
+         * double-advance), and the news track still overflow-hidden — the
+         * follower design is load-bearing, because two scrollers can
+         * disagree about which team is showing. No test runner delivers
+         * touch events, so the bindings and the guard are what a feature
+         * test can hold; the gesture itself is a real-device check.
+         */
+        $html = $this->actingAs($this->user)->get(route('home'))->assertOk()->content();
+
+        expect($html)->toContain('@touchstart.passive="beginSwipe($event)"')
+            ->and($html)->toContain('@touchend.passive="endSwipe($event)"')
+            ->and($html)->toContain("closest('[x-ref=track]')")
+            ->and($html)->toContain('overflow-hidden px-4 transition-[height]');
     });
 
     it('shows the most recent completed game as the last result, and no trend pills', function () {
@@ -401,29 +423,137 @@ describe('without teams', function () {
 
         $this->actingAs($newcomer)->get(route('home'))
             ->assertOk()
-            // The invitation is now the swiper's own empty slot — onboarding
-            // in place, rather than a callout sending them to Account to fill
-            // in the page they are already looking at.
+            // The swiper renders even at zero follows: Bandwagon State holds
+            // the first slot, the add card holds the second, and the whole
+            // in-place onboarding stays on the page they are looking at.
+            ->assertSee('Bandwagon State')
             ->assertSee('Add your team')
             ->assertSee('Search FBS teams')
             // …and the page still carries content underneath it.
             ->assertSee('A national story')
             ->assertSee('Latest news');
     });
+
+    it('seats Bandwagon State in the swiper with its news panel aligned', function () {
+        /*
+         * The two tracks are mapped index for index, so the placeholder
+         * needs BOTH a card and a news panel or every later panel sits one
+         * behind its card for the length of the swipe. The add slot must
+         * still count from follows — the placeholder is not a team, and the
+         * copy would otherwise claim four slots when all five are free.
+         */
+        $html = $this->actingAs(User::factory()->create())
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee('0-99 (0-99)', escape: false)
+            ->assertSee('Couch Conference')
+            ->content();
+
+        expect($html)->toContain('wire:key="glance-placeholder"')
+            ->and($html)->toContain('wire:key="team-news-placeholder"')
+            ->and($html)->toContain('data-tour="glance"');
+    });
+
+    it('renders the placeholder from constants alone, no tables required', function () {
+        /*
+         * The zero-query invariant, proven the blunt way: no seasons, no
+         * standings, no team_seasons rows exist for it to read. A
+         * placeholder that touched a map or a game query would 500 or
+         * render empty here.
+         */
+        $this->actingAs(User::factory()->create())
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee('Bandwagon State');
+    });
+
+    it('speaks the placeholder in each register, escalating', function () {
+        foreach (['placeholder.body', 'placeholder.news'] as $key) {
+            $pg = Voice::line($key, ['name' => 'Bandwagon State'], for: User::factory()->make(['content_rating' => ContentRating::Pg]));
+            $r = Voice::line($key, ['name' => 'Bandwagon State'], for: User::factory()->make(['content_rating' => ContentRating::R]));
+
+            expect($pg)->not->toBe('')
+                ->and($r)->not->toBe('')
+                ->and($r)->not->toBe($pg);
+        }
+    });
+});
+
+describe('the placeholder never leaks', function () {
+    it('vanishes the moment a real team is followed', function () {
+        // The 2-follow fixture must never see the joke — the swiper pin of
+        // exactly two glance keys lives in the swiper suite above.
+        $this->actingAs($this->user)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('Bandwagon State');
+    });
+
+    it('never renders for a guest', function () {
+        // A guest gets the front door, not a fake balance sheet.
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('Bandwagon State')
+            ->assertDontSee('glance-placeholder');
+    });
 });
 
 describe('the pick'."'".'em teaser', function () {
-    it('renders as a designed, inert card', function () {
+    it('renders as a designed card that opens the Picks screen', function () {
+        // Inert until the Picks screen existed; now the whole card navigates.
         $this->actingAs($this->user)->get(route('home'))
             ->assertOk()
             // escape: false — the label is literal template text, not an
             // escaped Blade echo, so the raw apostrophe is what is in the DOM.
             ->assertSee("Pick'em", escape: false)
-            ->assertSee('Coming soon');
+            ->assertSee('Coming soon')
+            ->assertSee(route('picks'), escape: false);
     });
 
     it('shows guests the same promise', function () {
-        $this->get(route('home'))->assertOk()->assertSee('Coming soon');
+        $this->get(route('home'))->assertOk()
+            ->assertSee('Coming soon')
+            ->assertSee(route('picks'), escape: false);
+    });
+});
+
+describe('the wallet chips', function () {
+    it('puts the gamification placeholders on both surfaces for a signed-in reader', function () {
+        // Home's brand bar below `sm`, the layout header above — one key,
+        // whichever is visible. Zero-state literals until the gamification
+        // schema exists; both chips open the Picks screen, which says
+        // "Coming soon" so the zeros never pretend the feature is live.
+        $html = $this->actingAs($this->user)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee('Rookie')
+            ->assertSee('0 XP')
+            ->assertSee('Beast Lattes', escape: false)
+            ->content();
+
+        expect(substr_count($html, 'data-tour="wallet"'))->toBeGreaterThanOrEqual(2);
+    });
+
+    it('shows a guest no balance at all', function () {
+        // A balance is YOURS — a guest header keeps sign-in instead.
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('data-tour="wallet"', escape: false)
+            ->assertDontSee('Rookie');
+    });
+
+    it('references currency art that actually exists on disk', function () {
+        // The chips render <img> tags; a renamed asset 404s as a silently
+        // blank icon rather than an error anywhere a test would look.
+        $source = file_get_contents(resource_path('views/components/wallet-chips.blade.php'));
+
+        preg_match_all('/brand\/currency\/[a-z0-9\/.-]+/', $source, $paths);
+
+        expect($paths[0])->not->toBe([]);
+
+        foreach (array_unique($paths[0]) as $path) {
+            expect(file_exists(public_path($path)))->toBeTrue("Missing currency asset: {$path}");
+        }
     });
 });
 
@@ -631,5 +761,72 @@ describe('order follows the user', function () {
 
         expect(strpos($after, 'wire:key="glance-96"'))
             ->toBeLessThan(strpos($after, 'wire:key="glance-2633"'));
+    });
+});
+
+describe('the verify nudge', function () {
+    it('leads the page for an unverified account, reward first and one row tall', function () {
+        /*
+         * Session-dismissable by design: sessionStorage dies with the browser
+         * session, so the nudge returns next visit — the 14-day self-destruct
+         * clock is real. The dismissal key is pinned here so a rename cannot
+         * silently promote it to the install banner's forever-localStorage.
+         * One sentence, one row: the nudge shrank after review because it
+         * was taxing the screen it sells — the latte still leads.
+         */
+        $this->actingAs(User::factory()->unverified()->create())
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee('Beast Latte and XP waiting on it')
+            ->assertSee('Resend')
+            ->assertSee(route('verification.notice'))
+            ->assertSee('cfb.verify.dismissed')
+            ->assertSee('sessionStorage');
+    });
+
+    it('renders nothing once verified, and nothing for a guest', function () {
+        $this->actingAs(User::factory()->create())
+            ->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('data-verify-callout');
+
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('data-verify-callout');
+    });
+
+    it('speaks the nudge in every register, escalating', function () {
+        foreach (['verify.callout.body', 'verify.picks.body'] as $key) {
+            $pg = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::Pg]));
+            $r = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::R]));
+
+            expect($pg)->not->toBe('')
+                ->and($r)->not->toBe('')
+                ->and($r)->not->toBe($pg);
+        }
+    });
+});
+
+describe('the wallet pays', function () {
+    it('shows the seed and the verification payout as real numbers', function () {
+        /*
+         * The chips read SUMs now, through the one write doorway
+         * (GrantWalletEntry) — moment seed plus verification payout is
+         * 125 XP and one latte, and the singular aria-label proves the
+         * numbers flow rather than the literals surviving.
+         */
+        $user = User::factory()->create();
+        $grant = app(GrantWalletEntry::class);
+
+        $grant->handle($user, xp: GrantWalletEntry::FIRST_TEAM_XP, lattes: 0,
+            reason: GrantWalletEntry::REASON_FIRST_TEAM, key: GrantWalletEntry::REASON_FIRST_TEAM);
+        $grant->handle($user, xp: GrantWalletEntry::VERIFICATION_XP, lattes: GrantWalletEntry::VERIFICATION_LATTES,
+            reason: GrantWalletEntry::REASON_EMAIL_VERIFIED, key: GrantWalletEntry::REASON_EMAIL_VERIFIED);
+
+        $this->actingAs($user)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee('125 XP')
+            ->assertSee('1 Beast Latte —');
     });
 });

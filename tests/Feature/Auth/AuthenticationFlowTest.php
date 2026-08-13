@@ -40,7 +40,6 @@ it('registers a new user and fires the Registered event', function () {
     Livewire::test('auth.register')
         ->set('first_name', 'Gunner')
         ->set('last_name', 'Stockton')
-        ->set('handle', 'gunner11')
         ->set('email', 'gunner@example.com')
         ->set('password', 'password-that-passes')
         ->set('password_confirmation', 'password-that-passes')
@@ -56,7 +55,9 @@ it('registers a new user and fires the Registered event', function () {
     expect($user->admin)->toBeFalse()
         ->and($user->first_name)->toBe('Gunner')
         ->and($user->last_name)->toBe('Stockton')
-        ->and($user->handle)->toBe('gunner11')
+        // Registration no longer asks for a handle; null means never claimed,
+        // and claiming lives on Account. Never a generated default.
+        ->and($user->handle)->toBeNull()
         // Plenty of places just want to print a person, so `name` still works.
         ->and($user->name)->toBe('Gunner Stockton')
         // Untouched by the form, so the default is what lands.
@@ -65,13 +66,29 @@ it('registers a new user and fires the Registered event', function () {
     $this->assertAuthenticatedAs($user);
 });
 
+it('hands a fresh registrant to the team picker, same as the wizard', function () {
+    /*
+     * The gap this pins shut: header-form registrants used to land on plain
+     * Home with the picker closed, finished with zero teams, and — because
+     * the tour needs something to point at — never saw the tour either.
+     * `start=team` opens the picker exactly like the overlay's own hand-off.
+     */
+    Livewire::test('auth.register')
+        ->set('first_name', 'Gunner')
+        ->set('last_name', 'Stockton')
+        ->set('email', 'gunner@example.com')
+        ->set('password', 'password-that-passes')
+        ->set('password_confirmation', 'password-that-passes')
+        ->call('register')
+        ->assertRedirect(route('home', ['start' => 'team'], absolute: false));
+});
+
 it('will not register a duplicate email', function () {
     User::factory()->create(['email' => 'taken@example.com']);
 
     Livewire::test('auth.register')
         ->set('first_name', 'Someone')
         ->set('last_name', 'Else')
-        ->set('handle', 'someoneelse')
         ->set('email', 'taken@example.com')
         ->set('password', 'password-that-passes')
         ->set('password_confirmation', 'password-that-passes')
@@ -99,57 +116,11 @@ it('does not leak whether an email exists on password reset', function () {
         ->assertSet('status', 'If that email is on file, a reset link is on its way.');
 });
 
-describe('handle', function () {
-    $fill = fn ($component) => $component
-        ->set('first_name', 'Gunner')
-        ->set('last_name', 'Stockton')
-        ->set('email', 'gunner@example.com')
-        ->set('password', 'password-that-passes')
-        ->set('password_confirmation', 'password-that-passes');
-
-    it('is required', function () use ($fill) {
-        $fill(Livewire::test('auth.register'))->call('register')->assertHasErrors('handle');
-    });
-
-    it('will not take one that is already claimed', function () use ($fill) {
-        User::factory()->create(['handle' => 'gunner11']);
-
-        $fill(Livewire::test('auth.register'))
-            ->set('handle', 'gunner11')
-            ->call('register')
-            ->assertHasErrors('handle');
-    });
-
-    it('will not take one that differs only in case', function () use ($fill) {
-        /*
-         * `@Gunner11` and `@gunner11` reading as two people is exactly the
-         * confusion a handle exists to prevent. The unique index sits on a
-         * case-insensitive collation, so the database enforces this even if a
-         * future caller skips the form.
-         */
-        User::factory()->create(['handle' => 'gunner11']);
-
-        $fill(Livewire::test('auth.register'))
-            ->set('handle', 'GUNNER11')
-            ->call('register')
-            ->assertHasErrors('handle');
-    });
-
-    it('strips what cannot be typed in a mention as you go', function () {
-        // Corrected while typing rather than rejected afterwards — a capital
-        // should not become an error message to read and fix.
-        Livewire::test('auth.register')
-            ->set('handle', 'Gunner Stockton!')
-            ->assertSet('handle', 'gunnerstockton');
-    });
-
-    it('rejects one that is too short', function () use ($fill) {
-        $fill(Livewire::test('auth.register'))
-            ->set('handle', 'gs')
-            ->call('register')
-            ->assertHasErrors('handle');
-    });
-});
+/*
+ * The handle rules (required-once-claimed, case-insensitive uniqueness, the
+ * typing mask, min length) now live where the handle is actually claimed —
+ * Account — and are covered by HandleClaimTest. Registration asks nothing.
+ */
 
 describe('content rating', function () {
     it('starts on PG-13 rather than blank', function () {
@@ -162,7 +133,6 @@ describe('content rating', function () {
         Livewire::test('auth.register')
             ->set('first_name', 'Gunner')
             ->set('last_name', 'Stockton')
-            ->set('handle', 'gunner11')
             ->set('email', 'gunner@example.com')
             ->set('password', 'password-that-passes')
             ->set('password_confirmation', 'password-that-passes')
@@ -178,7 +148,6 @@ describe('content rating', function () {
         Livewire::test('auth.register')
             ->set('first_name', 'Gunner')
             ->set('last_name', 'Stockton')
-            ->set('handle', 'gunner11')
             ->set('email', 'gunner@example.com')
             ->set('password', 'password-that-passes')
             ->set('password_confirmation', 'password-that-passes')

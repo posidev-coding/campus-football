@@ -1,12 +1,16 @@
 <?php
 
+use App\Enums\ContentRating;
 use App\Jobs\SyncTeamNews;
 use App\Models\Game;
 use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\User;
+use App\Models\Venue;
+use App\Models\WalletEntry;
 use App\Support\TeamGlance;
+use App\Support\Voice;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -83,14 +87,21 @@ describe('dismissing it', function () {
     it('stamps onboarded_at for a signed-in user so it does not come back', function () {
         $user = User::factory()->create();
 
+        /*
+         * What the X removes is the blue CARD — pinned by its member heading,
+         * because "Add your team" now legitimately lives on in the swiper's
+         * own add slot, which a dismissed zero-team user keeps (beside the
+         * Bandwagon State placeholder) rather than getting a bare page.
+         */
         Livewire::actingAs($user)->test('home')
             ->call('dismissOnboarding')
-            ->assertDontSee('Add your team');
+            ->assertDontSee('Put your team up top')
+            ->assertSee('Bandwagon State');
 
         expect($user->fresh()->hasOnboarded())->toBeTrue();
 
         // And it stays gone on a fresh load.
-        $this->actingAs($user->fresh())->get(route('home'))->assertDontSee('Add your team');
+        $this->actingAs($user->fresh())->get(route('home'))->assertDontSee('Put your team up top');
     });
 
     it('remembers a guest in the session, which lapses naturally', function () {
@@ -112,43 +123,27 @@ describe('the guest flow', function () {
             ->assertSet('step', 'name');
     });
 
-    it('catches a taken handle on the handle screen, not four screens later', function () {
-        /*
-         * The whole point of splitting the form. Discovering this at the end,
-         * with everything else already typed, is the experience being avoided.
-         */
-        User::factory()->create(['handle' => 'taken']);
-
-        Livewire::test('onboarding')
-            ->set('first_name', 'Test')->set('last_name', 'User')->call('next')
-            ->set('handle', 'taken')
-            ->call('next')
-            ->assertHasErrors('handle')
-            ->assertSet('step', 'handle');
-    });
-
     it('catches a duplicate email on the credentials screen', function () {
         User::factory()->create(['email' => 'taken@example.com']);
 
         Livewire::test('onboarding')
             ->set('step', 'credentials')
             ->set('first_name', 'Test')->set('last_name', 'User')
-            ->set('handle', 'fresh')->set('content_rating', 'pg13')
+            ->set('content_rating', 'pg13')
             ->set('email', 'taken@example.com')
             ->set('password', 'password123')->set('password_confirmation', 'password123')
             ->call('register')
             ->assertHasErrors('email');
 
-        expect(User::where('handle', 'fresh')->exists())->toBeFalse();
+        // Only the pre-existing account — the duplicate never landed.
+        expect(User::count())->toBe(1);
     });
 
-    it('walks all four steps, creates the account, and hands off to the picker', function () {
+    it('walks all three steps, creates the account, and hands off to the moment', function () {
         Event::fake([Registered::class]);
 
         $component = Livewire::test('onboarding')
             ->set('first_name', 'Peyton')->set('last_name', 'Manning')->call('next')
-            ->assertSet('step', 'handle')
-            ->set('handle', 'sheriff')->call('next')
             ->assertSet('step', 'rating')
             ->set('content_rating', 'r')->call('next')
             ->assertSet('step', 'credentials')
@@ -160,12 +155,14 @@ describe('the guest flow', function () {
         // state and every @auth region has to re-render.
         $component->assertRedirect(route('home', ['start' => 'team']));
 
-        $user = User::where('handle', 'sheriff')->first();
+        $user = User::where('email', 'peyton@example.com')->first();
 
         expect($user)->not->toBeNull()
             ->and($user->first_name)->toBe('Peyton')
-            ->and($user->email)->toBe('peyton@example.com')
             ->and($user->content_rating->value)->toBe('r')
+            // No handle question anywhere in the flow: null until claimed on
+            // Account. Never a generated default — null means never claimed.
+            ->and($user->handle)->toBeNull()
             ->and(auth()->id())->toBe($user->id);
 
         Event::assertDispatched(Registered::class);
@@ -177,10 +174,18 @@ describe('the picker', function () {
         Livewire::actingAs(User::factory()->create())
             ->test('onboarding')
             ->assertSet('step', 'team')
-            ->assertSee('Who do you follow?');
+            // The favorite question, asked out loud — one pick, one promise;
+            // the five-slot education lives in the tour now.
+            ->assertSee("Who's your team?")
+            ->assertSee('you can add more later');
     });
 
-    it('stays open after the first team so they can keep going', function () {
+    it('completes the moment on the first pick', function () {
+        /*
+         * No "add another", no Done: the first pick closes the overlay itself
+         * — splash over the top, wizard closing beneath it, tour already
+         * mounted from the re-render `team-followed` triggers.
+         */
         Queue::fake();
 
         $user = User::factory()->create();
@@ -188,12 +193,41 @@ describe('the picker', function () {
         Livewire::actingAs($user)
             ->test('onboarding')
             ->call('addTeam', 2633)
-            // Still on the picker, with the team shown as done and room left.
-            ->assertSet('step', 'team')
-            ->assertSee('Tennessee Volunteers')
-            ->assertSee('Done');
+            ->assertDispatched('team-followed')
+            ->assertDispatched('signup-splash')
+            ->assertDispatched('close-onboarding');
 
         expect($user->followedTeams()->pluck('teams.id')->all())->toBe([2633]);
+    });
+
+    it('pays the first-team seed once — the one earn before verification', function () {
+        /*
+         * 25 XP for arriving with a team instead of skipping: a number in the
+         * wallet worth protecting, planted before the verify gate. The
+         * idempotency key makes it once-EVER — a second pass through the
+         * moment (unfollow everything, come back) pays nothing.
+         */
+        Queue::fake();
+
+        $user = User::factory()->unverified()->create();
+
+        Livewire::actingAs($user)->test('onboarding')->call('addTeam', 2633);
+
+        expect($user->walletTotals())->toBe(['xp' => 25, 'lattes' => 0]);
+
+        $user->followedTeams()->detach();
+
+        Livewire::actingAs($user)->test('onboarding')->call('addTeam', 96);
+
+        expect(WalletEntry::where('user_id', $user->id)->count())->toBe(1);
+    });
+
+    it('pays nothing for skipping', function () {
+        $user = User::factory()->create();
+
+        Livewire::actingAs($user)->test('onboarding')->call('done');
+
+        expect(WalletEntry::where('user_id', $user->id)->exists())->toBeFalse();
     });
 
     it('is not a back door around the news warm-up', function () {
@@ -224,16 +258,63 @@ describe('the picker', function () {
         Livewire::actingAs($user)
             ->test('onboarding')
             ->call('done')
-            ->assertDispatched('close-onboarding');
+            ->assertDispatched('close-onboarding')
+            // The skip path's real hand-off: Home re-renders on this, which
+            // is what mounts the tour over the placeholder card.
+            ->assertDispatched('onboarding-finished');
 
         expect($user->fresh()->hasOnboarded())->toBeTrue();
     });
 
+    it('keeps the skip a whisper, and never shows a Done at all', function () {
+        /*
+         * The PICKER is the action: no primary button anywhere on the moment.
+         * Skipping stays quiet, and there is no "Done" to reach because the
+         * first pick completes the moment on its own.
+         */
+        Queue::fake();
+
+        $component = Livewire::actingAs(User::factory()->create())->test('onboarding');
+
+        $component->assertSee('Skip for now')->assertDontSee('Done');
+
+        $component->call('addTeam', 2633)
+            ->assertDontSee('Done')
+            ->assertDispatched('close-onboarding');
+    });
+
+    it('never advances past credentials without registering', function () {
+        /*
+         * 'team' is a reachable state even though it left the counted list —
+         * a plain next() from credentials would walk a validated guest into
+         * the picker with no account behind them. register() is the only
+         * door.
+         */
+        Livewire::test('onboarding')
+            ->set('step', 'credentials')
+            ->set('first_name', 'Test')->set('last_name', 'User')
+            ->set('email', 'test@example.com')
+            ->set('password', 'password-str0ng')
+            ->set('password_confirmation', 'password-str0ng')
+            ->call('next')
+            ->assertSet('step', 'credentials');
+
+        expect(User::count())->toBe(0);
+    });
+
+    it('has no Back from the picker, which sits past account creation', function () {
+        Livewire::actingAs(User::factory()->create())
+            ->test('onboarding')
+            ->call('back')
+            ->assertSet('step', 'team');
+    });
+
     it('lets a freshly registered, unverified user follow a team', function () {
         /*
-         * User implements MustVerifyEmail and /account is behind `verified`,
-         * but Home is not — so the hand-off must not route through anything
-         * gated or a new signup would hit the verification wall mid-flow.
+         * Verification is deliberately lenient — it gates Pick'em and XP
+         * earning (bar the seeded first-team grant), never the hand-off — so
+         * a new signup must sail through the moment without touching anything
+         * verified-gated.
          */
         Queue::fake();
 
@@ -277,7 +358,7 @@ describe('the device draft', function () {
         $html = Livewire::test('onboarding')->html();
 
         expect($html)
-            ->toContain("fields: ['first_name', 'last_name', 'handle', 'content_rating']")
+            ->toContain("fields: ['first_name', 'last_name', 'content_rating']")
             ->not->toContain("'password'")
             ->not->toContain('draft.email');
 
@@ -294,11 +375,188 @@ describe('the device draft', function () {
          *
          * Asserted one step at a time, because only the current step renders.
          */
-        foreach (['name', 'handle', 'rating', 'credentials'] as $step) {
+        foreach (['name', 'rating', 'credentials'] as $step) {
             $html = Livewire::test('onboarding')->set('step', $step)->html();
 
             expect($html)->toContain('wire:key="step-'.$step.'"');
         }
+
+        // The picker is authed-only, so it gets its own pass.
+        $html = Livewire::actingAs(User::factory()->create())->test('onboarding')->html();
+
+        expect($html)->toContain('wire:key="step-team"');
+    });
+
+    it('warms up the splash for the favorite they just picked', function () {
+        /*
+         * The splash's phrases are server-rendered spans, so a Livewire
+         * re-render keeps them naming the CURRENT favorite — Alpine only
+         * tracks which span is showing. The travel phrase prefers the
+         * favorite's inferred stadium, and the fixture's one game carries
+         * no venue — so what this asserts is the FALLBACK to the pinned
+         * `location`. The stadium path has its own test below.
+         */
+        Queue::fake();
+
+        Livewire::actingAs(User::factory()->create())
+            ->test('onboarding')
+            ->call('addTeam', 2633)
+            ->assertSee('Road-tripping to Tennessee')
+            ->assertSeeHtml('data-signup-splash')
+            /*
+             * The pick path fires the splash from the SERVER now (the button
+             * that carried the client dispatch is gone) — and Livewire morphs
+             * before dispatching, so these re-personalized phrases are in the
+             * DOM when begin() runs.
+             */
+            ->assertDispatched('signup-splash');
+    });
+
+    it('road-trips to the actual stadium once the games can name one', function () {
+        /*
+         * TeamVenue infers the favorite's home field from their non-neutral
+         * home games; the splash prefers it over the school's name. Two
+         * games at one venue is all the mode needs.
+         */
+        Queue::fake();
+
+        Venue::create(['id' => 3843, 'name' => 'Neyland Stadium', 'city' => 'Knoxville', 'state' => 'TN']);
+
+        $season = Season::firstWhere('year', 2026);
+
+        foreach (['2026-09-05 19:00:00', '2026-09-12 15:30:00'] as $kickoff) {
+            Game::factory()->create([
+                'season_id' => $season->id,
+                'home_team_id' => 2633, 'away_team_id' => 96,
+                'venue_id' => 3843, 'kickoff_at' => $kickoff, 'completed' => false,
+            ]);
+        }
+
+        Livewire::actingAs(User::factory()->create())
+            ->test('onboarding')
+            ->call('addTeam', 2633)
+            ->assertSee('Road-tripping to Neyland Stadium');
+    });
+
+    it('warms up the splash for Bandwagon State when they skip', function () {
+        // Zero teams: the same phrases resolve to the placeholder, whose
+        // home field is wherever the winning is — so the quiet path gets
+        // the joke instead of a quieter exit.
+        Livewire::actingAs(User::factory()->create())
+            ->test('onboarding')
+            ->assertSee("Road-tripping to Wherever's Winning")
+            ->assertSeeHtml("\$dispatch('signup-splash')");
+    });
+
+    it('counts a guest through three steps, and the moment through none', function () {
+        /*
+         * "Easy as 1-2-3" is the promise: guests fill a three-segment bar
+         * (the count survives as sr-only text), and the team moment shows NO
+         * counter for anyone — it sits past registration and is an arrival,
+         * not a fourth chore. That includes the registration hand-off
+         * (`start=team`), which used to advertise itself as "Step 5 of 5".
+         */
+        Livewire::test('onboarding')
+            ->assertSee('Step 1 of 3')
+            ->assertSeeHtml('wire:key="progress-1"');
+
+        // The clean case FIRST: withQueryParams() below leaks into every
+        // later test() call in this method, so order is load-bearing.
+        Livewire::actingAs(User::factory()->create())
+            ->test('onboarding')
+            ->assertDontSee('of 3');
+
+        Livewire::actingAs(User::factory()->create())
+            ->withQueryParams(['start' => 'team'])
+            ->test('onboarding')
+            ->assertDontSee('of 3');
+    });
+
+    it('slows the splash to a reading pace, and closes dark on the lattes', function () {
+        /*
+         * 2400ms a phrase — read it, smile, breathe — an extra ~2900ms hang
+         * on the closer, and a forced `dark` class whatever the theme. The
+         * timings and class are pinned as source strings because the
+         * automated tab renders no frames to watch them in; the pace was
+         * slowed twice on real-phone review, so a faster retune must be a
+         * decision, not a drift. The order is the road trip: travel, field,
+         * song, THEN the high-five, with the Beast Lattes holding the curtain.
+         */
+        $component = Livewire::actingAs(User::factory()->create())->test('onboarding');
+
+        $component->assertSeeInOrder([
+            'Road-tripping to',
+            'Painting the end zones',
+            'fight song',
+            'High-fiving',
+            'Beast Lattes',
+        ]);
+
+        expect($component->html())
+            ->toContain(', 2400)')
+            ->toContain('end(), 12500')
+            ->toContain('class="dark fixed inset-0');
+    });
+
+    it('keeps every primary button beside its fields, not in a bottom rail', function () {
+        /*
+         * The old action rail pinned the button to the viewport bottom —
+         * a reach away from the inputs, and behind the keyboard on a phone.
+         * Now each step carries its own button inside its keyed div, and the
+         * rail (with its top border) is gone entirely.
+         */
+        $guest = Livewire::test('onboarding')->html();
+
+        expect($guest)
+            ->toContain('wire:click="next"')
+            ->not->toContain('border-t border-zinc-200 px-4 py-3');
+
+        $credentials = Livewire::test('onboarding')->set('step', 'credentials')->html();
+
+        expect($credentials)->toContain('wire:click="register"');
+    });
+
+    it('speaks the front door and picker in each register, escalating', function () {
+        // LOUD chrome: all three registers side by side, R never just PG.
+        foreach ([
+            'onboarding.guest.heading', 'onboarding.guest.body',
+            'onboarding.member.heading', 'onboarding.member.body',
+            'onboarding.favorite', 'onboarding.picker', 'onboarding.name',
+            'splash.warmup.greet', 'splash.warmup.travel', 'splash.warmup.field',
+            'splash.warmup.song', 'splash.warmup.latte',
+        ] as $key) {
+            $pg = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::Pg]));
+            $r = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::R]));
+
+            expect($pg)->not->toBe('')
+                ->and($r)->not->toBe('')
+                ->and($r)->not->toBe($pg);
+        }
+    });
+
+    it('lands the registration hand-off with the wizard already painted', function () {
+        /*
+         * register() full-redirects to home?start=team, and Alpine boots
+         * with `open` true — but an unconditional x-cloak hid the overlay
+         * until that boot, so the HOME SCREEN flashed between steps four
+         * and five. On the hand-off URL the server renders the overlay
+         * visible from the first frame; everywhere else the cloak stays,
+         * preventing the opposite flash.
+         */
+        $overlayTag = function (string $html): string {
+            preg_match('/<div[^>]*data-onboarding-overlay[^>]*>/', $html, $m);
+
+            return $m[0] ?? '';
+        };
+
+        $handoff = $this->actingAs(User::factory()->create())
+            ->get(route('home', ['start' => 'team']))->assertOk()->content();
+
+        $plain = $this->actingAs(User::factory()->create())
+            ->get(route('home'))->assertOk()->content();
+
+        expect($overlayTag($handoff))->not->toBe('')->not->toContain('x-cloak')
+            ->and($overlayTag($plain))->toContain('x-cloak');
     });
 
     it('clears a finished draft for anyone already signed in', function () {

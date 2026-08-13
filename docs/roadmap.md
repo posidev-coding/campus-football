@@ -77,11 +77,14 @@ Reference: [screens.md](screens.md), [ui-system.md](ui-system.md)
 
 The app becomes yours.
 
-- Registration with first/last name, handle and content rating
+- Registration with first/last name and content rating (the handle is
+  claimed later on Account — nothing consumes one yet)
 - Follows as an ordered list, capped at 5 — position 1 is what "favorite" used
   to mean
 - Home as swipeable at-a-glance cards, one per followed team
-- In-place onboarding (four small screens, credentials last)
+- In-place onboarding (three counted screens, credentials last; the team
+  picker is an uncounted post-signup moment that collects ONE favorite and
+  seeds 25 XP)
 - Account: teams, appearance, content rating, notification preferences
 - `Brand` — one resolver, shipped defaults, admin-editable overrides
 - `Voice` — the three-register copy resolver, with Account as the reference
@@ -114,15 +117,22 @@ The product's point. Nothing here is built yet; the seams are.
 - `GameScoreChanged` and `GameWentFinal` (dispatched from `SyncGames::store()`,
   after save, never on a first insert) — the subscription points a contest
   recompute listens to rather than polling. No listeners exist yet.
-- `x-pickem-teaser` — a designed, deliberately inert card on Home that becomes
-  the entry point.
-- The fifth bottom-nav slot. `Navigation` sizes the tab bar from the area
-  count, so adding Pick'em is a one-entry change. Search gave its tab up for
-  exactly this.
+- The **Picks area is already live** — fifth tab (center slot, label
+  "Picks"), `/picks` coming-soon screen, a guided-tour stop, and the teaser
+  card on Home now links there. When Pick'em ships, the screen's promise
+  cards become the real slate/groups/records surfaces and the area gains
+  sections.
 - `Game::slateEligible()` and the scope filters, for choosing a week's slate.
 - `GameRanks` and `game_odds`, for tiering and for spread-based formats.
-- Laravel Pennant is installed and currently unused — the intended mechanism
-  for rolling this out behind a flag.
+- Laravel Pennant is installed with one flag (`guided-tour`) — the intended
+  mechanism for rolling this out behind a flag.
+- The **verified-email gate is decided and documented**: Pick'em actions and
+  XP earning require `hasVerifiedEmail()` (the `verified` middleware is
+  reserved for exactly this; `/picks` already explains the gate to
+  unverified users). Verification itself pays 100 XP + 1 Beast Latte.
+- The **wallet ledger exists** (`wallet_entries` + `GrantWalletEntry`):
+  Pick'em payouts are keyless repeatable entries into the same table the
+  chips already read.
 
 **Open decisions** (none of these are settled; this is the list to work
 through first):
@@ -152,10 +162,16 @@ Depends on Phase 5 having a settled contest model. LOUD surface.
 
 ## Phase 7 — Gamification
 
-The empty right-hand slot in `x-home-nav` is reserved for this — currency, XP,
-streak — and at `sm` those chips move into the layout header. Streaks are the
-part with real retention value and the part most likely to feel cheap if it is
-done badly.
+The shelf is half-live: `x-wallet-chips` reads REAL Beast Latte and XP sums
+from `wallet_entries` (`User::walletTotals()`, one memoized query) — the
+verification reward and the onboarding seed already pay into it — while the
+rank is still the literal starting "Rookie", because the ladder is this
+phase's to define. The component sits in `x-home-nav`'s reserved slot below
+`sm` and in the layout header above, with a guided-tour stop of its own, and
+is deliberately the ONLY file that knows the currency's name or art. This
+phase defines the rank ladder, the earn/spend table, and replaces the Rookie
+literal with a computed rank. Streaks join the chips here; they are the part with real
+retention value and the part most likely to feel cheap if done badly.
 
 Deliberately after groups: a streak counter nobody can see is a number, and a
 streak your group can see is a stake.
@@ -176,6 +192,14 @@ Speculative, and listed so the constraint is not forgotten: the App Store age
 rating is why "roast the pick, never the person" is a hard rule rather than a
 taste preference. Nothing should be built in Phases 5–8 that would need
 unwinding for a native shell.
+
+The same constraint owns the currency contingency. Beast Latte is a fictional
+can that copies no trade dress (see `public/brand/currency/README.md`) and
+the copy around it never uses drinking vocabulary — but if App Store review
+reads the art as alcohol imagery anyway, the fallback is a per-user variant
+(sodas, stadium food) behind the one-component seam: `x-wallet-chips` is the
+only file that knows the currency's name or art, so the swap never touches a
+screen.
 
 ---
 

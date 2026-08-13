@@ -5,7 +5,6 @@ use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules;
 use Livewire\Attributes\Layout;
@@ -16,8 +15,6 @@ new #[Layout('components.layouts.auth')] class extends Component
     public string $first_name = '';
 
     public string $last_name = '';
-
-    public string $handle = '';
 
     public string $email = '';
 
@@ -34,25 +31,16 @@ new #[Layout('components.layouts.auth')] class extends Component
 
     public function register(): void
     {
+        /*
+         * No handle here anymore: nothing consumes it until Pick'em and chat
+         * exist, so asking was a signup toll. Claiming lives on Account.
+         */
         $validated = $this->validate([
             'first_name' => ['required', 'string', 'max:255'],
             'last_name' => ['required', 'string', 'max:255'],
-            /*
-             * Lowercased and constrained to the characters a handle can be
-             * typed and @-mentioned with. `unique` is backed by a unique index
-             * on a case-insensitive collation, so two people cannot end up as
-             * `@taylor` and `@Taylor`.
-             */
-            'handle' => [
-                'required', 'string', 'min:3', 'max:20',
-                'regex:/^[a-z0-9_]+$/',
-                'unique:'.User::class,
-            ],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
             'password' => ['required', 'string', 'confirmed', Rules\Password::defaults()],
             'content_rating' => ['required', Rule::enum(ContentRating::class)],
-        ], [
-            'handle.regex' => 'Handles use lowercase letters, numbers and underscores.',
         ]);
 
         $validated['password'] = Hash::make($validated['password']);
@@ -61,15 +49,14 @@ new #[Layout('components.layouts.auth')] class extends Component
 
         Auth::login($user);
 
-        $this->redirectIntended(default: route('home', absolute: false), navigate: true);
-    }
-
-    /**
-     * Typing a capital should not become a validation error to read and fix.
-     */
-    public function updatedHandle(): void
-    {
-        $this->handle = Str::of($this->handle)->lower()->replaceMatches('/[^a-z0-9_]/', '')->substr(0, 20)->toString();
+        /*
+         * The default lands on Home with the team picker OPEN — the same
+         * hand-off the overlay wizard makes. Without `start=team`, everyone
+         * arriving from the header's Sign up button finished with zero teams
+         * and, because the tour needs something to point at, never saw the
+         * tour either. An intended URL still wins.
+         */
+        $this->redirectIntended(default: route('home', ['start' => 'team'], absolute: false), navigate: true);
     }
 }; ?>
 
@@ -104,25 +91,6 @@ new #[Layout('components.layouts.auth')] class extends Component
                 class="flex-1"
             />
         </div>
-
-        {{-- "Handle" rather than "username": it is what the sport's own corner
-             of the internet calls it, and it sets the expectation that this is
-             the name you are shouted at by, not a login credential. --}}
-        <flux:input
-            wire:model="handle"
-            x-mask:dynamic="$input.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20)"
-            label="Handle"
-            type="text"
-            name="handle"
-            required
-            autocomplete="username"
-            placeholder="dawgpound99"
-            description="How you show up on leaderboards and in group chat."
-        >
-            <x-slot name="iconLeading">
-                <span class="ps-3 text-sm text-zinc-400">&#64;</span>
-            </x-slot>
-        </flux:input>
 
         <flux:input
             wire:model="email"

@@ -61,6 +61,18 @@ class UserFactory extends Factory
     }
 
     /**
+     * A user who never claimed a handle — the shape registration now produces.
+     * A state rather than the default, because plenty of fixtures render
+     * `@handle` and a null there is a different test's subject.
+     */
+    public function handleless(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'handle' => null,
+        ]);
+    }
+
+    /**
      * `admin` is not fillable, so this state is the only supported way to make
      * one — including in tests.
      */
