@@ -29,6 +29,23 @@
      hide stylesheet-driven and flash-free on that signal too. --}}
 <script>if (navigator.standalone) document.documentElement.setAttribute('data-standalone', '')</script>
 
+{{-- The boot splash's cold-start stamp, and it must sit ABOVE the depth
+     counter: `cfbAppDepth === undefined` is what makes this a real-document-
+     load detector — on a cold load the counter does not exist yet, and on
+     any navigate-hop re-evaluation it already does, so a hop can never
+     stamp. Pre-paint, because the curtain has to be up before Alpine exists
+     (the install-banner lesson: first-paint chrome is never gated on JS).
+     The splash's own end() removes the attribute; the stylesheet carries an
+     8s dead-man for a boot where JS never ran. Real loads = cold open,
+     re-open, pull-to-refresh's reload — exactly the set that should feel
+     like a launch. --}}
+<script>
+    if (window.cfbAppDepth === undefined
+        && (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true)) {
+        document.documentElement.setAttribute('data-boot', '');
+    }
+</script>
+
 {{--
     How deep into the app this tab is — the only honest answer to "is there
     one of our own pages behind me in history", and what every Back control

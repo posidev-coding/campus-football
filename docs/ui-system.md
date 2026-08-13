@@ -667,3 +667,39 @@ tab on iOS deliberately ignores `user-scalable=no` and keeps accessibility
 pinch — exactly the split we want. `touch-action: manipulation` on `html` is
 the other half: double-tap is two taps, never a zoom. Do not "fix" a zoom
 complaint by loosening the meta; the complaint the lock answers is worse.
+
+### The boot splash: stylesheet-shown before Alpine exists
+
+Opening the installed app plays a ~2.7s branded curtain — the signup splash's
+visual grammar (forced-dark `bg-zinc-950`, the mark, crossfading phrases,
+pulsing dots) at launch length, dealing three shuffled cards off the
+`splash.boot.*` deck. It is pure theater over an already-delivered document,
+and deliberate: instantly is indistinguishable from abruptly.
+
+The lifecycle is the part that cannot be rediscovered by reading one file.
+A pre-paint head script stamps `data-boot` on the root ONLY when
+`window.cfbAppDepth === undefined` (true on real document loads alone — the
+depth counter defined lower in the head already exists on any navigate-hop
+re-evaluation) AND a standalone signal is present. The stylesheet — never JS,
+the install-banner lesson — displays `[data-boot-splash]` under that
+attribute, so the curtain is up before Alpine boots; the component's `end()`
+removes the attribute ~2.7s later, and an 8s CSS `cfb-boot-bail` animation is
+the dead-man for a boot where JS never ran (standalone has no reload chrome,
+so a curtain JS never clears must clear itself). Real loads = cold open,
+re-open, pull-to-refresh's reload — hops can neither stamp nor inherit.
+Measured while verifying: `Livewire.navigate` refreshes the `<html>`
+element's attributes, so a mid-session stamp does not survive a hop — the
+real flow never hits this (the opaque curtain blocks navigation while it
+plays), but a console repro must drive `begin()` directly rather than
+stamping and navigating. The splash renders LAST in `<body>` in both layouts:
+an opaque background does not win a z-index tie, later DOM does, which is
+what puts it over the tour scrim and the pull-to-refresh puck at the same
+z-50. `BootSplashTest` pins the stamp, the CSS gate, the timing literals and
+the three-card deal.
+
+Beside `data-install-only` there is now the mirror, `data-standalone-only` —
+chrome that only makes sense INSIDE the installed app (the push nudge, the
+verified landing's in-app body). Inverted construction on purpose: it hides
+when NEITHER standalone signal is present rather than forcing a display type
+when one is, so a flex row and a block body wear the same attribute and keep
+their own layout.

@@ -577,7 +577,7 @@ new class extends Component
         Done could drop the reader straight onto their page — it is ready —
         but instantly is indistinguishable from abruptly: wizard vanishes,
         home appears, tour claims it, and none of it reads as an arrival. So
-        this holds the screen for ~4 seconds wearing a fake to-do list, fades
+        this holds the screen for ~12.5 seconds wearing a fake to-do list, fades
         out to a plainly visible Home, and only then (via start-tour → the
         tour's own startSoon beat) do the coach marks land.
 

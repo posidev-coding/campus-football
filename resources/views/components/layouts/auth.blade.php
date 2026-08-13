@@ -46,6 +46,12 @@
         </div>
     </div>
 
+    {{-- Here too: a cold standalone open normally lands on `/`, but an
+         expired session redirects that load HERE — a real document load on
+         this layout, and a launch that skips its splash reads as a glitch.
+         Browser tabs stay inert via the stylesheet gate. --}}
+    <x-boot-splash />
+
     @fluxScripts
 </body>
 </html>

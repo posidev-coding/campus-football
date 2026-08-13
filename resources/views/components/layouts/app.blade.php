@@ -223,6 +223,11 @@
          standalone load can only follow a page that already reported. --}}
     <x-standalone-beacon />
 
+    {{-- Last in body on purpose: an opaque background does not win a z-index
+         tie, later DOM does — this is what puts the curtain over the tour
+         scrim and the pull-to-refresh puck at the same z-50. --}}
+    <x-boot-splash />
+
     @fluxScripts
 
     {{-- The depth counter behind every Back control lives in partials/head,
