@@ -54,7 +54,7 @@ enum ContentRating: string
     {
         return match ($this) {
             self::Pg => "Light ribbing. Nothing you'd mind a kid reading over your shoulder.",
-            self::Pg13 => 'How your group chat actually talks. Some profanity, real insults.',
+            self::Pg13 => 'How your group chat actually talks. Occasional mild profanity, real insults.',
             self::R => 'Nothing held back. No sympathy after an 0-5 week.',
         };
     }

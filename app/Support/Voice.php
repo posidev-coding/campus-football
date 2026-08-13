@@ -79,32 +79,46 @@ class Voice
         ],
 
         /*
-         * The onboarding card speaks to a GUEST as often as a signed-in user,
-         * and a guest has no content rating — `line()` falls back to PG-13,
-         * which is the right register for a first impression anyway.
+         * The front door speaks to two audiences with two different promises.
+         * A GUEST is being sold the whole app — signup included — and has no
+         * content rating, so `line()` falls back to PG-13, the right register
+         * for a first impression anyway. A signed-in reader with no teams is
+         * being sold one thing: putting their favorite up top.
          */
-        'onboarding.heading' => [
-            'pg' => 'Make this page yours',
-            'pg13' => 'Pick a side',
-            'r' => 'Pick a side. Any side.',
+        'onboarding.guest.heading' => [
+            'pg' => 'Your teams, your season',
+            'pg13' => 'Your season starts here',
+            'r' => 'Your season starts here. Yes, even yours.',
         ],
 
-        'onboarding.body' => [
-            'pg' => 'Follow up to five teams. Records, trends, next games at a glance — all on one screen.',
-            'pg13' => 'Follow up to five teams. Records, trends, next games at a glance — and plenty to yell about.',
-            'r' => 'Follow up to five teams. Records, trends, next games at a glance, and a season of grievances.',
+        'onboarding.guest.body' => [
+            'pg' => "Follow your teams, watch every score live, and be first in line for Pick'em. Signing up takes about a minute.",
+            'pg13' => "Live scores, your teams up top, and Pick'em on the way. A minute to sign up, a whole season to argue about it.",
+            'r' => "Live scores, your teams up top, Pick'em on the way. One minute to sign up, a whole season to be wrong in public.",
         ],
 
-        'onboarding.dismissed' => [
-            'pg' => 'No problem — you can add teams any time from your account.',
-            'pg13' => "Fine. It'll be in your account when you change your mind.",
-            'r' => "Suit yourself. It's in your account when you come crawling back.",
+        'onboarding.member.heading' => [
+            'pg' => 'Add your favorite team',
+            'pg13' => 'Put your team up top',
+            'r' => 'Rep your team already',
         ],
 
+        'onboarding.member.body' => [
+            'pg' => 'Pick your favorite and they lead your home page — records, trends, next games.',
+            'pg13' => 'Your favorite headlines this page — records, trends, next games, good week or bad.',
+            'r' => 'Your favorite headlines this page — records, trends, next games, and nowhere to hide in November.',
+        ],
+
+        /*
+         * The three counted headings — short, because the bar above them is
+         * already saying "you're nearly done" and a long heading argues with
+         * it. Rating keeps its full question: it is the one screen where the
+         * question IS the personality.
+         */
         'onboarding.name' => [
             'pg' => 'What should we call you?',
-            'pg13' => 'Easy one first — what do we call you?',
-            'r' => 'Easy one first — what do we call you?',
+            'pg13' => 'Easy one first — your name.',
+            'r' => 'Name first. The grief needs an addressee.',
         ],
 
         'onboarding.rating' => [
@@ -114,21 +128,65 @@ class Voice
         ],
 
         'onboarding.credentials' => [
-            'pg' => 'Last step — somewhere to keep all this.',
-            'pg13' => 'Last one. Somewhere to keep your picks and your records.',
+            'pg' => 'Last step — email and a password.',
+            'pg13' => 'Last one — email and a password.',
             'r' => 'Last one. Somewhere to file your terrible opinions.',
         ],
 
-        'onboarding.done' => [
-            'pg' => "You're set. Your page is waiting.",
-            'pg13' => "You're set. Go see what they've done now.",
-            'r' => "You're set. Go see what they've done now.",
+        /*
+         * The signup splash — the branded beat between finishing the wizard
+         * and landing on Home, wearing a fake to-do list while it holds the
+         * screen. `:team` is the mascot ("Tar Heels"), `:place` the school
+         * ("North Carolina") — and when the reader skipped the picker, both
+         * resolve to Bandwagon State, which writes its own jokes.
+         */
+        'splash.warmup.greet' => [
+            'pg' => 'High-fiving :team...',
+            'pg13' => 'High-fiving :team...',
+            'r' => 'Chest-bumping strangers in :team colors...',
         ],
 
+        'splash.warmup.travel' => [
+            'pg' => 'Road-tripping to :place...',
+            'pg13' => 'Road-tripping to :place...',
+            // Reads right whether :place is a stadium ("Neyland Stadium"),
+            // a school ("Tennessee"), or the bandwagon's home field.
+            'r' => 'Tailgating outside :place since dawn...',
+        ],
+
+        'splash.warmup.field' => [
+            'pg' => 'Painting the end zones...',
+            'pg13' => 'Painting the end zones...',
+            'r' => 'Painting the end zones. Both of them.',
+        ],
+
+        'splash.warmup.song' => [
+            'pg' => 'Practicing the fight song...',
+            'pg13' => 'Learning your fight song...',
+            'r' => 'Butchering your fight song...',
+        ],
+
+        'splash.warmup.latte' => [
+            'pg' => 'Chilling the Beast Lattes...',
+            'pg13' => 'Icing down the Beast Lattes...',
+            'r' => 'Hiding the good Beast Lattes...',
+        ],
+
+        'onboarding.favorite' => [
+            'pg' => "Who's your team?",
+            'pg13' => "Who's your team?",
+            'r' => "Who's your team? Choose wisely.",
+        ],
+
+        /*
+         * The moment's subheading, single-team era: one pick, one promise.
+         * The five-slot education moved to the tour's glance stop — this
+         * screen asks exactly one question and gets out of the way.
+         */
         'onboarding.picker' => [
-            'pg' => 'Search for a team to follow. You can add up to five.',
-            'pg13' => 'Search and tap. Up to five — choose your allegiances carefully.',
-            'r' => 'Search and tap. Five slots. Choose your allegiances carefully.',
+            'pg' => 'Your favorite leads your home page. You can add more later.',
+            'pg13' => 'Your favorite headlines your home page — you can add more later.',
+            'r' => 'Your favorite headlines your page all season. Add more later; this one matters.',
         ],
 
         /*
@@ -142,46 +200,107 @@ class Voice
             'r' => 'Your teams live here — all of them',
         ],
 
+        /*
+         * The glance body carries the five-slot education now — the moment
+         * collects ONE team and promises "more later"; this is where "more"
+         * gets its number.
+         */
         'tour.glance.body' => [
-            'pg' => 'One card per team you follow — records, trends, next games. Swipe across to see them all.',
-            'pg13' => 'One card per team — records, trends, next games. Swipe through the whole roster, even the rebuilding ones.',
-            'r' => 'One card per team — records, trends, next games. Swipe the roster; what you did in the rankings stays between you and the card.',
+            'pg' => 'One card per team you follow — records, trends, next games. You have five slots; swipe across to see them all.',
+            'pg13' => 'One card per team, five slots to fill — records, trends, next games. Swipe the whole roster, even the rebuilding ones.',
+            'r' => 'Five slots, one card each — records, trends, next games. Swipe the roster; what you did in the rankings stays between you and the card.',
         ],
 
         'tour.search.heading' => [
             'pg' => 'Search everything',
-            'pg13' => 'Find anyone',
-            'r' => 'Find anyone, settle anything',
+            'pg13' => 'Search anything',
+            'r' => 'Search anything, settle everything',
         ],
 
+        /*
+         * The example team is the READER'S own first team, never a canned
+         * school — a hardcoded example is somebody's rival, and the pilot
+         * audience taught us which one. `body_team` carries the pick
+         * (`:prefix` is its first three letters); the plain `body` is the
+         * skipped-the-picker fallback, naming nobody.
+         */
         'tour.search.body' => [
             'pg' => 'Teams, players, coaches, games — start typing and it finds them.',
-            'pg13' => 'Teams, players, coaches, games. Start typing — "Geo" is enough to find Georgia.',
+            'pg13' => 'Teams, players, coaches, games. Start typing — three letters is usually enough.',
             'r' => 'Teams, players, coaches, games. Settle the argument before they finish making their point.',
         ],
 
+        'tour.search.body_team' => [
+            'pg' => 'Teams, players, coaches, games — ":prefix" is enough to find :team.',
+            'pg13' => 'Teams, players, coaches, games. Start typing — ":prefix" is enough to find :team.',
+            'r' => 'Teams, players, coaches, games. ":prefix" pulls up :team; the rest is for settling arguments.',
+        ],
+
+        /*
+         * Scoreboard and league lines define pg + r only: the pg line is
+         * already the right sentence for a PG-13 reader, and resolution
+         * falls down the ladder to hand it to them.
+         */
         'tour.scores.heading' => [
-            'pg' => 'Every score, every week',
-            'pg13' => 'Scores, live',
-            'r' => 'The scoreboard never lies',
+            'pg' => 'The Scoreboard',
+            'r' => 'The Scoreboard never lies',
         ],
 
         'tour.scores.body' => [
-            'pg' => 'The scoreboard covers every game, every week — live ones rise to the top.',
-            'pg13' => 'Every game, every week, live as it happens. Your teams pin themselves to the top.',
-            'r' => 'Every game, every week, live. Your teams pin to the top whether the score flatters them or not.',
+            'pg' => 'Every game, every week, in real time. Your teams pin themselves to the top.',
+            'r' => 'Every game, every week, in real time. Your teams pin to the top whether the score flatters them or not.',
+        ],
+
+        'tour.picks.heading' => [
+            'pg' => 'Picks are coming',
+            'pg13' => 'Your picks live here soon',
+            'r' => 'The tab your record will haunt',
+        ],
+
+        'tour.picks.body' => [
+            'pg' => "Weekly picks against your friends land right here. It's on the way — this tab is holding the seat.",
+            'pg13' => 'Weekly picks, groups, and a running record of who called it. Not live yet — this tab is holding the seat.',
+            'r' => 'Weekly picks, groups, and a permanent record of every game you called wrong. Not live yet, but the seat is saved.',
+        ],
+
+        /*
+         * The currency stays out of drinking vocabulary on purpose — Beast
+         * Lattes are the app's currency, full stop, and the copy never says
+         * otherwise. See components/wallet-chips.blade.php for the strategy.
+         */
+        'tour.wallet.heading' => [
+            'pg' => 'Beast Lattes and ranks',
+            'pg13' => 'Get paid in Beast Lattes',
+            'r' => 'Get paid in Beast Lattes',
+        ],
+
+        'tour.wallet.body' => [
+            'pg' => "The app runs on Beast Lattes. Earn them and stack XP by playing Pick'em — your balance and rank live up here.",
+            'pg13' => 'The app runs on Beast Lattes. Win picks, stack XP, climb the ranks — your balance sits up here, judging quietly.',
+            'r' => 'The app runs on Beast Lattes. Win picks, stack XP, climb the ranks — and your balance up here will say exactly how good you really are.',
+        ],
+
+        /*
+         * Appended to the wallet stop ONLY when the first-team seed grant
+         * exists — a skipper tours too, and telling them they earned XP they
+         * did not would be the app's first lie. `:xp` is
+         * GrantWalletEntry::FIRST_TEAM_XP, so the copy can never drift from
+         * the ledger.
+         */
+        'tour.wallet.seeded' => [
+            'pg' => 'The :xp XP already in there? Picking your team earned that.',
+            'pg13' => 'That :xp XP already sitting in there? Picking your team paid it.',
+            'r' => "Already up :xp XP just for picking a team. Easiest money you'll make all season.",
         ],
 
         'tour.league.heading' => [
-            'pg' => 'The whole league',
-            'pg13' => 'The whole league',
-            'r' => 'The whole league, receipts included',
+            'pg' => 'Around the league, go deep',
+            'r' => 'Around the league, go deep — bring receipts',
         ],
 
         'tour.league.body' => [
-            'pg' => 'Standings, rankings, teams, players, stats and recruiting — all under League.',
-            'pg13' => 'Standings, rankings, teams, players, stats, recruiting — the whole sport, one tab over.',
-            'r' => 'Standings, rankings, stats, recruiting — every number your rival pretends not to know.',
+            'pg' => 'Standings, rankings, teams, players, stats, recruiting — the straight sports-app half of the app, and it runs deep.',
+            'r' => 'Standings, rankings, stats, rosters, recruiting — every number your rival pretends not to know, deep enough to get lost in.',
         ],
 
         'tour.account.heading' => [
@@ -191,45 +310,53 @@ class Voice
         ],
 
         'tour.account.body' => [
-            'pg' => 'Account holds your teams, your look, and how much personality this app brings.',
-            'pg13' => "Account is where you reorder your teams, flip the look, and set how much grief we're allowed to give.",
-            'r' => 'Account is where you reorder your teams, flip the look, and crank the grief dial as far as it goes.',
-        ],
-
-        'tour.install.heading' => [
-            'pg' => 'One more thing',
-            'pg13' => 'Put us on your home screen',
-            'r' => 'Move us in already',
-        ],
-
-        'tour.install.body' => [
-            'pg' => 'Add the app to your home screen for the full-screen version — the next page shows you how.',
-            'pg13' => "Full screen, no browser bars, one tap from kickoff. We'll walk you through it.",
-            'r' => 'Full screen, no browser bars, kickoff one tap away — and it beats hunting for a lost tab mid-game.',
+            'pg' => 'Account is where you manage your teams, toggle dark mode, and set how much personality the app brings.',
+            'pg13' => "Account is where you manage & reorder your teams, toggle dark mode, and set how much grief we're allowed to give.",
+            'r' => 'Account is where you manage and reorder your teams, toggle dark mode, and crank the grief dial as far as it goes.',
         ],
 
         /*
-         * The install pitch. Chrome that frames the whole app rather than any
-         * one screen, so it speaks — but the actual steps ("tap Share", "Add
-         * to Home Screen") stay plain in the view: those are Apple's and
-         * Google's own labels, and the user is hunting for them verbatim.
+         * The tour's closer sells the install NOW — the steps for the
+         * detected browser render right inside the card, so "right now" is
+         * a thing the reader can literally do without leaving the spot.
+         */
+        'tour.install.heading' => [
+            'pg' => 'One more thing — install it',
+            'pg13' => 'Install it. Right now.',
+            'r' => 'Install it. Now.',
+        ],
+
+        'tour.install.body' => [
+            'pg' => 'Ten seconds and it lives on your home screen — full screen, no browser bars, one tap from kickoff.',
+            'pg13' => "Ten seconds, right now, while you're thinking about it — full screen, no browser bars, one tap from kickoff.",
+            'r' => "Ten seconds. Full screen, no browser bars, kickoff one tap away. You've spent longer deciding nothing.",
+        ],
+
+        /*
+         * The install pitch — INSTALL language, not "bookmark it": this is a
+         * real web-app install (Chromium's own UI says Install), and calling
+         * it what it is outranks underselling it as a home-screen shortcut.
+         * Chrome that frames the whole app rather than any one screen, so it
+         * speaks — but the actual steps ("tap Share", "Add to Home Screen")
+         * stay plain in the view: those are Apple's and Google's own labels,
+         * and the user is hunting for them verbatim.
          */
         'install.banner.heading' => [
-            'pg' => 'Add this app to your home screen',
-            'pg13' => 'Put us on your home screen',
-            'r' => 'Put us on your home screen already',
+            'pg' => 'Install this app',
+            'pg13' => 'Install the app',
+            'r' => 'Install the app already',
         ],
 
         'install.banner.body' => [
-            'pg' => 'Full screen, quick to open, one tap from your first game. It takes about ten seconds.',
-            'pg13' => 'Full screen, no browser bars, one tap from kickoff. Takes about ten seconds.',
-            'r' => 'Full screen, zero browser clutter, one tap from kickoff. Ten seconds, tops.',
+            'pg' => 'The full-screen web app, one tap from your first game. About ten seconds.',
+            'pg13' => 'Full screen, no browser bars, ten seconds to install.',
+            'r' => "Full screen, zero clutter, ten seconds. You'll manage.",
         ],
 
         'install.screen.heading' => [
-            'pg' => 'The best way to use this app is from your home screen — full screen, fast, and one tap away on game day.',
-            'pg13' => 'The best seat in the house is your home screen — full screen, instant, one tap from kickoff.',
-            'r' => 'The best seat in the house is your home screen — full screen, instant, and no address bar between you and the damage.',
+            'pg' => 'The best way to use this app is installed — full screen, fast, and one tap away on game day.',
+            'pg13' => 'The best seat in the house is the installed app — full screen, instant, one tap from kickoff.',
+            'r' => 'The best seat in the house is the installed app — full screen, instant, and no address bar between you and the damage.',
         ],
 
         'install.screen.installed' => [
@@ -244,10 +371,44 @@ class Voice
             'r' => "Groups, weekly slates, and receipts on every terrible pick your friends swear they never made. It's coming.",
         ],
 
+        /*
+         * The Bandwagon State card and its news panel — the placeholder that
+         * fills a zero-team Home. The joke roasts the act of following
+         * nobody, never the person, and the card's "Pick your real team"
+         * affordance stays plain in the view: the joke never eats the
+         * instruction.
+         */
+        'placeholder.body' => [
+            'pg' => 'This is what following nobody looks like. Tap here and put your real team up top.',
+            'pg13' => 'Following nobody gets you a front-row seat on the bandwagon. Tap and pick your real team.',
+            'r' => 'No team? Then you ride the bandwagon with the rest of the tourists. Tap and pick a real one.',
+        ],
+
+        'placeholder.news' => [
+            'pg' => ':name never plays, so there is never news. Pick your real team and this section fills in.',
+            'pg13' => ':name has no news, no games, and no plan. Pick your real team and this section goes to work.',
+            'r' => ':name has no news — nothing ever happens to a team that only exists to spite your indecision. Pick a real one.',
+        ],
+
+        /*
+         * The Picks screen's pitch — Pick'em is a LOUD surface, and this is
+         * its front door before there is anything behind it. The feature
+         * cards below it stay plain: they are promises about what ships,
+         * and a joke between a reader and a promise reads as hedging.
+         */
+        'picks.screen.pitch' => [
+            'pg' => "Weekly picks against your friends, live scoring on Saturdays, and a leaderboard to settle who saw it coming. It's on the way.",
+            'pg13' => "Weekly picks against your group, live scoring while the games run, and a leaderboard nobody can argue with. It's coming.",
+            'r' => "Weekly picks against your group, live scoring while it all goes sideways, and a leaderboard that remembers what everyone said. It's coming.",
+        ],
+
+        // The example school is Tennessee, not Georgia, on purpose — the
+        // pilot audience wears orange, and a rival in the empty state reads
+        // as the app picking a side against them.
         'search.empty' => [
-            'pg' => 'No matches for ":query". Try the start of a name — "Geo" finds Georgia.',
-            'pg13' => 'Swing and a miss on ":query". Try the start of a name — "Geo" finds Georgia.',
-            'r' => '":query"? Never heard of them. Try the start of a name — "Geo" finds Georgia.',
+            'pg' => 'No matches for ":query". Try the start of a name — "Ten" finds Tennessee.',
+            'pg13' => 'Swing and a miss on ":query". Try the start of a name — "Ten" finds Tennessee.',
+            'r' => '":query"? Never heard of them. Try the start of a name — "Ten" finds Tennessee.',
         ],
 
         'profile.subheading' => [
@@ -256,10 +417,40 @@ class Voice
             'r' => "Your handle is what you'll be called. Choose accordingly.",
         ],
 
+        /*
+         * The claim affordance for the handleless — registration stopped
+         * asking, so Account is where a handle begins. Future seam: the same
+         * claim rides the first Pick'em entry or chat message, the two
+         * features that actually need one.
+         */
+        'profile.claim_handle' => [
+            'pg' => 'Claim your handle',
+            'pg13' => 'Claim your handle before someone else does',
+            'r' => 'Claim your handle — the good ones go first',
+        ],
+
         'profile.rating_description' => [
             'pg' => "We'll have opinions about your picks, your team and your record — never about you. This sets how many.",
             'pg13' => 'We roast your picks, your team and your record — never you. This sets how hard.',
             'r' => "We roast your picks, your team and your record — never you. This sets how hard, and you've picked hard.",
+        ],
+
+        /*
+         * The verify-your-email nudge — LOUD, reward-first, and ONE sentence:
+         * it rides a single slim row on Home, so the Beast Latte does all the
+         * selling and the fine print stays in the mail. The picks variant
+         * explains the one gate verification actually holds.
+         */
+        'verify.callout.body' => [
+            'pg' => 'Confirm your email — your first Beast Latte and XP are waiting.',
+            'pg13' => "Confirm your email — there's a Beast Latte and XP waiting on it.",
+            'r' => "Confirm your email. There's a Beast Latte riding on it, and the clock is running.",
+        ],
+
+        'verify.picks.body' => [
+            'pg' => "Confirm your email to make picks when Pick'em opens.",
+            'pg13' => 'Confirm your email to get in the game — picks need a real address behind them.',
+            'r' => 'No confirmed email, no picks. Sort it before the season starts without you.',
         ],
 
         /*
@@ -280,6 +471,43 @@ class Voice
             'r' => "One tap and you're in. Then we can talk about whatever it is you call a team.",
         ],
 
+        /*
+         * Verifying PAYS: the first Beast Latte and the first real XP land on
+         * the tap, and Pick'em participation is gated behind it. The reward
+         * leads because it is the true incentive — the lock is just policy.
+         */
+        'mail.verify.reward' => [
+            'pg' => "Confirming also pays out your first Beast Latte and XP, and saves your seat for Pick'em.",
+            'pg13' => "Confirming pays out your first Beast Latte and XP — and unlocks Pick'em when it opens.",
+            'r' => "Confirm and collect: one Beast Latte, your first XP, and a seat at Pick'em. Free money, minus the money.",
+        ],
+
+        /*
+         * The self-destruct warning, sent three days before a never-verified
+         * account is pruned. `:days` is User::VERIFICATION_REMINDER_LEAD_DAYS —
+         * the same constant the prune query enforces, so the mail can never
+         * promise a window the query does not honor. LOUD, because it is about
+         * the reader's own account — but the stakes stay truthful: this is the
+         * one email where over-joking reads as not meaning it.
+         */
+        'mail.reminder.subject' => [
+            'pg' => 'Your account expires in :days days',
+            'pg13' => 'This account self-destructs in :days days',
+            'r' => ':days days until this account deletes itself',
+        ],
+
+        'mail.reminder.intro' => [
+            'pg' => 'You signed up but never confirmed your email, so this account is scheduled to be removed in :days days.',
+            'pg13' => 'You never confirmed your email, so in :days days this account quietly deletes itself — teams, name, everything.',
+            'r' => 'You ghosted your own signup. In :days days this account deletes itself — teams, name, the works.',
+        ],
+
+        'mail.reminder.outro' => [
+            'pg' => 'One tap below keeps it — and your first Beast Latte and XP come with it.',
+            'pg13' => 'One tap keeps it, and your first Beast Latte and XP land on the spot.',
+            'r' => 'One tap keeps it and pays out a Beast Latte. Ignoring it is choosing the void.',
+        ],
+
         'mail.newsletter.subject' => [
             'pg' => 'Your week in college football',
             'pg13' => 'Your week, and how your teams did',
@@ -288,7 +516,7 @@ class Voice
 
         'mail.newsletter.intro' => [
             'pg' => "Here's how your teams got on this week.",
-            'pg13' => "Here's how your teams got on. No editorialising. Much.",
+            'pg13' => "Here's how your teams got on. No editorializing. Much.",
             'r' => "Here's the damage. Read it standing up.",
         ],
 
