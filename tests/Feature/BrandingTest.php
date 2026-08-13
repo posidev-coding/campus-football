@@ -94,6 +94,10 @@ describe('the generated artifacts', function () {
 
         expect($manifest['name'])->toBe(Brand::name())
             ->and($manifest['display'])->toBe('standalone')
+            // Android link capturing reuses the running app window; without
+            // this a captured link spawns a second live window that
+            // double-splashes and forks session state.
+            ->and($manifest['launch_handler'])->toBe(['client_mode' => 'navigate-existing'])
             ->and($manifest['icons'])->toHaveCount(3);
 
         foreach ($manifest['icons'] as $icon) {

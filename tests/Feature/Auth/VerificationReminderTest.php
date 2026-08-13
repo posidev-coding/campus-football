@@ -100,7 +100,9 @@ it('links a signed URL the stock verifier accepts — and the payout follows', f
 
     $url = (new VerificationReminderNotification)->toMail($user)->actionUrl;
 
-    $this->actingAs($user)->get($url)->assertRedirect(route('home').'?verified=1');
+    $this->actingAs($user)->get($url)
+        ->assertRedirect(route('home'))
+        ->assertSessionHas('verify.moment');
 
     expect($user->fresh()->hasVerifiedEmail())->toBeTrue()
         ->and(WalletEntry::where('user_id', $user->id)->count())->toBe(1);

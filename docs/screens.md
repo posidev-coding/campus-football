@@ -568,3 +568,22 @@ from a public Livewire method and the client can send any ids.
 
 Both pickers — this one and Home's quick add — read `TeamGlance::fbsTeams()`,
 so they cannot drift or pay for the query twice.
+
+## The verified landing is a tab ending well, on purpose
+
+`/verified` (`auth.verified`, route `verification.done`) is where a verify
+click lands for a reader the server knows runs the installed app
+(`User::hasInstalled()`). Its one job is to END the browser tab: celebrate
+the payout, then point at the home-screen icon — which is why it wears the
+AUTH layout. Full app chrome would invite staying in the browser and
+training a browser-tab twin of the app; the auth layout is the established
+interstitial frame and already carries the depth-aware Back.
+
+Two bodies, split by STYLESHEET and never JS (neither may flash before
+Alpine): the browser variant wears `data-install-only` and coaches back to
+the icon with a quiet "Continue in browser" underneath; the in-app variant
+wears `data-standalone-only` for the Android link-capture case, where the
+click lands inside the PWA and coaching would be nonsense. `mount()` bounces
+unverified visitors to the notice screen — the page must never claim a
+verification that has not happened. `VerifiedLandingTest` pins the branch,
+both bodies, and the ignored `intended()`.

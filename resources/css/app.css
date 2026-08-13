@@ -131,6 +131,42 @@
     display: none !important;
 }
 
+/* The mirror: chrome that only makes sense INSIDE the installed app (the
+   push nudge, the verified landing's "you're already here" body). Inverted
+   construction on purpose — it hides when NEITHER standalone signal is
+   present rather than forcing a display type when one is, so a flex row and
+   a block body can wear the same attribute and keep their own layout. Same
+   two signals, same stylesheet-not-JS reason: it can never flash before
+   Alpine boots. */
+@media not all and (display-mode: standalone) {
+    :root:not([data-standalone]) [data-standalone-only] {
+        display: none !important;
+    }
+}
+
+/* The boot splash shows by STYLESHEET, decided before Alpine exists: the
+   head stamps `data-boot` on the root pre-paint (cold standalone loads
+   only), and the splash's own end() removes it ~2.7s later. The bail
+   animation is the dead-man — standalone has no reload chrome, so a curtain
+   JS never clears must clear itself; with healthy Alpine the fade lands
+   first and the bail never shows. The stylesheet owns `display` so the
+   element carries no flex utility a morph could resurrect. */
+[data-boot-splash] {
+    display: none;
+}
+
+:root[data-boot] [data-boot-splash] {
+    display: flex;
+    animation: cfb-boot-bail 400ms ease 8s forwards;
+}
+
+@keyframes cfb-boot-bail {
+    to {
+        opacity: 0;
+        visibility: hidden;
+    }
+}
+
 /* Wide stat tables scroll inside their own container. The page body must never
    scroll sideways — the most common way a data-dense mobile layout breaks. */
 @utility stat-grid {

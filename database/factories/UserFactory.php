@@ -61,6 +61,18 @@ class UserFactory extends Factory
     }
 
     /**
+     * A user who has launched the installed app at least once — the state the
+     * post-verify landing branches on. Not fillable, so the state is the only
+     * supported way to make one, admin-style.
+     */
+    public function installed(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'standalone_seen_at' => now(),
+        ]);
+    }
+
+    /**
      * A user who never claimed a handle — the shape registration now produces.
      * A state rather than the default, because plenty of fixtures render
      * `@handle` and a null there is a different test's subject.

@@ -172,6 +172,51 @@ class Voice
             'r' => 'Hiding the good Beast Lattes...',
         ],
 
+        /*
+         * The boot splash's deck — the cold-start beat every launch of the
+         * installed app opens on. A different pool from the warmup arc on
+         * purpose: warmup is ORDERED signup theater told once, this is a
+         * SHUFFLED deck seen hundreds of times, so the lines are generic
+         * gameday logistics (no :team, no :place — a guest cold start has
+         * nobody to name) and none may echo a warmup line. Roast a score or
+         * a program, never a person.
+         */
+        'splash.boot.gates' => [
+            'pg' => 'Opening the gates...',
+            'pg13' => 'Opening the gates early...',
+            'r' => 'Opening the gates before security is ready...',
+        ],
+
+        'splash.boot.chains' => [
+            'pg' => 'Moving the chains...',
+            'pg13' => 'Moving the chains...',
+            'r' => 'Moving the chains. The spot stands.',
+        ],
+
+        'splash.boot.headsets' => [
+            'pg' => 'Untangling the headsets...',
+            'pg13' => 'Untangling the headsets...',
+            'r' => 'Untangling whatever the coordinator did to the headsets...',
+        ],
+
+        'splash.boot.scores' => [
+            'pg' => 'Rounding up the scores...',
+            'pg13' => 'Rounding up the scores...',
+            'r' => 'Rounding up the scores. Some of them should be ashamed.',
+        ],
+
+        'splash.boot.turf' => [
+            'pg' => 'Chalking the sidelines...',
+            'pg13' => 'Chalking the sidelines...',
+            'r' => 'Chalking the sidelines nobody stays behind...',
+        ],
+
+        'splash.boot.replay' => [
+            'pg' => 'Warming up the replay booth...',
+            'pg13' => 'Warming up the replay booth...',
+            'r' => 'Warming up the replay booth. The call still stands...',
+        ],
+
         'onboarding.favorite' => [
             'pg' => "Who's your team?",
             'pg13' => "Who's your team?",
@@ -463,6 +508,91 @@ class Voice
             'pg' => "Confirm your email to make picks when Pick'em opens.",
             'pg13' => 'Confirm your email to get in the game — picks need a real address behind them.',
             'r' => 'No confirmed email, no picks. Sort it before the season starts without you.',
+        ],
+
+        /*
+         * The post-verify moment, in its three homes: the landing screen a
+         * mail click opens (title + reward + a body per context) and Home's
+         * one-row celebration behind the `verify.moment` flash. The landing
+         * body's INSTRUCTION — open it from your home screen — must survive
+         * legibly in every register; the joke rides around it, never through
+         * it. `body_app` is the Android link-capture case, where the click
+         * lands inside the installed app and coaching would be nonsense.
+         * Rewards stay unnumbered here like mail.verify.reward, so the
+         * amounts have one source of truth.
+         */
+        'verify.landing.title' => [
+            'pg' => "You're verified.",
+            'pg13' => "Verified. You're official.",
+            'r' => "Verified. Now you're dangerous.",
+        ],
+
+        'verify.landing.reward' => [
+            'pg' => 'Your first Beast Latte and XP just landed in your account.',
+            'pg13' => 'Your first Beast Latte and XP just hit the account. Told you it paid.',
+            'r' => 'First Beast Latte and XP: paid in full. We keep our word around here.',
+        ],
+
+        'verify.landing.body' => [
+            'pg' => 'This tab did its job. Open the app from your home screen and everything will be waiting.',
+            'pg13' => "This tab's work here is done — the app has your latte. Open it from your home screen.",
+            'r' => 'This tab was a means to an end. The real thing is on your home screen — go open it.',
+        ],
+
+        'verify.landing.body_app' => [
+            'pg' => "And you're already in the right place.",
+            'pg13' => "And look at that — you're already in the app. Efficient.",
+            'r' => "And you're already in the app. Some people just know shortcuts.",
+        ],
+
+        'verify.celebration.body' => [
+            'pg' => 'Email confirmed — your first Beast Latte and XP are in.',
+            'pg13' => 'Email confirmed. Beast Latte and XP: banked.',
+            'r' => 'Email confirmed. Latte banked, XP banked — now we can get to work.',
+        ],
+
+        /*
+         * Push. Every push key is rendered from a QUEUED notification, so
+         * every caller passes `for:` — the mail lesson, same stakes. Titles
+         * carry the FACT and stay factual where the fact matters (a kickoff
+         * title names the game, plainly); bodies carry the voice. The
+         * banner pair is the one-tap nudge row on Home; its instruction
+         * ("turn them on") survives every register.
+         */
+        'push.welcome.title' => [
+            'pg' => 'Notifications: on',
+            'pg13' => 'Notifications: on',
+            'r' => 'Notifications: armed',
+        ],
+
+        'push.welcome.body' => [
+            'pg' => "This is what they'll look like. Kickoff alerts for your teams are live.",
+            'pg13' => "First of many. Kickoff alerts for your teams are live — you'll hear it here first.",
+            'r' => "First of many, and the rest won't knock this politely. Kickoffs for your teams: covered.",
+        ],
+
+        'push.banner.heading' => [
+            'pg' => 'Never miss a kickoff',
+            'pg13' => 'Never miss a kickoff',
+            'r' => 'Miss a kickoff once, never again',
+        ],
+
+        'push.banner.body' => [
+            'pg' => 'Turn on alerts and your teams will find you.',
+            'pg13' => 'Turn them on and your teams find you first.',
+            'r' => 'Turn them on. Your teams will come find you.',
+        ],
+
+        'push.banner.confirmed' => [
+            'pg' => 'On. The first one is already on the way.',
+            'pg13' => "On. First one's already on the way.",
+            'r' => 'Armed. The first one is already in the air.',
+        ],
+
+        'push.kickoff.body' => [
+            'pg' => ':team kicks off soon — get to a screen.',
+            'pg13' => ':team kicks off soon. Drop what you were pretending to do.',
+            'r' => ':team kicks off soon. Whatever this is, it can lose to football.',
         ],
 
         /*

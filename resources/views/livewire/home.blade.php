@@ -78,6 +78,17 @@ new class extends Component
     }
 
     /**
+     * Whether this load is the one that lands the verify celebration —
+     * set by VerifyEmailController's browser branch and the notice screen's
+     * poll redirect, read once, never a query param (an install captures
+     * the tab URL; the onboarding.moment lesson).
+     */
+    public function opensToVerified(): bool
+    {
+        return auth()->check() && session()->has('verify.moment');
+    }
+
+    /**
      * Replay flag from Account's "Replay the tour" — a URL param so the
      * button is a plain link and a replay is shareable in a bug report.
      */
@@ -423,6 +434,39 @@ new class extends Component
          component renders nothing for guests and the verified. --}}
     <x-verify-email-callout />
 
+    {{-- The nudge's send-off: a one-load emerald row in the same slot,
+         behind the `verify.moment` flash the verify click set. The server
+         value feeds BOTH the Alpine initial state and the conditional cloak
+         (the opensToMoment() pattern), so pre-paint cannot disagree with
+         Alpine; after boot the row is Alpine's alone, and no later morph
+         (Home's live poll) can yank it mid-read. No persistence — the flash
+         makes it one-time by construction. The in-app POLL flip shows no
+         celebration on purpose: no flash rides an update request, and the
+         chips ticking up plus the nudge vanishing are the app's feedback. --}}
+    <div
+        x-data="{ celebrated: @js($this->opensToVerified()) }"
+        @if (! $this->opensToVerified()) x-cloak @endif
+        x-show="celebrated"
+        data-verified-celebration
+        class="flex items-center gap-2.5 rounded-xl bg-emerald-50 py-2 pr-1 pl-3 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:ring-emerald-900"
+    >
+        <flux:icon.check-badge class="size-4 shrink-0 text-emerald-600 dark:text-emerald-500" />
+
+        <p class="min-w-0 flex-1 text-sm text-zinc-700 dark:text-zinc-300">
+            {{ App\Support\Voice::line('verify.celebration.body') }}
+        </p>
+
+        <flux:button
+            x-on:click="celebrated = false"
+            size="xs"
+            square
+            variant="ghost"
+            icon="x-mark"
+            class="shrink-0"
+            aria-label="Dismiss"
+        />
+    </div>
+
     {{-- One blue button is the whole front door at zero teams. The swiper's
          own quiet slot takes over once they have at least one — that is a
          convenience for someone already onboarded, not a prompt. --}}
@@ -437,6 +481,14 @@ new class extends Component
     @auth
         @if (auth()->user()->hasToured())
             <x-install-banner />
+
+            {{-- The installed-app counterpart, in the same slot with the
+                 same demonstrated-interest gate: the tour and the verify
+                 callout own the first-run attention budget, so the push
+                 pitch waits its turn exactly like the install pitch does.
+                 Stylesheet-disjoint from the row above — data-install-only
+                 vs data-standalone-only — so at most one ever renders. --}}
+            <x-push-banner />
         @endif
     @endauth
 

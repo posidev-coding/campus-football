@@ -217,6 +217,12 @@
          reload a half-typed form into a blank one. --}}
     <x-pull-to-refresh />
 
+    {{-- App layout suffices: every authenticated standalone session's FIRST
+         load is an app-layout screen (start_url is /, and the register and
+         login hand-offs are full redirects to Home), so an auth-layout
+         standalone load can only follow a page that already reported. --}}
+    <x-standalone-beacon />
+
     @fluxScripts
 
     {{-- The depth counter behind every Back control lives in partials/head,

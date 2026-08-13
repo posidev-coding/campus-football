@@ -329,6 +329,28 @@ that route comment is "middleware actually applied", not "verify early".
   pauses deletion rather than breaking the mail's promise — plus never
   verified accounts, never admins. Pruning rides the existing `model:prune`
   wakes; the FK-less notifications rows go in `pruning()`.
+- **The app flips itself when the mail link is clicked elsewhere.** iOS
+  cannot deep-link into an installed PWA, so the click always lands in a
+  browser tab — the app finds out by POLLING its own database: the verify
+  notice screen at 3s hot (`checkVerified` flashes and redirects, ending the
+  poll), the callout at an ambient 15s (its `@if` gate is the poll's guard;
+  `.visible` deliberately omitted because dismissal `display:none`s the row).
+  Measured trade: Home already full-re-renders on a 30s live cadence, so the
+  ambient poll is a known quantity that exists only while unverified.
+- **Where the click LANDS branches on `User::hasInstalled()`**
+  (`standalone_seen_at`, stamped once by the layout beacon the first time a
+  session runs standalone — the only install fact a browser tab can read).
+  Installed → the `/verified` off-ramp (auth layout; its one job is ending
+  the tab, so `intended()` is deliberately ignored and a quiet "Continue in
+  browser" stays the escape). Everyone else → Home wearing `verify.moment`,
+  the flash idiom's second consumer — the redirect used to carry
+  `?verified=1`, state in a URL that nothing read and an install would have
+  captured. The celebration row is one-load by construction; the poll flip
+  shows no celebration on purpose (no flash rides an update request — the
+  chips ticking up are the app's feedback).
+- **Android captured links reuse the running window**: the manifest's
+  `launch_handler: navigate-existing` — two live windows of one PWA
+  double-splash and fork session state.
 
 ## The install pitch waits for demonstrated interest
 

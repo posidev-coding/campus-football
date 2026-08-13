@@ -781,7 +781,12 @@ describe('the verify nudge', function () {
             ->assertSee('Resend')
             ->assertSee(route('verification.notice'))
             ->assertSee('cfb.verify.dismissed')
-            ->assertSee('sessionStorage');
+            ->assertSee('sessionStorage')
+            // The ambient poll: how the app flips when the mail link is
+            // clicked in another tab. Its guard is the callout's own @if —
+            // the row and its poll cease to exist once verified, which the
+            // renders-nothing test below is already pinning.
+            ->assertSee('wire:poll.15s', escape: false);
     });
 
     it('renders nothing once verified, and nothing for a guest', function () {

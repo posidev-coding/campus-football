@@ -222,6 +222,11 @@ class Brand
             'id' => '/',
             'start_url' => '/',
             'display' => 'standalone',
+            /* Android link capturing: a tapped link to our origin focuses
+               and navigates the RUNNING app window instead of spawning a
+               second one — two live windows of one PWA double-splash and
+               fork session state. Unknown members are ignored elsewhere. */
+            'launch_handler' => ['client_mode' => 'navigate-existing'],
             'background_color' => self::color('ink'),
             'theme_color' => self::color('ink'),
             'icons' => collect($icons)

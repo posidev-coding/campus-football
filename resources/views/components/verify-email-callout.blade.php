@@ -18,7 +18,19 @@
 @props(['bodyKey' => 'verify.callout.body', 'dismissable' => true])
 
 @if (auth()->check() && ! auth()->user()->hasVerifiedEmail())
+    {{-- The poll is how the app itself flips when the mail link is clicked
+         in some other tab: the @if above IS the "something to poll" (the
+         row and its poll cease to exist on the verified render), and the
+         flip re-render also updates the wallet chips inside this component
+         tree — the phone chips, which is the surface this exists for; the
+         desktop header's copy lives in the layout and catches up on the
+         next navigation. `.visible` is omitted on purpose, a deliberate
+         deviation from the house wire:poll shape: dismissal display:nones
+         this row via x-show, and the flip must still reach a reader who
+         waved the nudge away. 15s because the moment being caught is
+         "clicked the link in another tab, came back". --}}
     <div
+        wire:poll.15s
         @if ($dismissable)
             x-data="{ dismissed: $persist(false).using(sessionStorage).as('cfb.verify.dismissed') }"
             x-show="! dismissed"

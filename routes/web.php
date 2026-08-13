@@ -1,7 +1,9 @@
 <?php
 
+use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\SmsStatusWebhookController;
 use App\Http\Controllers\SmsWebhookController;
+use App\Http\Controllers\StandaloneSeenController;
 use App\Http\Controllers\UnsubscribeController;
 use App\Models\User;
 use App\Support\Brand;
@@ -161,6 +163,21 @@ Route::livewire('recruiting/{year?}', 'recruiting')->name('recruiting');
  */
 Route::middleware(['auth'])->group(function () {
     Route::livewire('account', 'account')->name('account');
+
+    /*
+     * The install-signal beacon. POSTed once per session by the layout's
+     * beacon island when it finds itself running standalone — the stamp
+     * behind User::hasInstalled(). Idempotent by design; see the controller.
+     */
+    Route::post('standalone-seen', StandaloneSeenController::class)->name('standalone.seen');
+
+    /*
+     * This device's push subscription. Store fires the welcome push on a
+     * genuinely new endpoint; destroy is the Account switch's off position.
+     * The subscription is the consent — see the controller.
+     */
+    Route::post('push-subscriptions', [PushSubscriptionController::class, 'store'])->name('push.store');
+    Route::delete('push-subscriptions', [PushSubscriptionController::class, 'destroy'])->name('push.destroy');
 });
 
 /*

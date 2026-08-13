@@ -22,6 +22,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
+use NotificationChannels\WebPush\HasPushSubscriptions;
 
 /**
  * `admin` is deliberately absent from Fillable — it is a privilege escalation
@@ -37,6 +38,17 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable, Prunable;
+
+    /*
+     * Web push rides the subscriptions this trait manages — and there is NO
+     * push consent column, deliberately. A subscription can only exist
+     * through an explicit permission grant on a device, so the subscription
+     * IS the consent, and it is DEVICE state (the install-dismissal
+     * philosophy): the Account switch manages this device's subscription,
+     * `whereHas('pushSubscriptions')` is the send gate, and there is no
+     * second flag to drift out of agreement with the browser's own state.
+     */
+    use HasPushSubscriptions;
 
     /**
      * Mirrors the database defaults so a newly-created model is usable before
@@ -69,6 +81,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'verification_reminded_at' => 'datetime',
             'onboarded_at' => 'datetime',
             'tour_completed_at' => 'datetime',
+            'standalone_seen_at' => 'datetime',
             'password' => 'hashed',
             'admin' => 'boolean',
             'content_rating' => ContentRating::class,
@@ -286,6 +299,17 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     public function hasToured(): bool
     {
         return $this->tour_completed_at !== null;
+    }
+
+    /**
+     * Has run the app standalone at least once — the closest server-visible
+     * proxy for "has the home-screen icon". Uninstalling is invisible to the
+     * web, so this only ever ratchets on; consumers coach ("head back to the
+     * app"), they never assert the icon exists.
+     */
+    public function hasInstalled(): bool
+    {
+        return $this->standalone_seen_at !== null;
     }
 
     /**

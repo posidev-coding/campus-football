@@ -67,7 +67,11 @@ it('grants through the real signed verification URL', function () {
         'hash' => sha1($user->email),
     ]);
 
-    $this->actingAs($user)->get($url)->assertRedirect(route('home').'?verified=1');
+    // The flash replaced ?verified=1: a query param captured into a
+    // home-screen install is the landmine onboarding.moment retired.
+    $this->actingAs($user)->get($url)
+        ->assertRedirect(route('home'))
+        ->assertSessionHas('verify.moment');
 
     expect($user->fresh()->hasVerifiedEmail())->toBeTrue()
         ->and(WalletEntry::where('user_id', $user->id)->count())->toBe(1);

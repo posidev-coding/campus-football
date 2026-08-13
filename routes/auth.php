@@ -14,6 +14,13 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::livewire('verify-email', 'auth.verify-email')->name('verification.notice');
 
+    /*
+     * Where a verify click lands for a reader the server knows is installed
+     * (User::hasInstalled()): the browser tab's off-ramp back to the app.
+     * See VerifyEmailController::landing() for the branch.
+     */
+    Route::livewire('verified', 'auth.verified')->name('verification.done');
+
     Route::get('verify-email/{id}/{hash}', VerifyEmailController::class)
         ->middleware(['signed', 'throttle:6,1'])
         ->name('verification.verify');
