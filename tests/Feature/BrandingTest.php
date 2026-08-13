@@ -83,7 +83,7 @@ describe('the head', function () {
     });
 });
 
-describe('the generated artefacts', function () {
+describe('the generated artifacts', function () {
     it('serves a manifest whose icons all resolve', function () {
         $manifest = $this->get(route('manifest'))->assertOk()->json();
 
@@ -114,6 +114,27 @@ describe('the generated artefacts', function () {
     it('rebuilds the ico from an uploaded favicon', function () {
         expect(strlen(Brand::ico()))->toBeGreaterThan(1000);
     });
+
+    it('answers every root apple-touch-icon probe iOS makes', function (string $path) {
+        /*
+         * Firefox on iOS ignores the <link rel="apple-touch-icon"> when it
+         * builds a home-screen web clip; iOS then probes these root paths,
+         * and a 404 there is the generic gray letter tile where the app icon
+         * should be. The PNG magic is asserted, not just 200 — an HTML error
+         * page with a 200 would install as a corrupt icon.
+         */
+        $png = $this->get($path)
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png')
+            ->getContent();
+
+        expect(bin2hex(substr($png, 0, 4)))->toBe('89504e47');
+    })->with([
+        '/apple-touch-icon.png',
+        '/apple-touch-icon-precomposed.png',
+        '/apple-touch-icon-120x120.png',
+        '/apple-touch-icon-120x120-precomposed.png',
+    ]);
 
     it('serves an iOS launch screen at the exact pixel size it declares', function () {
         [$w, $h, $dpr] = Brand::SPLASH[0];

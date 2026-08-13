@@ -52,3 +52,6 @@ Gate the computed on `$tab`. `GamePageTest` asserts the recap tab issues zero
 ## Poll only while there is something to poll
 `wire:poll.30s.visible`, gated on a game actually being live, and reading only
 our own database — never a feed.
+
+## Install dismissal is device state in user-namespaced localStorage
+The install banner's dismissal is `$persist(false).as('cfb.install.dismissed.' + userId)` — localStorage, never a table or cookie: install state is a property of the DEVICE (a new phone should hear the pitch again), and the user-id namespace keeps two people on one shared phone from answering for each other. The banner renders only for members with hasToured() — the tour's install stop pitches first. The verify callout deliberately uses SESSIONSTORAGE instead, because it must return next session.

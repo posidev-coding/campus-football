@@ -3,6 +3,7 @@
 use App\Http\Controllers\SmsStatusWebhookController;
 use App\Http\Controllers\SmsWebhookController;
 use App\Http\Controllers\UnsubscribeController;
+use App\Models\User;
 use App\Support\Brand;
 use Illuminate\Support\Facades\Route;
 
@@ -46,6 +47,28 @@ Route::get('favicon.ico', function () {
         'Cache-Control' => 'public, max-age=86400',
     ]);
 })->name('favicon');
+
+/*
+ * The ROOT-path apple-touch-icon convention. The layout links the real icon,
+ * but Firefox on iOS ignores that link when building a home-screen web clip
+ * and iOS falls back to probing the domain root — /apple-touch-icon.png,
+ * plus -precomposed and sized variants — and a 404 there is the generic gray
+ * letter tile. Both routes answer every probe with the branded 180px PNG
+ * (iOS scales down happily), served through Brand so a rebrand reaches it.
+ * Two routes rather than one optional segment, because Laravel only allows
+ * an optional parameter at the very end of a URI and `.png` has to follow it.
+ */
+$appleTouchIcon = function () {
+    abort_if(($png = Brand::bytes('apple-touch')) === null, 404);
+
+    return response($png, 200, [
+        'Content-Type' => 'image/png',
+        'Cache-Control' => 'public, max-age=86400',
+    ]);
+};
+
+Route::get('apple-touch-icon.png', $appleTouchIcon)->name('apple-touch-icon');
+Route::get('apple-touch-icon-{variant}.png', $appleTouchIcon)->where('variant', '[a-z0-9x-]+');
 
 /*
  * iOS launch screens, one per declared device size — see Brand::SPLASH. The
@@ -190,6 +213,20 @@ Route::match(['get', 'post'], 'webhooks/sms/status', SmsStatusWebhookController:
  */
 if (app()->isLocal()) {
     Route::view('__device', 'dev.device')->name('dev.device');
+
+    /*
+     * Signs the browser in as a fixture user and lands on the harness, so
+     * member-only chrome (tour, verify nudge, wallet) is reachable at phone
+     * widths without typing a password into the real login form. Local-only
+     * for the same reason as the harness itself: registered here, it can
+     * never exist in production.
+     */
+    Route::get('__device/act-as/{user}', function (User $user) {
+        auth()->login($user);
+        request()->session()->regenerate();
+
+        return redirect()->route('dev.device', request()->only(['path', 'w', 'h', 'dark']));
+    })->name('dev.act-as');
 }
 
 require __DIR__.'/auth.php';

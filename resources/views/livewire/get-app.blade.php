@@ -18,6 +18,8 @@ new class extends Component {}; ?>
 <div
     x-data="{
         platform: 'other',
+        detected: null,
+        showAll: false,
         installReady: false,
         standalone: false,
 
@@ -30,14 +32,32 @@ new class extends Component {}; ?>
                 || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
 
             if (ios) {
-                this.platform = /CriOS/.test(ua) ? 'ios-chrome' : 'ios-safari'
+                /*
+                 * FxiOS BEFORE CriOS, and both before the Safari default —
+                 * every iOS browser is WebKit wearing a different badge, so
+                 * the badge token is the ONLY signal and an unmatched one
+                 * must fall through to Safari, never to a wrong match.
+                 */
+                this.platform = /FxiOS/.test(ua) ? 'ios-firefox' : (/CriOS/.test(ua) ? 'ios-chrome' : 'ios-safari')
+                this.detected = this.platform
             } else if (/Android/.test(ua)) {
                 this.platform = 'android'
+                this.detected = 'android'
             } else {
+                // Desktop or unrecognized: no confident mobile detection, so
+                // the full switcher (Firefox included) is the answer.
                 this.platform = 'desktop'
             }
 
             this.installReady = window.cfbInstall?.available() ?? false
+        },
+
+        /*
+         * Confidently detected on a phone and not overridden: show ONLY that
+         * platform's steps, with the switcher a tap away behind the toggle.
+         */
+        focused() {
+            return this.detected !== null && ! this.showAll
         },
 
         async install() {
@@ -77,14 +97,16 @@ new class extends Component {}; ?>
             </flux:button>
         </div>
 
-        {{-- The detected browser leads, but every walkthrough is a tap away:
-             user agents lie, and half the readers are here for the phone in
-             their other hand. Chips, the navigation idiom — wrapping, never
-             scrolling. --}}
-        <nav class="flex flex-wrap gap-1" aria-label="Browsers">
+        {{-- The switcher hides while the detected platform holds focus — one
+             browser's steps beat four browsers' noise — but it is always one
+             tap away behind the toggle below: user agents lie, and half the
+             readers are here for the phone in their other hand. Chips, the
+             navigation idiom — wrapping, never scrolling. --}}
+        <nav x-cloak x-show="! focused()" class="flex flex-wrap gap-1" aria-label="Browsers">
             @foreach ([
                 'ios-safari' => 'iPhone · Safari',
                 'ios-chrome' => 'iPhone · Chrome',
+                'ios-firefox' => 'iPhone · Firefox',
                 'android' => 'Android',
                 'desktop' => 'Desktop',
             ] as $key => $label)
@@ -100,38 +122,50 @@ new class extends Component {}; ?>
             @endforeach
         </nav>
 
-        {{-- The steps quote Apple's and Google's own labels verbatim — the
-             user is hunting for those exact words, so the voice stays out of
-             them entirely. --}}
-        <div x-cloak x-show="platform === 'ios-safari'" data-platform="ios-safari">
-            <x-install-steps :steps="[
-                ['icon' => 'box-arrow-up', 'text' => 'Tap <strong>Share</strong> in Safari\'s toolbar.'],
-                ['icon' => 'plus-square', 'text' => 'Scroll down and tap <strong>Add to Home Screen</strong>.'],
-                ['icon' => 'phone', 'text' => 'Tap <strong>Add</strong> — the icon lands on your home screen.'],
-            ]" />
-        </div>
+        {{-- The steps live in x-install-guide — shared with the tour's
+             install stop, so the two surfaces can never teach different
+             instructions. --}}
+        @foreach (['ios-safari', 'ios-chrome', 'ios-firefox', 'android', 'desktop'] as $key)
+            <div x-cloak x-show="platform === '{{ $key }}'" data-platform="{{ $key }}" wire:key="guide-{{ $key }}">
+                <x-install-guide :platform="$key" />
+            </div>
+        @endforeach
 
-        <div x-cloak x-show="platform === 'ios-chrome'" data-platform="ios-chrome">
-            <x-install-steps :steps="[
-                ['icon' => 'box-arrow-up', 'text' => 'Tap <strong>Share</strong> at the top of Chrome.'],
-                ['icon' => 'plus-square', 'text' => 'Tap <strong>Add to Home Screen</strong>.'],
-                ['icon' => 'phone', 'text' => 'Tap <strong>Add</strong> — the icon lands on your home screen.'],
-            ]" />
-        </div>
+        {{-- The way back to the other walkthroughs when detection focused the
+             page down to one. Plain, quiet, and always present in focused
+             mode — detection is a guess wearing confidence. --}}
+        <button
+            x-cloak
+            x-show="focused()"
+            x-on:click="showAll = true"
+            type="button"
+            class="self-start text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
+        >
+            Using a different browser?
+        </button>
 
-        <div x-cloak x-show="platform === 'android'" data-platform="android">
-            <x-install-steps :steps="[
-                ['icon' => 'three-dots-vertical', 'text' => 'Open Chrome\'s menu at the top right.'],
-                ['icon' => 'download', 'text' => 'Tap <strong>Add to Home screen</strong>, then <strong>Install</strong>.'],
-                ['icon' => 'phone', 'text' => 'The app installs like any other — icon, full screen, the works.'],
-            ]" />
-        </div>
-
-        <div x-cloak x-show="platform === 'desktop'" data-platform="desktop">
-            <x-install-steps :steps="[
-                ['icon' => 'download', 'text' => 'Click the <strong>install icon</strong> at the right end of the address bar.'],
-                ['icon' => 'phone', 'text' => 'Or open the browser menu and choose <strong>Install app</strong>. It docks like a native app — its own window, its own icon.'],
-            ]" />
-        </div>
+        {{--
+            The pointing cues: on a PHONE, when the platform on screen is the
+            one detection actually found, a bouncing arrow floats toward the
+            control the first step names. Positions are one tweakable map —
+            browser chrome moves between OS versions, so these are config to
+            adjust on a real device, not truths. `sm:hidden` because desktop
+            chrome positions are unpredictable; `motion-safe:` respects
+            reduced-motion; `pointer-events-none` so the hint never blocks a
+            tap on the content beneath it.
+        --}}
+        @foreach ([
+            'ios-safari' => ['at' => 'bottom-[calc(var(--nav-height)+env(safe-area-inset-bottom)+0.5rem)] right-5', 'direction' => 'down', 'label' => 'Share is down here'],
+            'ios-chrome' => ['at' => 'top-2 right-4', 'direction' => 'up', 'label' => 'Tap Share up here'],
+            'ios-firefox' => ['at' => 'top-2 left-4', 'direction' => 'up', 'label' => 'Share is up here'],
+            'android' => ['at' => 'top-2 right-3', 'direction' => 'up', 'label' => 'The menu is up here'],
+        ] as $platform => $cue)
+            <x-install-arrow
+                :platform="$platform"
+                :at="$cue['at']"
+                :direction="$cue['direction']"
+                :label="$cue['label']"
+            />
+        @endforeach
     </div>
 </div>

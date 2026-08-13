@@ -45,6 +45,16 @@ Favorite, color, center, canceled. UI copy, comments, PHPDoc, variable and
 method names, tests. `game_odds.favorite_team_id` is the betting favorite and is
 the column a stray "favourite" tends to sit next to.
 
+## Example teams in copy: the reader's own, never a canned school
+When copy needs a school as an example, use the reader's own first followed
+team (the `tour.search.body_team` pattern: `:prefix`/`:team` replacements,
+with a names-nobody fallback line for zero-team users) — a hardcoded example
+school is somebody's rival. Georgia specifically must NEVER appear in
+example, joke, or tour copy (the pilot audience is Tennessee alumni); it may
+only reach a screen as the reader's own followed team or as live data. Where
+personalization is not plumbed (Search's empty state), the static example is
+Tennessee. `GuidedTourTest` sweeps tour lines for the word.
+
 ## Say TRENDS, not "form"
 "Form" is the soccer word and reads as borrowed. Plural nouns read better here:
 "Records, trends, next games", not "record, form, next game".

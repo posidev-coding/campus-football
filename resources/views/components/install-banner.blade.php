@@ -1,46 +1,44 @@
 {{--
-    The install pitch on Home. Quieter than the onboarding CTA on purpose —
-    zinc where that card is blue — because "follow a team" outranks "install
-    the shell" the first time anyone sees this page.
+    The install pitch on Home — reinforcement after the tour's own install
+    stop, never the opener: Home renders it only for members whose tour has
+    finished, and guests never see it. One slim row on purpose; the app's
+    content outranks the shell's pitch.
 
-    Dismissal is $persist to localStorage: install state is a property of the
-    DEVICE, not the account — the same person on a new phone should hear the
-    pitch again, and a guest can dismiss it forever without a session to hold
-    it. `data-install-only` removes it inside the installed app by stylesheet,
-    so it cannot flash before Alpine boots.
+    Dismissal is $persist to localStorage, NAMESPACED BY USER ID: install
+    state is a property of the DEVICE — the same person on a new phone should
+    hear the pitch again — and the id keeps two people sharing one phone from
+    answering for each other. No table, no cookie; the device remembers.
+    `data-install-only` removes it inside the installed app by stylesheet, so
+    it cannot flash before Alpine boots.
 --}}
 <div
-    x-data="{ dismissed: $persist(false).as('cfb.install.dismissed') }"
+    x-data="{ dismissed: $persist(false).as('cfb.install.dismissed.' + {{ auth()->id() ?? "'guest'" }}) }"
     x-show="! dismissed"
     x-cloak
     data-install-only
     {{ $attributes->class([
-        'rounded-xl bg-zinc-50 p-4 ring-1 ring-zinc-200',
+        'flex items-center gap-3 rounded-xl bg-zinc-50 px-4 py-2.5 ring-1 ring-zinc-200',
         'dark:bg-zinc-900 dark:ring-zinc-800',
     ]) }}
 >
-    <div class="flex items-start justify-between gap-3">
-        <div class="flex min-w-0 items-start gap-3">
-            <flux:icon.phone class="mt-1 shrink-0 text-zinc-500 dark:text-zinc-400" variant="mini" />
+    <flux:icon.phone class="size-4 shrink-0 text-zinc-500 dark:text-zinc-400" variant="mini" />
 
-            <div class="flex min-w-0 flex-col gap-1">
-                <flux:heading size="lg">{{ App\Support\Voice::line('install.banner.heading') }}</flux:heading>
-                <flux:subheading>{{ App\Support\Voice::line('install.banner.body') }}</flux:subheading>
-            </div>
-        </div>
+    <p class="min-w-0 flex-1 truncate text-sm">
+        <span class="font-medium">{{ App\Support\Voice::line('install.banner.heading') }}</span>
+        <span class="hidden text-zinc-500 sm:inline dark:text-zinc-400">{{ App\Support\Voice::line('install.banner.body') }}</span>
+    </p>
 
-        <flux:button
-            x-on:click="dismissed = true"
-            size="xs"
-            square
-            variant="ghost"
-            icon="x-mark"
-            class="-mt-1 shrink-0"
-            aria-label="Dismiss"
-        />
-    </div>
-
-    <flux:button :href="route('get-app')" wire:navigate variant="filled" size="sm" class="mt-3 w-full sm:w-auto">
+    <flux:button :href="route('get-app')" wire:navigate variant="filled" size="xs" class="shrink-0">
         Show me how
     </flux:button>
+
+    <flux:button
+        x-on:click="dismissed = true"
+        size="xs"
+        square
+        variant="ghost"
+        icon="x-mark"
+        class="shrink-0"
+        aria-label="Dismiss"
+    />
 </div>
