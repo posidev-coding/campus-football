@@ -111,11 +111,19 @@
 
 /* Anything selling the install disappears inside the installed app. A media
    query rather than JS, so the banner can never flash at an installed user
-   in the beat before Alpine boots. */
+   in the beat before Alpine boots. Two selectors because iOS has two
+   standalone signals: manifest-driven installs match the media query, while
+   meta-driven web clips (added from Chrome's or Firefox's share sheet)
+   report `browser` there and only set `navigator.standalone` — which a
+   pre-paint head script stamps onto the root as `data-standalone`. */
 @media (display-mode: standalone) {
     [data-install-only] {
         display: none !important;
     }
+}
+
+:root[data-standalone] [data-install-only] {
+    display: none !important;
 }
 
 /* Wide stat tables scroll inside their own container. The page body must never

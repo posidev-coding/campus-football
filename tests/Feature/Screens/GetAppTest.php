@@ -145,11 +145,24 @@ describe('the banner', function () {
             ->assertDontSee('cfb.install.dismissed');
     });
 
-    it('is removed inside the installed app by stylesheet, not by script', function () {
-        // A JS hide flashes the pitch at an installed user for the beat
-        // before Alpine boots; the media query never renders it at all.
+    it('is removed inside the installed app on BOTH standalone signals', function () {
+        /*
+         * A JS x-show hide flashes the pitch at an installed user for the
+         * beat before Alpine boots; the stylesheet never renders it at all.
+         * Two signals, because iOS has two: manifest-driven installs match
+         * the `display-mode` media query, while meta-driven web clips (added
+         * from Chrome's or Firefox's share sheet) report `browser` there and
+         * only set `navigator.standalone` — which shipped as the banner
+         * pitching the install INSIDE the installed app. A pre-paint head
+         * script stamps that signal onto the root for the second selector.
+         */
         expect(file_get_contents(resource_path('css/app.css')))
-            ->toContain('display-mode: standalone');
+            ->toContain('display-mode: standalone')
+            ->toContain(':root[data-standalone] [data-install-only]');
+
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee("if (navigator.standalone) document.documentElement.setAttribute('data-standalone', '')", escape: false);
     });
 
     it('gives Account a permanent path to the walkthrough', function () {

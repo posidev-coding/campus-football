@@ -14,6 +14,14 @@
      and silently undo the fix. BrandingTest counts them. --}}
 <meta name="theme-color" content="#09090b">
 
+{{-- iOS launches meta-driven web clips (including ones added from Chrome's
+     or Firefox's share sheet) with `navigator.standalone` true while the
+     `display-mode: standalone` media query still reports `browser` — so the
+     CSS that hides install-selling chrome never fired and the installed app
+     pitched its own install. Stamping the root BEFORE first paint keeps the
+     hide stylesheet-driven and flash-free on that signal too. --}}
+<script>if (navigator.standalone) document.documentElement.setAttribute('data-standalone', '')</script>
+
 <title>{{ $title ?? Brand::name() }}</title>
 
 {{-- Icons. Every URL comes from Brand, so an upload on the App Branding page
