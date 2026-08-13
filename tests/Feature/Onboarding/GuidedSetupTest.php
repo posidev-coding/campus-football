@@ -567,6 +567,23 @@ describe('the device draft', function () {
             ->and($overlayTag($plain))->toContain('x-cloak');
     });
 
+    it('keeps every island out of the flow — no phantom slot in Home\'s gap column', function () {
+        /*
+         * The component root and the splash wrapper are both `display:
+         * contents`, because each renders only `fixed` children: a plain div
+         * here is a ZERO-HEIGHT flex item in Home's gap-6 column, and gap
+         * applies on both sides of it — which shipped as 48px of unexplained
+         * air between the search bar and the team cards.
+         */
+        $html = Livewire::actingAs(User::factory()->create())->test('onboarding')->html();
+
+        // Two `contents` wrappers: the component root and the splash island.
+        // (No tag-scoped regex here — the splash tag's x-data holds arrow
+        // functions, whose `=>` ends a naive [^>]* attribute match early.)
+        expect($html)->toContain('x-on:signup-splash.window')
+            ->and(substr_count($html, 'class="contents"'))->toBe(2);
+    });
+
     it('never reopens the moment for a stale ?start=team — web clips captured that URL', function () {
         /*
          * The hand-off used to BE the querystring, and a home-screen install

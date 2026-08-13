@@ -587,7 +587,13 @@ new class extends Component
         the same z-50 it paints on top and the wizard's close happens out of
         sight beneath it.
     --}}
+    {{-- `contents`, same as the component root and for the same reason: a
+         plain div here is a ZERO-HEIGHT flex item in Home's gap-6 column,
+         and gap applies on both sides of it — 48px of air between the
+         search bar and the team cards instead of 24. The only child is
+         `fixed`, which needs no box here. --}}
     <div
+        class="contents"
         x-data="{
             show: false,
             i: 0,
