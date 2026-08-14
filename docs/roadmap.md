@@ -4,7 +4,7 @@
 product moves. Everything else in `docs/` describes what is already true; this
 describes what we are trying to build and how far along it is.
 
-Last reviewed: 2026-08-11.
+Last reviewed: 2026-08-13.
 
 ---
 
@@ -42,7 +42,25 @@ one is now a named rule in `CLAUDE.md` rather than a thing to remember.
 
 ## Where we are
 
-Phases 1–4 are shipped. Phase 5 is the next body of work and has not started.
+Phases 1–4 are shipped. Phase 5's engine landed 2026-08-13/14 (schema,
+mode engines, slates, picking, live grading, two-phase settlement — all
+behind the admin-only `pickem` flag), and its front end was then REBUILT
+wholesale (plan iteration 3, 2026-08-14) after the first cut ignored the
+design system: the weekly thing is THE SLATE ("board" is purged and a
+Voice sweep test enforces it), picking is a tap on a real matchup card
+that fills with the team's color, a group plays ONE mode all season
+(pivot = deliberate act, once per season, group notified), the Picks tab
+lands on `/lobby` with sections Lobby | Leaderboard | History, and public
+contests are transient weekly rooms that spawn on fill. The lobby's PASS 3
+(2026-08-14) then rebuilt the landing as one urgency-ordered zoned scroll,
+added `/join/{CODE}` invite links as the primary acquisition path (codes
+demoted to the spoken-word fallback), gave every mode an identity (icon +
+palette) — and shipped THE WOODSHED LIVE: the founders' rules were
+recovered (email + the 2016 code) and implemented, Classic was renamed
+Shotgun, and points rebalanced so every mode's perfect week is ~100
+(Woodshed 101). See [game-modes.md](game-modes.md). Still open in Phase 5:
+conversations, the gamification finish (rank ladder), notifications, and
+flip prep.
 
 ### Phase 1 — Data foundation ✅
 
@@ -108,75 +126,130 @@ Reference: [operations.md](operations.md)
 
 ---
 
-## Phase 5 — Pick'em core ← **next**
+## Phase 5 — Pick'em, Groups & Gamification ← **next**
 
-The product's point. Nothing here is built yet; the seams are.
+The product's point. Planned 2026-08-13 (plan iteration 1, approved); the old
+Phases 5–7 collapsed into this one phase, because two of its decisions made
+the split artificial: commissioner-built slates make groups load-bearing from
+day one, and gamification is a consistent second fiddle from the first
+screen, not a later coat of paint. The goal is weekly-cadence retention —
+reward often, never superficially, and no candy-crush mechanics: no
+daily-login rewards, no timers, no FOMO.
 
-**What already exists to build on:**
+**Settled decisions:**
 
-- `GameScoreChanged` and `GameWentFinal` (dispatched from `SyncGames::store()`,
-  after save, never on a first insert) — the subscription points a contest
-  recompute listens to rather than polling. No listeners exist yet.
-- The **Picks area is already live** — fifth tab (center slot, label
-  "Picks"), `/picks` coming-soon screen, a guided-tour stop, and the teaser
-  card on Home now links there. When Pick'em ships, the screen's promise
-  cards become the real slate/groups/records surfaces and the area gains
-  sections.
-- `Game::slateEligible()` and the scope filters, for choosing a week's slate.
-- `GameRanks` and `game_odds`, for tiering and for spread-based formats.
-- Laravel Pennant is installed with one flag (`guided-tour`) — the intended
-  mechanism for rolling this out behind a flag.
-- The **verified-email gate is decided and documented**: Pick'em actions and
-  XP earning require `hasVerifiedEmail()` (the `verified` middleware is
-  reserved for exactly this; `/picks` already explains the gate to
-  unverified users). Verification itself pays 100 XP + 1 Beast Latte.
-- The **wallet ledger exists** (`wallet_entries` + `GrantWalletEntry`):
-  Pick'em payouts are keyless repeatable entries into the same table the
-  chips already read.
+- **Three contest modes, ALL against the spread** — never straight-up.
+  Full rules and heritage: [game-modes.md](game-modes.md). Points
+  rebalanced 2026-08-14 so every mode's perfect week is ~100:
+  - **Shotgun** (renamed from Classic 2026-08-14; stored value stays
+    `classic`, the Triple Option precedent) — a 10-game slate, every game
+    worth 10.
+  - **Triple Option** — the core mode: 15 games in 3 tiers of progressive
+    game quality paying **9/7/4** (settled 2026-08-14, from 3/2/1). Stored
+    as `tiered` so the product name lives in `Voice` and labels, never in
+    data. Proposed tier names from the play itself (still open as screen
+    vocabulary): **The Pitch**, **The Keep**, **The Dive**.
+  - **The Woodshed** — the founders' game, RECOVERED AND IMPLEMENTED
+    2026-08-14 (the rules email surfaced, and the 2016 code in
+    `storage/app/private/cfb` confirmed the mechanics): 15 games at 8/6/4,
+    the LOCK (+6/−4, optional, featured game only — the one path to
+    negative points, hence the signed points columns), and the BEAR (house
+    contestant, themed picks public while you pick, +5 for strictly
+    beating his weekly total). Perfect week 101 — the founders' premium.
+    Deliberately NOT ported: money, divisions (the OG league itself
+    dropped them), the playoff structure, the single Saturday deadline.
+- **THE HALF-POINT LAW (added 2026-08-13, a founders' rule): no contest
+  line ever sits on a whole number**, so no pick can ever push — every
+  call wins or loses. The commissioner OWNS the line: it seeds from the
+  book when a game joins the board (whole numbers shade to a half point),
+  is adjustable up to 3.0 either way while drafting, and publishing
+  COMMITS it — one printed board, office-pool style, and grading never
+  moves off it whatever the market does after. `market_spread` keeps the
+  book's number beside the commissioner's for the audit. A game without a
+  posted line can never publish.
+- **Slates are commissioner-built per group.** The Game Quality Score
+  (`matchup_quality` + line movement + ranks — inputs already synced) is
+  the commissioner's *suggestion engine*, never the author. Public lobbies
+  are house-run groups where the app is the commissioner, auto-published
+  through the identical suggest-and-publish path.
+- **First ship: Classic + Triple Option + groups together**, behind a
+  `pickem` Pennant flag, before the flag flips.
 
-**Open decisions** (none of these are settled; this is the list to work
-through first):
+**Design pillars** (proposals holding until plan iteration 2 revises them):
 
-- Format: straight-up picks, against the spread, confidence points, or
-  survivor. Probably more than one eventually, which argues for a contest
-  *type* rather than a hardcoded scoring rule.
-- Scope of a slate: a week's full FBS card is 60+ games. Top 25 only? A curated
-  slate? User-chosen?
-- Lock time: per game at kickoff, or the whole slate at the first kickoff.
-- Late joins, missed picks, and tie-breaks.
-- Whether picks are private until lock (they should be).
+- **The weekly clock (settled 2026-08-13):** boards slate only games in the
+  SATURDAY WINDOW — noon Eastern to midnight, no breakfast kickoffs. The
+  commissioner has until the SLATE DEADLINE (default Tuesday end-of-day ET;
+  admin-configurable on the Pick'em Settings panel page) to publish; past
+  it, `pickem:publish-boards` publishes the STANDARD slate — best quality
+  games, auto-designated combined-points tiebreaker — so a group is never
+  hung out to dry by a commissioner who lost track of Tuesday. Results go
+  final in TWO PHASES: preliminary when the last game finals, OFFICIAL at
+  Sunday noon ET (also configurable) — the stat-settling window that lets
+  ESPN's occasional day-after corrections land before a stat-based
+  tiebreaker pays the wrong person. Payouts wait for official. (Two-phase
+  settlement lands with the scoring slice.)
+- Per-game lock at kickoff; picks private until lock; a missed pick is an
+  ABSENT ROW worth zero — never auto-picked. The no-defaults rule as schema.
+  Live scoring runs from the second a game kicks: every score change
+  recomputes standings through the same event-driven grading, so Saturday
+  reads live without a single extra ESPN request.
+- The weekly tiebreaker is a QUESTION the commissioner sets, rotating like
+  the paper league's did: a metric (combined points, one team's points,
+  passing/rushing yards) plus its game and — when one-sided — its team.
+  Entrants answer with one number; settlement resolves the actual from data
+  the app already syncs, falling back to a shared win when a stat has not
+  landed rather than inventing a number.
+- Grading is event-driven off `GameWentFinal` and adds ZERO ESPN requests; a
+  daily DB-only settle-sweep catches games that go final without firing.
+  Settlement payouts are KEYED wallet entries, so a double-fired settlement
+  pays nobody twice.
+- Handle claim happens at the first pick or first post — the seam
+  `product.md` reserved. The verified gate lives inside the mutating
+  Actions, never route walls: unverified users see everything.
+- **The Conversation** — one polymorphic discussion surface at exactly three
+  scopes: Game (below the facts; the facts stay PURE), Team, and Group. No
+  league firehose, no per-week threads, no DMs. A slate's chatter belongs
+  to the group.
+- XP rides `wallet_entries` through `GrantWalletEntry` with date- and
+  slate-stamped idempotency keys — the unique index IS the anti-farming
+  cap, no throttle code. "Film Room" XP rewards power users reading
+  previews and box scores, capped daily. The rank ladder replaces the
+  chips' "Rookie" literal as a pure computation over `walletTotals()` —
+  no table, rebalancing is a deploy.
+- Streaks are deliberately deferred to iteration 2: they are the part with
+  real retention value and the part most likely to feel cheap if done badly
+  — and a streak your group can see is a stake, so they need groups live
+  first.
+
+**Slices** (each lands green and invisible without the flag): schema and
+factories → engine core (modes, grader, quality score, suggestions) →
+groups → slate build and publish → picking → scoring and settlement →
+conversations → gamification finish → flip prep. The first six are the
+flippable minimum; conversations and gamification may trail the flip if the
+season arrives first.
+
+**Open for plan iteration 2:** the proposed Pitch/Keep/Dive tier names (as
+screen vocabulary); XP numbers, ladder names, perfect-week bonus and streak
+design; lobby shape (one house lobby vs per-conference); member caps and
+multiple group membership (default: yes); `contests.settings` overrides for
+the founders' Woodshed numbers. ~~Tier values and sizes~~ — settled
+2026-08-14 at 9/7/4 and 5/5/5 (the ~100 parity principle, see
+[game-modes.md](game-modes.md)). ~~Woodshed teaser vs hidden~~ — mooted:
+the rules arrived and the mode shipped live. ~~Push handling~~ — dissolved
+by the half-point law: pushes are structurally impossible.
 
 **The rules this phase must not break:**
 
-- Scoring recompute is driven by events, never by polling the scoreboard.
-- Pick'em is a LOUD surface — every string gets all three `ContentRating`
-  variants written when the screen is written, not later.
+- Scoring recompute is driven by events, never by polling the scoreboard —
+  and the whole contest engine adds zero ESPN requests.
+- Pick'em, Groups and Conversations are LOUD surfaces — every string gets
+  all three `ContentRating` variants written when the screen is written.
+  The conversation *chrome* on Game and Team screens is voiced; the facts
+  above it stay factual.
 - Roast the pick, the team, the record — never the person.
 
-## Phase 6 — Groups
-
-Pick'em against strangers is a leaderboard; pick'em against your group chat is
-the product. Invites, a group leaderboard, group-scoped taunts, a commissioner.
-
-Depends on Phase 5 having a settled contest model. LOUD surface.
-
-## Phase 7 — Gamification
-
-The shelf is half-live: `x-wallet-chips` reads REAL Beast Latte and XP sums
-from `wallet_entries` (`User::walletTotals()`, one memoized query) — the
-verification reward and the onboarding seed already pay into it — while the
-rank is still the literal starting "Rookie", because the ladder is this
-phase's to define. The component sits in `x-home-nav`'s reserved slot below
-`sm` and in the layout header above, with a guided-tour stop of its own, and
-is deliberately the ONLY file that knows the currency's name or art. This
-phase defines the rank ladder, the earn/spend table, and replaces the Rookie
-literal with a computed rank. Streaks join the chips here; they are the part with real
-retention value and the part most likely to feel cheap if done badly.
-
-Deliberately after groups: a streak counter nobody can see is a number, and a
-streak your group can see is a stake.
-
-## Phase 8 — Notifications and the weekly loop
+## Phase 6 — Notifications and the weekly loop
 
 Partly built already — `WeeklyDigest`, `SendWeeklyNewsletter`, the SMS
 channel, and now WEB PUSH end to end: VAPID + `push_subscriptions`
@@ -192,11 +265,11 @@ with nothing to unwind.
 Reverb is installed and only the default private user channel is registered.
 Live pick'em standings during a Saturday are the case that would justify it.
 
-## Phase 9 — Native mobile
+## Phase 7 — Native mobile
 
 Speculative, and listed so the constraint is not forgotten: the App Store age
 rating is why "roast the pick, never the person" is a hard rule rather than a
-taste preference. Nothing should be built in Phases 5–8 that would need
+taste preference. Nothing should be built in Phases 5–6 that would need
 unwinding for a native shell.
 
 The same constraint owns the currency contingency. Beast Latte is a fictional

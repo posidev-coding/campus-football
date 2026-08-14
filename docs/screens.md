@@ -1,8 +1,9 @@
 # Screens: what each one does and why
 
-Home, Search, Scores, Game, Team, Players and Account — the behavior of each
-screen and the constraints it is built around. Shared chrome and layout rules
-live in [ui-system.md](ui-system.md).
+Home, Search, Scores, Game, Team, Players, the Lobby and Account — the
+behavior of each screen and the constraints it is built around. Shared chrome
+and layout rules live in [ui-system.md](ui-system.md); the pick'em rules the
+Lobby fronts live in [game-modes.md](game-modes.md).
 
 ## Home is the user's teams, swiped
 
@@ -31,13 +32,14 @@ game belongs to the season that has not started counting yet. The card polls
 (`wire:poll.30s.visible`) only while one of the teams is actually live, and
 reads only our own database.
 
-The Pick'em teaser card WAS deliberately inert; the Picks screen exists now
-(`/picks`, the fifth nav area, a designed coming-soon page), so the whole
-card navigates there — the entry point it always planned to become. The
+The Pick'em teaser card WAS deliberately inert; the Picks area is REAL now
+(`/lobby`, the fifth nav area — see "The Lobby" below), so the whole card
+navigates there. Outside the `pickem` flag the teaser still wears "Coming
+soon", matching the promise the lobby itself keeps for outsiders. The
 wallet chips (`x-wallet-chips`: Beast Latte balance and XP are REAL sums
 from the wallet ledger now — verification pays 100 XP + 1 latte, the
 onboarding moment seeds 25 XP — while the rank stays the literal "Rookie"
-until Phase 7 defines the ladder) ride `x-home-nav`'s reserved slot
+until Phase 5's gamification slice defines the ladder) ride `x-home-nav`'s reserved slot
 below `sm` and the layout header above, both wearing `data-tour="wallet"`.
 
 **The last card is an empty SLOT until five teams are followed, and the
@@ -568,6 +570,66 @@ from a public Livewire method and the client can send any ids.
 
 Both pickers — this one and Home's quick add — read `TeamGlance::fbsTeams()`,
 so they cannot drift or pay for the query twice.
+
+## The Lobby is one zoned scroll, ordered by urgency
+
+Where the Picks tab lands (`/lobby`, sections Lobby | Leaderboard | History
+inside the `pickem` flag; the coming-soon promise verbatim outside it). Pass
+3 (2026-08-14) rejected an ESPN-style mine/discovery tab split — our content
+volume is a handful of cards, not five entries and a thousand public groups,
+and the section strip already provides the area's tabs — in favor of ONE
+scroll whose zones answer the reader's questions in the order they ask them:
+
+1. **The week ribbon** (`x-week-ribbon`, the group-hero band grammar) — the
+   dateline from `CfbCalendar::defaultWeekEntry()` plus ONE clock line by
+   urgency: games live now → the next kickoff → a commissioner's slate
+   deadline. No calendar entry, no ribbon — never a substituted week.
+2. **Needs your picks** — renders only when a published slate is still
+   taking picks the reader hasn't finished; each row is name + progress +
+   first kick, walking into the clubhouse. This zone is why the lobby works:
+   it answers "what do I do right now" before anything else gets to talk.
+3. **Your games** (`x-group-card`) — every membership (groups AND joined
+   rooms) wearing its mode's mark and colors from `ContestMode::palette()`,
+   with pass 2's five-way state row (waiting / upcoming / live / prelim /
+   final) intact. First-run users get the pitch instead: three `x-mode-door`
+   tiles selling the modes, straight into the creation wizard.
+4. **Last week** — the Monday payoff, compact: settled entries from the past
+   seven days. Below Your games because on Monday nothing needs picks — the
+   recap IS the top of the useful screen.
+5. **Find a game** — open public rooms (`x-contest-card`: mode identity,
+   blurb, seats meter, join), the start-a-group door, and the invite-code
+   form FOLDED into a disclosure ("Have an invite code?") that auto-opens on
+   a code error — links are the primary way in now, the code is the
+   spoken-word fallback.
+6. **How it's played** — one expandable `x-mode-rules` card per mode reading
+   `ContestMode::ruleLines()` (the same source as the docs), plus the shared
+   law in one plain paragraph. Collapsed content is x-show, not removed, so
+   a test asserts the stakes without driving the disclosure.
+
+Everything is a projection of ONE `cards()` read (one query per concern
+across all groups — contests, slates, my picks, my entries, my wins);
+`needsPicks` and the ribbon clock filter that collection and never query.
+Joining lands each kind at its own address (`pickem.room` for rooms — the
+old clubhouse double-hop is dead) and a race to a filled room answers with
+`contest.room.full` on the floor instead of an exception.
+
+## The invite landing is the acquisition funnel
+
+`/join/{CODE}` (`pickem.join`) — the URL a group travels by, public like the
+lobby and for the same reason: the whole point is a GUEST tapping a friend's
+link. The flag check lives in `mount()` (the flag scopes to the user, so
+middleware would 400 every guest). The preview shows the group's name, mode
+identity and people BEFORE any wall; `?by={handle}` credits the inviter when
+the handle is real and says nothing when it is not. The join tap writes
+`url.intended` by hand (inside a Livewire action, `redirect()->guest()`
+would capture `/livewire/update`) and walks guests through login/register —
+both `redirectIntended` — landing them back seated in one tap. A dead code
+gets words and a door, never a 404; a seated member skips the pitch straight
+to their clubhouse; a full or already-played room states its condition
+plainly with the Voice line for mood. Share surfaces (creation step 3, the
+clubhouse hero and Members tab) copy and share the LINK first with the code
+kept beneath as the fallback — and rooms never advertise codes or /join
+links at all: they are joined from the floor.
 
 ## The verified landing is a tab ending well, on purpose
 

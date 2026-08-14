@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Laravel\Pennant\Feature;
+
 /**
  * The app's information architecture, in one place.
  *
@@ -91,16 +93,28 @@ class Navigation
                 // The product's point takes the center of the five-tab bar:
                 // Home and Scores keep their muscle-memory slots on the left,
                 // League and Account stay right. "Picks" rather than
-                // "Pick'em" — the short form is the nav label, the product
-                // name lives on the screen itself.
+                // "Pick'em" — the short form is the nav label; the tab lands
+                // on THE LOBBY, and the product name lives on the screen.
                 'key' => 'picks',
                 'label' => 'Picks',
                 'icon' => 'check-badge',
-                'route' => 'picks',
-                'routes' => ['picks'],
-                // No sections: one coming-soon screen. When Pick'em ships,
-                // its screens (slate, standings, groups) become sections.
-                'sections' => [],
+                'route' => 'pickem.lobby',
+                // Only routes that RENDER belong here — the permanent
+                // redirects (picks, picks.groups, picks.group) never paint
+                // a nav to light.
+                'routes' => ['pickem.lobby', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join', 'pickem.leaderboard', 'pickem.history'],
+                /*
+                 * Sections exist only inside the `pickem` flag: outside it
+                 * the area is one coming-soon screen and a one-tab strip
+                 * would be chrome, not navigation. History earns its slot
+                 * because its prime moment — Sunday and Monday — is
+                 * exactly when the lobby's inventory is emptiest.
+                 */
+                'sections' => Feature::active('pickem') ? [
+                    ['route' => 'pickem.lobby', 'label' => 'Lobby', 'routes' => ['pickem.lobby', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join']],
+                    ['route' => 'pickem.leaderboard', 'label' => 'Leaderboard'],
+                    ['route' => 'pickem.history', 'label' => 'History'],
+                ] : [],
                 'guest' => true,
             ],
             [

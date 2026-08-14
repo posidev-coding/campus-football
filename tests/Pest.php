@@ -1,10 +1,13 @@
 <?php
 
 use App\Support\Brand;
+use App\Support\Cadence;
 use App\Support\GameRanks;
 use App\Support\TeamGlance;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+
+require_once __DIR__.'/PickemFixtures.php';
 
 /*
  * Feature tests run against a real MySQL database (campusfootball_test) rather
@@ -22,5 +25,6 @@ pest()->extend(TestCase::class)
         TeamGlance::flush();
         GameRanks::flush();
         Brand::flush();
+        Cadence::flush();
     })
     ->in('Feature');

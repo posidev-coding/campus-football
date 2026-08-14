@@ -7,7 +7,7 @@
     drawn as one.
 --}}
 <a
-    href="{{ route('picks') }}"
+    href="{{ route('pickem.lobby') }}"
     wire:navigate
     {{ $attributes->class(['block rounded-xl border border-dashed border-zinc-300 px-4 py-3 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-900']) }}
 >

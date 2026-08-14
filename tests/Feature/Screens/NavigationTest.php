@@ -65,7 +65,7 @@ describe('areas', function () {
             'home' => 'home',
             'news' => 'home',
             'scoreboard' => 'scores',
-            'picks' => 'picks',
+            'pickem.lobby' => 'picks',
             'standings' => 'league',
             'rankings' => 'league',
             'teams' => 'league',

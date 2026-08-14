@@ -73,7 +73,22 @@ class Rail
         'news' => [],
         'account' => [],
         'get-app' => [],
-        'picks' => [],
+        // The lobby: group cards and the public inventory own the width.
+        'pickem.lobby' => [],
+        // The clubhouse: the pick grid already grows to xl:grid-cols-3, so
+        // the width belongs to the cards, not a panel.
+        'pickem.group' => [],
+        // A three-step wizard: focus, not context.
+        'pickem.create' => [],
+        // The commissioner's ritual — same reasoning.
+        'pickem.build' => [],
+        // A public room is the clubhouse in different clothes.
+        'pickem.room' => [],
+        // The invite landing: one card, one decision — focus.
+        'pickem.join' => [],
+        // One table each; the width belongs to the names.
+        'pickem.leaderboard' => [],
+        'pickem.history' => [],
     ];
 
     /**

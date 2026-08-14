@@ -1,10 +1,12 @@
 ---
 paths:
-  - resources/views/livewire/**
-  - resources/views/mail/**
+  - 'resources/views/livewire/**'
+  - 'resources/views/mail/**'
   - app/Support/Voice.php
-  - app/Notifications/**
+  - 'app/Notifications/**'
   - app/Enums/ContentRating.php
+  - app/Enums/TiebreakerMetric.php
+  - app/Support/Cadence.php
 ---
 
 # Copy and voice
@@ -68,3 +70,9 @@ The verify callout's `wire:poll.15s` has no computed guard: the component's own 
 
 ## Push permission is gesture-only, and the subscription IS the consent
 The permission prompt is spent the moment it shows (denied only returns via OS settings), so every ask lives inside a real tap on a surface that says what the notifications are for — Account's device switch or Home's standalone-only nudge — never on load. There is deliberately NO push consent column: a push_subscriptions row can only exist through a grant on a device, so `whereHas('pushSubscriptions')` is the send gate and no server flag can drift from the browser's own state. `notificationclick` focusing/opening the app is the ONLY true deep link an iOS PWA has — data.url every push. sw.js's VERSION bump contract stays caching-scoped; push handlers don't touch it.
+
+## Tiebreakers are per-week QUESTIONS, not one hardcoded criterion
+The paper league rotated its tiebreaker criterion weekly ("passing yards for Auburn", "combined points, UT and LSU") and evaluated by hand; TiebreakerMetric automates it. A designation is game + metric + (team, when the metric is one-sided) on the slates row; entrants answer with one integer scaled by metric->maxPrediction(). Settlement resolves the actual from OUR data: points metrics off the games row at final, yardage metrics from box-score lines — a metric whose data has not synced resolves to NULL and settlement falls back to a shared win, never an invented number.
+
+## The league clock lives on Cadence, resolves in ET, and is admin-configurable
+Slate deadline (default Tue 23:59:59 ET) and official-final (default Sun 12:00 ET) resolve against a WEEK's own Saturday via App\Support\Cadence, overridable from the Pick'em Settings Filament page (pickem_settings, one nullable-override row — the brand pattern). Everything is Eastern wall time: travelTo() in tests speaks UTC, and 01:00 UTC Wednesday is still Tuesday night in Knoxville — a cadence test that forgets this passes the wrong branch. The slate window is Game::inSlateWindow() (Saturday, ET hour >= 12) — the time-of-day half CANNOT be asked in SQL (DST shifts the UTC boundary mid-season), so it is a per-game PHP check layered on the kickoff_day scope. pickem:publish-boards sweeps hourly past the deadline and publishes the standard slate through AutoPublishStandardSlate → PublishSlate::force (same validation, no actor gates).

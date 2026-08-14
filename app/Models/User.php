@@ -167,6 +167,17 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     }
 
     /**
+     * Pick'em groups this user belongs to. The pivot's `role` says whether
+     * they run the place; pivot created_at is the joined-at date.
+     */
+    public function groups(): BelongsToMany
+    {
+        return $this->belongsToMany(Group::class, 'group_members')
+            ->withPivot('role')
+            ->withTimestamps();
+    }
+
+    /**
      * Both auth emails go through our own notifications, which are branded and
      * — the part that matters — `ShouldQueue`.
      *

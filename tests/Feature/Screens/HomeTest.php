@@ -507,13 +507,13 @@ describe('the pick'."'".'em teaser', function () {
             // escaped Blade echo, so the raw apostrophe is what is in the DOM.
             ->assertSee("Pick'em", escape: false)
             ->assertSee('Coming soon')
-            ->assertSee(route('picks'), escape: false);
+            ->assertSee(route('pickem.lobby'), escape: false);
     });
 
     it('shows guests the same promise', function () {
         $this->get(route('home'))->assertOk()
             ->assertSee('Coming soon')
-            ->assertSee(route('picks'), escape: false);
+            ->assertSee(route('pickem.lobby'), escape: false);
     });
 });
 

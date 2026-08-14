@@ -58,12 +58,12 @@ it('declares a rail decision for every routed screen', function () {
     // Only the Livewire page routes — brand artifacts, webhooks and auth
     // screens have no app layout to hang a rail on.
     $pages = $screens->filter(fn (string $name) => in_array($name, [
-        'home', 'get-app', 'picks', 'scoreboard', 'game', 'standings', 'rankings',
+        'home', 'get-app', 'pickem.lobby', 'pickem.join', 'scoreboard', 'game', 'standings', 'rankings',
         'stats', 'news', 'article', 'search', 'teams', 'team', 'conference',
         'players', 'player', 'coach', 'recruiting', 'account',
     ], true));
 
-    expect($pages)->toHaveCount(19);
+    expect($pages)->toHaveCount(20);
 
     foreach ($pages as $name) {
         expect(Rail::mapKeys())->toContain($name);

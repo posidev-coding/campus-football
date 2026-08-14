@@ -30,6 +30,28 @@ class GrantWalletEntry
 
     public const FIRST_TEAM_XP = 25;
 
+    public const REASON_FIRST_GROUP_CREATED = 'first-group-created';
+
+    public const FIRST_GROUP_CREATED_XP = 50;
+
+    public const REASON_FIRST_GROUP = 'first-group';
+
+    public const FIRST_GROUP_XP = 25;
+
+    public const REASON_PICKEM_ENTERED = 'pickem-entered';
+
+    public const PICKEM_ENTERED_XP = 10;
+
+    public const REASON_PICKEM_POINTS = 'pickem-points';
+
+    public const PICKEM_POINTS_XP_EACH = 10;
+
+    public const REASON_PICKEM_WIN = 'pickem-win';
+
+    public const PICKEM_WIN_XP = 100;
+
+    public const PICKEM_WIN_LATTES = 1;
+
     public function handle(User $user, int $xp, int $lattes, string $reason, ?string $key = null): void
     {
         $entry = [

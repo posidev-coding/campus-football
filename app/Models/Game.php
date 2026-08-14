@@ -150,6 +150,43 @@ class Game extends Model
         return $query->where('kickoff_day', 'Sat');
     }
 
+    /**
+     * The slate WINDOW: Saturday from noon Eastern, before Sunday.
+     *
+     * `slateEligible()` narrows a QUERY to Saturdays; this is the per-game
+     * half of the same law, because the time-of-day boundary cannot be
+     * asked in SQL without the timezone conversion `kickoff_day` exists to
+     * avoid. A Saturday game at noon ET or later is necessarily before
+     * Sunday ET, so one boundary check carries both ends of the window —
+     * the morning kickoffs it excludes are real (Dublin games kick before
+     * breakfast).
+     */
+    public function inSlateWindow(): bool
+    {
+        return $this->kickoff_day === 'Sat'
+            && $this->kickoff_at !== null
+            && $this->kickoff_at->timezone(config('cfb.timezone'))->hour >= 12;
+    }
+
+    /**
+     * The pick'em LOCK question: has this game begun, by clock OR by feed?
+     *
+     * Both checks on purpose — a game that kicks early is live while its
+     * scheduled time is still in the future, and trusting the clock alone
+     * would leave picks open on a game already being played. Shared by the
+     * pick lock and publish validation so the two can never disagree.
+     */
+    public function hasKickedOff(): bool
+    {
+        // NOT isPast(): that is a strict less-than, which would leave picks
+        // open for the one second the clock reads exactly kickoff. The
+        // kickoff moment itself is locked. A null kickoff (unscheduled) has
+        // no clock to lock by — only the feed can say it started.
+        return $this->completed
+            || ($this->kickoff_at !== null && ! $this->kickoff_at->isFuture())
+            || in_array($this->status, ['in', 'halftime', 'end-period'], true);
+    }
+
     public function scopeCompleted(Builder $query): Builder
     {
         return $query->where('completed', true);
