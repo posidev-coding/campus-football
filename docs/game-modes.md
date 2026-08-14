@@ -41,8 +41,10 @@ week: 100.
 ## The Woodshed (`woodshed` · WoodshedMode)
 
 The founders' game, recovered whole in August 2026 from the original
-league's rules email and its 2016 code (`storage/app/private/cfb`, a MySQL
-database literally named `woodshed`), and implemented 2026-08-14.
+league's rules email and a working copy of its 2016 code (cfbpickem.net —
+a MySQL database literally named `woodshed`), and implemented 2026-08-14.
+That source has since been discarded: **this document is now the record**,
+so anything not written down here is gone.
 
 **The card:** 15 games in three tiers of five paying **8 / 6 / 4** — a
 90-point slate.
