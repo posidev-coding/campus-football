@@ -150,9 +150,10 @@ daily-login rewards, no timers, no FOMO.
     data. Proposed tier names from the play itself (still open as screen
     vocabulary): **The Pitch**, **The Keep**, **The Dive**.
   - **The Woodshed** — the founders' game, RECOVERED AND IMPLEMENTED
-    2026-08-14 (the rules email surfaced, and a working copy of the 2016
-    code confirmed the mechanics before being discarded — the rules now
-    live only in [game-modes.md](game-modes.md)): 15 games at 8/6/4,
+    2026-08-14 (the rules email surfaced — kept verbatim at
+    [woodshed.md](woodshed.md) — and a working copy of the 2016 code
+    confirmed the mechanics before being discarded, so the code's half now
+    lives only in [game-modes.md](game-modes.md)): 15 games at 8/6/4,
     the LOCK (+6/−4, optional, featured game only — the one path to
     negative points, hence the signed points columns), and the BEAR (house
     contestant, themed picks public while you pick, +5 for strictly

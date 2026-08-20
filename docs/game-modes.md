@@ -43,8 +43,10 @@ week: 100.
 The founders' game, recovered whole in August 2026 from the original
 league's rules email and a working copy of its 2016 code (cfbpickem.net —
 a MySQL database literally named `woodshed`), and implemented 2026-08-14.
-That source has since been discarded: **this document is now the record**,
-so anything not written down here is gone.
+The CODE has since been discarded, so its mechanics survive only as written
+here — **for those, this document is the record** and anything not written
+down is gone. The rules email itself survived and is preserved verbatim at
+[woodshed.md](woodshed.md).
 
 **The card:** 15 games in three tiers of five paying **8 / 6 / 4** — a
 90-point slate.
@@ -104,8 +106,8 @@ for per-league overrides, deliberately not built yet.
 
 ## OG heritage: what v4 adopted, what stayed in 2016
 
-Recovered from the founders' rules email (`woodshed.md`) and the original
-cfbpickem.net code. Adopted, with adaptations noted above: the tiered card,
+Recovered from the founders' rules email — kept verbatim at
+[woodshed.md](woodshed.md) — and the original cfbpickem.net code. Adopted, with adaptations noted above: the tiered card,
 the featured-game Lock (+6/−4, one per week — the old `save_pick.php`
 unlocked every other game when a new lock saved), the Bear (user_id 0 in
 the old database, his picks and weekly tagline visible while picking, the
