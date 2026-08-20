@@ -1,11 +1,12 @@
 {{--
     A public room on the lobby floor: the game it plays — wearing that
     game's mark and colors from the identity seam — the seats left, and
-    the door. The name already says everything deterministic ("Triple
-    Option Open · Sep 12 · Room 2" — the SATURDAY, not the ESPN week, so
-    two cards inside one split week cannot share a name); the blurb is the
-    enum's own one-line rules so the pitch can never drift from the mode
-    cards.
+    the door. Rooms wear NAMES ("Hail Mary", "Ranked Action II"), never
+    dates or serials; the mode chip and the floor's week context carry the
+    boring facts. The blurb is the flavor's own one-line rules when the
+    room has one, the mode enum's otherwise — either way the pitch can
+    never drift from the rules cards. The zinger under a flavored blurb is
+    Voice, three registers, optional by construction.
 
     The seats meter reuses x-slate-progress's grammar — a thin bar plus
     the number a joiner actually reads. `action` names the HOST's join
@@ -17,6 +18,10 @@
     'mode',
     'seats' => 0,
     'action' => 'joinLobby',
+    /** @var App\Enums\LobbyFlavor|null a specialty room's identity */
+    'flavor' => null,
+    /** @var int|null this Saturday's board size, for dynamic flavors */
+    'gameCount' => null,
 ])
 
 @php $palette = $mode->palette(); @endphp
@@ -33,7 +38,15 @@
         <span class="shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold {{ $palette['chip'] }}">{{ $mode->label() }}</span>
     </div>
 
-    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ $mode->blurb() }}</p>
+    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ $flavor?->blurb() ?? $mode->blurb() }}</p>
+
+    @if ($flavor?->dynamicSize() && $gameCount !== null)
+        <p class="text-micro font-semibold text-zinc-500 dark:text-zinc-400">{{ $gameCount }} {{ Str::plural('game', $gameCount) }} this Saturday</p>
+    @endif
+
+    @if ($flavor !== null && ($zinger = App\Support\Voice::line($flavor->zingerKey(), ['conference' => $flavor->conferenceName() ?? ''])) !== '')
+        <p class="text-micro italic text-zinc-400 dark:text-zinc-500">&ldquo;{{ $zinger }}&rdquo;</p>
+    @endif
 
     <div class="flex items-center justify-between gap-3">
         @if ($room->member_cap !== null)

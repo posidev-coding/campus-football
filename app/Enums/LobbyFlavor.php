@@ -106,6 +106,19 @@ enum LobbyFlavor: string
         };
     }
 
+    /** The conference's display name, for the shared zinger's :conference. */
+    public function conferenceName(): ?string
+    {
+        return match ($this) {
+            self::SecShowdown => 'SEC',
+            self::BigTenBlitz => 'Big Ten',
+            self::AccAction => 'ACC',
+            self::Big12Shootout => 'Big 12',
+            self::Pac12AfterDark => 'Pac-12',
+            default => null,
+        };
+    }
+
     /** The card's pitch — sized honestly, since the mode blurb says "10 games". */
     public function blurb(): string
     {

@@ -248,7 +248,7 @@ new class extends Component
             </div>
 
             @if ($mode !== null)
-                <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ $mode->blurb() }}</p>
+                <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ $this->group->flavorEnum()?->blurb() ?? $mode->blurb() }}</p>
             @endif
 
             <flux:subheading>{{ Voice::line('join.pitch', ['group' => $this->group->name]) }}</flux:subheading>

@@ -9,9 +9,11 @@ use App\Models\Group;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateEntry;
+use App\Models\TeamSeason;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Cadence;
+use App\Support\LobbyCatalog;
 use App\Support\RankLadder;
 use App\Support\Voice;
 use Laravel\Pennant\Feature;
@@ -260,8 +262,9 @@ new class extends Component
                     ->where('week_id', $weekId)
                     ->whereNull('filled_at'))))
             ->withCount('memberships')
-            ->with(['contests.slates:id,contest_id,week_id,status,saturday'])
-            ->orderBy('name')
+            ->with(['contests.slates' => fn ($q) => $q
+                ->select('id', 'contest_id', 'week_id', 'status', 'saturday')
+                ->withCount('games')])
             ->get()
             ->filter(function (Group $group) use ($target) {
                 if (! $group->isRoom()) {
@@ -279,7 +282,33 @@ new class extends Component
                         && $slate->status === Slate::PUBLISHED
                         && ($target === null || $slate->saturday?->toDateString() === $target)) ?? false;
             })
+            // Catalog order, not alphabetical — the standard rooms lead,
+            // the specialty shelf follows, and the viewer's own conference
+            // fronts the conference family.
+            ->sortBy(fn (Group $group) => LobbyCatalog::sortKey($group, $this->viewerConference()))
             ->values();
+    }
+
+    /**
+     * The conference of the viewer's FIRST followed team this season —
+     * the room the conference family leads with, for them. Null for
+     * guests and the unaffiliated: catalog order.
+     */
+    private function viewerConference(): ?string
+    {
+        $teamId = auth()->user()?->followedTeams()
+            ->orderBy('team_follows.position')
+            ->value('teams.id');
+
+        if ($teamId === null) {
+            return null;
+        }
+
+        return TeamSeason::query()
+            ->where('team_id', $teamId)
+            ->where('season_year', app(CfbCalendar::class)->currentYear())
+            ->join('conferences', 'conferences.id', '=', 'team_seasons.conference_id')
+            ->value('conferences.abbreviation');
     }
 
     public function join(JoinGroup $action)
@@ -483,11 +512,18 @@ new class extends Component
 
             @forelse ($this->publics as $lobby)
                 @if ($lobby->isRoom() && $lobby->contests->first() !== null)
+                    @php
+                        $floorSlate = $lobby->contests->first()->slates
+                            ->first(fn ($slate) => $slate->week_id === $lobby->week_id && $slate->status === Slate::PUBLISHED);
+                    @endphp
+
                     <x-contest-card
                         wire:key="lobby-{{ $lobby->id }}"
                         :room="$lobby"
                         :mode="$lobby->contests->first()->mode"
                         :seats="$lobby->memberships_count"
+                        :flavor="$lobby->flavorEnum()"
+                        :game-count="$floorSlate?->games_count"
                     />
                 @else
                     <div

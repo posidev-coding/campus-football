@@ -150,6 +150,13 @@
         instruction (who he rides), said plainly; the tagline under it is
         his voice, and his actual side sits pawed on every card below.
     --}}
+    {{-- A kicker room says its house rule out loud, over the board. --}}
+    @if (($kickerPoints = $engine->kickerPoints()) !== null && ($kickerNote = App\Support\Voice::line('picks.kicker.underdog_note', ['points' => $kickerPoints])) !== '')
+        <div class="rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
+            {{ $kickerNote }}
+        </div>
+    @endif
+
     @if ($slate->bear_theme !== null)
         <div class="flex items-start gap-3 rounded-xl border border-red-900/40 bg-zinc-900 px-4 py-3 text-zinc-100 dark:border-red-950 dark:bg-black">
             <flux:icon.paw-print class="mt-0.5 size-5 shrink-0 text-red-500 dark:text-red-400" />

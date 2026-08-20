@@ -1023,6 +1023,59 @@ class Voice
         ],
 
         /*
+         * THE SPECIALTY SHELF — one zinger per flavored room, rendered
+         * under the card's factual blurb: LobbyFlavor::blurb() sizes and
+         * prices the card, these are the mood. The conference family
+         * shares one key with a :conference replacement.
+         */
+        'lobby.flavor.zinger.ranked_action' => [
+            'pg' => 'Every ranked team, one card. Bring a pencil.',
+            'pg13' => 'All the ranked teams at once. Your poll takes are about to be graded.',
+            'r' => "Every ranked team on one card. Somebody's poll darling is getting exposed by 4pm.",
+        ],
+
+        'lobby.flavor.zinger.under_lights' => [
+            'pg' => 'Night games only — the good stuff.',
+            'pg13' => 'Nothing before 7. Chaos keeps late hours.',
+            'r' => 'After dark is when the bad beats come out. Daylight is for cowards.',
+        ],
+
+        'lobby.flavor.zinger.two_minute' => [
+            'pg' => 'Five picks, in and out.',
+            'pg13' => "Five picks. Blow this one and it's fully on you.",
+            'r' => 'Five picks. Tank a five-game card and the room will remember.',
+        ],
+
+        'lobby.flavor.zinger.upset_alley' => [
+            'pg' => 'Back a dog that wins outright and collect the bonus.',
+            'pg13' => 'Dogs that bite pay extra here.',
+            'r' => 'Chalk is for cowards. Dogs that win outright get paid.',
+        ],
+
+        'lobby.flavor.zinger.back_porch' => [
+            'pg' => "The founders' game at a small table — no hiding.",
+            'pg13' => 'Ten seats. Small table, long memories.',
+            'r' => 'Ten seats, nowhere to hide, and the Bear smells fear at close range.',
+        ],
+
+        'lobby.flavor.zinger.conference' => [
+            'pg' => ':conference pride, settled on Saturday.',
+            'pg13' => ':conference Saturdays are a family argument with kickoff times.',
+            'r' => "A full :conference Saturday: twelve grudges and somebody's coach on the hot seat by midnight.",
+        ],
+
+        /*
+         * The upset kicker's house rule, said plainly over the board — an
+         * instruction first, so every register keeps the mechanics
+         * (cover AND win outright, +:points) intact.
+         */
+        'picks.kicker.underdog_note' => [
+            'pg' => 'Upset kicker: a dog pick that covers AND wins outright pays :points extra.',
+            'pg13' => 'Upset kicker: your dog covers and wins the game, you bank +:points on top.',
+            'r' => 'Upset kicker: dog covers, dog wins outright — +:points and permanent bragging rights.',
+        ],
+
+        /*
          * The invite landing — /join/{CODE}, the URL a group travels by.
          * The preview card's facts stay plain; these lines are the mood
          * around the one decision on the screen.

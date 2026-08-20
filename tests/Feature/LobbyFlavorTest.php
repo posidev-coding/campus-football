@@ -8,6 +8,9 @@ use App\Models\Game;
 use App\Models\Group;
 use App\Models\Slate;
 use App\Models\User;
+use App\Support\LobbyCatalog;
+use App\Support\Voice;
+use Livewire\Livewire;
 
 /*
  * The flavored floor: specialty rooms are (mode, flavor) shapes whose
@@ -146,6 +149,45 @@ it('respawns a filled room as the SAME shape: flavor, cap, settings, Saturday', 
 
     expect($nextSlate->games()->count())->toBe(5)
         ->and($nextSlate->saturday->toDateString())->toBe('2026-09-05');
+});
+
+it('sells the floor in catalog order with honest flavored cards', function () {
+    [, $week] = lobbyFlavorWeek();
+
+    app(SpawnPublicContest::class)->handle(ContestMode::Woodshed, $week);
+    app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+    app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::TwoMinuteDrill);
+
+    $viewer = pickemAdmin();
+
+    Livewire::actingAs($viewer)->test('lobby')
+        // Standard rooms lead in mode order; the specialty shelf follows —
+        // never alphabetical, which would bury Hail Mary under Back Porch.
+        ->assertSeeInOrder(['Hail Mary', 'The Splinter', 'Two-Minute Drill'])
+        // The flavored card sells ITS card, not the mode's ten-game pitch.
+        ->assertSee('The flash card: 5 games, in and out. 10 points a game.')
+        ->assertSee(Voice::line('lobby.flavor.zinger.two_minute', for: $viewer));
+});
+
+it('says the kicker house rule out loud, over the board', function () {
+    [, $week] = lobbyFlavorWeek();
+
+    $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::UpsetAlley);
+    $viewer = pickemAdmin();
+    app(JoinGroup::class)->handle($viewer, $room);
+
+    Livewire::actingAs($viewer)->test('group', ['group' => $room->fresh()])
+        ->assertSee(Voice::line('picks.kicker.underdog_note', ['points' => 2], for: $viewer));
+});
+
+it('fronts the conference family with the viewer\'s own conference', function () {
+    $mine = new Group(['kind' => Group::KIND_LOBBY, 'week_id' => 1, 'flavor' => 'conf_b1g', 'name' => 'Big Ten Blitz']);
+    $sec = new Group(['kind' => Group::KIND_LOBBY, 'week_id' => 1, 'flavor' => 'conf_sec', 'name' => 'SEC Showdown']);
+
+    // My conference leads the family; without a viewer it sits in case
+    // order behind the SEC.
+    expect(LobbyCatalog::sortKey($mine, 'big10') <=> LobbyCatalog::sortKey($sec, 'big10'))->toBeLessThan(0)
+        ->and(LobbyCatalog::sortKey($mine) <=> LobbyCatalog::sortKey($sec))->toBeGreaterThan(0);
 });
 
 it('stocks only what the opening card can seat, through the sweep', function () {

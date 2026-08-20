@@ -97,7 +97,7 @@ class PickemSettings extends Page
                         ->columns(2),
 
                     Section::make('Public rooms')
-                        ->description('Seats in each transient public contest. When a room fills, the next one opens itself. Blank means the shipped default: '.Group::DEFAULT_LOBBY_CAP.'.')
+                        ->description('Seats in each STANDARD public room. When a room fills, the next one opens itself. Blank means the shipped default: '.Group::DEFAULT_LOBBY_CAP.'. Specialty rooms (Ranked Action, the flash card, the conference family) carry their own caps in the catalog.')
                         ->schema([
                             TextInput::make('lobby_member_cap')
                                 ->label('Seats per room')

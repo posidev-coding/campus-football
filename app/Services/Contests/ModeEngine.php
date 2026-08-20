@@ -79,6 +79,17 @@ abstract class ModeEngine
     }
 
     /**
+     * The upset kicker's bonus when this contest carries one, or null —
+     * what the pick surface reads to say the house rule out loud.
+     */
+    public function kickerPoints(): ?int
+    {
+        return $this->setting('kicker') === 'underdog_ml'
+            ? (int) $this->setting('kicker_points', 2)
+            : null;
+    }
+
+    /**
      * The settings-driven bonus arm of a winning pick. `underdog_ml`: the
      * dog pick covered (that is the win this rides on) AND won the game
      * outright — judged only on a COMPLETED game, so live grading pays the

@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Enums\ContestMode;
 use App\Enums\LobbyFlavor;
 use App\Models\Contest;
+use App\Models\Group;
 use App\Models\Week;
 use App\Services\Contests\SuggestSlate;
 use Carbon\CarbonInterface;
@@ -45,6 +46,39 @@ class LobbyCatalog
             // spawn through the same door either way, so enabling one is
             // one line here.
         ];
+    }
+
+    /**
+     * The floor's display order: standard rooms first in mode order, then
+     * the specialty shelf in flavor-case order — with the viewer's own
+     * conference leading the conference family, which is the whole reason
+     * the family exists — and evergreen lobbies last. Name breaks ties.
+     *
+     * @return array{0: int, 1: float, 2: string}
+     */
+    public static function sortKey(Group $room, ?string $viewerConference = null): array
+    {
+        if (! $room->isRoom()) {
+            return [2, 0.0, (string) $room->name];
+        }
+
+        $flavor = $room->flavorEnum();
+
+        if ($flavor === null) {
+            $index = array_search($room->contests->first()?->mode, ContestMode::cases(), true);
+
+            return [0, (float) ($index === false ? 99 : $index), (string) $room->name];
+        }
+
+        $index = (float) array_search($flavor, LobbyFlavor::cases(), true);
+
+        if ($viewerConference !== null && $flavor->conference() === $viewerConference) {
+            // Half a step in front of the conference block: first of the
+            // family, never ahead of the shelf before it.
+            $index = array_search(LobbyFlavor::SecShowdown, LobbyFlavor::cases(), true) - 0.5;
+        }
+
+        return [1, $index, (string) $room->name];
     }
 
     /**
