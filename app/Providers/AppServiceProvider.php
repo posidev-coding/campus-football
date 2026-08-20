@@ -89,11 +89,17 @@ class AppServiceProvider extends ServiceProvider
         Feature::define('guided-tour', fn (): bool => true);
 
         /*
-         * Phase 5, mid-build: admins see the real Pick'em surfaces, everyone
-         * else keeps the coming-soon screen. Flips to `true` at launch.
+         * Admins see the real Pick'em surfaces while `cfb.pickem_open` is
+         * false; everyone else keeps the coming-soon screen. Launch is that
+         * config going true (PICKEM_OPEN in the environment), so the flip is
+         * reversible in seconds and needs no deploy — run
+         * `php artisan pickem:preflight` first, which reports the same config
+         * rather than resolving this closure and persisting a row to ask.
+         *
          * Nullable user — Pennant resolves guests to a null scope, and a
-         * guest is never inside the flag.
+         * guest is never inside the flag whatever the config says.
          */
-        Feature::define('pickem', fn (?User $user): bool => (bool) $user?->isAdmin());
+        Feature::define('pickem', fn (?User $user): bool => $user !== null
+            && (config('cfb.pickem_open') === true || $user->isAdmin()));
     }
 }

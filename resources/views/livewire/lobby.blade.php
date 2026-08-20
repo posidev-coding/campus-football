@@ -12,6 +12,7 @@ use App\Models\SlateEntry;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Cadence;
+use App\Support\RankLadder;
 use App\Support\Voice;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
@@ -37,6 +38,30 @@ new class extends Component
     public function showLobby(): bool
     {
         return auth()->check() && Feature::active('pickem');
+    }
+
+    /**
+     * The reader's rung, and the climb to the next one.
+     *
+     * The header chip has room for the NAME and nothing else, so this is the
+     * only surface where the next rung is named — which is what stops
+     * "Captain" from being a word with no scale behind it. No extra query:
+     * walletTotals() is memoized per request and the ladder is arithmetic.
+     *
+     * @return array{name: string, floor: int, next: string|null, at: int|null, remaining: int|null, progress: float}|null
+     */
+    #[Computed]
+    public function rank(): ?array
+    {
+        return auth()->check()
+            ? RankLadder::for($this->walletXp)
+            : null;
+    }
+
+    #[Computed]
+    public function walletXp(): int
+    {
+        return auth()->check() ? auth()->user()->walletTotals()['xp'] : 0;
     }
 
     /**
@@ -400,6 +425,44 @@ new class extends Component
                         </p>
                     </a>
                 @endforeach
+            </div>
+        @endif
+
+        {{-- ZONE 4b · THE LADDER. The header chip has room for the rung and
+             nothing else, so this is where the next one is named and the
+             climb has a number on it. Placed after the payoff and before the
+             doors: it reads as what last week bought you. --}}
+        @if ($this->rank !== null)
+            <div class="flex flex-col gap-2 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                <div class="flex items-baseline justify-between gap-3">
+                    <flux:heading size="lg" class="min-w-0 truncate">{{ $this->rank['name'] }}</flux:heading>
+                    <span class="tabular shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
+                        {{ number_format($this->walletXp) }} XP
+                    </span>
+                </div>
+
+                @if ($this->rank['next'] !== null)
+                    {{-- A share of the CURRENT rung's span, so the bar resets
+                         at each promotion instead of creeping toward Legend
+                         all season. --}}
+                    <div class="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                        <div
+                            class="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
+                            style="width: {{ round($this->rank['progress'] * 100, 2) }}%"
+                        ></div>
+                    </div>
+                    <p class="text-sm text-zinc-500 dark:text-zinc-400">
+                        {{ Voice::line('rank.to_next', [
+                            'remaining' => number_format($this->rank['remaining']),
+                            'next' => $this->rank['next'],
+                        ]) }}
+                    </p>
+                @else
+                    {{-- No next rung. `remaining` is null here, never a zero
+                         standing in for it — so the climb line is SKIPPED
+                         rather than rendered as a finished bar with no name. --}}
+                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('rank.topped_out') }}</p>
+                @endif
             </div>
         @endif
 

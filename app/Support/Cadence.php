@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\PickemSetting;
 use App\Models\Week;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 
 /**
  * The league's weekly clock: when a board must be set, and when a week's
@@ -108,6 +109,34 @@ class Cadence
         $daysAfter = ($dow - 6 + 7) % 7 ?: 7;
 
         return $saturday->addDays($daysAfter)->setTimeFromTimeString($time);
+    }
+
+    /**
+     * The configured slate deadline as a plain weekday-and-time label, for
+     * anything reporting the league's clock rather than resolving a moment
+     * on it (the preflight, the settings page's own summary line).
+     */
+    public static function deadlineLabel(): string
+    {
+        return self::label(
+            self::settings()->slate_deadline_dow ?? self::DEADLINE_DOW,
+            self::settings()->slate_deadline_time ?? self::DEADLINE_TIME,
+        );
+    }
+
+    public static function officialLabel(): string
+    {
+        return self::label(
+            self::settings()->official_final_dow ?? self::OFFICIAL_DOW,
+            self::settings()->official_final_time ?? self::OFFICIAL_TIME,
+        );
+    }
+
+    private static function label(int $dow, string $time): string
+    {
+        $day = CarbonImmutable::now()->startOfWeek(CarbonInterface::SUNDAY)->addDays($dow);
+
+        return $day->format('D').' '.CarbonImmutable::createFromTimeString($time)->format('g:ia').' ET';
     }
 
     private static function settings(): PickemSetting

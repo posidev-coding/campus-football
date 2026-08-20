@@ -4,7 +4,7 @@
 product moves. Everything else in `docs/` describes what is already true; this
 describes what we are trying to build and how far along it is.
 
-Last reviewed: 2026-08-13.
+Last reviewed: 2026-08-20.
 
 ---
 
@@ -58,9 +58,12 @@ demoted to the spoken-word fallback), gave every mode an identity (icon +
 palette) — and shipped THE WOODSHED LIVE: the founders' rules were
 recovered (email + the 2016 code) and implemented, Classic was renamed
 Shotgun, and points rebalanced so every mode's perfect week is ~100
-(Woodshed 101). See [game-modes.md](game-modes.md). Still open in Phase 5:
-conversations, the gamification finish (rank ladder), notifications, and
-flip prep.
+(Woodshed 101). See [game-modes.md](game-modes.md). Phase 5 CLOSED
+2026-08-20 with its last three slices: The Conversation at three scopes,
+the gamification finish (the RankLadder plus the two capped daily earns),
+and flip prep — `PICKEM_OPEN` as the launch switch and `pickem:preflight`
+as the readiness gate. The flag is still admin-only: flipping it is a
+decision, not a slice. Phase 6's notification loop is what comes next.
 
 ### Phase 1 — Data foundation ✅
 
@@ -126,7 +129,7 @@ Reference: [operations.md](operations.md)
 
 ---
 
-## Phase 5 — Pick'em, Groups & Gamification ← **next**
+## Phase 5 — Pick'em, Groups & Gamification ✅ (August 2026)
 
 The product's point. Planned 2026-08-13 (plan iteration 1, approved); the old
 Phases 5–7 collapsed into this one phase, because two of its decisions made
@@ -227,9 +230,8 @@ daily-login rewards, no timers, no FOMO.
 **Slices** (each lands green and invisible without the flag): schema and
 factories → engine core (modes, grader, quality score, suggestions) →
 groups → slate build and publish → picking → scoring and settlement →
-~~conversations~~ → gamification finish → flip prep. The first six are the
-flippable minimum; conversations and gamification may trail the flip if the
-season arrives first.
+~~conversations~~ → ~~gamification finish~~ → ~~flip prep~~. All nine have
+landed; what remains before launch is a decision, not a slice.
 
 **The Conversation shipped 2026-08-20** — one Livewire component at the
 three sanctioned scopes, mounted at the FOOT of Game, Team and Group rather
@@ -246,9 +248,47 @@ whole and never quietly rewritten. The handle claim now lives in
 `ClaimsHandle`, shared with the pick surface, because it is one claim
 raised at whichever comes first: the first pick or the first post.
 
+**The gamification finish shipped 2026-08-20.** `App\Support\RankLadder`
+replaces the chips' "Rookie" literal — Walk-On · Redshirt · Rotation ·
+Starter · Captain · All-American · Legend, thresholds roughly doubling, a
+pure function of `walletTotals()['xp']` with no table and no stored column,
+so rebalancing is a deploy. The chip has room for the rung alone; the Lobby
+carries the only surface that names the NEXT one and the XP left to it, and
+at the top of the ladder `next`/`remaining` are NULL and the line is SKIPPED
+rather than rendered as a finished bar. Rung names deliberately stay out of
+Voice: a rank is a label you compare with somebody else's, so it says the
+same word in every register.
+
+Two capped daily earns landed with it, and the cap in both is the KEY, never
+throttle code: `GrantWalletEntry::daily()` stamps the FOOTBALL day (Eastern —
+01:00 UTC Sunday is still Saturday night) into the key, so the `(user_id,
+key)` unique index is the anti-farming cap itself and a race under-pays by
+one rather than paying twice. **Talking** pays 5 XP three times a day —
+deliberately a smaller number than the conversation limiter allows in one
+minute, because a limiter stops a flood and a cap stops farming. **The Film
+Room** pays 5 XP for up to five DIFFERENT games a day, slotted by game id, so
+re-reading the same box score earns once ever; it fires from the game
+screen's `mount()` and tab hook and never from `render()`, which re-runs
+every thirty seconds on a live game. Only Preview and Box count — a score is
+not film. Guests and unverified accounts earn nothing and are shown nothing:
+reading is never gated.
+
+**Flip prep shipped the same day.** The `pickem` flag now reads
+`config('cfb.pickem_open')` / `PICKEM_OPEN`, so launch is an environment
+change with an instant rollback rather than a deploy. `pickem:preflight`
+reports what has to be true underneath it and exits non-zero while anything
+blocks. The landmine it exists for: Pennant's database driver PERSISTS
+resolved values, so flipping the config reaches nobody who has already loaded
+a page until `pennant:purge pickem` clears their rows — full procedure in
+[operations.md](operations.md).
+
+**Still deliberately unbuilt:** the perfect-week bonus and streaks, which
+remain iteration-2 items — streaks are the part with real retention value and
+the part most likely to feel cheap if done badly. `contests.settings`
+overrides for the founders' Woodshed numbers are likewise still a landing pad.
+
 **Open for plan iteration 2:** the proposed Pitch/Keep/Dive tier names (as
-screen vocabulary); XP numbers, ladder names, perfect-week bonus and streak
-design; lobby shape (one house lobby vs per-conference); member caps and
+screen vocabulary); perfect-week bonus and streak design; lobby shape (one house lobby vs per-conference); member caps and
 multiple group membership (default: yes); `contests.settings` overrides for
 the founders' Woodshed numbers. ~~Tier values and sizes~~ — settled
 2026-08-14 at 9/7/4 and 5/5/5 (the ~100 parity principle, see
@@ -266,7 +306,7 @@ by the half-point law: pushes are structurally impossible.
   above it stay factual.
 - Roast the pick, the team, the record — never the person.
 
-## Phase 6 — Notifications and the weekly loop
+## Phase 6 — Notifications and the weekly loop ← **next**
 
 Partly built already — `WeeklyDigest`, `SendWeeklyNewsletter`, the SMS
 channel, and now WEB PUSH end to end: VAPID + `push_subscriptions`

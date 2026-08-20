@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\EnterFilmRoom;
 use App\Jobs\FetchGameSummary;
 use App\Models\Athlete;
 use App\Models\AthleteGameStat;
@@ -73,6 +74,25 @@ new class extends Component
 
         $this->hydrateSummary();
         $this->normalizeTab();
+        $this->openFilmRoom();
+    }
+
+    /**
+     * Landing on a tab is what pays the Film Room, so this hangs off mount
+     * and the tab hook — NEVER render(), which re-runs on every poll of a
+     * live game and would turn one earn into a query per 30 seconds.
+     */
+    public function updatedTab(): void
+    {
+        $this->normalizeTab();
+        $this->openFilmRoom();
+    }
+
+    private function openFilmRoom(): void
+    {
+        if (auth()->check()) {
+            app(EnterFilmRoom::class)->handle(auth()->user(), $this->game, $this->tab);
+        }
     }
 
     /**

@@ -37,10 +37,14 @@ The Pick'em teaser card WAS deliberately inert; the Picks area is REAL now
 navigates there. Outside the `pickem` flag the teaser still wears "Coming
 soon", matching the promise the lobby itself keeps for outsiders. The
 wallet chips (`x-wallet-chips`: Beast Latte balance and XP are REAL sums
-from the wallet ledger now — verification pays 100 XP + 1 latte, the
-onboarding moment seeds 25 XP — while the rank stays the literal "Rookie"
-until Phase 5's gamification slice defines the ladder) ride `x-home-nav`'s reserved slot
-below `sm` and the layout header above, both wearing `data-tour="wallet"`.
+from the wallet ledger — verification pays 100 XP + 1 latte, the onboarding
+moment seeds 25 XP — and so is the RANK, computed from that XP total by
+`App\Support\RankLadder`: Walk-On · Redshirt · Rotation · Starter · Captain
+· All-American · Legend, a pure function of one integer with no stored
+column to drift. The chip has room for the rung and nothing else, so the
+Lobby carries the only surface that names the NEXT one) ride `x-home-nav`'s
+reserved slot below `sm` and the layout header above, both wearing
+`data-tour="wallet"`.
 
 **The last card is an empty SLOT until five teams are followed, and the
 first is Bandwagon State until ONE is.** Onboarding happens in place: a

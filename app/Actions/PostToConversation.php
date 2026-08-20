@@ -35,6 +35,8 @@ use InvalidArgumentException;
  */
 class PostToConversation
 {
+    public function __construct(private GrantWalletEntry $wallet) {}
+
     /**
      * The `body` column's own width. Checked here so the 501st character is
      * a refusal the writer can see rather than a silent MySQL truncation
@@ -112,11 +114,27 @@ class PostToConversation
         // the author's budget, or a typo costs them their next minute.
         RateLimiter::hit($key, self::WINDOW);
 
-        return ConversationPost::query()->create([
+        $post = ConversationPost::query()->create([
             'topic_type' => $scope,
             'topic_id' => $topic->getKey(),
             'user_id' => $user->id,
             'body' => $body,
         ]);
+
+        /*
+         * Talking pays, three times a day. The cap is deliberately lower than
+         * the limiter allows in a single minute: the limiter stops a flood,
+         * this stops FARMING, and the two want different numbers. Paid after
+         * the row exists, so an earn can never outlive the post it was for.
+         */
+        $this->wallet->daily(
+            $user,
+            GrantWalletEntry::TALK_XP,
+            0,
+            GrantWalletEntry::REASON_TALK,
+            GrantWalletEntry::TALK_DAILY_CAP,
+        );
+
+        return $post;
     }
 }

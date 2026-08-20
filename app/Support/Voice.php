@@ -1221,6 +1221,23 @@ class Voice
             'pg13' => 'Gone. Like it never happened.',
             'r' => 'Deleted. We\'ll all pretend we didn\'t read it.',
         ],
+
+        /*
+         * The ladder. Rung NAMES are not here on purpose — a rank is a label
+         * the reader scans for and compares with somebody else's, so it says
+         * the same word in every register. What speaks is the copy around it.
+         */
+        'rank.to_next' => [
+            'pg' => ':remaining XP to :next.',
+            'pg13' => ':remaining XP and you\'re a :next.',
+            'r' => ':remaining XP from :next. Nobody\'s handing it to you.',
+        ],
+
+        'rank.topped_out' => [
+            'pg' => 'Top of the ladder. Nothing left to climb.',
+            'pg13' => 'Top of the ladder. There is nothing above this.',
+            'r' => 'Top of the ladder. Everyone else is still climbing.',
+        ],
     ];
 
     /**
