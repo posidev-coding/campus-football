@@ -96,10 +96,19 @@ class AppServiceProvider extends ServiceProvider
          * `php artisan pickem:preflight` first, which reports the same config
          * rather than resolving this closure and persisting a row to ask.
          *
-         * Nullable user — Pennant resolves guests to a null scope, and a
-         * guest is never inside the flag whatever the config says.
+         * OPEN MEANS OPEN, GUESTS INCLUDED. Pennant resolves a guest to a
+         * NULL SCOPE, so an earlier `$user !== null` guard here locked out
+         * exactly the person an invite link is aimed at: /join/{CODE} bounces
+         * the whole screen when this flag is inactive, so a signed-out
+         * visitor clicking a shared link landed on the coming-soon page and
+         * the acquisition funnel died silently. The guard was right while the
+         * flag was admin-only and wrong the moment it opened.
+         *
+         * Any test for this must flip the CONFIG. `Feature::define('pickem',
+         * true)` is a literal that answers true for the null scope too, which
+         * is what hid the bug through a green InviteTest.
          */
-        Feature::define('pickem', fn (?User $user): bool => $user !== null
-            && (config('cfb.pickem_open') === true || $user->isAdmin()));
+        Feature::define('pickem', fn (?User $user): bool => config('cfb.pickem_open') === true
+            || (bool) $user?->isAdmin());
     }
 }

@@ -140,6 +140,42 @@ it('bounces the whole screen to the lobby outside the flag', function () {
         ->assertRedirect(route('pickem.lobby'));
 });
 
+it('lets a SIGNED-OUT visitor through the moment the launch config opens', function () {
+    /*
+     * The acquisition funnel, and the one shape the rest of this file cannot
+     * see. Pennant resolves a guest to a NULL SCOPE, so a flag keyed to a
+     * user resolves false for exactly the person a Slack link is aimed at —
+     * they land on the coming-soon page and the invite dies silently.
+     *
+     * Every other test here stubs `Feature::define('pickem', true)`, a
+     * literal that answers true for the null scope too. That stub is what
+     * hid this. So this one flips the real CONFIG instead, which is what
+     * launch actually does.
+     */
+    [, $group] = pickemContest(ContestMode::Tiered);
+    $group->update(['name' => 'Third Saturday Pickers']);
+
+    config(['cfb.pickem_open' => true]);
+
+    expect(Feature::for(null)->active('pickem'))->toBeTrue();
+
+    Livewire::test('join', ['code' => $group->code])
+        ->assertNoRedirect()
+        ->assertSee('Third Saturday Pickers')
+        ->assertSee('Take your seat');
+});
+
+it('keeps a signed-out visitor OUT while the launch config is closed', function () {
+    // The other half, so the test above cannot pass by simply opening the
+    // door to everybody forever.
+    [, $group] = pickemContest();
+
+    expect(Feature::for(null)->active('pickem'))->toBeFalse();
+
+    Livewire::test('join', ['code' => $group->code])
+        ->assertRedirect(route('pickem.lobby'));
+});
+
 it('never lets a room advertise a code or a /join link', function () {
     // Rooms are joined from the lobby floor; PickemGroupsTest pins the
     // no-code rule, and this is its companion for the link era.

@@ -104,16 +104,33 @@ it('reports the flag as open once the config actually says so', function () {
         ->and(DB::table('features')->count())->toBe(0);
 });
 
-it('opens the real surfaces to a non-admin when the config is flipped', function () {
-    // The config is not decoration on the flag — it IS the flag, and this is
-    // the assertion that would fail if the two ever drifted apart.
+it('opens the real surfaces to a non-admin AND to a guest when the config is flipped', function () {
+    /*
+     * The config is not decoration on the flag — it IS the flag, and this is
+     * the assertion that would fail if the two ever drifted apart.
+     *
+     * The GUEST half is the one that matters commercially. Pennant resolves a
+     * signed-out visitor to a null scope, and /join/{CODE} bounces its whole
+     * screen when this flag is inactive — so a flag that excluded the null
+     * scope would send everybody who clicked a shared invite link to the
+     * coming-soon page. Open means open. InviteTest holds the other end.
+     */
     $ordinary = User::factory()->create(['admin' => false]);
+
+    expect(Feature::for($ordinary)->active('pickem'))->toBeFalse()
+        ->and(Feature::for(null)->active('pickem'))->toBeFalse();
 
     config(['cfb.pickem_open' => true]);
 
+    // Asking the two questions above PERSISTED both answers — so this test
+    // has to purge for the same reason launch does. Without it the flip
+    // reaches neither of them and this assertion fails, which is precisely
+    // the production failure the next test pins.
+    $this->artisan('pennant:purge', ['features' => ['pickem']])->assertSuccessful();
+    Feature::flushCache();
+
     expect(Feature::for($ordinary)->active('pickem'))->toBeTrue()
-        // A guest is still outside it, whatever the config says.
-        ->and(Feature::for(null)->active('pickem'))->toBeFalse();
+        ->and(Feature::for(null)->active('pickem'))->toBeTrue();
 });
 
 it('does NOT reach somebody whose value was already persisted — the flip landmine', function () {
