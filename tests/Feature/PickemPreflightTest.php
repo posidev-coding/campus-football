@@ -45,6 +45,14 @@ it('passes the calendar and rooms checks once the floor is actually stocked', fu
     $slate = pickemDraftBoard($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
 
+    // Five more lined games so the FIFTEEN-game modes are feasible on this
+    // Saturday — otherwise the check would EXEMPT them ("not enough games")
+    // instead of naming them missing, and this test would pass hollow.
+    [$season, $week] = pickemSeasonWeek();
+    foreach (range(1, 5) as $i) {
+        pickemOdd(pickemGame($season, $week));
+    }
+
     // A published slate in a PRIVATE group is not a stocked public floor.
     expect(preflight()['rooms']['status'])->toBe(PickemPreflight::FAIL);
 

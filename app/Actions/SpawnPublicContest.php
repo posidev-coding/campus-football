@@ -3,32 +3,38 @@
 namespace App\Actions;
 
 use App\Enums\ContestMode;
+use App\Enums\LobbyFlavor;
 use App\Models\Group;
 use App\Models\PickemSetting;
 use App\Models\Slate;
 use App\Models\Week;
 use App\Support\Cadence;
+use App\Support\LobbyCatalog;
+use App\Support\RoomNames;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * Provision the NEXT public room for a mode-SATURDAY: a lobby-kind group
- * with a deterministic name ("Triple Option Open · Sep 12 · Room 2"), the
- * admin's seat cap, ONE contest — and a PUBLISHED slate, because a public
- * room with nothing to pick is a broken promise on the lobby floor.
+ * Provision the NEXT public room of one shape — a (mode, flavor) pair on
+ * one SATURDAY: a lobby-kind group named from the floor's pools, the
+ * shape's seat cap, ONE contest stamped with the shape's settings — and a
+ * PUBLISHED slate, because a public room with nothing to pick is a broken
+ * promise on the lobby floor.
  *
- * The slate is CLONED from a filled sibling when one exists: every room
- * of a mode-week plays the identical house slate, so "I went 12-3 in the
- * Open" means the same thing in Room 1 and Room 4, and a room spawned
- * Thursday is immune to the market drifting since Room 1 froze. The first
- * room of a mode-week (no sibling) gets the standard slate through the
- * same door the deadline sweep uses.
+ * The slate is CLONED from a published sibling of the SAME shape when one
+ * exists: every room of a shape-Saturday plays the identical house board,
+ * so "I went 12-3 in Hail Mary" means the same thing in Hail Mary and
+ * Flea Flicker, and a room spawned Thursday is immune to the market
+ * drifting since the first froze. Contest settings are copied verbatim
+ * with the board — a poll landing mid-week must not resize a cloned card.
+ * The first room of a shape resolves its settings fresh from the catalog,
+ * which is also the feasibility gate: an impossible Saturday (Week 0
+ * cannot seat a fifteen-game mode) spawns NOTHING rather than a thin
+ * board that lies.
  *
  * NO commissioner seat: the house runs these rooms, and no copy inside
  * one may ever say "ask your commissioner".
- *
- * Returns null when the week cannot support a valid slate — a thin week
- * spawns nothing rather than an empty room.
  */
 class SpawnPublicContest
 {
@@ -37,47 +43,51 @@ class SpawnPublicContest
         private PublishSlate $publish,
     ) {}
 
-    public function handle(ContestMode $mode, Week $week, ?CarbonInterface $saturday = null): ?Group
+    public function handle(ContestMode $mode, Week $week, ?CarbonInterface $saturday = null, ?LobbyFlavor $flavor = null): ?Group
     {
-        /*
-         * Rooms are named for the SATURDAY they play, not the ESPN week they
-         * sit in — 2026's Week 1 holds two, so "Week 1 · Room 1" would name
-         * two different cards a fortnight apart. The ordinal counts rooms on
-         * that Saturday for that mode, which is what "Room 2" means to
-         * somebody looking at the floor.
-         */
         $saturday ??= Cadence::saturdayOf($week);
 
         if ($saturday === null) {
             return null;
         }
 
-        $ordinal = Group::query()
-            ->where('kind', Group::KIND_LOBBY)
-            ->where('week_id', $week->id)
-            ->whereHas('contests', fn ($q) => $q
-                ->where('mode', $mode)
-                ->whereHas('slates', fn ($s) => $s->where('saturday', $saturday->format('Y-m-d'))))
-            ->count() + 1;
+        $sibling = $this->publishedSibling($mode, $week, $saturday, $flavor);
 
-        $sibling = $this->publishedSibling($mode, $week, $saturday);
+        if ($sibling !== null) {
+            $settings = $sibling->contest->settings;
+        } else {
+            $resolved = LobbyCatalog::resolve($mode, $flavor, $week, $saturday);
+
+            if ($resolved === null) {
+                Log::info('Lobby room infeasible for its Saturday; not spawned.', [
+                    'mode' => $mode->value,
+                    'flavor' => $flavor?->value,
+                    'saturday' => $saturday->format('Y-m-d'),
+                ]);
+
+                return null;
+            }
+
+            $settings = $resolved['settings'];
+        }
 
         do {
             $code = Str::upper(Str::random(8));
         } while (Group::where('code', $code)->exists());
 
         $group = Group::create([
-            'name' => "{$mode->label()} Open · {$saturday->format('M j')} · Room {$ordinal}",
+            'name' => $this->name($mode, $flavor, $week, $saturday),
             'code' => $code,
             'kind' => Group::KIND_LOBBY,
+            'flavor' => $flavor?->value,
             'week_id' => $week->id,
-            'member_cap' => PickemSetting::lobbyMemberCap(),
+            'member_cap' => $flavor?->cap() ?? PickemSetting::lobbyMemberCap(),
         ]);
 
         $contest = $group->contests()->create([
             'season_year' => (int) $week->season->year,
             'mode' => $mode,
-            'settings' => null,
+            'settings' => $settings,
         ]);
 
         $published = $sibling === null
@@ -94,8 +104,31 @@ class SpawnPublicContest
         return $group;
     }
 
-    /** The mode-SATURDAY's house slate, from any sibling room that has one. */
-    private function publishedSibling(ContestMode $mode, Week $week, CarbonInterface $saturday): ?Slate
+    /**
+     * Rooms wear NAMES, not serials: standard rooms draw from their mode's
+     * pool, specialties carry their marquee, and either takes a Roman
+     * numeral when this Saturday's floor already used the name.
+     */
+    private function name(ContestMode $mode, ?LobbyFlavor $flavor, Week $week, CarbonInterface $saturday): string
+    {
+        $taken = Group::query()
+            ->where('kind', Group::KIND_LOBBY)
+            ->where('week_id', $week->id)
+            ->whereHas('contests.slates', fn ($s) => $s->where('saturday', $saturday->format('Y-m-d')))
+            ->pluck('name');
+
+        return $flavor === null
+            ? RoomNames::next($mode, $taken)
+            : RoomNames::successor($flavor->label(), $taken);
+    }
+
+    /**
+     * The shape-Saturday's house slate, from any sibling room of the SAME
+     * flavor that has one. The flavor condition is load-bearing: a flash
+     * card and the standard board share a mode, and without it they would
+     * cross-clone each other's slates.
+     */
+    private function publishedSibling(ContestMode $mode, Week $week, CarbonInterface $saturday, ?LobbyFlavor $flavor): ?Slate
     {
         return Slate::query()
             ->where('saturday', $saturday->format('Y-m-d'))
@@ -104,8 +137,9 @@ class SpawnPublicContest
                 ->where('mode', $mode)
                 ->whereHas('group', fn ($g) => $g
                     ->where('kind', Group::KIND_LOBBY)
-                    ->where('week_id', $week->id)))
-            ->with('games')
+                    ->where('week_id', $week->id)
+                    ->where('flavor', $flavor?->value)))
+            ->with(['games', 'contest:id,settings'])
             ->latest('id')
             ->first();
     }
@@ -152,7 +186,7 @@ class SpawnPublicContest
             'tiebreaker_metric' => $sibling->tiebreaker_metric,
             'tiebreaker_team_id' => $sibling->tiebreaker_team_id,
             // The sibling's Bear rides along BEFORE publish, whose
-            // null-guard then skips reseeding — every room of a mode-week
+            // null-guard then skips reseeding — every room of a shape-week
             // faces the identical Bear, same rule as the lines.
             'bear_theme' => $sibling->bear_theme,
         ]);

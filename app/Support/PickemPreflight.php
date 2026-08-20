@@ -111,35 +111,64 @@ class PickemPreflight
             return $this->row('rooms', 'Open public rooms', self::FAIL, 'No week to stock rooms for.', 'pickem:open-lobbies');
         }
 
+        $saturday = Cadence::floorSaturday($week);
+
+        if ($saturday === null) {
+            return $this->row('rooms', 'Open public rooms', self::FAIL, 'No Saturday to stock rooms for.', 'cfb:games --tier=current');
+        }
+
+        // The red line is the three STANDARD rooms — a specialty room of
+        // the same mode must never satisfy a shelf it does not stock.
         $open = Group::query()
             ->where('kind', Group::KIND_LOBBY)
             ->where('week_id', $week->id)
+            ->whereNull('flavor')
             ->whereNull('filled_at')
             ->pluck('id');
 
         $stocked = Slate::query()
             ->whereIn('status', [Slate::PUBLISHED, Slate::PRELIM])
+            ->where('saturday', $saturday->format('Y-m-d'))
             ->whereHas('contest', fn ($query) => $query->whereIn('group_id', $open))
             ->with('contest:id,group_id,mode')
             ->get()
             ->pluck('contest.mode')
             ->unique();
 
+        /*
+         * A mode the Saturday cannot seat is EXEMPT, not missing — the
+         * opening card holds eight usable games, and failing the fifteen-
+         * game shelves all week would teach the reader to ignore red.
+         */
+        $exempt = collect(ContestMode::cases())
+            ->reject(fn (ContestMode $mode) => $stocked->contains($mode))
+            ->filter(fn (ContestMode $mode) => LobbyCatalog::resolve($mode, null, $week, $saturday) === null);
+
         $missing = collect(ContestMode::cases())
             ->reject(fn (ContestMode $mode) => $stocked->contains($mode))
+            ->reject(fn (ContestMode $mode) => $exempt->contains($mode))
             ->map(fn (ContestMode $mode) => $mode->label());
+
+        $exemptNote = $exempt->isEmpty()
+            ? ''
+            : ' '.$exempt->map(fn (ContestMode $mode) => $mode->label())->implode(', ').': not enough games this Saturday.';
 
         if ($missing->isNotEmpty()) {
             return $this->row(
                 'rooms',
                 'Open public rooms',
                 self::FAIL,
-                'No open room with a published slate for: '.$missing->implode(', ').'.',
+                'No open room with a published slate for: '.$missing->implode(', ').'.'.$exemptNote,
                 'pickem:open-lobbies',
             );
         }
 
-        return $this->row('rooms', 'Open public rooms', self::OK, $stocked->count().' of '.count(ContestMode::cases()).' modes stocked.');
+        return $this->row(
+            'rooms',
+            'Open public rooms',
+            self::OK,
+            $stocked->count().' of '.(count(ContestMode::cases()) - $exempt->count()).' possible modes stocked.'.$exemptNote,
+        );
     }
 
     /**

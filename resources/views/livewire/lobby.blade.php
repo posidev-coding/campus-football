@@ -246,6 +246,11 @@ new class extends Component
     {
         $weekId = app(CfbCalendar::class)->defaultWeekId(app(CfbCalendar::class)->currentYear());
 
+        // The floor sells ONE Saturday at a time — inside a split opening
+        // week, 8/29's rooms and 9/5's must never share it.
+        $week = $weekId === null ? null : Week::find($weekId);
+        $target = $week === null ? null : Cadence::floorSaturday($week)?->toDateString();
+
         return Group::query()
             ->where('kind', Group::KIND_LOBBY)
             ->whereDoesntHave('memberships', fn ($q) => $q->where('user_id', auth()->id()))
@@ -255,10 +260,10 @@ new class extends Component
                     ->where('week_id', $weekId)
                     ->whereNull('filled_at'))))
             ->withCount('memberships')
-            ->with(['contests.slates:id,contest_id,week_id,status'])
+            ->with(['contests.slates:id,contest_id,week_id,status,saturday'])
             ->orderBy('name')
             ->get()
-            ->filter(function (Group $group) {
+            ->filter(function (Group $group) use ($target) {
                 if (! $group->isRoom()) {
                     return true;
                 }
@@ -267,11 +272,12 @@ new class extends Component
                     return false;
                 }
 
-                // Open means PICKABLE: the week's slate is out and not
-                // yet settled away.
+                // Open means PICKABLE: this Saturday's slate is out and
+                // not yet settled away.
                 return $group->contests->first()
                     ?->slates->contains(fn ($slate) => $slate->week_id === $group->week_id
-                        && $slate->status === Slate::PUBLISHED) ?? false;
+                        && $slate->status === Slate::PUBLISHED
+                        && ($target === null || $slate->saturday?->toDateString() === $target)) ?? false;
             })
             ->values();
     }

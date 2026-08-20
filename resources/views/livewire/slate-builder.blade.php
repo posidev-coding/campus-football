@@ -99,15 +99,11 @@ new class extends Component
 
         /*
          * The board is keyed to a SATURDAY, not to ESPN's week — one week
-         * can hold two of them. `currentSaturday()` is the one this pick'em
-         * week is playing (Tuesday turnover); the week's primary card is the
-         * fallback when the clock sits outside this week entirely.
+         * can hold two of them, and floorSaturday() is the one this
+         * pick'em week is playing (Tuesday turnover), falling back to the
+         * week's primary card outside the week entirely.
          */
-        $current = Cadence::currentSaturday();
-
-        $saturday = collect(Cadence::saturdaysIn($week))
-            ->first(fn ($day) => $day->toDateString() === $current->toDateString())
-            ?? Cadence::saturdayOf($week);
+        $saturday = Cadence::floorSaturday($week);
 
         abort_if($saturday === null, 404);
 

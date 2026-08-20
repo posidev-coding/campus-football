@@ -229,6 +229,22 @@ class Cadence
     }
 
     /**
+     * The Saturday a floor inside this week is ON: the current pick'em
+     * Saturday when it belongs to the week, else the week's primary card
+     * (the run-up to a season, or a report run before kickoff). The lobby
+     * floor, the stocking sweep, the preflight and the builder all ask
+     * this one question — one answer, or the floors drift apart.
+     */
+    public static function floorSaturday(Week $week): ?CarbonImmutable
+    {
+        $current = self::currentSaturday();
+
+        return collect(self::saturdaysIn($week))
+            ->first(fn (CarbonImmutable $day) => $day->toDateString() === $current->toDateString())
+            ?? self::saturdayOf($week);
+    }
+
+    /**
      * The Saturday of the pick'em week we are currently inside.
      *
      * Tuesday through Monday, so Sunday's results and Monday's arguing

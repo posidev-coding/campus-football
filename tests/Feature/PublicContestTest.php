@@ -44,7 +44,9 @@ it('spawns a complete room: named, capped, one contest, published slate, no comm
     $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
 
     expect($room)->not->toBeNull()
-        ->and($room->name)->toBe('Shotgun Open · Sep 5 · Room 1')
+        // The pool's first play call — a NAME, no date, no "Open", no
+        // serial: the mode chip and the floor's week say the boring facts.
+        ->and($room->name)->toBe('Hail Mary')
         ->and($room->kind)->toBe(Group::KIND_LOBBY)
         ->and($room->week_id)->toBe($week->id)
         ->and($room->member_cap)->toBe(Group::DEFAULT_LOBBY_CAP)
@@ -71,7 +73,7 @@ it('clones the sibling\'s FROZEN slate, immune to market drift', function () {
 
     // ...and Room 2 plays Room 1's exact lines anyway — comparable rooms,
     // by construction.
-    expect($second->name)->toBe('Shotgun Open · Sep 5 · Room 2')
+    expect($second->name)->toBe('Flea Flicker')
         ->and($secondSlate->games()->orderBy('position')->pluck('spread', 'game_id')->all())
         ->toBe($firstSlate->games()->orderBy('position')->pluck('spread', 'game_id')->all())
         ->and($secondSlate->tiebreaker_metric)->toBe($firstSlate->tiebreaker_metric);

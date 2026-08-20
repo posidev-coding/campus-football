@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\LobbyFlavor;
 use Database\Factories\GroupFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -24,7 +25,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * next room. A room persists at its URL forever; it just leaves the lobby
  * inventory when its week ends.
  */
-#[Fillable(['name', 'code', 'kind', 'week_id', 'member_cap', 'filled_at'])]
+#[Fillable(['name', 'code', 'kind', 'flavor', 'week_id', 'member_cap', 'filled_at'])]
 class Group extends Model
 {
     /** @use HasFactory<GroupFactory> */
@@ -76,5 +77,16 @@ class Group extends Model
     public function isRoom(): bool
     {
         return $this->isLobby() && $this->week_id !== null;
+    }
+
+    /**
+     * The specialty this room is, if any. Stored as the raw backing value;
+     * null is a STANDARD room, and an unrecognized value (a retired
+     * flavor) degrades to standard rather than throwing on a room that
+     * still has a URL.
+     */
+    public function flavorEnum(): ?LobbyFlavor
+    {
+        return $this->flavor === null ? null : LobbyFlavor::tryFrom($this->flavor);
     }
 }

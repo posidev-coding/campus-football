@@ -8,6 +8,7 @@ use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Slate;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 
 /**
  * Take a seat in a group — reached by invite code for private groups and
@@ -116,7 +117,23 @@ class JoinGroup
         $week = $room->week()->first();
 
         if ($contest !== null && $week !== null) {
-            $this->spawn->handle($contest->mode, $week);
+            /*
+             * The successor inherits the filled room's WHOLE identity:
+             * flavor (and with it the cap and settings) and the CARD — a
+             * filled Week 0 room must respawn on Week 0, not on the split
+             * week's main Saturday.
+             */
+            $saturday = Slate::query()
+                ->where('contest_id', $contest->id)
+                ->where('week_id', $week->id)
+                ->value('saturday');
+
+            $this->spawn->handle(
+                $contest->mode,
+                $week,
+                $saturday === null ? null : CarbonImmutable::parse($saturday, config('cfb.timezone'))->startOfDay(),
+                $room->flavorEnum(),
+            );
         }
     }
 }
