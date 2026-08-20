@@ -64,6 +64,32 @@ function pickemOdd(Game $game, array $overrides = []): GameOdd
 }
 
 /**
+ * The real shape of ESPN's 2026 opening week: ONE week row spanning
+ * 8/22 → 9/8, games on TWO Saturdays (seven on 8/29, twelve on 9/5), and
+ * nothing at all on the 8/22 the range opens with. Retunes the shared
+ * season-week pair rather than minting its own, so it composes with every
+ * other fixture inside a test.
+ *
+ * @return array{0: Season, 1: Week}
+ */
+function splitPickemWeek(): array
+{
+    [$season, $week] = pickemSeasonWeek();
+
+    $week->update(['start_date' => '2026-08-22 04:00:00', 'end_date' => '2026-09-08 03:59:59']);
+
+    foreach (range(1, 7) as $i) {
+        pickemGame($season, $week, ['kickoff_at' => '2026-08-29 20:00:00']);
+    }
+
+    foreach (range(1, 12) as $i) {
+        pickemGame($season, $week, ['kickoff_at' => '2026-09-05 19:30:00']);
+    }
+
+    return [$season, $week->fresh()];
+}
+
+/**
  * A contest inside a real group with a commissioner — the graph every
  * builder and publish test stands on.
  *

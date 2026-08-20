@@ -103,6 +103,23 @@ it('boards the Bear at publish: theme by week number, a side on every game', fun
         ))->toBeTrue();
 });
 
+it('fields two Bears in a split opening week — one per card', function () {
+    [, , $contest] = pickemContest(ContestMode::Woodshed);
+    [, $week] = splitPickemWeek();
+
+    $early = Slate::factory()->create(['contest_id' => $contest->id, 'week_id' => $week->id, 'saturday' => '2026-08-29']);
+    $main = Slate::factory()->create(['contest_id' => $contest->id, 'week_id' => $week->id, 'saturday' => '2026-09-05']);
+
+    (new BearPicks)->seed($early);
+    (new BearPicks)->seed($main);
+
+    // The theme keys on the FANS' week number, so the 8/29 card is Week 0
+    // (favorites) and the main card is Week 1 (dogs) — two Bears, both
+    // still predictable.
+    expect($early->fresh()->bear_theme)->toBe(BearPicks::THEMES[0])
+        ->and($main->fresh()->bear_theme)->toBe(BearPicks::THEMES[1]);
+});
+
 it('never boards the Bear on the other modes\' slates', function () {
     [$commissioner, , $contest] = pickemContest(ContestMode::Tiered);
     $slate = pickemDraftBoard($contest);

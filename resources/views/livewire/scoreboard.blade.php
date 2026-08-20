@@ -4,6 +4,7 @@ use App\Models\Game;
 use App\Models\Team;
 use App\Services\CfbCalendar;
 use App\Support\Scope;
+use Carbon\CarbonImmutable;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -199,6 +200,23 @@ new class extends Component
         return $this->slate()['pinned'];
     }
 
+    /**
+     * The active scroller entry's kickoff bounds, when it carries them —
+     * only a split opening week's segments do.
+     *
+     * @return array{0: int, 1: int}|null
+     */
+    private function activeBounds(): ?array
+    {
+        foreach ($this->weeks as $entry) {
+            if ($entry['week_id'] === $this->week && ($entry['bracket'] ?? '') === $this->bracket) {
+                return $entry['bounds'] ?? null;
+            }
+        }
+
+        return null;
+    }
+
     private function scopedGames()
     {
         if ($this->week === null) {
@@ -217,6 +235,12 @@ new class extends Component
             ->where('week_id', $this->week)
             ->when($this->bracket === 'cfp', fn ($q) => $q->playoff())
             ->when($this->bracket === 'bowls', fn ($q) => $q->bowlsOnly())
+            // The split opening week: its two scroller stops share one
+            // week_id, and the entry's kickoff bounds are what tell the
+            // 8/29 card from the 9/5 one.
+            ->when(($bounds = $this->activeBounds()) !== null, fn ($q) => $q
+                ->where('kickoff_at', '>=', CarbonImmutable::createFromTimestamp($bounds[0]))
+                ->where('kickoff_at', '<', CarbonImmutable::createFromTimestamp($bounds[1])))
             ->orderBy('kickoff_at');
 
         $teamIds = Scope::teamIds($this->scope, $this->year());

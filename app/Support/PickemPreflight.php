@@ -87,7 +87,15 @@ class PickemPreflight
             );
         }
 
-        return $this->row('calendar', 'Calendar week', self::OK, "{$year} · {$week->name}.");
+        $detail = "{$year} · {$week->name}.";
+
+        // Inside a split opening week, ESPN's name ("Week 1") and the card
+        // being played can disagree — say which card the clock is on.
+        if (Cadence::splitBoundary($week) !== null) {
+            $detail = "{$year} · {$week->name} · playing ".Cadence::displayWeekLabel($week, Cadence::currentSaturday()).'.';
+        }
+
+        return $this->row('calendar', 'Calendar week', self::OK, $detail);
     }
 
     /**

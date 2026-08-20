@@ -92,14 +92,20 @@ new class extends Component
             <span class="tabular rounded-full bg-zinc-100 px-3 py-1 text-sm font-semibold dark:bg-zinc-800">best {{ $this->summary['best'] }} pts</span>
         </div>
 
-        @foreach ($this->entries->groupBy(fn ($entry) => $entry->slate->week_id) as $weekEntries)
-            @php $week = $weekEntries->first()->slate->week; @endphp
+        {{-- Grouped by the CARD, not the ESPN week: a split opening week
+             holds two Saturdays, and a player in both must see Week 0 and
+             Week 1 as separate headings. --}}
+        @foreach ($this->entries->groupBy(fn ($entry) => $entry->slate->week_id.':'.\App\Support\Cadence::displayWeekNumber($entry->slate->week, $entry->slate->saturday)) as $weekEntries)
+            @php
+                $week = $weekEntries->first()->slate->week;
+                $weekLabel = \App\Support\Cadence::displayWeekLabel($week, $weekEntries->first()->slate->saturday);
+            @endphp
 
-            <div wire:key="history-week-{{ $week->id }}" class="flex flex-col gap-2">
+            <div wire:key="history-week-{{ $week->id }}-{{ Str::slug($weekLabel) }}" class="flex flex-col gap-2">
                 <flux:subheading
                     class="sticky z-20 -mx-4 bg-white px-4 py-1.5 dark:bg-zinc-950 top-[env(safe-area-inset-top)] sm:top-[var(--header-offset)]"
                 >
-                    <span class="font-semibold text-zinc-900 dark:text-zinc-100">Week {{ $week->number }}</span>
+                    <span class="font-semibold text-zinc-900 dark:text-zinc-100">{{ $weekLabel }}</span>
                     <span class="text-micro text-zinc-400">· {{ $weekEntries->first()->slate->contest->season_year }}</span>
                 </flux:subheading>
 

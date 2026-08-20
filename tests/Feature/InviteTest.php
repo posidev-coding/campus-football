@@ -1,8 +1,10 @@
 <?php
 
 use App\Enums\ContestMode;
+use App\Models\Contest;
 use App\Models\Group;
 use App\Models\GroupMember;
+use App\Models\Slate;
 use App\Models\User;
 use App\Support\Voice;
 use Laravel\Pennant\Feature;
@@ -118,6 +120,23 @@ it('skips the pitch for someone already seated — straight to their clubhouse, 
     Livewire::actingAs($seated)
         ->test('join', ['code' => $room->code])
         ->assertRedirect(route('pickem.room', $room));
+});
+
+it('dates a split-week room card by the fans\' numbering', function () {
+    Feature::define('pickem', true);
+
+    // A room playing the opening week's FIRST card: its ESPN week says
+    // "Week 1", its slate's Saturday says the fans' truth — Week 0.
+    [, $week] = splitPickemWeek();
+    $room = Group::factory()->lobby()->create(['week_id' => $week->id, 'member_cap' => 20]);
+    $contest = Contest::factory()->create(['group_id' => $room->id]);
+    Slate::factory()->create([
+        'contest_id' => $contest->id, 'week_id' => $week->id,
+        'saturday' => '2026-08-29', 'status' => Slate::PUBLISHED,
+    ]);
+
+    Livewire::test('join', ['code' => $room->code])
+        ->assertSee('Week 0');
 });
 
 it('shows a full room its honest state instead of a dead button', function () {

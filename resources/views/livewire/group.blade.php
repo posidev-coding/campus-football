@@ -503,7 +503,7 @@ new class extends Component
         $heroMeta = $group->isRoom()
             ? collect([
                 $this->contest?->mode->label(),
-                $this->roomWeek ? 'Week '.$this->roomWeek->number : null,
+                $this->roomWeek ? \App\Support\Cadence::displayWeekLabel($this->roomWeek, $this->slate?->saturday) : null,
                 $group->member_cap !== null
                     ? $this->members->count().' of '.$group->member_cap.' seats'
                     : $this->members->count().' '.Str::plural('member', $this->members->count()),

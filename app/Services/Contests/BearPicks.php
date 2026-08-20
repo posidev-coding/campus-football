@@ -4,15 +4,17 @@ namespace App\Services\Contests;
 
 use App\Models\Slate;
 use App\Models\SlateGame;
+use App\Support\Cadence;
 
 /**
  * The Bear's weekly picks: one mythical house contestant, one theme, a
  * side on every game — stamped onto the slate at publish, inside
  * PublishSlate::force()'s transaction.
  *
- * The theme rotates by WEEK NUMBER, so there is one Bear league-wide each
- * week (the OG had a single creature taunting everyone) and a test can
- * predict him. Every derivation is a total function of columns publish
+ * The theme rotates by the FANS' week number — one Bear league-wide per
+ * SATURDAY (the OG had a single creature taunting everyone), so a split
+ * opening week is two cards and two Bears, and a test can still predict
+ * both. Every derivation is a total function of columns publish
  * validation already requires non-null (favorite_team_id, the game's two
  * sides) — the Bear can never fail to have an opinion.
  *
@@ -48,7 +50,7 @@ class BearPicks
     {
         $slate->loadMissing(['week', 'games.game']);
 
-        $theme = self::THEMES[$slate->week->number % count(self::THEMES)];
+        $theme = self::THEMES[Cadence::displayWeekNumber($slate->week, $slate->saturday) % count(self::THEMES)];
 
         $slate->update(['bear_theme' => $theme]);
 

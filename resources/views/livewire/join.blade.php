@@ -73,8 +73,26 @@ new class extends Component
         return Group::query()
             ->where('code', $this->code)
             ->withCount('memberships')
-            ->with('week:id,number')
+            // season_id rides along for the Week 0 / Week 1 label — the
+            // split-week resolver reaches through week->season.
+            ->with('week:id,number,season_id')
             ->first();
+    }
+
+    /** The room's card date, for the fans' Week 0 / Week 1 label. */
+    #[Computed]
+    public function roomSaturday(): ?string
+    {
+        $group = $this->group;
+
+        if ($group === null || ! $group->isRoom()) {
+            return null;
+        }
+
+        return Slate::query()
+            ->whereHas('contest', fn ($q) => $q->where('group_id', $group->id))
+            ->where('week_id', $group->week_id)
+            ->value('saturday');
     }
 
     /**
@@ -212,7 +230,7 @@ new class extends Component
                     <p class="truncate text-xl font-bold leading-tight">{{ $this->group->name }}</p>
                     <p class="pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
                         @if ($this->group->isRoom() && $this->group->week !== null)
-                            Week {{ $this->group->week->number }} ·
+                            {{ \App\Support\Cadence::displayWeekLabel($this->group->week, $this->roomSaturday) }} ·
                             @if ($this->group->member_cap !== null)
                                 {{ $this->group->memberships_count }} of {{ $this->group->member_cap }} seats
                             @else

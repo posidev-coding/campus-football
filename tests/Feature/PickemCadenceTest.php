@@ -127,6 +127,38 @@ it('finds BOTH Saturdays in a split ESPN week, and picks the busier as primary',
         ->toBe('Sun 2026-08-30 12:00');
 });
 
+it('numbers the split week the way fans do: the first card is Week 0', function () {
+    [, $week] = splitPickemWeek();
+    $tz = config('cfb.timezone');
+
+    // The boundary is the Tuesday turnover before the MAIN card, ET
+    // midnight — the same clock the whole league turns over on.
+    expect(Cadence::splitBoundary($week)->timezone($tz)->format('D Y-m-d H:i'))->toBe('Tue 2026-09-01 00:00');
+
+    // By date string (how slates.saturday arrives), by Carbon, by default.
+    expect(Cadence::displayWeekNumber($week, '2026-08-29'))->toBe(0)
+        ->and(Cadence::displayWeekNumber($week, '2026-09-05'))->toBe(1)
+        ->and(Cadence::displayWeekNumber($week, CarbonImmutable::parse('2026-08-29', $tz)))->toBe(0)
+        // No Saturday named means the week's primary card.
+        ->and(Cadence::displayWeekNumber($week))->toBe(1)
+        ->and(Cadence::displayWeekLabel($week, '2026-08-29'))->toBe('Week 0');
+});
+
+it('leaves every ordinary week numbered as ESPN numbers it', function () {
+    [$season, $week] = pickemSeasonWeek();
+    pickemGame($season, $week);
+
+    // One Saturday: no boundary, no renumbering.
+    expect(Cadence::splitBoundary($week))->toBeNull()
+        ->and(Cadence::displayWeekNumber($week))->toBe(1);
+
+    // And a later week never splits, however many Saturdays it spans —
+    // only the season's opening week folds a Week 0 in.
+    $five = Week::factory()->create(['season_id' => $season->id, 'number' => 5, 'name' => 'Week 5']);
+
+    expect(Cadence::displayWeekNumber($five))->toBe(5);
+});
+
 it('lets the admin panel move the clock', function () {
     PickemSetting::current()->update([
         'slate_deadline_dow' => 3,

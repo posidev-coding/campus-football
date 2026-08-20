@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Game;
 use App\Models\PickemSetting;
+use App\Models\Season;
 use App\Models\Week;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -56,9 +57,13 @@ class Cadence
 
     private static ?PickemSetting $memo = null;
 
+    /** @var array<int, CarbonImmutable|null> split boundaries, keyed by week id */
+    private static array $boundaries = [];
+
     public static function flush(): void
     {
         self::$memo = null;
+        self::$boundaries = [];
     }
 
     /**
@@ -140,6 +145,87 @@ class Cadence
         }
 
         return null;
+    }
+
+    /**
+     * The instant a SPLIT opening week turns over from its first card to
+     * its main one — null for every ordinary week.
+     *
+     * Only the regular season's opening week can split: ESPN folds the
+     * fans' "Week 0" into Week 1's range (2026 holds both 8/29 and 9/5),
+     * while every later week matches fan numbering one-to-one. The
+     * boundary is the Tuesday turnover before the SECOND Saturday at ET
+     * midnight — the same clock currentSaturday() keeps — so the app
+     * flips cards on Tuesday, never at a kickoff.
+     *
+     * Memoized per week because display labels resolve inside list loops
+     * (History renders one per row) and the Saturday scan behind this is
+     * a games query that must not run per row.
+     */
+    public static function splitBoundary(Week $week): ?CarbonImmutable
+    {
+        if (array_key_exists($week->id, self::$boundaries)) {
+            return self::$boundaries[$week->id];
+        }
+
+        return self::$boundaries[$week->id] = self::resolveBoundary($week);
+    }
+
+    private static function resolveBoundary(Week $week): ?CarbonImmutable
+    {
+        if ((int) $week->number !== 1) {
+            return null;
+        }
+
+        $week->loadMissing('season');
+
+        if ((int) ($week->season?->type ?? 0) !== Season::REGULAR) {
+            return null;
+        }
+
+        $saturdays = self::saturdaysIn($week);
+
+        if (count($saturdays) < 2) {
+            return null;
+        }
+
+        // Days BACK from Saturday (6) to the turnover weekday.
+        $daysBefore = (6 - self::TURNOVER_DOW + 7) % 7 ?: 7;
+
+        return $saturdays[1]->subDays($daysBefore);
+    }
+
+    /**
+     * The week number a FAN would put on this card. Ordinary weeks answer
+     * with ESPN's own number; a split opening week answers 0 for its first
+     * Saturday and the ESPN number for its main one. The 8/22 the range
+     * opens with is never anyone's answer.
+     *
+     * $saturday takes the forms callers actually hold: a `slates.saturday`
+     * date cast or plain 'Y-m-d' string (re-pinned to ET midnight, never
+     * converted through a timezone), or nothing — which means the week's
+     * primary card.
+     */
+    public static function displayWeekNumber(Week $week, CarbonInterface|string|null $saturday = null): int
+    {
+        $boundary = self::splitBoundary($week);
+
+        if ($boundary === null) {
+            return (int) $week->number;
+        }
+
+        $day = match (true) {
+            $saturday === null => self::saturdayOf($week),
+            is_string($saturday) => CarbonImmutable::parse($saturday, config('cfb.timezone'))->startOfDay(),
+            default => self::anchor($saturday),
+        };
+
+        return $day !== null && $day->lessThan($boundary) ? 0 : (int) $week->number;
+    }
+
+    public static function displayWeekLabel(Week $week, CarbonInterface|string|null $saturday = null): string
+    {
+        return 'Week '.self::displayWeekNumber($week, $saturday);
     }
 
     /**

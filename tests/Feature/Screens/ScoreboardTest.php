@@ -774,3 +774,59 @@ describe('all followed teams float', function () {
         expect($html)->not->toContain('Alabama Crimson');
     });
 });
+
+describe('the split opening week', function () {
+    beforeEach(function () {
+        // ESPN's real 2025 shape: ONE "Week 1" row holding two Saturdays,
+        // 8/23 and 8/30 — the fans' Week 0 and Week 1.
+        $this->openingWeek = Week::create([
+            'season_id' => $this->season->id, 'number' => 1, 'name' => 'Week 1',
+            'start_date' => '2025-08-23 07:00', 'end_date' => '2025-09-02 06:59',
+        ]);
+
+        $this->vanderbilt = Team::factory()->create(['location' => 'Vanderbilt', 'display_name' => 'Vanderbilt Commodores']);
+        $this->kentucky = Team::factory()->create(['location' => 'Kentucky', 'display_name' => 'Kentucky Wildcats']);
+
+        foreach ([$this->vanderbilt->id, $this->kentucky->id] as $teamId) {
+            TeamSeason::create([
+                'team_id' => $teamId, 'season_year' => 2025,
+                'conference_id' => 8, 'classification' => 'FBS',
+            ]);
+        }
+
+        Game::factory()->finished()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->openingWeek->id,
+            'home_team_id' => 61, 'away_team_id' => 333,
+            'kickoff_at' => '2025-08-23 20:00:00',
+        ]);
+
+        Game::factory()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->openingWeek->id,
+            'home_team_id' => $this->vanderbilt->id, 'away_team_id' => $this->kentucky->id,
+            'kickoff_at' => '2025-08-30 19:30:00',
+        ]);
+    });
+
+    it('gives the opening week two stops, labeled the way fans count', function () {
+        $entries = collect(app(CfbCalendar::class)->weekReleases(2025))
+            ->where('week_id', $this->openingWeek->id);
+
+        expect($entries)->toHaveCount(2)
+            ->and($entries->pluck('label')->all())->toBe(['WEEK 0', 'WEEK 1'])
+            ->and($entries->pluck('bracket')->all())->toBe(['wk0', '']);
+    });
+
+    it('shows only the selected card, though both stops share one week id', function () {
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->call('selectWeek', $this->openingWeek->id, 'wk0')
+            ->assertSee('Georgia')
+            ->assertDontSee('Vanderbilt');
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->call('selectWeek', $this->openingWeek->id, '')
+            ->assertSee('Vanderbilt')
+            ->assertDontSee('Georgia');
+    });
+});

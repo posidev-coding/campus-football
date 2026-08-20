@@ -8,6 +8,7 @@ use App\Models\Game;
 use App\Models\Ranking;
 use App\Models\Season;
 use App\Models\Week;
+use App\Support\Cadence;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 
@@ -486,15 +487,7 @@ class CfbCalendar
                 $type = $seasons[$week->season_id]->type ?? Season::REGULAR;
 
                 if ($type !== Season::POSTSEASON) {
-                    $entries[] = [
-                        'week_id' => $week->id,
-                        'bracket' => '',
-                        'number' => $week->number,
-                        'type' => $type,
-                        'label' => 'WEEK '.$week->number,
-                        'range' => $this->weekRange($week),
-                        'starts_at' => $week->start_date?->getTimestamp(),
-                    ];
+                    array_push($entries, ...$this->regularEntries($week, $type));
 
                     continue;
                 }
@@ -522,6 +515,104 @@ class CfbCalendar
 
             return $entries;
         });
+    }
+
+    /**
+     * One entry for an ordinary regular-season week — or TWO for a split
+     * opening week: the bowls/CFP shape worn on the front of the season.
+     * ESPN's Week 1 can hold two Saturdays (2026: 8/29 and 9/5), and a
+     * single pill claiming a seventeen-day "week" buries the opening card.
+     *
+     * Each segment is labeled with the FANS' numbering (WEEK 0, then
+     * WEEK 1), dated from its OWN games — so the empty 8/22 weekend the
+     * range opens with can never print — and carries `bounds` (plain unix
+     * timestamps, half-open) so the scoreboard can filter the shared
+     * week_id down to one segment.
+     *
+     * The main segment's starts_at is the TURNOVER BOUNDARY, not its first
+     * kickoff: defaultWeekEntry() takes the last STARTED entry of a week,
+     * so this is what flips the whole app from Week 0 to Week 1 at Tuesday
+     * midnight ET rather than at Saturday's first snap.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function regularEntries(Week $week, int $type): array
+    {
+        $boundary = Cadence::splitBoundary($week);
+
+        if ($boundary === null || $week->start_date === null || $week->end_date === null) {
+            return [[
+                'week_id' => $week->id,
+                'bracket' => '',
+                'number' => $week->number,
+                'type' => $type,
+                'label' => 'WEEK '.$week->number,
+                'range' => $this->weekRange($week),
+                'starts_at' => $week->start_date?->getTimestamp(),
+            ]];
+        }
+
+        $boundaryTs = $boundary->getTimestamp();
+
+        $segments = [
+            ['bracket' => 'wk0', 'label' => 'WEEK 0', 'from' => $week->start_date->getTimestamp(), 'to' => $boundaryTs, 'starts_at' => null],
+            ['bracket' => '', 'label' => 'WEEK '.$week->number, 'from' => $boundaryTs, 'to' => $week->end_date->getTimestamp(), 'starts_at' => $boundaryTs],
+        ];
+
+        $entries = [];
+
+        foreach ($segments as $segment) {
+            $range = $this->segmentRange($week, $segment['from'], $segment['to']);
+
+            // A segment with no games is not a stop, same as an empty
+            // postseason bracket.
+            if ($range === null) {
+                continue;
+            }
+
+            $entries[] = [
+                'week_id' => $week->id,
+                'bracket' => $segment['bracket'],
+                'number' => $week->number,
+                'type' => $type,
+                'label' => $segment['label'],
+                'range' => $range['label'],
+                'starts_at' => $segment['starts_at'] ?? $range['starts_at'],
+                'bounds' => [$segment['from'], $segment['to']],
+            ];
+        }
+
+        return $entries;
+    }
+
+    /**
+     * Date range for one segment of a split week, from its own games —
+     * null when the segment holds none. Bounds are unix timestamps,
+     * half-open [from, to).
+     *
+     * @return array{label:string, starts_at:int}|null
+     */
+    private function segmentRange(Week $week, int $from, int $to): ?array
+    {
+        $query = Game::where('week_id', $week->id)
+            ->whereNotNull('kickoff_at')
+            ->where('kickoff_at', '>=', CarbonImmutable::createFromTimestamp($from))
+            ->where('kickoff_at', '<', CarbonImmutable::createFromTimestamp($to));
+
+        $first = (clone $query)->min('kickoff_at');
+        $last = (clone $query)->max('kickoff_at');
+
+        if ($first === null) {
+            return null;
+        }
+
+        $start = CarbonImmutable::parse($first)->setTimezone(config('cfb.timezone'));
+        $end = CarbonImmutable::parse($last)->setTimezone(config('cfb.timezone'));
+
+        return [
+            'label' => $this->range($start, $end),
+            'starts_at' => $start->getTimestamp(),
+        ];
     }
 
     /**
@@ -653,7 +744,9 @@ class CfbCalendar
     }
 
     /**
-     * "AUG 23-SEP 1", collapsing to "DEC 1-7" within a single month.
+     * "AUG 23-SEP 1", collapsing to "DEC 1-7" within a single month and to
+     * a bare "AUG 29" when the whole range is one day — a split week's
+     * first card is a single Saturday, and "AUG 29-29" reads like a bug.
      */
     private function range(CarbonImmutable $start, CarbonImmutable $end): string
     {
@@ -662,6 +755,10 @@ class CfbCalendar
         }
 
         $startLabel = strtoupper($start->format('M j'));
+
+        if ($start->isSameDay($end)) {
+            return $startLabel;
+        }
 
         return $start->isSameMonth($end)
             ? $startLabel.'-'.$end->format('j')

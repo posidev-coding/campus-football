@@ -48,6 +48,33 @@ it('lists settled weeks with place, points and the W', function () {
         ->assertSee('0 wins');
 });
 
+it('splits the opening week into Week 0 and Week 1 headings', function () {
+    [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+    [, $week] = splitPickemWeek();
+
+    // One settled entry on each of the split week's cards — same ESPN
+    // week id, different Saturdays, and they must NOT share a heading.
+    foreach (['2026-08-29', '2026-09-05'] as $i => $saturday) {
+        $slate = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'saturday' => $saturday,
+            'status' => Slate::SETTLED,
+            'settled_at' => now()->subDays(8 - $i * 7),
+        ]);
+
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id, 'user_id' => $commissioner->id,
+            'final_points' => 50, 'won' => false,
+        ]);
+    }
+
+    Livewire::actingAs($commissioner)->test('pickem-history')
+        ->assertSee('Week 0')
+        ->assertSee('Week 1')
+        ->assertSee('2 weeks');
+});
+
 it('links a room row back to its /contests address, and badges the W', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
     [, $week] = pickemSeasonWeek();
