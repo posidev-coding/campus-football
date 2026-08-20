@@ -1078,5 +1078,12 @@ new class extends Component
         </div>
     </div>
 
+    {{-- The Conversation sits BELOW the facts, and the line between them is
+         the product rule: everything above this rule reports — the score,
+         the box, the drives — and nothing above it jokes. This does. --}}
+    <div class="border-t border-zinc-200 pt-6 dark:border-zinc-800">
+        <livewire:conversation :topic="$game" :key="'talk-game-'.$game->id" />
+    </div>
+
     @include('partials.game-league-sheet')
 </div>

@@ -227,9 +227,24 @@ daily-login rewards, no timers, no FOMO.
 **Slices** (each lands green and invisible without the flag): schema and
 factories → engine core (modes, grader, quality score, suggestions) →
 groups → slate build and publish → picking → scoring and settlement →
-conversations → gamification finish → flip prep. The first six are the
+~~conversations~~ → gamification finish → flip prep. The first six are the
 flippable minimum; conversations and gamification may trail the flip if the
 season arrives first.
+
+**The Conversation shipped 2026-08-20** — one Livewire component at the
+three sanctioned scopes, mounted at the FOOT of Game, Team and Group rather
+than as a tab on any of them. That placement is a constraint, not a
+preference: `x-plate` holds three tabs and Group already has three, and the
+team nav is a measured 358px row with 54px spare that deliberately does not
+scroll. The talk belongs to the screen rather than to whichever tab you are
+on, so it follows you across all of them. Reading is open to everyone
+including guests; `PostToConversation` holds every write gate (verified,
+handle, membership for groups, the three-scope whitelist, a spelled-out
+60-second limiter) and `DeleteConversationPost` is the only moderation verb
+there is — the table has no `updated_at`, so a regretted line is deleted
+whole and never quietly rewritten. The handle claim now lives in
+`ClaimsHandle`, shared with the pick surface, because it is one claim
+raised at whichever comes first: the first pick or the first post.
 
 **Open for plan iteration 2:** the proposed Pitch/Keep/Dive tier names (as
 screen vocabulary); XP numbers, ladder names, perfect-week bonus and streak

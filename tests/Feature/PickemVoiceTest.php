@@ -17,7 +17,7 @@ it('never says "board" on a pick\'em surface, in any register', function () {
     $families = [
         'picks.', 'groups.', 'group.', 'lobby.', 'contest.', 'create.',
         'mode.', 'wizard.', 'history.', 'leaderboard.', 'notify.mode_changed',
-        'join.',
+        'join.', 'talk.',
     ];
 
     $violations = [];

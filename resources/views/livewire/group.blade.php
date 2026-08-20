@@ -748,6 +748,14 @@ new class extends Component
         @endif
     @endif
 
+    {{-- The room's talk, at the foot of the room and under every tab — it
+         belongs to the GROUP, not to whichever tab you happen to be on. Not
+         a fourth tab: x-plate holds three, and a slate's chatter following
+         you from Slate to Members is the point rather than a side effect. --}}
+    <div class="border-t border-zinc-200 pt-6 dark:border-zinc-800">
+        <livewire:conversation :topic="$group" :key="'talk-group-'.$group->id" />
+    </div>
+
     {{-- THE PIVOT: one deliberate act per season, consequences said
          plainly, and the announcement is a statement — never a checkbox.
          Three live modes made this a radiogroup: pick the new game, then

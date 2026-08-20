@@ -1128,6 +1128,99 @@ class Voice
             'pg13' => ':total points, on the record.',
             'r' => ':total points. Bold. It\'s on the record.',
         ],
+
+        /*
+         * The Conversation. A LOUD surface everywhere it appears — including
+         * on Game and Team, whose FACTS stay pure: the chrome around the
+         * thread speaks, the box score above it never does.
+         *
+         * The composer's placeholder is deliberately NOT here. It is an
+         * affordance, and a joke standing between a writer and the box they
+         * type in is friction, not voice.
+         */
+        'talk.house_rule' => [
+            'pg' => 'Roast the pick, the team, the record. Never the person.',
+            'pg13' => 'Roast the pick, the team, the record — never the person.',
+            'r' => 'Roast the pick, the team, the record. Never the person. That one isn\'t negotiable.',
+        ],
+
+        'talk.subheading.game' => [
+            'pg' => 'Talk about the game — the call, the clock, the coaching.',
+            'pg13' => 'The call, the clock, the coaching. All fair game.',
+            'r' => 'Say what you want about this game. The people reading are off limits.',
+        ],
+
+        'talk.subheading.team' => [
+            'pg' => 'Talk about this team — the season, the schedule, the record.',
+            'pg13' => 'The season, the schedule, the record. Say your piece.',
+            'r' => 'Season, schedule, record — all of it is fair. Everybody reading is not.',
+        ],
+
+        'talk.subheading.group' => [
+            'pg' => 'Your group\'s room. Talk about the slate.',
+            'pg13' => 'Your group\'s room. Where the bad picks get remembered.',
+            'r' => 'Your group\'s room. Nothing said here gets forgotten by November.',
+        ],
+
+        'talk.empty.game' => [
+            'pg' => 'Nobody has said anything yet. Go first.',
+            'pg13' => 'Dead quiet. Somebody has to go first.',
+            'r' => 'Nothing here yet. Be the one who starts it.',
+        ],
+
+        'talk.empty.team' => [
+            'pg' => 'Nobody is talking about this team yet.',
+            'pg13' => 'Nobody is talking about this team. Fix that.',
+            'r' => 'Silence. Depending on the season, that might be mercy.',
+        ],
+
+        'talk.empty.group' => [
+            'pg' => 'Your group hasn\'t said anything yet.',
+            'pg13' => 'Your group is quiet. Suspiciously quiet.',
+            'r' => 'Nobody\'s talking. Everybody\'s sitting on a bad week.',
+        ],
+
+        'talk.claim.body' => [
+            'pg' => 'Posts need a name on them. Claim a handle and you can join in.',
+            'pg13' => 'Posts need a name on them. Claim your handle — anonymous takes are worth what they cost.',
+            'r' => 'Posts need a name on them. Claim your handle and own what you say.',
+        ],
+
+        'talk.claim.done' => [
+            'pg' => '@:handle it is. Say something.',
+            'pg13' => '@:handle it is. Floor\'s yours.',
+            'r' => '@:handle. Now everyone knows who to blame.',
+        ],
+
+        'talk.verify_first' => [
+            'pg' => 'Verify your email first — then you can join the conversation.',
+            'pg13' => 'Verify your email first. The room likes to know who\'s talking.',
+            'r' => 'Verify your email first. Nobody mouths off from behind a curtain here.',
+        ],
+
+        'talk.not_member' => [
+            'pg' => 'Join the group to talk in it.',
+            'pg13' => 'You\'re reading someone else\'s room. Join it to say anything.',
+            'r' => 'Reading is free. Talking costs a membership.',
+        ],
+
+        'talk.guest' => [
+            'pg' => 'Sign in to join the conversation.',
+            'pg13' => 'Sign in if you want a say in this.',
+            'r' => 'Sign in. Lurking is free; talking isn\'t.',
+        ],
+
+        'talk.too_fast' => [
+            'pg' => 'Give it a moment — :seconds seconds before your next post.',
+            'pg13' => 'Easy. :seconds seconds before you go again.',
+            'r' => 'Slow down. :seconds seconds before the next one.',
+        ],
+
+        'talk.deleted' => [
+            'pg' => 'Post removed.',
+            'pg13' => 'Gone. Like it never happened.',
+            'r' => 'Deleted. We\'ll all pretend we didn\'t read it.',
+        ],
     ];
 
     /**

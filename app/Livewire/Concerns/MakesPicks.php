@@ -13,7 +13,6 @@ use App\Models\SlateEntry;
 use App\Models\SlateGame;
 use App\Support\Voice;
 use Illuminate\Support\Collection;
-use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 
 /**
@@ -30,10 +29,10 @@ use Livewire\Attributes\Computed;
  */
 trait MakesPicks
 {
+    use ClaimsHandle;
+
     /** @var array<int, int> tiebreaker input per slate id */
     public array $totals = [];
-
-    public string $handle = '';
 
     public ?string $notice = null;
 
@@ -43,12 +42,6 @@ trait MakesPicks
      * @return Collection<int, Slate>
      */
     abstract protected function pickableSlates(): Collection;
-
-    #[Computed]
-    public function needsHandle(): bool
-    {
-        return auth()->user()?->handle === null;
-    }
 
     /** @return Collection<int, Pick> keyed by slate_game_id */
     #[Computed]
@@ -133,20 +126,7 @@ trait MakesPicks
 
     public function claim(): void
     {
-        $validated = $this->validate([
-            'handle' => [
-                'required', 'string', 'min:3', 'max:20',
-                'regex:/^[a-z0-9_]+$/',
-                Rule::unique('users')->ignore(auth()->id()),
-            ],
-        ], [
-            'handle.regex' => 'Handles use lowercase letters, numbers and underscores.',
-        ]);
-
-        auth()->user()->update(['handle' => $validated['handle']]);
-
-        $this->notice = Voice::line('picks.claim.done', ['handle' => $validated['handle']]);
-        unset($this->needsHandle);
+        $this->notice = Voice::line('picks.claim.done', ['handle' => $this->claimHandle()]);
     }
 
     /**
