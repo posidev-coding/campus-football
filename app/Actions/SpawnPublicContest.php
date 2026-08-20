@@ -103,6 +103,10 @@ class SpawnPublicContest
         $slate = Slate::create([
             'contest_id' => $contestId,
             'week_id' => $weekId,
+            // The sibling's Saturday, verbatim like everything else here —
+            // an identical house slate is not identical if it is dated to a
+            // different card.
+            'saturday' => $sibling->saturday,
             'status' => Slate::DRAFT,
         ]);
 

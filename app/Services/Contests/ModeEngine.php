@@ -106,8 +106,15 @@ abstract class ModeEngine
                 $problems[] = 'picks.publish.not_saturday';
             }
 
-            if ($slateGame->game->week_id !== $slate->week_id) {
-                $problems[] = 'picks.publish.wrong_week';
+            /*
+             * ONE BOARD, ONE SATURDAY. This used to compare week ids, which
+             * a split ESPN week satisfies twice over: 2026's Week 1 holds
+             * both 8/29 and 9/5, so a board could be built across two
+             * Saturdays a week apart and every check still passed. The
+             * slate's own Saturday is the honest comparison.
+             */
+            if ($slateGame->game->kickoff_at?->timezone(config('cfb.timezone'))->toDateString() !== $slate->saturday?->toDateString()) {
+                $problems[] = 'picks.publish.wrong_saturday';
             }
 
             if ($this->hasStarted($slateGame)) {

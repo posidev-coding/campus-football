@@ -5,6 +5,8 @@ namespace App\Services\Contests;
 use App\Models\Contest;
 use App\Models\Game;
 use App\Models\Week;
+use App\Support\Cadence;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -31,11 +33,29 @@ class SuggestSlate
      * @return list<array<string, mixed>> one entry per suggested game:
      *                                    game_id, score, tier, plus ContestLine::seedValues() verbatim
      */
-    public function for(Contest $contest, Week $week): array
+    /**
+     * @param  CarbonInterface|null  $saturday  the ONE Saturday to draw from;
+     *                                          defaults to the week's primary card
+     */
+    public function for(Contest $contest, Week $week, ?CarbonInterface $saturday = null): array
     {
         $engine = $contest->mode->engine($contest->settings);
         $size = $engine->slateSize();
         $spec = $engine->tierSpec();
+
+        /*
+         * ONE SATURDAY, not one week. An ESPN week can hold two of them —
+         * 2026's Week 1 has games on both 8/29 and 9/5 — and drawing from
+         * the week suggested a board spanning a fortnight, which is how the
+         * first three published slates ended up mixing the two.
+         */
+        $saturday ??= Cadence::saturdayOf($week);
+
+        // The CALENDAR DATE, never converted through a timezone.
+        // `slates.saturday` is a date column and arrives as UTC midnight;
+        // shifting that into Eastern lands on 8pm the previous day and
+        // matches no game at all.
+        $target = $saturday?->format('Y-m-d');
 
         $candidates = Game::query()
             ->slateEligible()
@@ -45,7 +65,8 @@ class SuggestSlate
             ->get()
             // The time-of-day half of the window is a per-game check — the
             // ET boundary is not safely expressible in SQL.
-            ->filter(fn (Game $game) => $game->inSlateWindow());
+            ->filter(fn (Game $game) => $game->inSlateWindow())
+            ->filter(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString() === $target);
 
         $followed = $this->followedTeamIds($contest);
 

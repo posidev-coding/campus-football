@@ -177,11 +177,13 @@ it('holds the three sweeps that keep a live league honest', function () {
     expect(preflight()['schedule']['status'])->toBe(PickemPreflight::OK);
 });
 
-it('reports the league clock from Cadence, not from a hardcoded Tuesday', function () {
+it('reports the league clock from Cadence, not from a hardcoded weekday', function () {
+    // The founders' cycle: the card is available by Thursday, results turn
+    // official Sunday. Moved off Tuesday end-of-day 2026-08-20.
     $settings = preflight()['settings'];
 
     expect($settings['status'])->toBe(PickemPreflight::OK)
-        ->and($settings['detail'])->toContain('Tue')
+        ->and($settings['detail'])->toContain('Thu')
         ->and($settings['detail'])->toContain('Sun');
 });
 

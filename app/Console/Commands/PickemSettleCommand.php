@@ -48,7 +48,10 @@ class PickemSettleCommand extends Command
         $settled = 0;
 
         foreach ($open as $slate) {
-            $official = Cadence::officialFinal($slate->week);
+            // The board's OWN Saturday, not its week's — a split ESPN week
+            // holds two, and settling the second against the first's clock
+            // would call a week official a fortnight early.
+            $official = Cadence::officialFinal($slate->saturday);
 
             if ($official === null || now()->lessThan($official)) {
                 continue;

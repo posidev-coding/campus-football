@@ -785,10 +785,15 @@ class Voice
             'r' => 'Saturday, noon Eastern onward. No breakfast kickoffs, no Tuesday-night specials.',
         ],
 
-        'picks.publish.wrong_week' => [
-            'pg' => 'One of these games isn\'t in this week. Remove it.',
-            'pg13' => 'There\'s a game from another week on here. Off it goes.',
-            'r' => 'One of these escaped from another week. Round it up.',
+        /*
+         * Replaces the old `wrong_week` 2026-08-20. A board is ONE SATURDAY,
+         * not one ESPN week: 2026's Week 1 holds two of them, so the week
+         * comparison passed for games a fortnight apart.
+         */
+        'picks.publish.wrong_saturday' => [
+            'pg' => 'One of these games isn\'t on this slate\'s Saturday. Remove it.',
+            'pg13' => 'There\'s a game from another Saturday on here. Off it goes.',
+            'r' => 'One of these escaped from another Saturday. Round it up.',
         ],
 
         'picks.publish.started' => [

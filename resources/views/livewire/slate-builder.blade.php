@@ -16,6 +16,7 @@ use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Slate;
 use App\Models\SlateGame;
+use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Services\Contests\ContestLine;
 use App\Services\Contests\GameQualityScore;
@@ -60,6 +61,9 @@ new class extends Component
 
     public int $slateId;
 
+    /** The Saturday this board is being built for, as a plain date string. */
+    public string $saturday = '';
+
     #[Url(except: 'games')]
     public string $step = 'games';
 
@@ -91,9 +95,27 @@ new class extends Component
 
         abort_if($weekId === null, 404);
 
+        $week = Week::query()->findOrFail($weekId);
+
+        /*
+         * The board is keyed to a SATURDAY, not to ESPN's week — one week
+         * can hold two of them. `currentSaturday()` is the one this pick'em
+         * week is playing (Tuesday turnover); the week's primary card is the
+         * fallback when the clock sits outside this week entirely.
+         */
+        $current = Cadence::currentSaturday();
+
+        $saturday = collect(Cadence::saturdaysIn($week))
+            ->first(fn ($day) => $day->toDateString() === $current->toDateString())
+            ?? Cadence::saturdayOf($week);
+
+        abort_if($saturday === null, 404);
+
+        $this->saturday = $saturday->toDateString();
+
         $slate = Slate::query()->firstOrCreate(
-            ['contest_id' => $contest->id, 'week_id' => $weekId],
-            ['status' => Slate::DRAFT],
+            ['contest_id' => $contest->id, 'saturday' => $this->saturday],
+            ['week_id' => $week->id, 'status' => Slate::DRAFT],
         );
 
         $this->slateId = $slate->id;
@@ -393,7 +415,9 @@ new class extends Component
 
     private function fillFromSuggestions(Slate $slate): void
     {
-        $suggested = app(SuggestSlate::class)->for($this->contest, $slate->week);
+        // The slate's own Saturday, so a split ESPN week cannot suggest a
+        // board spanning two of them.
+        $suggested = app(SuggestSlate::class)->for($this->contest, $slate->week, $slate->saturday);
 
         foreach ($suggested as $i => $row) {
             $seed = array_diff_key($row, array_flip(['game_id', 'score']));

@@ -194,11 +194,16 @@ it('names every way a board is not ready', function () {
     $slate->games()->first()->game->update(['kickoff_day' => 'Fri']);
     expect($engine->validateForPublish($slate->fresh()))->toContain('picks.publish.not_saturday');
 
-    // A game from some other week.
+    /*
+     * A game from some other SATURDAY. This used to compare week ids, which
+     * a split ESPN week satisfies twice over — 2026's Week 1 holds both 8/29
+     * and 9/5 — so a board spanning a fortnight passed every check. The
+     * stray here stays in the same week on purpose: only the Saturday moves,
+     * which is exactly the case the week comparison could not see.
+     */
     $slate = pickemBoard(ContestMode::Classic);
-    $stray = Week::factory()->create(['season_id' => $slate->contest->slates()->first()->week->season_id, 'number' => 2]);
-    $slate->games()->first()->game->update(['week_id' => $stray->id]);
-    expect($engine->validateForPublish($slate->fresh()))->toContain('picks.publish.wrong_week');
+    $slate->games()->first()->game->update(['kickoff_at' => '2026-09-12 19:30:00']);
+    expect($engine->validateForPublish($slate->fresh()))->toContain('picks.publish.wrong_saturday');
 
     // No tiebreaker designated.
     $slate = pickemBoard(ContestMode::Classic);

@@ -38,7 +38,28 @@ class PublishBoardsCommand extends Command
         }
 
         $week = Week::query()->find($weekId);
-        $deadline = $week === null ? null : Cadence::slateDeadline($week);
+
+        if ($week === null) {
+            $this->info('No current week to publish for.');
+
+            return self::SUCCESS;
+        }
+
+        /*
+         * ONE SATURDAY, the one this pick'em week is playing. An ESPN week
+         * can hold two — 2026's Week 1 has 8/29 and 9/5 — and sweeping the
+         * week would publish a board for both, which is two weeks of picks
+         * dropped on a group at once. `currentSaturday()` turns over on
+         * Tuesday; the fallback is the week's primary card, for a clock
+         * sitting outside this week entirely (a bye, the offseason).
+         */
+        $current = Cadence::currentSaturday();
+
+        $saturday = collect(Cadence::saturdaysIn($week))
+            ->first(fn ($day) => $day->toDateString() === $current->toDateString())
+            ?? Cadence::saturdayOf($week);
+
+        $deadline = $saturday === null ? null : Cadence::slateDeadline($saturday);
 
         if ($deadline === null || now()->lessThan($deadline)) {
             $this->info('Before the deadline; commissioners still have the floor.');
@@ -51,7 +72,7 @@ class PublishBoardsCommand extends Command
             ->whereNotExists(fn ($q) => $q->selectRaw(1)
                 ->from('slates')
                 ->whereColumn('slates.contest_id', 'contests.id')
-                ->where('slates.week_id', $week->id)
+                ->where('slates.saturday', $saturday->toDateString())
                 ->whereNot('slates.status', Slate::DRAFT))
             ->get();
 
@@ -61,7 +82,7 @@ class PublishBoardsCommand extends Command
             // One bad contest must not cost the rest of the league — the
             // same isolation every sync loop holds.
             try {
-                if ($auto->handle($contest, $week) !== null) {
+                if ($auto->handle($contest, $week, $saturday) !== null) {
                     $published++;
                 } else {
                     Log::warning("Standard slate for contest {$contest->id} failed validation; left as draft.");

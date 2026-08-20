@@ -8,6 +8,8 @@ use App\Models\Slate;
 use App\Models\SlateGame;
 use App\Models\Week;
 use App\Services\Contests\SuggestSlate;
+use App\Support\Cadence;
+use Carbon\CarbonInterface;
 
 /**
  * The commissioner overslept: publish the STANDARD slate.
@@ -35,11 +37,26 @@ class AutoPublishStandardSlate
         private PublishSlate $publish,
     ) {}
 
-    public function handle(Contest $contest, Week $week): ?Slate
+    /**
+     * @param  CarbonInterface|null  $saturday  which Saturday of the week to
+     *                                          build; defaults to its primary card
+     */
+    public function handle(Contest $contest, Week $week, ?CarbonInterface $saturday = null): ?Slate
     {
+        /*
+         * Keyed on the SATURDAY, not the week — an ESPN week can hold two,
+         * and a contest gets one board per Saturday played. A week with no
+         * Saturday at all (nothing synced, no range) has nothing to build.
+         */
+        $saturday ??= Cadence::saturdayOf($week);
+
+        if ($saturday === null) {
+            return null;
+        }
+
         $slate = Slate::query()->firstOrCreate(
-            ['contest_id' => $contest->id, 'week_id' => $week->id],
-            ['status' => Slate::DRAFT],
+            ['contest_id' => $contest->id, 'saturday' => $saturday->toDateString()],
+            ['week_id' => $week->id, 'status' => Slate::DRAFT],
         );
 
         if ($slate->status !== Slate::DRAFT) {
@@ -53,7 +70,7 @@ class AutoPublishStandardSlate
             'tiebreaker_team_id' => null,
         ]);
 
-        $suggested = $this->suggest->for($contest, $week);
+        $suggested = $this->suggest->for($contest, $week, $saturday);
 
         foreach ($suggested as $i => $row) {
             $seed = array_diff_key($row, array_flip(['game_id', 'score']));

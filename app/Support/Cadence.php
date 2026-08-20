@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Game;
 use App\Models\PickemSetting;
 use App\Models\Week;
 use Carbon\CarbonImmutable;
@@ -27,10 +28,26 @@ use Carbon\CarbonInterface;
  */
 class Cadence
 {
-    /** Carbon day-of-week: Tuesday. */
-    public const DEADLINE_DOW = 2;
+    /**
+     * Carbon day-of-week: Tuesday — when a pick'em week turns over.
+     *
+     * The founders' cycle, adopted app-wide 2026-08-20: a pick'em week runs
+     * Tuesday 00:00 ET through Monday 23:59 ET and holds exactly one
+     * Saturday. Results land Sunday, Monday is for arguing about them, and
+     * Tuesday starts the next card.
+     */
+    public const TURNOVER_DOW = 2;
 
-    public const DEADLINE_TIME = '23:59:59';
+    /**
+     * Carbon day-of-week: Thursday — "games available by Thursday".
+     *
+     * Moved from Tuesday end-of-day 2026-08-20 with the rest of the
+     * Woodshed cadence. The commissioner gets Tuesday and Wednesday to
+     * build; players get roughly forty-eight hours with the card.
+     */
+    public const DEADLINE_DOW = 4;
+
+    public const DEADLINE_TIME = '12:00:00';
 
     /** Carbon day-of-week: Sunday. */
     public const OFFICIAL_DOW = 0;
@@ -45,10 +62,67 @@ class Cadence
     }
 
     /**
-     * The week's Saturday, at midnight ET — the anchor every other moment
-     * is measured from. Null for a week that somehow holds no Saturday.
+     * Every Saturday in the week that actually holds slate-window games.
+     *
+     * ESPN's week is a container that USUALLY holds one Saturday. 2026's
+     * Week 1 holds two — 8/29 and 9/5 — and opens on an 8/22 that holds
+     * none. So "the week's Saturday" is a question with more than one
+     * answer, and a caller that wants all of them must be able to ask.
+     *
+     * The games filter is the whole point: a calendar Saturday nobody plays
+     * on is not a pick'em Saturday, and treating it as one is what put
+     * Week 1's deadline in the past. The window check runs in PHP because
+     * the ET time-of-day boundary shifts under DST and cannot be asked in
+     * SQL.
+     *
+     * @return array<int, CarbonImmutable> ascending, ET midnights
+     */
+    public static function saturdaysIn(Week $week): array
+    {
+        return Game::query()
+            ->where('week_id', $week->id)
+            ->whereNotNull('kickoff_at')
+            ->get(['id', 'kickoff_at', 'kickoff_day'])
+            ->filter(fn (Game $game) => $game->inSlateWindow())
+            ->map(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->startOfDay())
+            ->unique(fn (CarbonImmutable $day) => $day->toDateString())
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * The week's PRIMARY Saturday — the one carrying the most games.
+     *
+     * For every ordinary week this is the only Saturday there is. For a
+     * split week it is the main card (9/5's sixty-eight games, not 8/29's
+     * seven), which is what a caller thinking in weeks means. Ties break
+     * earliest. Falls back to the first calendar Saturday in the range only
+     * when no game has been synced yet — a scheduled-but-unplayed week is a
+     * real state, and refusing to date it would break the builder before a
+     * season starts.
      */
     public static function saturdayOf(Week $week): ?CarbonImmutable
+    {
+        $busiest = Game::query()
+            ->where('week_id', $week->id)
+            ->whereNotNull('kickoff_at')
+            ->get(['id', 'kickoff_at', 'kickoff_day'])
+            ->filter(fn (Game $game) => $game->inSlateWindow())
+            ->groupBy(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString())
+            ->sortByDesc(fn ($games, string $date) => sprintf('%04d-%s', $games->count(), $date))
+            ->keys()
+            ->first();
+
+        if ($busiest !== null) {
+            return CarbonImmutable::parse($busiest, config('cfb.timezone'))->startOfDay();
+        }
+
+        return self::firstCalendarSaturday($week);
+    }
+
+    /** The date-range walk, for a week with no synced games to speak for it. */
+    private static function firstCalendarSaturday(Week $week): ?CarbonImmutable
     {
         if ($week->start_date === null || $week->end_date === null) {
             return null;
@@ -69,13 +143,50 @@ class Cadence
     }
 
     /**
+     * The Saturday of the pick'em week we are currently inside.
+     *
+     * Tuesday through Monday, so Sunday's results and Monday's arguing
+     * still belong to the Saturday just played, and Tuesday moves on.
+     */
+    public static function currentSaturday(?CarbonImmutable $at = null): CarbonImmutable
+    {
+        $now = ($at ?? CarbonImmutable::now())->timezone(config('cfb.timezone'))->startOfDay();
+
+        // Carbon: Sun 0 … Sat 6. Sunday and Monday look BACK at the
+        // Saturday just played; Tuesday onward looks forward to the next.
+        $offset = match ($now->dayOfWeek) {
+            CarbonImmutable::SUNDAY => -1,
+            CarbonImmutable::MONDAY => -2,
+            default => CarbonImmutable::SATURDAY - $now->dayOfWeek,
+        };
+
+        return $now->addDays($offset);
+    }
+
+    /**
+     * Normalize either accepted anchor to a Saturday at ET midnight.
+     *
+     * A date is taken as a CALENDAR DATE and re-pinned to ET midnight, never
+     * converted through a timezone. `slates.saturday` is a date column and
+     * arrives as UTC midnight; shifting that into Eastern lands on 8pm the
+     * PREVIOUS DAY, and the deadline then counts back from a Friday — one
+     * day early, every week, silently.
+     */
+    private static function anchor(Week|CarbonInterface $for): ?CarbonImmutable
+    {
+        return $for instanceof Week
+            ? self::saturdayOf($for)
+            : CarbonImmutable::parse($for->format('Y-m-d'), config('cfb.timezone'))->startOfDay();
+    }
+
+    /**
      * When an unpublished board forfeits to the standard slate: the
      * configured day-of-week BEFORE the week's Saturday, at the configured
      * time, ET.
      */
-    public static function slateDeadline(Week $week): ?CarbonImmutable
+    public static function slateDeadline(Week|CarbonInterface $for): ?CarbonImmutable
     {
-        $saturday = self::saturdayOf($week);
+        $saturday = self::anchor($for);
 
         if ($saturday === null) {
             return null;
@@ -95,9 +206,9 @@ class Cadence
      * AFTER the Saturday, at the configured time, ET. Settlement and
      * payouts wait for this moment — the stat-settling window.
      */
-    public static function officialFinal(Week $week): ?CarbonImmutable
+    public static function officialFinal(Week|CarbonInterface $for): ?CarbonImmutable
     {
-        $saturday = self::saturdayOf($week);
+        $saturday = self::anchor($for);
 
         if ($saturday === null) {
             return null;

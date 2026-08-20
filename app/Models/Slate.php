@@ -23,7 +23,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * non-Woodshed slate, and never a default.
  */
 #[Fillable([
-    'contest_id', 'week_id', 'status', 'published_at', 'settled_at',
+    'contest_id', 'week_id', 'saturday', 'status', 'exhibition',
+    'celebrity_user_id', 'published_at', 'settled_at',
     'tiebreaker_slate_game_id', 'tiebreaker_metric', 'tiebreaker_team_id',
     'bear_theme',
 ])]
@@ -49,10 +50,28 @@ class Slate extends Model
     protected function casts(): array
     {
         return [
+            // The SATURDAY being played — the board's real identity, and
+            // what the whole weekly clock resolves from. `week_id` is still
+            // ESPN's week and still drives labels; it is just not the key,
+            // because one ESPN week can hold two Saturdays.
+            'saturday' => 'immutable_date',
+            'exhibition' => 'boolean',
             'published_at' => 'datetime',
             'settled_at' => 'datetime',
             'tiebreaker_metric' => TiebreakerMetric::class,
         ];
+    }
+
+    /** A practice board: graded and paid, but never counted. */
+    public function counts(): bool
+    {
+        return ! $this->exhibition;
+    }
+
+    /** The guest commissioner who set this board, if one was drawn. */
+    public function celebrity(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'celebrity_user_id');
     }
 
     public function contest(): BelongsTo
