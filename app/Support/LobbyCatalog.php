@@ -38,14 +38,21 @@ class LobbyCatalog
      */
     public static function entries(): array
     {
-        return [
+        $entries = [
             ['mode' => ContestMode::Classic, 'flavor' => null],
             ['mode' => ContestMode::Tiered, 'flavor' => null],
             ['mode' => ContestMode::Woodshed, 'flavor' => null],
-            // The specialty shelf opens with the catalog flip — flavors
-            // spawn through the same door either way, so enabling one is
-            // one line here.
         ];
+
+        // The specialty shelf, in LobbyFlavor case order — feasibility
+        // trims it per Saturday (no ranked poll, no night games, a thin
+        // conference: no room), so listing a flavor here is an offer, not
+        // a promise.
+        foreach (LobbyFlavor::cases() as $flavor) {
+            $entries[] = ['mode' => $flavor->mode(), 'flavor' => $flavor];
+        }
+
+        return $entries;
     }
 
     /**

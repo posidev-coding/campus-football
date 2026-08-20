@@ -51,7 +51,7 @@ class PickemPreflightCommand extends Command
             return self::FAILURE;
         }
 
-        $this->line('  <fg=gray>clear for the flip: Feature::define(\'pickem\', fn (): bool => true)</>');
+        $this->line('  <fg=gray>clear for the flip: PICKEM_OPEN=true, then config:clear and pennant:purge pickem</>');
 
         return self::SUCCESS;
     }

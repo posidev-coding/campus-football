@@ -9,6 +9,7 @@ use App\Models\Group;
 use App\Models\Slate;
 use App\Models\User;
 use App\Support\LobbyCatalog;
+use App\Support\PickemPreflight;
 use App\Support\Voice;
 use Livewire\Livewire;
 
@@ -206,14 +207,36 @@ it('stocks only what the opening card can seat, through the sweep', function () 
 
     $rooms = Group::query()->where('kind', Group::KIND_LOBBY)->where('week_id', $week->id)->get();
 
-    // One room — Shotgun, downsized to the seven that exist, dated to the
-    // opening card. Triple Option and the Woodshed sat out, quietly.
-    expect($rooms)->toHaveCount(1)
-        ->and($rooms->sole()->name)->toBe('Hail Mary')
-        ->and($rooms->sole()->contests()->sole()->settings)->toBe(['slate_size' => 7]);
+    /*
+     * The rehearsal floor: standard Shotgun downsized to the seven that
+     * exist, the flash card, and the kicker room at seven. The fifteen-
+     * game modes, the themed rooms and the conference family all sat out,
+     * quietly — feasibility, not failure.
+     */
+    expect($rooms->pluck('name')->all())->toEqualCanonicalizing(['Hail Mary', 'Two-Minute Drill', 'Upset Alley']);
 
-    $slate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $rooms->sole()->id))->sole();
+    $standard = $rooms->firstWhere('name', 'Hail Mary');
+
+    expect($standard->contests()->sole()->settings)->toBe(['slate_size' => 7]);
+
+    $slate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $standard->id))->sole();
 
     expect($slate->games()->count())->toBe(7)
         ->and($slate->saturday->toDateString())->toBe('2026-08-29');
+});
+
+it('stocks the specialty shelf and reports it honestly in the preflight', function () {
+    [, $week] = lobbyFlavorWeek();
+
+    $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+    $flavors = collect(app(PickemPreflight::class)->checks())->keyBy('key')['flavors'];
+
+    // Everything possible is stocked (OK, not WARN), and the skipped
+    // shelves are NAMED so an empty slot reads as designed, not broken.
+    expect($flavors['status'])->toBe(PickemPreflight::OK)
+        ->and($flavors['detail'])->toContain('3 of 3 possible')
+        ->and($flavors['detail'])->toContain('Skipped:')
+        ->and($flavors['detail'])->toContain('Ranked Action')
+        ->and($flavors['detail'])->toContain('Pac-12 After Dark');
 });

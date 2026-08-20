@@ -55,6 +55,7 @@ class PickemPreflight
         return [
             $this->calendarCheck($year, $week),
             $this->roomsCheck($week),
+            $this->flavorsCheck($week),
             $this->linedGamesCheck($week),
             $this->settingsCheck(),
             $this->scheduleCheck(),
@@ -169,6 +170,52 @@ class PickemPreflight
             self::OK,
             $stocked->count().' of '.(count(ContestMode::cases()) - $exempt->count()).' possible modes stocked.'.$exemptNote,
         );
+    }
+
+    /**
+     * The specialty shelf — NEVER a blocker: the three standard rooms are
+     * the red line, and a Saturday that cannot seat Ranked Action is a
+     * fact about the Saturday, not a launch problem. WARN when a feasible
+     * flavor is unstocked, and always name what feasibility skipped so an
+     * empty shelf reads as designed, not broken.
+     *
+     * @return array{key: string, label: string, status: string, detail: string, remedy: string|null}
+     */
+    private function flavorsCheck(?Week $week): array
+    {
+        $saturday = $week === null ? null : Cadence::floorSaturday($week);
+
+        if ($week === null || $saturday === null) {
+            return $this->row('flavors', 'Specialty rooms', self::WARN, 'No week to stock the shelf for.');
+        }
+
+        $specialties = collect(LobbyCatalog::entries())
+            ->filter(fn (array $entry) => $entry['flavor'] !== null);
+
+        $stocked = Group::query()
+            ->where('kind', Group::KIND_LOBBY)
+            ->where('week_id', $week->id)
+            ->whereNotNull('flavor')
+            ->whereNull('filled_at')
+            ->whereHas('contests.slates', fn ($s) => $s
+                ->where('saturday', $saturday->format('Y-m-d'))
+                ->whereIn('status', [Slate::PUBLISHED, Slate::PRELIM]))
+            ->pluck('flavor');
+
+        $possible = $specialties->filter(fn (array $entry) => $stocked->contains($entry['flavor']->value)
+            || LobbyCatalog::resolve($entry['mode'], $entry['flavor'], $week, $saturday) !== null);
+
+        $skipped = $specialties->reject(fn (array $entry) => $possible->contains($entry))
+            ->map(fn (array $entry) => $entry['flavor']->label());
+
+        $missing = $possible->reject(fn (array $entry) => $stocked->contains($entry['flavor']->value));
+
+        $detail = $stocked->unique()->count().' of '.$possible->count().' possible specialty rooms stocked.'
+            .($skipped->isEmpty() ? '' : ' Skipped: '.$skipped->implode(', ').' (not enough games).');
+
+        return $missing->isEmpty()
+            ? $this->row('flavors', 'Specialty rooms', self::OK, $detail)
+            : $this->row('flavors', 'Specialty rooms', self::WARN, $detail, 'pickem:open-lobbies');
     }
 
     /**

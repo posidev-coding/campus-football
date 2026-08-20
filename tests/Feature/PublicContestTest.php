@@ -120,20 +120,27 @@ it('refuses a seat in a week already being played', function () {
         ->toThrow(ContestFull::class);
 });
 
-it('keeps at least one open room per mode through the sweep, idempotently', function () {
+it('keeps at least one open room per catalog entry through the sweep, idempotently', function () {
     publicContestWeek();
 
     $this->artisan('pickem:open-lobbies')->assertSuccessful();
 
-    // One room per AVAILABLE mode — all three, the Woodshed included now.
+    /*
+     * The three standard rooms plus every specialty this fixture can seat:
+     * the flash card, the kicker room, and the small-table Woodshed.
+     * Ranked, primetime and the conference family have no qualifying games
+     * here, and feasibility keeps them off the floor.
+     */
     $rooms = Group::query()->where('kind', Group::KIND_LOBBY)->get();
-    expect($rooms)->toHaveCount(3)
-        ->and(Contest::query()->whereIn('group_id', $rooms->pluck('id'))->pluck('mode')->all())
-        ->toEqualCanonicalizing([ContestMode::Classic, ContestMode::Tiered, ContestMode::Woodshed]);
+    expect($rooms)->toHaveCount(6)
+        ->and($rooms->whereNull('flavor')->pluck('id')->pipe(fn ($ids) => Contest::query()->whereIn('group_id', $ids)->pluck('mode')->all()))
+        ->toEqualCanonicalizing([ContestMode::Classic, ContestMode::Tiered, ContestMode::Woodshed])
+        ->and($rooms->pluck('flavor')->filter()->values()->all())
+        ->toEqualCanonicalizing(['two_minute', 'upset_alley', 'back_porch']);
 
     // The shelf is stocked; a second pass adds nothing.
     $this->artisan('pickem:open-lobbies')->assertSuccessful();
-    expect(Group::query()->where('kind', Group::KIND_LOBBY)->count())->toBe(3);
+    expect(Group::query()->where('kind', Group::KIND_LOBBY)->count())->toBe(6);
 });
 
 it('lists only OPEN rooms on the lobby floor', function () {
