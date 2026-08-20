@@ -7,11 +7,13 @@ use App\Models\Group;
 use App\Models\PickemSetting;
 use App\Models\Slate;
 use App\Models\Week;
+use App\Support\Cadence;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Str;
 
 /**
- * Provision the NEXT public room for a mode-week: a lobby-kind group with
- * a deterministic name ("Triple Option Open · Week 3 · Room 2"), the
+ * Provision the NEXT public room for a mode-SATURDAY: a lobby-kind group
+ * with a deterministic name ("Triple Option Open · Sep 12 · Room 2"), the
  * admin's seat cap, ONE contest — and a PUBLISHED slate, because a public
  * room with nothing to pick is a broken promise on the lobby floor.
  *
@@ -35,22 +37,37 @@ class SpawnPublicContest
         private PublishSlate $publish,
     ) {}
 
-    public function handle(ContestMode $mode, Week $week): ?Group
+    public function handle(ContestMode $mode, Week $week, ?CarbonInterface $saturday = null): ?Group
     {
+        /*
+         * Rooms are named for the SATURDAY they play, not the ESPN week they
+         * sit in — 2026's Week 1 holds two, so "Week 1 · Room 1" would name
+         * two different cards a fortnight apart. The ordinal counts rooms on
+         * that Saturday for that mode, which is what "Room 2" means to
+         * somebody looking at the floor.
+         */
+        $saturday ??= Cadence::saturdayOf($week);
+
+        if ($saturday === null) {
+            return null;
+        }
+
         $ordinal = Group::query()
             ->where('kind', Group::KIND_LOBBY)
             ->where('week_id', $week->id)
-            ->whereHas('contests', fn ($q) => $q->where('mode', $mode))
+            ->whereHas('contests', fn ($q) => $q
+                ->where('mode', $mode)
+                ->whereHas('slates', fn ($s) => $s->where('saturday', $saturday->format('Y-m-d'))))
             ->count() + 1;
 
-        $sibling = $this->publishedSibling($mode, $week);
+        $sibling = $this->publishedSibling($mode, $week, $saturday);
 
         do {
             $code = Str::upper(Str::random(8));
         } while (Group::where('code', $code)->exists());
 
         $group = Group::create([
-            'name' => "{$mode->label()} Open · Week {$week->number} · Room {$ordinal}",
+            'name' => "{$mode->label()} Open · {$saturday->format('M j')} · Room {$ordinal}",
             'code' => $code,
             'kind' => Group::KIND_LOBBY,
             'week_id' => $week->id,
@@ -64,7 +81,7 @@ class SpawnPublicContest
         ]);
 
         $published = $sibling === null
-            ? $this->standard->handle($contest, $week)
+            ? $this->standard->handle($contest, $week, $saturday)
             : $this->cloneSlate($sibling, $contest->id, $week->id);
 
         if ($published === null) {
@@ -77,11 +94,11 @@ class SpawnPublicContest
         return $group;
     }
 
-    /** The mode-week's house slate, from any sibling room that has one. */
-    private function publishedSibling(ContestMode $mode, Week $week): ?Slate
+    /** The mode-SATURDAY's house slate, from any sibling room that has one. */
+    private function publishedSibling(ContestMode $mode, Week $week, CarbonInterface $saturday): ?Slate
     {
         return Slate::query()
-            ->where('week_id', $week->id)
+            ->where('saturday', $saturday->format('Y-m-d'))
             ->whereIn('status', [Slate::PUBLISHED, Slate::PRELIM])
             ->whereHas('contest', fn ($q) => $q
                 ->where('mode', $mode)

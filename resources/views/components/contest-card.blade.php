@@ -2,8 +2,10 @@
     A public room on the lobby floor: the game it plays — wearing that
     game's mark and colors from the identity seam — the seats left, and
     the door. The name already says everything deterministic ("Triple
-    Option Open · Week 3 · Room 2"); the blurb is the enum's own one-line
-    rules so the pitch can never drift from the mode cards.
+    Option Open · Sep 12 · Room 2" — the SATURDAY, not the ESPN week, so
+    two cards inside one split week cannot share a name); the blurb is the
+    enum's own one-line rules so the pitch can never drift from the mode
+    cards.
 
     The seats meter reuses x-slate-progress's grammar — a thin bar plus
     the number a joiner actually reads. `action` names the HOST's join

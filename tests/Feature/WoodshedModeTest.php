@@ -119,7 +119,7 @@ it('keeps the sibling\'s Bear verbatim when a room clones — never a reseed', f
     [, $week] = woodshedWeek();
 
     $first = app(SpawnPublicContest::class)->handle(ContestMode::Woodshed, $week);
-    expect($first->name)->toBe('The Woodshed Open · Week 1 · Room 1');
+    expect($first->name)->toBe('The Woodshed Open · Sep 5 · Room 1');
 
     $firstSlate = Slate::query()
         ->whereHas('contest', fn ($q) => $q->where('group_id', $first->id))
