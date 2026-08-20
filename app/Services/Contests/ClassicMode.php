@@ -17,9 +17,14 @@ class ClassicMode extends ModeEngine
 {
     public const GAME_POINTS = 10;
 
+    /**
+     * The one mode that flexes: an untiered board can be any length, which
+     * is what the flash cards and the dynamic themed rooms ride. The tiered
+     * modes deliberately ignore this knob — see their docblocks.
+     */
     public function slateSize(): int
     {
-        return 10;
+        return (int) $this->setting('slate_size', 10);
     }
 
     public function tierSpec(): ?array

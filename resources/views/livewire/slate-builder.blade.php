@@ -216,7 +216,11 @@ new class extends Component
             ->with(["homeTeam:{$team}", "awayTeam:{$team}", 'odds'])
             ->orderBy('kickoff_at')
             ->get()
-            ->filter(fn (Game $game) => $game->inSlateWindow());
+            ->filter(fn (Game $game) => $game->inSlateWindow())
+            // ONE BOARD, ONE SATURDAY — the split-week rule. AddSlateGame
+            // holds the same line as the gate; this keeps the list honest.
+            ->filter(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString()
+                === $this->slate->saturday?->toDateString());
     }
 
     /** Whether this contest's mode tiers at all — the engine's answer, so

@@ -25,7 +25,13 @@ class AddSlateGame
         SlateAuthority::commissioner($actor, $slate);
         SlateAuthority::draft($slate);
 
-        if (! $game->inSlateWindow() || $game->week_id !== $slate->week_id || $game->completed) {
+        // ONE BOARD, ONE SATURDAY — a split ESPN week satisfies the week-id
+        // check twice over, so the slate's own Saturday is the honest half
+        // of the eligibility question (the rule publish validation holds).
+        $sameSaturday = $game->kickoff_at?->timezone(config('cfb.timezone'))->toDateString()
+            === $slate->saturday?->toDateString();
+
+        if (! $game->inSlateWindow() || $game->week_id !== $slate->week_id || ! $sameSaturday || $game->completed) {
             throw new InvalidArgumentException("Game {$game->id} is not eligible for slate {$slate->id}.");
         }
 

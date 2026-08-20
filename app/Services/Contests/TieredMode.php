@@ -17,6 +17,11 @@ use App\Models\SlateGame;
  */
 class TieredMode extends ModeEngine
 {
+    /**
+     * `slate_size` is deliberately NOT honored here: a short board has no
+     * honest 5-5-5, and half-scaling a tier spec changes what the tiers
+     * mean. Only the untiered mode flexes.
+     */
     public function slateSize(): int
     {
         return 15;

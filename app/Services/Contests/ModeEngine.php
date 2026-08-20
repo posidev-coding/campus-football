@@ -2,6 +2,7 @@
 
 namespace App\Services\Contests;
 
+use App\Enums\SlateFilter;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateGame;
@@ -25,6 +26,25 @@ abstract class ModeEngine
 {
     public function __construct(protected ?array $settings = null) {}
 
+    /** One knob from the contest's settings column, or the mode's default. */
+    protected function setting(string $key, mixed $default = null): mixed
+    {
+        return $this->settings[$key] ?? $default;
+    }
+
+    /**
+     * The themed admission rule this contest's boards draw under, or null
+     * for the standard everything-eligible pool. Read by SuggestSlate; the
+     * engine itself never filters — a filter shapes what reaches the board,
+     * never how the board grades.
+     */
+    public function slateFilter(): ?SlateFilter
+    {
+        $filter = $this->setting('slate_filter');
+
+        return $filter === null ? null : SlateFilter::tryFrom((string) $filter);
+    }
+
     /** How many games a published board carries. */
     abstract public function slateSize(): int;
 
@@ -47,13 +67,46 @@ abstract class ModeEngine
     /**
      * What THIS pick pays given its result — the one seam live grading
      * (PickGrader) and settlement share, so the money math can never fork.
-     * Base rule: a win pays pointsFor(), anything else pays zero. The
-     * Woodshed overrides it to price the Lock wager, where a locked loss
-     * pays NEGATIVE points.
+     * Base rule: a win pays pointsFor() plus any settings-driven kicker,
+     * anything else pays zero. The Woodshed overrides it to price the Lock
+     * wager, where a locked loss pays NEGATIVE points.
      */
     public function pointsForPick(SlateGame $slateGame, Pick $pick, string $result): int
     {
-        return $result === Pick::WIN ? $this->pointsFor($slateGame) : 0;
+        return $result === Pick::WIN
+            ? $this->pointsFor($slateGame) + $this->kickerBonus($slateGame, $pick)
+            : 0;
+    }
+
+    /**
+     * The settings-driven bonus arm of a winning pick. `underdog_ml`: the
+     * dog pick covered (that is the win this rides on) AND won the game
+     * outright — judged only on a COMPLETED game, so live grading pays the
+     * plain price mid-game and the final regrade adds the bump. The
+     * recompute is idempotent, so the bump is just the next pass.
+     *
+     * Reads `$slateGame->game`, which PickGrader pins to the live row
+     * before grading — the same score the result was computed from.
+     */
+    protected function kickerBonus(SlateGame $slateGame, Pick $pick): int
+    {
+        if ($this->setting('kicker') !== 'underdog_ml') {
+            return 0;
+        }
+
+        $game = $slateGame->game;
+
+        // Never read the spread's sign for this — favorite_team_id is the
+        // only honest statement of who the dog is.
+        if (! $game->completed || $pick->picked_team_id === $slateGame->favorite_team_id) {
+            return 0;
+        }
+
+        $pickedHome = $pick->picked_team_id === $game->home_team_id;
+        $picked = $pickedHome ? $game->home_score : $game->away_score;
+        $other = $pickedHome ? $game->away_score : $game->home_score;
+
+        return $picked > $other ? (int) $this->setting('kicker_points', 2) : 0;
     }
 
     /** Whether this mode offers the Lock wager on the featured game. */

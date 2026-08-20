@@ -34,6 +34,11 @@ class WoodshedMode extends ModeEngine
 
     public const BEAR_BONUS = 5;
 
+    /**
+     * `slate_size` is deliberately NOT honored here — the founders' game is
+     * fifteen in three tiers of five, and a short board has no honest
+     * 5-5-5. Only the untiered mode flexes (the TieredMode posture).
+     */
     public function slateSize(): int
     {
         return 15;

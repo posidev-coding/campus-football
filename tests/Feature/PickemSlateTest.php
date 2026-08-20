@@ -259,6 +259,36 @@ it('adds only eligible games, idempotently', function () {
     $friday = pickemGame($season, $week, ['kickoff_at' => '2026-09-04 19:00:00']);
     expect(fn () => app(AddSlateGame::class)->handle($commissioner, $slate, $friday))
         ->toThrow(InvalidArgumentException::class);
+
+    // The split-week gap: a SATURDAY game from the week's OTHER card. The
+    // week ids match, so only the slate's own Saturday can tell them apart
+    // — the same rule publish holds, enforced at the add door too.
+    $wrongSaturday = pickemGame($season, $week, ['kickoff_at' => '2026-08-29 19:30:00']);
+    expect(fn () => app(AddSlateGame::class)->handle($commissioner, $slate, $wrongSaturday))
+        ->toThrow(InvalidArgumentException::class);
+});
+
+it('offers only the slate Saturday in the builder candidate list', function () {
+    // Inside the split week's FIRST card, where both Saturdays are still
+    // upcoming — on 9/2 the calendar hides the stray by accident and the
+    // test would pass for the wrong reason.
+    $this->travelTo('2026-08-26 12:00:00');
+
+    [$commissioner, $group] = pickemContest();
+    [$season, $week] = pickemSeasonWeek();
+
+    // Both spreadless so neither is suggested onto the board — this pins
+    // the CANDIDATE list, which has no line requirement.
+    $sameSaturday = pickemGame($season, $week, ['kickoff_at' => '2026-08-29 19:30:00']);
+    $straySaturday = pickemGame($season, $week);
+
+    $candidates = Livewire::actingAs($commissioner)
+        ->test('slate-builder', ['group' => $group])
+        ->instance()
+        ->candidates;
+
+    expect($candidates->pluck('id'))->toContain($sameSaturday->id)
+        ->not->toContain($straySaturday->id);
 });
 
 it('clears the tiebreaker when its game is removed', function () {

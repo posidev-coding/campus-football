@@ -43,30 +43,7 @@ class SuggestSlate
         $size = $engine->slateSize();
         $spec = $engine->tierSpec();
 
-        /*
-         * ONE SATURDAY, not one week. An ESPN week can hold two of them —
-         * 2026's Week 1 has games on both 8/29 and 9/5 — and drawing from
-         * the week suggested a board spanning a fortnight, which is how the
-         * first three published slates ended up mixing the two.
-         */
-        $saturday ??= Cadence::saturdayOf($week);
-
-        // The CALENDAR DATE, never converted through a timezone.
-        // `slates.saturday` is a date column and arrives as UTC midnight;
-        // shifting that into Eastern lands on 8pm the previous day and
-        // matches no game at all.
-        $target = $saturday?->format('Y-m-d');
-
-        $candidates = Game::query()
-            ->slateEligible()
-            ->where('week_id', $week->id)
-            ->upcoming()
-            ->with(['odds', 'predictor'])
-            ->get()
-            // The time-of-day half of the window is a per-game check — the
-            // ET boundary is not safely expressible in SQL.
-            ->filter(fn (Game $game) => $game->inSlateWindow())
-            ->filter(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString() === $target);
+        $candidates = $this->candidates($contest, $week, $saturday);
 
         $followed = $this->followedTeamIds($contest);
 
@@ -104,6 +81,60 @@ class SuggestSlate
         }
 
         return $board;
+    }
+
+    /**
+     * How many games a board for this contest COULD hold: the same
+     * candidate pipeline for() draws from, down to the usable-line rule.
+     * The dynamic flavored rooms freeze their `slate_size` from this
+     * number BEFORE publishing, so suggestion and publish validation agree
+     * by construction — a size frozen from this count always fills.
+     */
+    public function viableCount(Contest $contest, Week $week, ?CarbonInterface $saturday = null): int
+    {
+        return $this->candidates($contest, $week, $saturday)
+            ->filter(fn (Game $game) => GameQualityScore::for($game) !== null)
+            ->count();
+    }
+
+    /**
+     * The one candidate pool: the Saturday's slate-window games, narrowed
+     * by the contest's themed filter when its settings carry one.
+     *
+     * @return Collection<int, Game>
+     */
+    private function candidates(Contest $contest, Week $week, ?CarbonInterface $saturday = null): Collection
+    {
+        /*
+         * ONE SATURDAY, not one week. An ESPN week can hold two of them —
+         * 2026's Week 1 has games on both 8/29 and 9/5 — and drawing from
+         * the week suggested a board spanning a fortnight, which is how the
+         * first three published slates ended up mixing the two.
+         */
+        $saturday ??= Cadence::saturdayOf($week);
+
+        // The CALENDAR DATE, never converted through a timezone.
+        // `slates.saturday` is a date column and arrives as UTC midnight;
+        // shifting that into Eastern lands on 8pm the previous day and
+        // matches no game at all.
+        $target = $saturday?->format('Y-m-d');
+
+        $candidates = Game::query()
+            ->slateEligible()
+            ->where('week_id', $week->id)
+            ->upcoming()
+            ->with(['odds', 'predictor'])
+            ->get()
+            // The time-of-day half of the window is a per-game check — the
+            // ET boundary is not safely expressible in SQL.
+            ->filter(fn (Game $game) => $game->inSlateWindow())
+            ->filter(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString() === $target);
+
+        $filter = $contest->mode->engine($contest->settings)->slateFilter();
+
+        return $filter === null
+            ? $candidates
+            : $filter->apply($candidates, $contest->settings ?? [], $week);
     }
 
     /**

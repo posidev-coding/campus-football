@@ -33,6 +33,11 @@ class PickGrader
         $slateGame->loadMissing('slate.contest');
         $engine = $slateGame->slate->contest->mode->engine($slateGame->slate->contest->settings);
 
+        // Pin the LIVE game onto the slate game before pricing: the engine's
+        // kicker arm reads $slateGame->game, and it must judge the same
+        // score the result was computed from — never a stale re-query.
+        $slateGame->setRelation('game', $game);
+
         $changed = 0;
 
         foreach ($slateGame->picks()->get() as $pick) {

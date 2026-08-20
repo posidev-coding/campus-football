@@ -24,13 +24,13 @@ use Illuminate\Support\Facades\Http;
 // ------------------------------- fixtures (shared ones in PickemFixtures)
 
 /** A complete, publishable board for the mode, tiers filled per its spec. */
-function pickemBoard(ContestMode $mode): Slate
+function pickemBoard(ContestMode $mode, ?array $settings = null): Slate
 {
     [$season, $week] = pickemSeasonWeek();
-    $contest = Contest::factory()->create(['mode' => $mode]);
+    $contest = Contest::factory()->create(['mode' => $mode, 'settings' => $settings]);
     $slate = Slate::factory()->create(['contest_id' => $contest->id, 'week_id' => $week->id]);
 
-    $engine = $mode->engine();
+    $engine = $mode->engine($settings);
     $tiers = [];
 
     foreach ($engine->tierSpec() ?? [] as $tier => $count) {
@@ -72,6 +72,23 @@ function pickemGraded(int $homeScore, int $awayScore, float $spread = -6.5, ?int
     ]);
 
     return [$slateGame, $game];
+}
+
+/**
+ * An unsaved pick on that pair for the kicker tests — home (10) is the 6.5
+ * favorite, so the away side (20) is the dog. The game rides the slate game
+ * as a loaded relation, the way PickGrader hands it to the engine.
+ */
+function pickemKickerPick(int $pickedTeamId, int $homeScore, int $awayScore, bool $completed = true): array
+{
+    [$slateGame, $game] = pickemGraded($homeScore, $awayScore);
+    $game->completed = $completed;
+    $game->status = $completed ? 'post' : 'in';
+    $slateGame->setRelation('game', $game);
+
+    $pick = (new Pick)->forceFill(['picked_team_id' => $pickedTeamId, 'locked' => false]);
+
+    return [$slateGame, $pick];
 }
 
 // ------------------------------------------------------------ SpreadGrader
@@ -162,6 +179,75 @@ it('fields all three modes now that the Woodshed is configured', function () {
         ->and(ContestMode::Tiered->available())->toBeTrue()
         ->and(ContestMode::Woodshed->engine()->slateSize())->toBe(15)
         ->and(ContestMode::Woodshed->engine()->tierSpec())->toBe([1 => 5, 2 => 5, 3 => 5]);
+});
+
+// ------------------------------------------- settings: the contest's knobs
+
+it('honors a slate_size override on Shotgun, and only on Shotgun', function () {
+    expect(ContestMode::Classic->engine(['slate_size' => 5])->slateSize())->toBe(5)
+        ->and(ContestMode::Classic->engine(['slate_size' => 7])->slateSize())->toBe(7)
+        ->and(ContestMode::Classic->engine()->slateSize())->toBe(10)
+        // A 5-game Triple Option has no honest 5-5-5, so the tiered modes
+        // deliberately ignore the knob rather than half-scale a tier spec.
+        ->and(ContestMode::Tiered->engine(['slate_size' => 5])->slateSize())->toBe(15)
+        ->and(ContestMode::Woodshed->engine(['slate_size' => 5])->slateSize())->toBe(15);
+});
+
+it('publishes a short Shotgun board when the contest carries the knob', function () {
+    $this->travelTo('2026-09-02 12:00:00');
+
+    $slate = pickemBoard(ContestMode::Classic, ['slate_size' => 5]);
+
+    expect($slate->games()->count())->toBe(5)
+        ->and(ContestMode::Classic->engine(['slate_size' => 5])->validateForPublish($slate))->toBe([])
+        // The same five games fail the DEFAULT engine — the knob IS the
+        // size, not a looser count check.
+        ->and(ContestMode::Classic->engine()->validateForPublish($slate))->toContain('picks.publish.count');
+});
+
+it('pays the underdog kicker only when the dog pick covers AND wins outright', function () {
+    $kicker = ContestMode::Classic->engine(['kicker' => 'underdog_ml', 'kicker_points' => 2]);
+    $plain = ContestMode::Classic->engine();
+
+    // The dog (20) wins outright 21-17: covered the 6.5 and won the game.
+    [$slateGame, $pick] = pickemKickerPick(20, homeScore: 17, awayScore: 21);
+    expect($kicker->pointsForPick($slateGame, $pick, Pick::WIN))->toBe(12)
+        ->and($plain->pointsForPick($slateGame, $pick, Pick::WIN))->toBe(10);
+
+    // The dog covers but loses the game 24-21: the plain ten, no bonus.
+    [$slateGame, $pick] = pickemKickerPick(20, homeScore: 24, awayScore: 21);
+    expect($kicker->pointsForPick($slateGame, $pick, Pick::WIN))->toBe(10);
+
+    // The favorite covering pays no bonus even in a kicker room.
+    [$slateGame, $pick] = pickemKickerPick(10, homeScore: 31, awayScore: 24);
+    expect($kicker->pointsForPick($slateGame, $pick, Pick::WIN))->toBe(10);
+
+    // A loss pays zero, kicker or not.
+    [$slateGame, $pick] = pickemKickerPick(20, homeScore: 31, awayScore: 24);
+    expect($kicker->pointsForPick($slateGame, $pick, Pick::LOSS))->toBe(0);
+});
+
+it('holds the kicker until the final — a dog leading at halftime has won nothing yet', function () {
+    // In progress, dog up 21-17: live grading pays the plain ten, and the
+    // bonus lands on the settlement regrade of the COMPLETED game. The
+    // recompute is idempotent, so the bump is just the next pass.
+    [$slateGame, $pick] = pickemKickerPick(20, homeScore: 17, awayScore: 21, completed: false);
+
+    $kicker = ContestMode::Classic->engine(['kicker' => 'underdog_ml', 'kicker_points' => 2]);
+
+    expect($kicker->pointsForPick($slateGame, $pick, Pick::WIN))->toBe(10);
+});
+
+it('keeps the Woodshed Lock priced clear of the kicker seam', function () {
+    [$slateGame, $pick] = pickemKickerPick(20, homeScore: 17, awayScore: 21);
+    $slateGame->tier = 1;
+    $pick->locked = true;
+
+    // A locked win prices through the Lock arm — tier plus bonus, never a
+    // kicker on top, even if a Woodshed contest ever carried the setting.
+    $engine = ContestMode::Woodshed->engine(['kicker' => 'underdog_ml', 'kicker_points' => 2]);
+
+    expect($engine->pointsForPick($slateGame, $pick, Pick::WIN))->toBe(14);
 });
 
 // ----------------------------------------------------- publish validation
