@@ -6,11 +6,15 @@ use App\Enums\ContestMode;
 use App\Enums\LobbyFlavor;
 use App\Models\Game;
 use App\Models\Group;
+use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\User;
+use App\Services\Contests\PickGrader;
+use App\Support\GameRanks;
 use App\Support\LobbyCatalog;
 use App\Support\PickemPreflight;
 use App\Support\Voice;
+use Carbon\CarbonImmutable;
 use Livewire\Livewire;
 
 /*
@@ -156,18 +160,132 @@ it('sells the floor in catalog order with honest flavored cards', function () {
     [, $week] = lobbyFlavorWeek();
 
     app(SpawnPublicContest::class)->handle(ContestMode::Woodshed, $week);
+    app(SpawnPublicContest::class)->handle(ContestMode::Tiered, $week);
     app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
     app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::TwoMinuteDrill);
 
     $viewer = pickemAdmin();
 
     Livewire::actingAs($viewer)->test('lobby')
-        // Standard rooms lead in mode order; the specialty shelf follows —
-        // never alphabetical, which would bury Hail Mary under Back Porch.
-        ->assertSeeInOrder(['Hail Mary', 'The Splinter', 'Two-Minute Drill'])
+        /*
+         * Standard rooms lead in MODE order, the specialty shelf follows.
+         * Wishbone is the tell: alphabetically it sorts dead last, so an
+         * accidental name sort cannot pass this order.
+         */
+        ->assertSeeInOrder(['Hail Mary', 'Wishbone', 'The Splinter', 'Two-Minute Drill'])
         // The flavored card sells ITS card, not the mode's ten-game pitch.
         ->assertSee('The flash card: 5 games, in and out. 10 points a game.')
         ->assertSee(Voice::line('lobby.flavor.zinger.two_minute', for: $viewer));
+});
+
+it('pays the kicker through the real grading pipeline, not just the engine math', function () {
+    [, $week] = lobbyFlavorWeek();
+
+    $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::UpsetAlley);
+    $slate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $room->id))->sole();
+
+    $slateGame = $slate->games()->first();
+    $game = Game::query()->findOrFail($slateGame->game_id);
+
+    // The DOG side, read off the frozen favorite — never the spread's sign.
+    $dog = $slateGame->favorite_team_id === $game->home_team_id
+        ? $game->away_team_id
+        : $game->home_team_id;
+
+    $pick = Pick::factory()->create([
+        'slate_game_id' => $slateGame->id,
+        'user_id' => User::factory()->create()->id,
+        'picked_team_id' => $dog,
+    ]);
+
+    // Dog wins outright 24-17: covered the number AND won the game.
+    $dogIsHome = $dog === $game->home_team_id;
+    $game->update([
+        'home_score' => $dogIsHome ? 24 : 17,
+        'away_score' => $dogIsHome ? 17 : 24,
+        'completed' => true,
+        'status' => 'post',
+    ]);
+
+    app(PickGrader::class)->gradeSlateGame($slateGame->fresh(), $game->fresh());
+
+    /*
+     * Twelve, through the SAME grader settlement uses — a grader that
+     * drops the contest's settings ($mode->engine() instead of
+     * $mode->engine($settings)) pays ten here and cannot stay green.
+     */
+    expect($pick->fresh()->result)->toBe(Pick::WIN)
+        ->and($pick->fresh()->points)->toBe(12);
+});
+
+it('respawns a filled Week 0 room on Week 0, never the split week\'s main card', function () {
+    $this->travelTo('2026-08-26 12:00:00');
+
+    [, $week] = splitPickemWeek();
+
+    foreach (Game::query()->where('week_id', $week->id)->get() as $game) {
+        pickemOdd($game);
+    }
+
+    $room = app(SpawnPublicContest::class)->handle(
+        ContestMode::Classic, $week, CarbonImmutable::parse('2026-08-29', config('cfb.timezone')),
+    );
+    $room->update(['member_cap' => 2]);
+
+    app(JoinGroup::class)->handle(User::factory()->create(), $room);
+    app(JoinGroup::class)->handle(User::factory()->create(), $room->fresh());
+
+    $next = Group::query()->where('kind', Group::KIND_LOBBY)->whereKeyNot($room->id)->sole();
+    $nextSlate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $next->id))->sole();
+
+    // The CARRY, not saturdayOf()'s busiest-card default: a successor that
+    // opened on 9/5 mid-Week-0 would strand the rehearsal floor.
+    expect($nextSlate->saturday->toDateString())->toBe('2026-08-29')
+        ->and($next->name)->toBe('Flea Flicker');
+});
+
+it('clones a dynamic room\'s frozen settings verbatim — never a re-resolve', function () {
+    [$season, $week] = pickemSeasonWeek();
+
+    foreach (range(1, 9) as $rank) {
+        pickemOdd(pickemGame($season, $week, ['home_rank' => $rank]));
+    }
+
+    $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::RankedAction);
+    $room->update(['member_cap' => 2]);
+
+    // The poll turns over mid-week: four of the nine drop out. A respawn
+    // that RE-RESOLVED would find five ranked games, miss the minimum, and
+    // quietly empty the shelf — the frozen nine must ride the clone.
+    Game::query()->where('week_id', $week->id)->where('home_rank', '<=', 4)->update(['home_rank' => null]);
+    GameRanks::flush();
+
+    app(JoinGroup::class)->handle(User::factory()->create(), $room);
+    app(JoinGroup::class)->handle(User::factory()->create(), $room->fresh());
+
+    $next = Group::query()
+        ->where('kind', Group::KIND_LOBBY)
+        ->where('flavor', 'ranked_action')
+        ->whereKeyNot($room->id)
+        ->sole();
+
+    expect($next->contests()->sole()->settings)
+        ->toEqualCanonicalizing(['slate_filter' => 'ranked', 'slate_size' => 9]);
+
+    $nextSlate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $next->id))->sole();
+
+    expect($nextSlate->games()->count())->toBe(9);
+});
+
+it('warns when a feasible specialty shelf sits empty', function () {
+    [, $week] = lobbyFlavorWeek();
+
+    // Feasible flavors exist and nothing has stocked them: WARN with the
+    // sweep named, so the flip checklist reads it and runs the command.
+    $flavors = collect(app(PickemPreflight::class)->checks())->keyBy('key')['flavors'];
+
+    expect($flavors['status'])->toBe(PickemPreflight::WARN)
+        ->and($flavors['remedy'])->toBe('pickem:open-lobbies');
 });
 
 it('says the kicker house rule out loud, over the board', function () {
@@ -223,6 +341,18 @@ it('stocks only what the opening card can seat, through the sweep', function () 
 
     expect($slate->games()->count())->toBe(7)
         ->and($slate->saturday->toDateString())->toBe('2026-08-29');
+
+    /*
+     * And the preflight reads this exact state as GREEN with the exempt
+     * shelves NAMED — the launch checklist must not train the reader to
+     * ignore a red row that only means "it's Week 0".
+     */
+    $rooms = collect(app(PickemPreflight::class)->checks())->keyBy('key')['rooms'];
+
+    expect($rooms['status'])->toBe(PickemPreflight::OK)
+        ->and($rooms['detail'])->toContain('1 of 1 possible')
+        ->and($rooms['detail'])->toContain('Triple Option')
+        ->and($rooms['detail'])->toContain('not enough games this Saturday');
 });
 
 it('stocks the specialty shelf and reports it honestly in the preflight', function () {

@@ -1,7 +1,10 @@
 <?php
 
 use App\Actions\AutoPublishStandardSlate;
+use App\Actions\SpawnPublicContest;
+use App\Enums\ContestMode;
 use App\Enums\TiebreakerMetric;
+use App\Models\Game;
 use App\Models\PickemSetting;
 use App\Models\Season;
 use App\Models\Slate;
@@ -144,6 +147,31 @@ it('numbers the split week the way fans do: the first card is Week 0', function 
         ->and(Cadence::displayWeekLabel($week, '2026-08-29'))->toBe('Week 0');
 });
 
+it('sells the cards in order: the floor never skips ahead of an unplayed Saturday', function () {
+    /*
+     * Thursday 8/20: the pick'em clock's "current Saturday" is the empty
+     * 8/22, which is nobody's card. The floor's next card is 8/29 —
+     * falling back to the week's BUSIEST Saturday would sell 9/5 rooms
+     * for five days and then flip BACK to 8/29 at the Tuesday turnover,
+     * cards out of order.
+     */
+    $this->travelTo('2026-08-20 16:00:00');
+
+    [, $week] = splitPickemWeek();
+
+    expect(Cadence::floorSaturday($week)->toDateString())->toBe('2026-08-29');
+
+    // At the turnover the current Saturday IS the card; nothing changes.
+    $this->travelTo('2026-08-26 16:00:00');
+    Cadence::flush();
+    expect(Cadence::floorSaturday($week)->toDateString())->toBe('2026-08-29');
+
+    // And the Tuesday after the first card, the floor moves on.
+    $this->travelTo('2026-09-01 16:00:00');
+    Cadence::flush();
+    expect(Cadence::floorSaturday($week)->toDateString())->toBe('2026-09-05');
+});
+
 it('leaves every ordinary week numbered as ESPN numbers it', function () {
     [$season, $week] = pickemSeasonWeek();
     pickemGame($season, $week);
@@ -153,10 +181,14 @@ it('leaves every ordinary week numbered as ESPN numbers it', function () {
         ->and(Cadence::displayWeekNumber($week))->toBe(1);
 
     // And a later week never splits, however many Saturdays it spans —
-    // only the season's opening week folds a Week 0 in.
+    // only the season's opening week folds a Week 0 in. TWO Saturdays of
+    // games here, so the NUMBER guard is the only thing holding the line.
     $five = Week::factory()->create(['season_id' => $season->id, 'number' => 5, 'name' => 'Week 5']);
+    pickemGame($season, $five, ['kickoff_at' => '2026-10-03 19:30:00']);
+    pickemGame($season, $five, ['kickoff_at' => '2026-10-10 19:30:00']);
 
-    expect(Cadence::displayWeekNumber($five))->toBe(5);
+    expect(Cadence::splitBoundary($five))->toBeNull()
+        ->and(Cadence::displayWeekNumber($five))->toBe(5);
 });
 
 it('lets the admin panel move the clock', function () {
@@ -235,6 +267,34 @@ it('publishes the standard slate when the commissioner missed the deadline', fun
     // Idempotent: the next hour's run has nothing to do.
     $this->artisan('pickem:publish-boards')->assertSuccessful();
     expect(Slate::query()->count())->toBe(1);
+});
+
+it('never sweeps a board into a house room — lobby slates are born at spawn', function () {
+    // A Week 0 house room, its contest frozen for the seven-game card.
+    $this->travelTo('2026-08-26 12:00:00');
+    [, $week] = splitPickemWeek();
+
+    foreach (Game::query()->where('week_id', $week->id)->get() as $game) {
+        pickemOdd($game);
+    }
+
+    $room = app(SpawnPublicContest::class)->handle(
+        ContestMode::Classic, $week, CarbonImmutable::parse('2026-08-29', config('cfb.timezone')),
+    );
+    $contest = $room->contests()->sole();
+
+    expect(Slate::query()->where('contest_id', $contest->id)->count())->toBe(1);
+
+    /*
+     * Past the MAIN card's deadline. The sweep exists for private
+     * commissioners who overslept — a dead Week 0 house room must never
+     * receive a second board, least of all one sized by its frozen seven
+     * on a twelve-game Saturday.
+     */
+    $this->travelTo('2026-09-03 17:00:00');
+    $this->artisan('pickem:publish-boards')->assertSuccessful();
+
+    expect(Slate::query()->where('contest_id', $contest->id)->count())->toBe(1);
 });
 
 it('replaces a stale partial draft but never a published board', function () {

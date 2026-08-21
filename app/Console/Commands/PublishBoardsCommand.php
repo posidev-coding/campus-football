@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Actions\AutoPublishStandardSlate;
 use App\Models\Contest;
+use App\Models\Group;
 use App\Models\Slate;
 use App\Models\Week;
 use App\Services\CfbCalendar;
@@ -46,18 +47,14 @@ class PublishBoardsCommand extends Command
         }
 
         /*
-         * ONE SATURDAY, the one this pick'em week is playing. An ESPN week
-         * can hold two — 2026's Week 1 has 8/29 and 9/5 — and sweeping the
-         * week would publish a board for both, which is two weeks of picks
-         * dropped on a group at once. `currentSaturday()` turns over on
-         * Tuesday; the fallback is the week's primary card, for a clock
-         * sitting outside this week entirely (a bye, the offseason).
+         * ONE SATURDAY, the one this pick'em week's floor is on. An ESPN
+         * week can hold two — 2026's Week 1 has 8/29 and 9/5 — and
+         * sweeping the week would publish a board for both, which is two
+         * weeks of picks dropped on a group at once. floorSaturday() is
+         * the same answer the lobby, the stocking sweep and the preflight
+         * read, cards in order.
          */
-        $current = Cadence::currentSaturday();
-
-        $saturday = collect(Cadence::saturdaysIn($week))
-            ->first(fn ($day) => $day->toDateString() === $current->toDateString())
-            ?? Cadence::saturdayOf($week);
+        $saturday = Cadence::floorSaturday($week);
 
         $deadline = $saturday === null ? null : Cadence::slateDeadline($saturday);
 
@@ -69,6 +66,14 @@ class PublishBoardsCommand extends Command
 
         $due = Contest::query()
             ->where('season_year', $year)
+            /*
+             * PRIVATE groups only. House rooms are born WITH a published
+             * board at spawn and die with their Saturday — sweeping them
+             * would stamp a fresh board into every dead room weekly, and
+             * a flavored contest's frozen settings (a Week 0 seven, a
+             * ranked card's size) would mis-size every one of them.
+             */
+            ->whereHas('group', fn ($g) => $g->where('kind', '!=', Group::KIND_LOBBY))
             ->whereNotExists(fn ($q) => $q->selectRaw(1)
                 ->from('slates')
                 ->whereColumn('slates.contest_id', 'contests.id')

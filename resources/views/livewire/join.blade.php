@@ -89,10 +89,13 @@ new class extends Component
             return null;
         }
 
+        // value() hydrates through the date cast — re-pin to the plain
+        // calendar date so the declared type holds by construction and no
+        // accidental __toString ever carries a timezone.
         return Slate::query()
             ->whereHas('contest', fn ($q) => $q->where('group_id', $group->id))
             ->where('week_id', $group->week_id)
-            ->value('saturday');
+            ->value('saturday')?->format('Y-m-d');
     }
 
     /**

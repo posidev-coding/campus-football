@@ -230,17 +230,22 @@ class Cadence
 
     /**
      * The Saturday a floor inside this week is ON: the current pick'em
-     * Saturday when it belongs to the week, else the week's primary card
-     * (the run-up to a season, or a report run before kickoff). The lobby
-     * floor, the stocking sweep, the preflight and the builder all ask
-     * this one question — one answer, or the floors drift apart.
+     * Saturday when it belongs to the week, else the week's NEXT unplayed
+     * card, else its primary. The next-card arm matters in the run-up to
+     * a split opening week — the clock's "current Saturday" is the empty
+     * 8/22, and falling straight to the busiest card would sell 9/5 rooms
+     * for five days and then flip BACK to 8/29 at the Tuesday turnover.
+     * Cards sell in order. The lobby floor, the stocking sweep, the
+     * preflight and the builder all ask this one question — one answer,
+     * or the floors drift apart.
      */
     public static function floorSaturday(Week $week): ?CarbonImmutable
     {
         $current = self::currentSaturday();
+        $saturdays = collect(self::saturdaysIn($week));
 
-        return collect(self::saturdaysIn($week))
-            ->first(fn (CarbonImmutable $day) => $day->toDateString() === $current->toDateString())
+        return $saturdays->first(fn (CarbonImmutable $day) => $day->toDateString() === $current->toDateString())
+            ?? $saturdays->first(fn (CarbonImmutable $day) => $day->greaterThan($current))
             ?? self::saturdayOf($week);
     }
 
