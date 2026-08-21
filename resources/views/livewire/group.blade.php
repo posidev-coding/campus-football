@@ -551,6 +551,28 @@ new class extends Component
         </x-slot:actions>
     </x-group-hero>
 
+    {{-- WHAT THIS ROOM IS. The lobby sells uniform rows now, so the
+         pitch — the flavor's own one-line rules, or the mode's, plus its
+         optional zinger — is said HERE, where somebody who tapped the row
+         is deciding whether to sit down. This was the contest card's
+         cargo and the card is gone; without this re-home the blurbs and
+         zingers have no render site at all. --}}
+    @if ($group->isRoom() && $this->contest !== null)
+        @php
+            $roomFlavor = $group->flavorEnum();
+            $roomZinger = $roomFlavor === null
+                ? ''
+                : Voice::line($roomFlavor->zingerKey(), ['conference' => $roomFlavor->conferenceName() ?? '']);
+        @endphp
+
+        <div class="flex flex-col gap-1">
+            <p class="text-sm text-zinc-600 dark:text-zinc-300">{{ $roomFlavor?->blurb() ?? $this->contest->mode->blurb() }}</p>
+            @if ($roomZinger !== '')
+                <p class="text-micro italic text-zinc-400 dark:text-zinc-500">&ldquo;{{ $roomZinger }}&rdquo;</p>
+            @endif
+        </div>
+    @endif
+
     {{-- The pivot's announcement, lingering a week so members who missed
          the note still walk in on the news rather than a changed room. --}}
     @if ($this->contest?->mode_changed_at?->gt(now()->subDays(7)))

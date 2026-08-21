@@ -156,27 +156,36 @@ it('grows the Picks area sections only inside the flag', function () {
 
 // ---------------------------------------------------------------- screens
 
-it('renders the lobby with mine, the doors in, and the public rooms', function () {
+it('splits the two screens: your groups on My Picks, the rooms in the Lobby', function () {
     $admin = pickemAdmin();
     $mine = Group::factory()->create(['name' => 'The Woodshed Alumni']);
     GroupMember::factory()->commissioner()->create(['group_id' => $mine->id, 'user_id' => $admin->id]);
     Group::factory()->lobby()->create(['name' => 'The Big Lobby']);
 
-    Livewire::actingAs($admin)->test('lobby')
+    Livewire::actingAs($admin)->test('pickem-home')
         ->assertSee('The Woodshed Alumni')
+        ->assertSee('Have an invite code?')
+        // The store is a door here, never a shelf.
+        ->assertDontSee('The Big Lobby');
+
+    Livewire::actingAs($admin)->test('lobby')
         ->assertSee('The Big Lobby')
-        ->assertSee('Start a group')
-        ->assertSee('Have an invite code?');
+        // And the lobby is nobody's dashboard.
+        ->assertDontSee('The Woodshed Alumni')
+        ->assertDontSee('Have an invite code?');
 });
 
-it('links the door to the creation wizard', function () {
+it('links the door to the creation wizard from both screens', function () {
+    Livewire::actingAs(pickemAdmin())->test('pickem-home')
+        ->assertSee(route('pickem.create'), escape: false);
+
     Livewire::actingAs(pickemAdmin())->test('lobby')
-        ->assertSee('Start a group')
+        ->assertSee('Rather run your own?')
         ->assertSee(route('pickem.create'), escape: false);
 });
 
 it('answers a bad code with the Voice line, not a crash', function () {
-    Livewire::actingAs(pickemAdmin())->test('lobby')
+    Livewire::actingAs(pickemAdmin())->test('pickem-home')
         ->set('code', 'NOPENOPE')
         ->call('join')
         ->assertHasErrors('code');

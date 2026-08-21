@@ -156,7 +156,7 @@ it('respawns a filled room as the SAME shape: flavor, cap, settings, Saturday', 
         ->and($nextSlate->saturday->toDateString())->toBe('2026-09-05');
 });
 
-it('sells the lobby in catalog order with honest flavored cards', function () {
+it('shelves the lobby in catalog order, with the pitch on the room', function () {
     [, $week] = lobbyFlavorWeek();
 
     app(SpawnPublicContest::class)->handle(ContestMode::Woodshed, $week);
@@ -166,14 +166,21 @@ it('sells the lobby in catalog order with honest flavored cards', function () {
 
     $viewer = pickemAdmin();
 
+    $flash = Group::query()->where('flavor', 'two_minute')->sole();
+
     Livewire::actingAs($viewer)->test('lobby')
         /*
-         * Standard rooms lead in MODE order, the specialty shelf follows.
-         * Wishbone is the tell: alphabetically it sorts dead last, so an
-         * accidental name sort cannot pass this order.
+         * The house shelf leads in MODE order, the specialty shelves
+         * follow. Wishbone is the tell: alphabetically it sorts dead
+         * last, so an accidental name sort cannot pass this order.
          */
         ->assertSeeInOrder(['Hail Mary', 'Wishbone', 'The Splinter', 'Two-Minute Drill'])
-        // The flavored card sells ITS card, not the mode's ten-game pitch.
+        // The shelf sells uniform rows: the pitch moved to the room.
+        ->assertDontSee('The flash card: 5 games, in and out. 10 points a game.');
+
+    // And the room itself says what it is — the blurb and its zinger
+    // render HERE now, which is where somebody decides to sit down.
+    Livewire::actingAs($viewer)->test('group', ['group' => $flash])
         ->assertSee('The flash card: 5 games, in and out. 10 points a game.')
         ->assertSee(Voice::line('lobby.flavor.zinger.two_minute', for: $viewer));
 });

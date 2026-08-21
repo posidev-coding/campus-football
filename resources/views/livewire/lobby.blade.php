@@ -4,37 +4,39 @@ use App\Actions\JoinGroup;
 use App\Enums\ContestMode;
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
-use App\Models\Contest;
 use App\Models\Group;
-use App\Models\Pick;
-use App\Models\Slate;
-use App\Models\SlateEntry;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Cadence;
 use App\Support\Lobby;
-use App\Support\RankLadder;
+use App\Support\LobbyCatalog;
 use App\Support\Voice;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 /**
- * THE LOBBY, pass 3 — where the Picks tab lands, one zoned scroll ordered
- * by urgency: the week's dateline, the slates that still need your picks,
- * your games, last week's payoff, the doors to a new game, and the rules
- * of every mode. Outside the `pickem` flag it keeps the coming-soon
- * promise the tab shipped with, verbatim.
+ * THE LOBBY — the contest browser, and only that. Where a reader walks a
+ * shelf of open public rooms and takes a seat. Outside the `pickem` flag
+ * it keeps the coming-soon promise the Picks tab shipped with, verbatim.
  *
- * One query per CONCERN across all groups, never per card: contests,
- * slates, my picks, my entries, my weekly wins — each is a single read
- * however many groups the reader belongs to. The zones above are pure
- * PROJECTIONS of that one cards() read, never a second query.
+ * Pass 4, 2026-08-20: the personal half moved to MY PICKS. Pass 3's "one
+ * zoned scroll" was shaped when the lobby held three rooms — thirteen is
+ * exactly the volume that decision said would never exist, and at that
+ * size a mixed stack of card species stops being a store.
+ *
+ * The shape now is a store's: the Saturday pinned to the top in a sticky
+ * band, then named shelves of UNIFORM rows. A row opens the room; Join
+ * seats you where you stand. Nothing here is about the reader — no picks,
+ * no groups, no rank.
+ *
+ * ONE read of the inventory (App\Support\Lobby::openRooms), projected
+ * into shelves. Feasibility is never asked at render time: a catalog
+ * entry with no live room is a dashed row, inferred from the sweep's own
+ * output, and LobbyCatalog::shelves() is where that rule lives.
  */
 new class extends Component
 {
-    public string $code = '';
-
     #[Computed]
     public function showLobby(): bool
     {
@@ -42,229 +44,75 @@ new class extends Component
     }
 
     /**
-     * The reader's rung, and the climb to the next one.
+     * The whole open inventory, INCLUDING rooms the reader already sits
+     * in — a seat is not a closed shelf, and only a seat-inclusive read
+     * can tell the two apart.
      *
-     * The header chip has room for the NAME and nothing else, so this is the
-     * only surface where the next rung is named — which is what stops
-     * "Captain" from being a word with no scale behind it. No extra query:
-     * walletTotals() is memoized per request and the ladder is arithmetic.
-     *
-     * @return array{name: string, floor: int, next: string|null, at: int|null, remaining: int|null, progress: float}|null
+     * @return \Illuminate\Support\Collection<int, Group>
      */
     #[Computed]
-    public function rank(): ?array
+    public function openRooms()
     {
-        return auth()->check()
-            ? RankLadder::for($this->walletXp)
-            : null;
-    }
-
-    #[Computed]
-    public function walletXp(): int
-    {
-        return auth()->check() ? auth()->user()->walletTotals()['xp'] : 0;
+        return Lobby::openRooms(auth()->user());
     }
 
     /**
-     * Every group card's state, assembled flat.
+     * What is actually for sale. The name survives from pass 3 because
+     * the tests that pin "only OPEN rooms are listed" are pinned to it.
      *
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
-     */
-    #[Computed]
-    public function cards()
-    {
-        $groups = auth()->user()->groups()->withCount('memberships')->orderBy('name')->get();
-
-        if ($groups->isEmpty()) {
-            return collect();
-        }
-
-        $contests = Contest::query()
-            ->whereIn('group_id', $groups->pluck('id'))
-            ->where('season_year', app(CfbCalendar::class)->currentYear())
-            ->get()
-            ->keyBy('group_id');
-
-        $weekId = $contests->isEmpty()
-            ? null
-            : app(CfbCalendar::class)->defaultWeekId($contests->first()->season_year);
-
-        $slates = $weekId === null ? collect() : Slate::query()
-            ->whereIn('contest_id', $contests->pluck('id'))
-            ->where('week_id', $weekId)
-            ->with('games.game:id,kickoff_at,status,completed')
-            ->get()
-            ->keyBy('contest_id');
-
-        // My tallies, one aggregate each: picks made + live points per
-        // slate, my entry per slate, my weekly wins per contest.
-        $made = Pick::query()
-            ->join('slate_games', 'slate_games.id', '=', 'picks.slate_game_id')
-            ->whereIn('slate_games.slate_id', $slates->pluck('id'))
-            ->where('picks.user_id', auth()->id())
-            ->groupBy('slate_games.slate_id')
-            ->selectRaw('slate_games.slate_id, COUNT(*) AS made, COALESCE(SUM(picks.points), 0) AS pts')
-            ->get()
-            ->keyBy('slate_id');
-
-        $entries = SlateEntry::query()
-            ->whereIn('slate_id', $slates->pluck('id'))
-            ->where('user_id', auth()->id())
-            ->get()
-            ->keyBy('slate_id');
-
-        $wins = SlateEntry::query()
-            ->join('slates', 'slates.id', '=', 'slate_entries.slate_id')
-            ->whereIn('slates.contest_id', $contests->pluck('id'))
-            ->where('slates.status', Slate::SETTLED)
-            ->where('slate_entries.user_id', auth()->id())
-            ->groupBy('slates.contest_id')
-            ->selectRaw('slates.contest_id, COALESCE(SUM(slate_entries.won), 0) AS wins')
-            ->pluck('wins', 'contest_id');
-
-        $week = $weekId === null ? null : Week::find($weekId);
-        $deadline = $week === null ? null : Cadence::slateDeadline($week);
-
-        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $deadline) {
-            $contest = $contests->get($group->id);
-            $slate = $contest === null ? null : $slates->get($contest->id);
-            $tally = $slate === null ? null : $made->get($slate->id);
-            $entry = $slate === null ? null : $entries->get($slate->id);
-
-            $state = match (true) {
-                $slate === null || $slate->status === Slate::DRAFT => 'waiting',
-                $slate->status === Slate::SETTLED => 'final',
-                $slate->status === Slate::PRELIM => 'prelim',
-                $slate->games->contains(fn ($slateGame) => $slateGame->game->hasKickedOff()) => 'live',
-                default => 'upcoming',
-            };
-
-            return [
-                'group' => $group,
-                'contest' => $contest,
-                'commissioner' => $group->pivot->role === App\Models\GroupMember::COMMISSIONER,
-                'state' => $state,
-                'made' => (int) ($tally->made ?? 0),
-                'total' => $slate?->games->count() ?? 0,
-                'points' => $state === 'final'
-                    ? (int) ($entry->final_points ?? 0)
-                    : (int) ($tally->pts ?? 0),
-                'won' => (bool) ($entry->won ?? false),
-                'wins' => (int) ($wins[$contest?->id] ?? 0),
-                'firstKick' => $slate?->games->map(fn ($slateGame) => $slateGame->game->kickoff_at)->filter()->min(),
-                'deadline' => $deadline,
-            ];
-        });
-    }
-
-    /**
-     * The zone that answers "what do I do right now": published slates
-     * still taking picks where mine are not all in. A pure projection of
-     * cards() — no query of its own.
-     *
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
-     */
-    #[Computed]
-    public function needsPicks()
-    {
-        return $this->cards
-            ->filter(fn (array $card) => in_array($card['state'], ['upcoming', 'live'], true)
-                && $card['total'] > 0
-                && $card['made'] < $card['total'])
-            ->values();
-    }
-
-    /**
-     * The week's dateline entry from the calendar. Null skips the ribbon
-     * entirely — never a substituted week.
-     *
-     * @return array<string, mixed>|null
-     */
-    #[Computed]
-    public function weekEntry(): ?array
-    {
-        return app(CfbCalendar::class)->defaultWeekEntry(app(CfbCalendar::class)->currentYear());
-    }
-
-    /**
-     * The ribbon's one clock line, by urgency: games live now beats the
-     * next kickoff beats a commissioner's slate deadline. Null when none
-     * of it applies — the ribbon then carries the dateline alone.
-     *
-     * @return array{type: string, at: \Carbon\CarbonInterface|null}|null
-     */
-    #[Computed]
-    public function ribbonClock(): ?array
-    {
-        $cards = $this->cards;
-
-        if ($cards->contains(fn (array $card) => $card['state'] === 'live')) {
-            return ['type' => 'live', 'at' => null];
-        }
-
-        $kick = $cards
-            ->filter(fn (array $card) => $card['state'] === 'upcoming')
-            ->pluck('firstKick')
-            ->filter()
-            ->min();
-
-        if ($kick !== null) {
-            return ['type' => 'kick', 'at' => $kick];
-        }
-
-        $waiting = $cards->first(fn (array $card) => $card['state'] === 'waiting'
-            && $card['commissioner']
-            && $card['deadline'] !== null);
-
-        return $waiting === null ? null : ['type' => 'deadline', 'at' => $waiting['deadline']];
-    }
-
-    /**
-     * The Monday payoff: my settled weeks from the last seven days.
-     *
-     * @return \Illuminate\Support\Collection<int, SlateEntry>
-     */
-    #[Computed]
-    public function lastWeek()
-    {
-        return SlateEntry::query()
-            ->where('user_id', auth()->id())
-            ->whereHas('slate', fn ($q) => $q
-                ->where('status', Slate::SETTLED)
-                ->where('settled_at', '>=', now()->subDays(7)))
-            ->with('slate.contest.group:id,name,kind,week_id')
-            ->get();
-    }
-
-    /**
-     * The public inventory: open transient rooms for the current week
-     * (seats free, slate published, week unsettled) plus any evergreen
-     * house lobby, minus the seats the reader already holds. A filled
-     * room never shows without its successor — the join hook spawns Room
-     * N+1 the instant Room N fills.
-     *
-     * The read itself lives on App\Support\Lobby so the dashboard's
-     * teaser count and this list can never disagree.
+     * @return \Illuminate\Support\Collection<int, Group>
      */
     #[Computed]
     public function publics()
     {
-        return Lobby::joinable(auth()->user());
+        return $this->openRooms->reject(fn (Group $room) => Lobby::seated($room))->values();
     }
 
-    public function join(JoinGroup $action)
+    /**
+     * The Saturday shelves, in LobbyShelf case order, with the dashed
+     * rows for shapes this Saturday could not seat.
+     *
+     * @return list<array<string, mixed>>
+     */
+    #[Computed]
+    public function shelves(): array
     {
-        $code = strtoupper(trim($this->code));
+        return LobbyCatalog::shelves($this->openRooms);
+    }
 
-        $group = $code === '' ? null : Group::query()->where('code', $code)->first();
+    /**
+     * The always-open house lobbies, sold after the Saturday shelves: an
+     * evergreen table is not a Saturday product and does not belong in a
+     * Saturday's shelf.
+     *
+     * @return \Illuminate\Support\Collection<int, Group>
+     */
+    #[Computed]
+    public function evergreens()
+    {
+        return $this->publics->reject(fn (Group $room) => $room->isRoom())->values();
+    }
 
-        if ($group === null) {
-            $this->addError('code', Voice::line('groups.join.bad_code'));
+    /**
+     * The band: which Saturday is being sold, and how many seats are on
+     * offer. Week 0 / Week 1 by construction — displayWeekLabel counts
+     * the way the fans do — and the week's own date range is never
+     * printed, because "AUG 22" is a range nobody is playing.
+     *
+     * @return array{label: string|null, date: string|null, count: int}
+     */
+    #[Computed]
+    public function weekContext(): array
+    {
+        $weekId = app(CfbCalendar::class)->defaultWeekId(app(CfbCalendar::class)->currentYear());
+        $week = $weekId === null ? null : Week::find($weekId);
+        $saturday = $week === null ? null : Cadence::activeSaturday($week);
 
-            return;
-        }
-
-        return $this->takeSeat($action, $group, 'code');
+        return [
+            'label' => $week === null ? null : Cadence::displayWeekLabel($week, $saturday),
+            'date' => $saturday?->format('D M j'),
+            'count' => $this->publics->filter(fn (Group $room) => $room->isRoom())->count(),
+        ];
     }
 
     public function joinLobby(int $groupId, JoinGroup $action)
@@ -286,7 +134,7 @@ new class extends Component
             // A race to the last seat: the lobby re-renders without the
             // filled room, and the words say why.
             $this->addError($errorBag, Voice::line('contest.room.full'));
-            unset($this->publics);
+            unset($this->openRooms, $this->publics, $this->shelves, $this->evergreens, $this->weekContext);
 
             return;
         }
@@ -305,9 +153,28 @@ new class extends Component
 <div class="flex flex-col gap-6 lg:mx-auto lg:w-full lg:max-w-3xl">
     @if ($this->showLobby)
         {{-- =============================== THE LOBBY ================= --}}
-        {{-- The section strip names this place now — the h1 stays for
-             screen readers only, the house rule. --}}
+        {{-- The section strip names this place — the h1 stays for screen
+             readers only, the house rule. --}}
         <h1 class="sr-only">Lobby</h1>
+
+        {{-- THE SATURDAY, pinned. Which card is being sold was 1,400px
+             below the rooms in pass 3, which is the same as not saying
+             it. Opaque and with nothing to travel through: the
+             container's padding is cancelled and the spacing moved
+             inside, so the band does not slide under the header. --}}
+        @if ($this->weekContext['label'] !== null)
+            <div class="sticky z-20 -mx-4 -mt-5 flex items-baseline justify-between gap-3 bg-white px-4 pt-3 pb-2 dark:bg-zinc-950 top-[env(safe-area-inset-top)] sm:top-[var(--header-offset)]">
+                <p class="min-w-0 truncate text-sm font-semibold">
+                    {{ $this->weekContext['label'] }}
+                    @if ($this->weekContext['date'])
+                        <span class="font-normal text-zinc-500 dark:text-zinc-400">· {{ $this->weekContext['date'] }}</span>
+                    @endif
+                </p>
+                <p class="tabular shrink-0 text-micro text-zinc-500 dark:text-zinc-400">
+                    {{ $this->weekContext['count'] }} {{ Str::plural('room', $this->weekContext['count']) }} open
+                </p>
+            </div>
+        @endif
 
         <x-verify-email-callout :body-key="'verify.picks.body'" :dismissable="false" />
 
@@ -317,228 +184,95 @@ new class extends Component
             </div>
         @endif
 
-        {{-- ZONE 1 · The week's dateline. No calendar entry, no ribbon —
-             never a substituted week. --}}
-        @if ($this->weekEntry !== null)
-            <x-week-ribbon :entry="$this->weekEntry" :clock="$this->ribbonClock" />
-        @endif
+        @error('lobbies')
+            <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+        @enderror
 
-        {{-- ZONE 2 · What needs you right now: slates still taking your
-             picks, each row walking straight into its clubhouse. --}}
-        @if ($this->needsPicks->isNotEmpty())
-            <div class="flex flex-col gap-2">
-                <flux:heading size="lg">Needs your picks</flux:heading>
-                <flux:subheading>{{ Voice::line('lobby.needs.subheading') }}</flux:subheading>
+        {{-- THE SHELVES. Plain headings — people navigate by them — with
+             the register line underneath, render-guarded. --}}
+        @foreach ($this->shelves as $shelf)
+            @php $shelfLine = Voice::line($shelf['shelf']->voiceKey()); @endphp
 
-                @foreach ($this->needsPicks as $card)
-                    <a
-                        href="{{ $card['group']->isRoom() ? route('pickem.room', $card['group']) : route('pickem.group', $card['group']) }}"
-                        wire:navigate
-                        wire:key="needs-{{ $card['group']->id }}"
-                        class="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50/50 px-4 py-3 hover:border-blue-300 dark:border-blue-900 dark:bg-blue-950/20 dark:hover:border-blue-800"
-                    >
-                        <span class="min-w-0">
-                            <span class="block truncate font-semibold leading-tight">{{ $card['group']->name }}</span>
-                            <x-slate-progress :made="$card['made']" :total="$card['total']" class="pt-1" />
-                        </span>
-                        <span class="flex shrink-0 items-center gap-1.5 text-micro text-zinc-500">
-                            @if ($card['firstKick'])
-                                kicks {{ $card['firstKick']->setTimezone(config('cfb.timezone'))->format('D g:ia') }}
-                            @endif
-                            <flux:icon name="chevron-right" variant="micro" class="text-zinc-400" />
-                        </span>
-                    </a>
-                @endforeach
-            </div>
-        @endif
-
-        {{-- ZONE 3 · Your games — or, before the first one, the pitch. --}}
-        @if ($this->cards->isNotEmpty())
-            <div class="flex flex-col gap-2">
-                <flux:heading size="lg">Your games</flux:heading>
-
-                @foreach ($this->cards as $card)
-                    <x-group-card wire:key="lobby-group-{{ $card['group']->id }}" :card="$card" />
-                @endforeach
-            </div>
-        @else
-            {{-- FIRST RUN: sell the game. Three doors, each wearing its
-                 own colors, all walking into the creation wizard. --}}
-            <div class="flex flex-col gap-2">
-                <flux:heading size="lg">Pick your game</flux:heading>
-                <flux:subheading>{{ Voice::line('lobby.first_run.body') }}</flux:subheading>
-
-                <div class="flex flex-col gap-2 pt-1">
-                    @foreach (ContestMode::cases() as $mode)
-                        <x-mode-door wire:key="door-{{ $mode->value }}" :mode="$mode" />
-                    @endforeach
+            <div wire:key="shelf-{{ $shelf['shelf']->value }}" class="flex flex-col gap-2">
+                <div class="flex flex-col gap-0.5">
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">{{ $shelf['shelf']->heading() }}</flux:subheading>
+                    @if ($shelfLine !== '')
+                        <flux:subheading>{{ $shelfLine }}</flux:subheading>
+                    @endif
                 </div>
 
-                <p class="pt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                    Rather not run one? Grab a seat in an open room below.
-                </p>
-            </div>
-        @endif
-
-        {{-- ZONE 4 · The Monday payoff, compact: last week's settled
-             results while they are still the conversation. --}}
-        @if ($this->lastWeek->isNotEmpty())
-            <div class="flex flex-col gap-2">
-                <flux:heading size="lg">Last week</flux:heading>
-                @foreach ($this->lastWeek as $entry)
-                    <a
-                        href="{{ $entry->slate->contest->group->isRoom() ? route('pickem.room', $entry->slate->contest->group_id) : route('pickem.group', $entry->slate->contest->group_id) }}"
-                        wire:navigate
-                        wire:key="settled-{{ $entry->id }}"
-                        class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-2.5 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
-                    >
-                        <p class="min-w-0 truncate text-sm font-medium">{{ $entry->slate->contest->group->name }}</p>
-                        <p class="flex shrink-0 items-center gap-2 text-sm">
-                            <span class="tabular font-semibold">{{ $entry->final_points ?? 0 }} pts</span>
-                            @if ($entry->won)
-                                <flux:badge size="sm" color="green">Winner</flux:badge>
-                            @endif
-                        </p>
-                    </a>
+                @foreach ($shelf['rooms'] as $entry)
+                    <x-room-row
+                        wire:key="room-{{ $entry['room']->id }}"
+                        :room="$entry['room']"
+                        :mode="$entry['mode']"
+                        :game-count="$entry['gameCount']"
+                        :seats="$entry['seats']"
+                    />
                 @endforeach
-            </div>
-        @endif
 
-        {{-- ZONE 4b · THE LADDER. The header chip has room for the rung and
-             nothing else, so this is where the next one is named and the
-             climb has a number on it. Placed after the payoff and before the
-             doors: it reads as what last week bought you. --}}
-        @if ($this->rank !== null)
-            <div class="flex flex-col gap-2 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
-                <div class="flex items-baseline justify-between gap-3">
-                    <flux:heading size="lg" class="min-w-0 truncate">{{ $this->rank['name'] }}</flux:heading>
-                    <span class="tabular shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
-                        {{ number_format($this->walletXp) }} XP
-                    </span>
-                </div>
-
-                @if ($this->rank['next'] !== null)
-                    {{-- A share of the CURRENT rung's span, so the bar resets
-                         at each promotion instead of creeping toward Legend
-                         all season. --}}
-                    <div class="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                        <div
-                            class="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
-                            style="width: {{ round($this->rank['progress'] * 100, 2) }}%"
-                        ></div>
+                {{-- What the Saturday could not seat, said plainly. This
+                     is an instruction, never Voice — and "games" here
+                     means real ones, on a field. --}}
+                @foreach ($shelf['closed'] as $closed)
+                    <div
+                        wire:key="closed-{{ $closed['mode']->value }}-{{ $closed['flavor']?->value ?? 'standard' }}"
+                        class="flex items-center gap-3 rounded-xl border border-dashed border-zinc-200 px-3 py-2.5 dark:border-zinc-800"
+                    >
+                        <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-200 dark:border-zinc-800">
+                            <flux:icon :name="$closed['mode']->icon()" variant="micro" class="size-4 text-zinc-300 dark:text-zinc-600" />
+                        </span>
+                        <span class="min-w-0 flex-1">
+                            <span class="block truncate font-medium leading-tight text-zinc-400 dark:text-zinc-500">{{ $closed['label'] }}</span>
+                            <span class="block truncate text-micro text-zinc-400 dark:text-zinc-500">Not enough games this Saturday</span>
+                        </span>
                     </div>
-                    <p class="text-sm text-zinc-500 dark:text-zinc-400">
-                        {{ Voice::line('rank.to_next', [
-                            'remaining' => number_format($this->rank['remaining']),
-                            'next' => $this->rank['next'],
-                        ]) }}
-                    </p>
-                @else
-                    {{-- No next rung. `remaining` is null here, never a zero
-                         standing in for it — so the climb line is SKIPPED
-                         rather than rendered as a finished bar with no name. --}}
-                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('rank.topped_out') }}</p>
-                @endif
+                @endforeach
             </div>
+        @endforeach
+
+        {{-- An honestly empty store, when there is nothing at all. --}}
+        @if ($this->shelves === [] && $this->evergreens->isEmpty())
+            <flux:callout icon="user-group">
+                <flux:callout.heading>No open rooms right now</flux:callout.heading>
+                <flux:callout.text>{{ Voice::line('lobby.publics.empty') }}</flux:callout.text>
+            </flux:callout>
         @endif
 
-        {{-- ZONE 5 · Find a contest: the lobby, the start-a-group
-             door, and the code form folded away as the secondary path. --}}
-        <div class="flex flex-col gap-3">
-            <flux:heading size="lg">Find a game</flux:heading>
-            <flux:subheading>{{ Voice::line('groups.lobbies.subheading') }}</flux:subheading>
-            @error('lobbies')
-                <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
-            @enderror
+        {{-- The always-open tables, after the Saturday. --}}
+        @if ($this->evergreens->isNotEmpty())
+            <div class="flex flex-col gap-2">
+                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Always open</flux:subheading>
 
-            @forelse ($this->publics as $lobby)
-                @if ($lobby->isRoom() && $lobby->contests->first() !== null)
-                    @php
-                        $floorSlate = $lobby->contests->first()->slates
-                            ->first(fn ($slate) => $slate->week_id === $lobby->week_id && $slate->status === Slate::PUBLISHED);
-                    @endphp
-
-                    <x-contest-card
+                @foreach ($this->evergreens as $lobby)
+                    <x-room-row
                         wire:key="lobby-{{ $lobby->id }}"
                         :room="$lobby"
-                        :mode="$lobby->contests->first()->mode"
+                        :mode="$lobby->contests->first()?->mode ?? ContestMode::Classic"
                         :seats="$lobby->memberships_count"
-                        :flavor="$lobby->flavorEnum()"
-                        :game-count="$floorSlate?->games_count"
                     />
-                @else
-                    <div
-                        wire:key="lobby-{{ $lobby->id }}"
-                        class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-3 dark:border-zinc-700"
-                    >
-                        <div class="min-w-0">
-                            <p class="truncate font-semibold">{{ $lobby->name }}</p>
-                            <p class="text-sm text-zinc-500 dark:text-zinc-400">
-                                {{ $lobby->memberships_count }} {{ Str::plural('member', $lobby->memberships_count) }}
-                            </p>
-                        </div>
-                        <flux:button wire:click="joinLobby({{ $lobby->id }})" size="sm" class="shrink-0">Join</flux:button>
-                    </div>
-                @endif
-            @empty
-                <flux:callout icon="user-group">
-                    <flux:callout.heading>No open rooms right now</flux:callout.heading>
-                    <flux:callout.text>{{ Voice::line('lobby.publics.empty') }}</flux:callout.text>
-                </flux:callout>
-            @endforelse
-
-            <a
-                href="{{ route('pickem.create') }}"
-                wire:navigate
-                class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 p-4 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
-            >
-                <div class="min-w-0">
-                    <p class="font-semibold">Start a group</p>
-                    <p class="text-sm text-zinc-500 dark:text-zinc-400">Name it, pick its game, send one link.</p>
-                </div>
-                <span class="flex shrink-0 items-center gap-1.5">
-                    @foreach (ContestMode::cases() as $mode)
-                        <span wire:key="door-hint-{{ $mode->value }}" class="flex size-6 items-center justify-center rounded-md border {{ $mode->palette()['tile'] }}">
-                            <flux:icon :name="$mode->icon()" variant="micro" class="size-3.5 {{ $mode->palette()['icon'] }}" />
-                        </span>
-                    @endforeach
-                    <flux:icon name="chevron-right" variant="micro" class="text-zinc-400" />
-                </span>
-            </a>
-
-            {{-- The code stays as the spoken-word fallback, folded away —
-                 links are how a group travels now. --}}
-            <div
-                x-data="{ open: @js($errors->has('code')) }"
-                class="rounded-xl border border-zinc-200 dark:border-zinc-700"
-            >
-                <button
-                    type="button"
-                    x-on:click="open = ! open"
-                    x-bind:aria-expanded="open"
-                    class="flex w-full items-center justify-between gap-3 p-4 text-start"
-                >
-                    <div class="min-w-0">
-                        <p class="font-semibold">Have an invite code?</p>
-                        <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('groups.join.subheading') }}</p>
-                    </div>
-                    <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
-                </button>
-
-                <div x-show="open" x-cloak class="border-t border-zinc-100 p-4 dark:border-zinc-800/60">
-                    <form wire:submit="join" class="flex flex-col gap-3">
-                        {{-- The format rule stays plain: 8 characters, told straight. --}}
-                        <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />
-                        <flux:button type="submit" variant="primary" class="self-start">Join the group</flux:button>
-                    </form>
-                </div>
+                @endforeach
             </div>
-        </div>
+        @endif
 
-        {{-- ZONE 6 · The rules, one expandable card per mode — the same
+        {{-- The other way to play, one line: rooms are the house's, a
+             group is yours. --}}
+        <a
+            href="{{ route('pickem.create') }}"
+            wire:navigate
+            class="flex items-center justify-between gap-3 rounded-xl border border-dashed border-zinc-300 px-4 py-3 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
+        >
+            <span class="min-w-0">
+                <span class="block truncate font-semibold leading-tight">Rather run your own?</span>
+                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Start a group — name it, pick its mode, send one link.</span>
+            </span>
+            <flux:icon name="chevron-right" variant="micro" class="shrink-0 text-zinc-400" />
+        </a>
+
+        {{-- The rules, one expandable card per mode — the same
              ruleLines() the docs and the mode doors read. --}}
         <div class="flex flex-col gap-2">
-            <flux:heading size="lg">How it's played</flux:heading>
+            <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">How it's played</flux:subheading>
             <flux:subheading>{{ Voice::line('lobby.rules.subheading') }}</flux:subheading>
 
             <div class="flex flex-col gap-2 pt-1">

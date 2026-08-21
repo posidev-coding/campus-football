@@ -1,23 +1,27 @@
 <?php
 
 use App\Actions\PublishSlate;
+use App\Actions\SpawnPublicContest;
 use App\Enums\ContentRating;
 use App\Enums\ContestMode;
-use App\Models\Contest;
+use App\Enums\LobbyFlavor;
+use App\Models\Game;
 use App\Models\Group;
 use App\Models\GroupMember;
-use App\Models\Slate;
-use App\Models\SlateEntry;
 use App\Models\User;
+use App\Support\Cadence;
 use App\Support\Voice;
 use Livewire\Livewire;
 
 /*
- * THE LOBBY — where the Picks tab lands. Outside the `pickem` flag it
- * keeps the coming-soon promise the tab shipped with, verbatim; inside it
- * one zoned scroll ordered by urgency: the week ribbon, the slates that
- * still need picks, your groups, last week's payoff, the lobby
- * (rooms, the start door, the folded code form), and every mode's rules.
+ * THE LOBBY — the contest browser, pass 4. Outside the `pickem` flag it
+ * keeps the coming-soon promise the Picks tab shipped with, verbatim;
+ * inside it a store: the Saturday pinned in a sticky band, then named
+ * shelves of uniform rows, the dashed rows for what this Saturday could
+ * not seat, and the house rules.
+ *
+ * The personal half lives on MY PICKS now (PickemHomeTest), and the last
+ * describe here exists to keep it from creeping back.
  */
 
 describe('the promise (outside the flag)', function () {
@@ -71,128 +75,113 @@ describe('the promise (outside the flag)', function () {
     });
 });
 
-describe('the lobby (inside the flag)', function () {
-    it('carries the week\'s state onto each group card, under the week ribbon', function () {
-        [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
-        $group->update(['name' => 'Rocky Top Rejects']);
-        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
-
-        Livewire::actingAs($commissioner)->test('lobby')
-            ->assertSee('Lobby')
-            ->assertSee('Week 1')
-            ->assertSee('Rocky Top Rejects')
-            ->assertSee('Triple Option')
-            ->assertSee('of 15');
+describe('the store (inside the flag)', function () {
+    beforeEach(function () {
+        $this->travelTo('2026-09-02 12:00:00');
     });
 
-    it('orders the zones by urgency', function () {
-        [$commissioner, , $contest] = pickemContest(ContestMode::Tiered);
-        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+    /** A week with enough suggestible games for any mode's standard slate. */
+    function lobbyScreenWeek(): array
+    {
+        [$season, $week] = pickemSeasonWeek();
 
-        // A second, already-settled game gives the recap zone something.
-        $settledGroup = Group::factory()->create();
-        GroupMember::factory()->create(['group_id' => $settledGroup->id, 'user_id' => $commissioner->id]);
-        $settledContest = Contest::factory()->create(['group_id' => $settledGroup->id]);
-        [, $week] = pickemSeasonWeek();
-        $settledSlate = Slate::factory()->create([
-            'contest_id' => $settledContest->id,
-            'week_id' => $week->id,
-            'status' => Slate::SETTLED,
-            'settled_at' => now()->subDay(),
-        ]);
-        SlateEntry::factory()->create([
-            'slate_id' => $settledSlate->id,
-            'user_id' => $commissioner->id,
-            'final_points' => 80,
-        ]);
+        foreach (range(1, 16) as $i) {
+            $game = pickemGame($season, $week);
+            pickemOdd($game);
+            $game->predictor()->create(['matchup_quality' => 95 - $i]);
+        }
 
-        Livewire::actingAs($commissioner)->test('lobby')
+        return [$season, $week];
+    }
+
+    it('pins the Saturday being sold, counted the way the fans count it', function () {
+        /*
+         * The split opening week: ONE ESPN week row spanning 8/22 to 9/8,
+         * with cards on 8/29 and 9/5 and nothing on the 8/22 the range
+         * opens with. The band must say WEEK 0 and the card's own date —
+         * the week's range never reaches a reader, because "AUG 22" is a
+         * date nobody is playing.
+         */
+        $this->travelTo('2026-08-25 12:00:00');
+        [, $week] = splitPickemWeek();
+
+        foreach (Game::query()->whereDate('kickoff_at', '2026-08-29')->get() as $game) {
+            pickemOdd($game);
+            $game->predictor()->create(['matchup_quality' => 90.0]);
+        }
+
+        // The 8/29 card explicitly — the week's PRIMARY Saturday is the
+        // busier 9/5, and the lobby sells the card in front of it.
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, Cadence::activeSaturday($week));
+
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            ->assertSee('Week 0')
+            ->assertSee('Sat Aug 29')
+            ->assertSee('1 room open')
+            ->assertDontSee('Aug 22');
+    });
+
+    it('shelves the rooms under plain headings, house first', function () {
+        [, $week] = lobbyScreenWeek();
+        $viewer = pickemAdmin();
+
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::TwoMinuteDrill);
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::UpsetAlley);
+
+        Livewire::actingAs($viewer)->test('lobby')
             ->assertSeeInOrder([
-                'Needs your picks',
-                'Your games',
-                'Last week',
-                'Find a game',
-                "How it's played",
-            ]);
+                'House rooms',
+                'Hail Mary',
+                'Quick hits',
+                'Two-Minute Drill',
+                'Spotlight',
+                'Upset Alley',
+            ])
+            // Headings are plain — people navigate by them. The register
+            // line rides underneath.
+            ->assertSee(Voice::line('lobby.shelf.house', for: $viewer));
     });
 
-    it('walks a first-run visitor through the mode doors', function () {
+    it('sells one uniform row: name, the facts, and a door into the room', function () {
+        [, $week] = lobbyScreenWeek();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        $flash = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::TwoMinuteDrill);
+
         Livewire::actingAs(pickemAdmin())->test('lobby')
-            ->assertSee('Pick your game')
+            ->assertSee('Hail Mary')
             ->assertSee('Shotgun')
+            ->assertSee('10 games')
+            ->assertSee('0 of 20 seats')
+            ->assertSee('Join')
+            // The row itself opens the room; Join is the one-tap seat.
+            ->assertSee(route('pickem.room', $room), escape: false)
+            ->assertSee(route('pickem.room', $flash), escape: false)
+            // Blurbs and zingers moved to the room screen — a shelf of
+            // thirteen pitches is an essay, not a shelf.
+            ->assertDontSee('The flash card: 5 games, in and out.');
+    });
+
+    it('dashes out what this Saturday could not seat, in the preflight\'s words', function () {
+        // Eight lined games: Shotgun downsizes and sells, the fifteen-game
+        // modes cannot publish at all.
+        [$season, $week] = pickemSeasonWeek();
+
+        foreach (range(1, 8) as $i) {
+            $game = pickemGame($season, $week);
+            pickemOdd($game);
+            $game->predictor()->create(['matchup_quality' => 95 - $i]);
+        }
+
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            ->assertSee('Hail Mary')
             ->assertSee('Triple Option')
-            ->assertSee('The Woodshed')
-            ->assertSee(route('pickem.create'), escape: false)
-            ->assertDontSee('Your games');
+            ->assertSee('Not enough games this Saturday');
     });
 
-    it('spells every mode\'s rules, stakes included', function () {
-        Livewire::actingAs(pickemAdmin())->test('lobby')
-            ->assertSee("How it's played", escape: false)
-            ->assertSee('every one worth 10 points')
-            ->assertSee('Tier 1 pays 9')
-            ->assertSee('8, 6 and 4')
-            ->assertSee('+6 right, −4 wrong')
-            ->assertSee('101')
-            ->assertSee('no pushes, ever');
-    });
-
-    it('hands the commissioner the build prompt on a slateless week', function () {
-        [$commissioner, $group] = pickemContest(ContestMode::Classic);
-        pickemSeasonWeek();
-
-        Livewire::actingAs($commissioner)->test('lobby')
-            ->assertSee('Build the slate');
-    });
-
-    it('pays the Monday payoff: last week\'s settled result while it\'s fresh', function () {
-        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
-        [, $week] = pickemSeasonWeek();
-        $slate = Slate::factory()->create([
-            'contest_id' => $contest->id,
-            'week_id' => $week->id,
-            'status' => Slate::SETTLED,
-            'settled_at' => now()->subDay(),
-        ]);
-        SlateEntry::factory()->create([
-            'slate_id' => $slate->id,
-            'user_id' => $commissioner->id,
-            'final_points' => 8,
-            'won' => true,
-        ]);
-
-        Livewire::actingAs($commissioner)->test('lobby')
-            ->assertSee('Last week')
-            ->assertSee('8 pts')
-            ->assertSee('Winner');
-    });
-
-    it('shows the public inventory its honest empty state', function () {
-        Livewire::actingAs(pickemAdmin())->test('lobby')
-            ->assertSee('Find a game')
-            ->assertSee('No open rooms right now');
-    });
-
-    it('lists an open public room with its door', function () {
-        Group::factory()->lobby()->create(['name' => 'The Big Lobby']);
-
-        Livewire::actingAs(pickemAdmin())->test('lobby')
-            ->assertSee('The Big Lobby')
-            ->assertSee('Join');
-    });
-
-    it('seats a lobby joiner and lands them in the room', function () {
-        $lobby = Group::factory()->lobby()->create();
-        $admin = pickemAdmin();
-
-        Livewire::actingAs($admin)->test('lobby')
-            ->call('joinLobby', $lobby->id)
-            ->assertRedirect(route('pickem.group', $lobby));
-
-        expect(GroupMember::where(['group_id' => $lobby->id, 'user_id' => $admin->id])->exists())->toBeTrue();
-    });
-
-    it('lands a room joiner at the room\'s own address — no clubhouse double-hop', function () {
+    it('seats a joiner and lands them at the room\'s own address', function () {
         [, $week] = pickemSeasonWeek();
         $room = Group::factory()->lobby()->create(['week_id' => $week->id, 'member_cap' => 20]);
         $admin = pickemAdmin();
@@ -202,6 +191,17 @@ describe('the lobby (inside the flag)', function () {
             ->assertRedirect(route('pickem.room', $room));
 
         expect(GroupMember::where(['group_id' => $room->id, 'user_id' => $admin->id])->exists())->toBeTrue();
+    });
+
+    it('sells the evergreen table after the Saturday, and lands it at its clubhouse', function () {
+        $lobby = Group::factory()->lobby()->create(['name' => 'The Big Lobby']);
+        $admin = pickemAdmin();
+
+        Livewire::actingAs($admin)->test('lobby')
+            ->assertSee('Always open')
+            ->assertSee('The Big Lobby')
+            ->call('joinLobby', $lobby->id)
+            ->assertRedirect(route('pickem.group', $lobby));
     });
 
     it('answers a race to the last seat in Voice, in the lobby', function () {
@@ -218,16 +218,41 @@ describe('the lobby (inside the flag)', function () {
         expect(GroupMember::where(['group_id' => $room->id, 'user_id' => $admin->id])->exists())->toBeFalse();
     });
 
-    it('still joins from the folded code form', function () {
-        $group = Group::factory()->create();
-        $admin = pickemAdmin();
+    it('shows an honestly empty store', function () {
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            ->assertSee('No open rooms right now')
+            // And never dashes the whole catalog out: with nothing
+            // stocked, absence proves nothing.
+            ->assertDontSee('Not enough games this Saturday');
+    });
 
-        Livewire::actingAs($admin)->test('lobby')
-            ->set('code', strtolower($group->code))
-            ->call('join')
-            ->assertRedirect(route('pickem.group', $group));
+    it('keeps the other way to play one line away', function () {
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            ->assertSee('Rather run your own?')
+            ->assertSee(route('pickem.create'), escape: false);
+    });
 
-        expect(GroupMember::where(['group_id' => $group->id, 'user_id' => $admin->id])->exists())->toBeTrue();
+    it('spells every mode\'s rules, stakes included', function () {
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            ->assertSee("How it's played", escape: false)
+            ->assertSee('every one worth 10 points')
+            ->assertSee('Tier 1 pays 9')
+            ->assertSee('8, 6 and 4')
+            ->assertSee('+6 right, −4 wrong')
+            ->assertSee('101')
+            ->assertSee('no pushes, ever');
+    });
+
+    it('is nobody\'s dashboard: the personal zones are gone', function () {
+        [$commissioner, , $contest] = pickemContest(ContestMode::Tiered);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        Livewire::actingAs($commissioner)->test('lobby')
+            ->assertDontSee('Needs your picks')
+            ->assertDontSee('Your groups')
+            ->assertDontSee('Last week')
+            ->assertDontSee('Have an invite code?')
+            ->assertDontSee('Pick your mode');
     });
 });
 
