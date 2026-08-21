@@ -50,8 +50,8 @@ design system: the weekly thing is THE SLATE ("board" is purged and a
 Voice sweep test enforces it), picking is a tap on a real matchup card
 that fills with the team's color, a group plays ONE mode all season
 (pivot = deliberate act, once per season, group notified), the Picks tab
-lands on `/lobby` with sections Lobby | Leaderboard | History, and public
-contests are transient weekly rooms that spawn on fill. The lobby's PASS 3
+lands on `/picks` with sections My Picks | Lobby | Leaderboard | History,
+and public contests are transient weekly rooms that spawn on fill. The lobby's PASS 3
 (2026-08-14) then rebuilt the landing as one urgency-ordered zoned scroll,
 added `/join/{CODE}` invite links as the primary acquisition path (codes
 demoted to the spoken-word fallback), gave every mode an identity (icon +
@@ -62,8 +62,13 @@ Shotgun, and points rebalanced so every mode's perfect week is ~100
 2026-08-20 with its last three slices: The Conversation at three scopes,
 the gamification finish (the RankLadder plus the two capped daily earns),
 and flip prep — `PICKEM_OPEN` as the launch switch and `pickem:preflight`
-as the readiness gate. The flag is still admin-only: flipping it is a
-decision, not a slice. Phase 6's notification loop is what comes next.
+as the readiness gate. PASS 4 (2026-08-20) then SPLIT the landing in two:
+My Picks at `/picks` is the reader's own week, the Lobby at `/lobby` is a
+contest browser of shelved uniform rows — pass 3's single scroll was shaped
+for three rooms and the flavored build shipped thirteen. The same pass made
+the pick'em vocabulary law in the code (see [product.md](product.md)). The
+flag is still admin-only: flipping it is a decision, not a slice. Phase 6's
+notification loop is what comes next.
 
 ### Phase 1 — Data foundation ✅
 
@@ -252,7 +257,7 @@ raised at whichever comes first: the first pick or the first post.
 replaces the chips' "Rookie" literal — Walk-On · Redshirt · Rotation ·
 Starter · Captain · All-American · Legend, thresholds roughly doubling, a
 pure function of `walletTotals()['xp']` with no table and no stored column,
-so rebalancing is a deploy. The chip has room for the rung alone; the Lobby
+so rebalancing is a deploy. The chip has room for the rung alone; My Picks
 carries the only surface that names the NEXT one and the XP left to it, and
 at the top of the ladder `next`/`remaining` are NULL and the line is SKIPPED
 rather than rendered as a finished bar. Rung names deliberately stay out of
@@ -288,9 +293,12 @@ the part most likely to feel cheap if done badly. `contests.settings`
 overrides for the founders' Woodshed numbers are likewise still a landing pad.
 
 **Open for plan iteration 2:** the proposed Pitch/Keep/Dive tier names (as
-screen vocabulary); perfect-week bonus and streak design; lobby shape (one house lobby vs per-conference); member caps and
+screen vocabulary); perfect-week bonus and streak design; member caps and
 multiple group membership (default: yes); `contests.settings` overrides for
-the founders' Woodshed numbers. ~~Tier values and sizes~~ — settled
+the founders' Woodshed numbers. ~~Lobby shape~~ — settled 2026-08-20: a
+thirteen-room flavored inventory, sold from a dedicated browser at `/lobby`
+on four named shelves, with the reader's own week split off to My Picks at
+`/picks` (see [screens.md](screens.md)). ~~Tier values and sizes~~ — settled
 2026-08-14 at 9/7/4 and 5/5/5 (the ~100 parity principle, see
 [game-modes.md](game-modes.md)). ~~Woodshed teaser vs hidden~~ — mooted:
 the rules arrived and the mode shipped live. ~~Push handling~~ — dissolved

@@ -401,6 +401,40 @@ reaches a screen is as the reader's own followed team. Where personalization
 is not plumbed (the Search screen's empty state), the static example is
 Tennessee. `GuidedTourTest` sweeps every tour line for the word.
 
+## The pick'em vocabulary: eight words, and two that are banned
+
+Settled 2026-08-20 and swept through the code in the same pass. These are
+product words, so they mean the same thing in copy, in comments, in method
+names and in tests — a screen that calls a contest a "game" makes the word
+"game" useless for the thing being played on a field.
+
+| Word | Means |
+| --- | --- |
+| **game** | a football game, on a field, in `games`. Nothing else, ever. |
+| **picks** | a user's calls in a contest — the product's name, and the nav label |
+| **slate** | one contest's set of games for one Saturday (`slates`) |
+| **entry** | a user's seat and results in one contest's slate (`slate_entries`) |
+| **contest** | the playable thing a group or room runs (`contests`) |
+| **room** | the colloquial word for a public one-Saturday contest — the founders' own usage, kept |
+| **group** | a private, season-long container of people (`groups`) |
+| **lobby** | where the open contests are browsed and entered (`/lobby`) |
+
+**"Board" is banned.** It was the paper-league word and it lost to SLATE:
+`PickemVoiceTest` sweeps every pick'em Voice family for it, and the 2026-08-20
+purge finished the job in the internals — `pickem:publish-slates`,
+`slateGames()`, comments and PHPDoc. The Stats screen keeps the word, because
+a stat leaderboard genuinely is a board.
+
+**"Floor" is banned** for the lobby — nobody outside the code ever called it
+that. `Cadence::activeSaturday()` carries the name it earned instead: the
+Saturday this pick'em week is ON, which private-group deadlines ask too.
+Numeric floors (the rank ladder's rung floor, palette contrast ratios,
+rate-stat minimums) and the PWA's offline floor are a different word and stay.
+
+Two more that are easy to slip: a group plays a **mode**, never "a game"
+(the pivot lever, its Voice lines and the create form all say mode), and
+what a reader sees on My Picks is **your groups**, not "your games".
+
 ## Say TRENDS, not "form"
 
 A team's recent W/L run is **trends** — `x-trend-pills`, `$glance['trend']`.
