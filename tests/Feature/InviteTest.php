@@ -196,7 +196,7 @@ it('keeps a signed-out visitor OUT while the launch config is closed', function 
 });
 
 it('never lets a room advertise a code or a /join link', function () {
-    // Rooms are joined from the lobby floor; PickemGroupsTest pins the
+    // Rooms are joined from the lobby; PickemGroupsTest pins the
     // no-code rule, and this is its companion for the link era.
     [, $week] = pickemSeasonWeek();
     $room = Group::factory()->lobby()->create(['week_id' => $week->id, 'member_cap' => 20]);

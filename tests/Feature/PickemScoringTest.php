@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Http;
 /*
  * Phase 5 slice 6: live scoring and two-phase settlement. Grading rides
  * the sync's own events from the second a game kicks; every game final
- * turns the board PRELIMINARY; the official-final sweep re-grades,
+ * turns the slate PRELIMINARY; the official-final sweep re-grades,
  * answers the tiebreaker, and pays — keyed, once, ever.
  */
 
@@ -27,7 +27,7 @@ beforeEach(function () {
 });
 
 /**
- * A published board with two picking members. Returns everything the
+ * A published slate with two picking members. Returns everything the
  * scenarios below poke at.
  *
  * @return array{0: Slate, 1: User, 2: User}
@@ -35,7 +35,7 @@ beforeEach(function () {
 function pickemContestants(): array
 {
     [$commissioner, $group, $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
     $slate = $slate->fresh();
 

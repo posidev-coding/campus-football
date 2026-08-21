@@ -786,7 +786,7 @@ class Voice
         ],
 
         /*
-         * Replaces the old `wrong_week` 2026-08-20. A board is ONE SATURDAY,
+         * Replaces the old `wrong_week` 2026-08-20. A slate is ONE SATURDAY,
          * not one ESPN week: 2026's Week 1 holds two of them, so the week
          * comparison passed for games a fortnight apart.
          */
@@ -822,8 +822,8 @@ class Voice
 
         /*
          * The clubhouse — one group's home, rebuilt around THE SLATE (the
-         * word "board" is retired product-wide; these are the first keys
-         * written for the new vocabulary).
+         * word "board" is retired product-wide, including internals; these
+         * are the first keys written for the new vocabulary).
          */
         'group.slate.waiting' => [
             'pg' => 'No slate yet. Your commissioner sets the week\'s games — picks open here the moment it lands.',
@@ -873,7 +873,7 @@ class Voice
          * a bug.
          */
         'mode.change.warning' => [
-            'pg' => 'One change per season — this is it. The group\'s slates switch to the new game from the next published week.',
+            'pg' => 'One change per season — this is it. The group\'s slates switch to the new mode from the next published week.',
             'pg13' => 'This is your one change this season. Once you pull it, the lever\'s gone until next year.',
             'r' => 'One lever, one pull, one season. After this the league office stops taking your calls.',
         ],
@@ -891,15 +891,15 @@ class Voice
         ],
 
         'mode.change.blocked.used' => [
-            'pg' => 'Your group already changed its game this season — one change is the limit.',
+            'pg' => 'Your group already changed its mode this season — one change is the limit.',
             'pg13' => 'That was the one change. The league runs on this rule; see you next season.',
             'r' => 'You already pulled the lever this season. It doesn\'t grow back.',
         ],
 
         'mode.change.pick_one' => [
-            'pg' => 'Pick the new game first.',
-            'pg13' => 'Pick the new game first — the lever needs a target.',
-            'r' => "Pick a game before pulling the lever. It's not a slot machine.",
+            'pg' => 'Pick the new mode first.',
+            'pg13' => 'Pick the new mode first — the lever needs a target.',
+            'r' => "Pick a mode before pulling the lever. It's not a slot machine.",
         ],
 
         'mode.change.blocked.inflight' => [
@@ -1065,7 +1065,7 @@ class Voice
         ],
 
         /*
-         * The upset kicker's house rule, said plainly over the board — an
+         * The upset kicker's house rule, said plainly over the slate — an
          * instruction first, so every register keeps the mechanics
          * (cover AND win outright, +:points) intact.
          */
@@ -1246,7 +1246,7 @@ class Voice
 
         'talk.claim.done' => [
             'pg' => '@:handle it is. Say something.',
-            'pg13' => '@:handle it is. Floor\'s yours.',
+            'pg13' => '@:handle it is. Start talking.',
             'r' => '@:handle. Now everyone knows who to blame.',
         ],
 

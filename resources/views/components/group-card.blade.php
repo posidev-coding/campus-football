@@ -1,5 +1,5 @@
 {{--
-    ONE OF YOUR GAMES on the lobby floor — a group or a joined room as a
+    ONE OF YOUR CONTESTS — a group or a joined room as a
     whole-card door to its clubhouse, wearing its mode's mark and colors
     (the identity seam) with the week's state on the second row.
 

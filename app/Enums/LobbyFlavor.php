@@ -85,7 +85,7 @@ enum LobbyFlavor: string
     }
 
     /**
-     * Whether the board is AS BIG AS THE SATURDAY ALLOWS — every game the
+     * Whether the slate is AS BIG AS THE SATURDAY ALLOWS — every game the
      * filter admits — rather than a fixed length.
      */
     public function dynamicSize(): bool

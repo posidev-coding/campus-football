@@ -10,7 +10,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 
 /**
- * The league's weekly clock: when a board must be set, and when a week's
+ * The league's weekly clock: when a slate must be set, and when a week's
  * results turn official.
  *
  * Every moment resolves in the app's football timezone (Eastern) against a
@@ -20,7 +20,7 @@ use Carbon\CarbonInterface;
  * "the shipped value" (the brand pattern).
  *
  *   slate deadline   Tuesday end-of-day ET before the Saturday — the moment
- *                    an unpublished board gets the standard slate instead
+ *                    an unpublished slate gets the standard card instead
  *                    of hanging the group out with a blank week
  *   official final   Sunday noon ET after the Saturday — the stat-settling
  *                    window: ESPN occasionally corrects a passing-yards
@@ -229,17 +229,17 @@ class Cadence
     }
 
     /**
-     * The Saturday a floor inside this week is ON: the current pick'em
-     * Saturday when it belongs to the week, else the week's NEXT unplayed
-     * card, else its primary. The next-card arm matters in the run-up to
-     * a split opening week — the clock's "current Saturday" is the empty
+     * The Saturday this pick'em week is ON: the current pick'em Saturday
+     * when it belongs to the week, else the week's NEXT unplayed card,
+     * else its primary. The next-card arm matters in the run-up to a
+     * split opening week — the clock's "current Saturday" is the empty
      * 8/22, and falling straight to the busiest card would sell 9/5 rooms
      * for five days and then flip BACK to 8/29 at the Tuesday turnover.
-     * Cards sell in order. The lobby floor, the stocking sweep, the
-     * preflight and the builder all ask this one question — one answer,
-     * or the floors drift apart.
+     * Cards sell in order. The lobby, the stocking sweep, the preflight
+     * and the builder all ask this one question — one answer, or the
+     * screens drift apart.
      */
-    public static function floorSaturday(Week $week): ?CarbonImmutable
+    public static function activeSaturday(Week $week): ?CarbonImmutable
     {
         $current = self::currentSaturday();
         $saturdays = collect(self::saturdaysIn($week));
@@ -287,7 +287,7 @@ class Cadence
     }
 
     /**
-     * When an unpublished board forfeits to the standard slate: the
+     * When an unpublished slate forfeits to the standard card: the
      * configured day-of-week BEFORE the week's Saturday, at the configured
      * time, ET.
      */

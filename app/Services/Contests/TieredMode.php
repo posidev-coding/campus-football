@@ -18,7 +18,7 @@ use App\Models\SlateGame;
 class TieredMode extends ModeEngine
 {
     /**
-     * `slate_size` is deliberately NOT honored here: a short board has no
+     * `slate_size` is deliberately NOT honored here: a short slate has no
      * honest 5-5-5, and half-scaling a tier spec changes what the tiers
      * mean. Only the untiered mode flexes.
      */
@@ -35,7 +35,7 @@ class TieredMode extends ModeEngine
     /**
      * Match is deliberately non-exhaustive: a tiered slate game with a null
      * or out-of-range tier cannot reach grading — publish validation
-     * refuses the board — so an UnhandledMatchError here is corrupt data
+     * refuses the slate — so an UnhandledMatchError here is corrupt data
      * announcing itself, not a case to paper over.
      */
     public function pointsFor(SlateGame $slateGame): int

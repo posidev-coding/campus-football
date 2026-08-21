@@ -44,7 +44,7 @@ class SettleSlate
 
         $slate->loadMissing(['games.game', 'entries.user', 'contest', 'tiebreakerGame.game']);
 
-        // A board with an unfinished game cannot settle, whatever the clock
+        // A slate with an unfinished game cannot settle, whatever the clock
         // says — the rescue sweep will have regraded it by the next pass.
         if ($slate->games->contains(fn ($slateGame) => ! $slateGame->game->completed)) {
             return false;

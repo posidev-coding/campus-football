@@ -5,8 +5,8 @@ use App\Enums\LobbyFlavor;
 use App\Support\RoomNames;
 
 /*
- * The floor's names: pools with personality per mode, marquees per
- * flavor, Roman numerals when a floor exhausts either — and the hard
+ * The lobby's names: pools with personality per mode, marquees per
+ * flavor, Roman numerals when a lobby exhausts either — and the hard
  * constraints (a VARCHAR(40) column, PG-safe data-not-Voice copy, never
  * a school) swept in one place.
  */

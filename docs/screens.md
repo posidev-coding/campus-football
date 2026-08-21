@@ -615,7 +615,7 @@ across all groups — contests, slates, my picks, my entries, my wins);
 `needsPicks` and the ribbon clock filter that collection and never query.
 Joining lands each kind at its own address (`pickem.room` for rooms — the
 old clubhouse double-hop is dead) and a race to a filled room answers with
-`contest.room.full` on the floor instead of an exception.
+`contest.room.full` in the lobby instead of an exception.
 
 ## The invite landing is the acquisition funnel
 
@@ -633,7 +633,7 @@ to their clubhouse; a full or already-played room states its condition
 plainly with the Voice line for mood. Share surfaces (creation step 3, the
 clubhouse hero and Members tab) copy and share the LINK first with the code
 kept beneath as the fallback — and rooms never advertise codes or /join
-links at all: they are joined from the floor.
+links at all: they are joined from the lobby.
 
 ## The verified landing is a tab ending well, on purpose
 

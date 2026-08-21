@@ -16,7 +16,7 @@ use InvalidArgumentException;
  * Stake or pull the Woodshed's Lock wager on the featured game.
  *
  * Same gate order as MakePick — verified email, claimed handle,
- * membership, published board, the temporal kickoff lock — because this
+ * membership, published slate, the temporal kickoff lock — because this
  * too is reachable from a public Livewire method. On top of those, three
  * rules of the wager itself: the mode must offer the Lock at all, only
  * the FEATURED game (the designated tiebreaker game — one designation,

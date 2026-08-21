@@ -248,10 +248,10 @@ new class extends Component
     {
         $weekId = app(CfbCalendar::class)->defaultWeekId(app(CfbCalendar::class)->currentYear());
 
-        // The floor sells ONE Saturday at a time — inside a split opening
+        // The lobby sells ONE Saturday at a time — inside a split opening
         // week, 8/29's rooms and 9/5's must never share it.
         $week = $weekId === null ? null : Week::find($weekId);
-        $target = $week === null ? null : Cadence::floorSaturday($week)?->toDateString();
+        $target = $week === null ? null : Cadence::activeSaturday($week)?->toDateString();
 
         return Group::query()
             ->where('kind', Group::KIND_LOBBY)
@@ -342,7 +342,7 @@ new class extends Component
 
             return;
         } catch (ContestFull) {
-            // A race to the last seat: the floor re-renders without the
+            // A race to the last seat: the lobby re-renders without the
             // filled room, and the words say why.
             $this->addError($errorBag, Voice::line('contest.room.full'));
             unset($this->publics);
@@ -501,7 +501,7 @@ new class extends Component
             </div>
         @endif
 
-        {{-- ZONE 5 · Find a game: the public floor, the start-a-group
+        {{-- ZONE 5 · Find a contest: the lobby, the start-a-group
              door, and the code form folded away as the secondary path. --}}
         <div class="flex flex-col gap-3">
             <flux:heading size="lg">Find a game</flux:heading>

@@ -11,7 +11,7 @@ use Laravel\Pennant\Feature;
 /*
  * THE FLIP CHECK. `pickem` is one line in AppServiceProvider, and flipping
  * it is the cheap part — everything underneath it has to already be true,
- * because a new user who lands on an empty public floor is a first
+ * because a new user who lands on an empty lobby is a first
  * impression you do not get back.
  *
  * The discipline these hold: the command READS. It never stocks a room,
@@ -40,9 +40,9 @@ it('fails the calendar check rather than inventing a week', function () {
         ->and($checks['lines']['status'])->toBe(PickemPreflight::FAIL);
 });
 
-it('passes the calendar and rooms checks once the floor is actually stocked', function () {
+it('passes the calendar and rooms checks once the lobby is actually stocked', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
 
     // Five more lined games so the FIFTEEN-game modes are feasible on this
@@ -53,7 +53,7 @@ it('passes the calendar and rooms checks once the floor is actually stocked', fu
         pickemOdd(pickemGame($season, $week));
     }
 
-    // A published slate in a PRIVATE group is not a stocked public floor.
+    // A published slate in a PRIVATE group is not a stocked lobby.
     expect(preflight()['rooms']['status'])->toBe(PickemPreflight::FAIL);
 
     // Turn the group into this week's open room for its mode; the other two
@@ -73,9 +73,9 @@ it('passes the calendar and rooms checks once the floor is actually stocked', fu
         ->and($rooms['detail'])->not->toContain('Shotgun');
 });
 
-it('counts a full room as unavailable floor', function () {
+it('counts a full room as unavailable inventory', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
 
     $group->update([

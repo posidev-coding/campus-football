@@ -100,8 +100,8 @@ class PickemPreflight
     }
 
     /**
-     * A flipped flag sends everybody who has no group to the public floor, so
-     * the floor has to be stocked BEFORE the flip, not by the sweep an hour
+     * A flipped flag sends everybody who has no group to the lobby, so the
+     * lobby has to be stocked BEFORE the flip, not by the sweep an hour
      * after it.
      *
      * @return array{key: string, label: string, status: string, detail: string, remedy: string|null}
@@ -112,7 +112,7 @@ class PickemPreflight
             return $this->row('rooms', 'Open public rooms', self::FAIL, 'No week to stock rooms for.', 'pickem:open-lobbies');
         }
 
-        $saturday = Cadence::floorSaturday($week);
+        $saturday = Cadence::activeSaturday($week);
 
         if ($saturday === null) {
             return $this->row('rooms', 'Open public rooms', self::FAIL, 'No Saturday to stock rooms for.', 'cfb:games --tier=current');
@@ -183,7 +183,7 @@ class PickemPreflight
      */
     private function flavorsCheck(?Week $week): array
     {
-        $saturday = $week === null ? null : Cadence::floorSaturday($week);
+        $saturday = $week === null ? null : Cadence::activeSaturday($week);
 
         if ($week === null || $saturday === null) {
             return $this->row('flavors', 'Specialty rooms', self::WARN, 'No week to stock the shelf for.');
@@ -279,7 +279,7 @@ class PickemPreflight
      */
     private function scheduleCheck(): array
     {
-        $wanted = ['pickem:publish-boards', 'pickem:settle', 'pickem:open-lobbies'];
+        $wanted = ['pickem:publish-slates', 'pickem:settle', 'pickem:open-lobbies'];
 
         $scheduled = collect(app(Schedule::class)->events())
             ->map(fn ($event) => $event->command ?? '')

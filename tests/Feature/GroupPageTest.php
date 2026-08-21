@@ -24,7 +24,7 @@ use Livewire\Livewire;
 
 it('renders the clubhouse: hero, plate tabs, tiers and progress', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
 
     expect($slate->fresh()->status)->toBe(Slate::PUBLISHED);
@@ -40,7 +40,7 @@ it('renders the clubhouse: hero, plate tabs, tiers and progress', function () {
 
 it('fills a tapped side with that team\'s computed palette', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
 
     $slateGame = $slate->games()->first();
@@ -62,7 +62,7 @@ it('fills a tapped side with that team\'s computed palette', function () {
 
 it('locks a kicked game — the row says so and the tap writes nothing', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
 
     $slateGame = $slate->games()->first();
@@ -78,7 +78,7 @@ it('locks a kicked game — the row says so and the tap writes nothing', functio
 
 it('shows the commissioner a build prompt and a member the waiting room on a draft week', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
-    pickemDraftBoard($contest);
+    pickemDraftSlate($contest);
 
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
         ->assertSee('Build the slate');
@@ -96,7 +96,7 @@ it('renders result marks and the week standings once games grade', function () {
     $member = User::factory()->create(['admin' => true]);
     GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
 
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
     $slate = $slate->fresh();
 
@@ -165,7 +165,7 @@ it('aggregates settled weeks on the Season tab, wins before points', function ()
 it('previews the surface read-only for a lobby outsider', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
     $group->update(['kind' => Group::KIND_LOBBY]);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
 
     $outsider = pickemAdmin();
@@ -190,12 +190,12 @@ it('keeps the query count flat however big the slate gets', function () {
     // Option. Every concern is one query across all rows, so five more
     // games may not cost a single extra read.
     [$commissioner, $groupA, $contestA] = pickemContest(ContestMode::Classic);
-    app(PublishSlate::class)->handle($commissioner, pickemDraftBoard($contestA));
+    app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contestA));
 
     $groupB = Group::factory()->create();
     GroupMember::factory()->commissioner()->create(['group_id' => $groupB->id, 'user_id' => $commissioner->id]);
     $contestB = Contest::factory()->tiered()->create(['group_id' => $groupB->id]);
-    app(PublishSlate::class)->handle($commissioner, pickemDraftBoard($contestB));
+    app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contestB));
 
     $queries = function (Group $group) use ($commissioner): int {
         GameRanks::flush();

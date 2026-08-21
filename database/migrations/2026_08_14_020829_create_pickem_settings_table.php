@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Schema;
  * The league's clock, editable without a deploy — the brand_settings
  * pattern: ONE row of overrides where every column is nullable and null
  * means "the shipped default" on App\Support\Cadence. The two moments it
- * governs: when a commissioner's unpublished board gets the standard slate
+ * governs: when a commissioner's unpublished slate gets the standard card
  * (the deadline), and when a week's results turn official (giving ESPN's
  * late stat corrections time to land before tiebreakers settle).
  */

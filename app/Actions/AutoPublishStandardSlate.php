@@ -15,19 +15,19 @@ use Carbon\CarbonInterface;
  * The commissioner overslept: publish the STANDARD slate.
  *
  * Commissioners are humans — they forget, or Saturday's buzz starts on
- * Tuesday — and a group must never open the week to a blank board. Past
- * the deadline this fills the board from the same suggestion engine the
+ * Tuesday — and a group must never open the week to a blank slate. Past
+ * the deadline this fills the slate from the same suggestion engine the
  * builder pre-fills from (best quality games, half-pointed lines, tiers
  * banded), designates the top game's combined points as the tiebreaker —
  * the one metric that is always automatable — and publishes through the
  * exact validation a human publish passes.
  *
- * An unpublished partial draft is REPLACED, not completed: half a board
+ * An unpublished partial draft is REPLACED, not completed: half a slate
  * plus half a suggestion is nobody's slate, and the commissioner had until
- * the deadline to finish theirs. A published board is never touched.
+ * the deadline to finish theirs. A published slate is never touched.
  *
  * Returns the published slate, or null when the week could not support a
- * valid board (a thin week failing validation stays a loud draft rather
+ * valid slate (a thin week failing validation stays a loud draft rather
  * than publishing garbage).
  */
 class AutoPublishStandardSlate
@@ -45,7 +45,7 @@ class AutoPublishStandardSlate
     {
         /*
          * Keyed on the SATURDAY, not the week — an ESPN week can hold two,
-         * and a contest gets one board per Saturday played. A week with no
+         * and a contest gets one slate per Saturday played. A week with no
          * Saturday at all (nothing synced, no range) has nothing to build.
          */
         $saturday ??= Cadence::saturdayOf($week);

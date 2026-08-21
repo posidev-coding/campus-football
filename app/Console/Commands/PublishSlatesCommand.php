@@ -13,7 +13,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * The deadline sweep: any contest without a published board for the
+ * The deadline sweep: any contest without a published slate for the
  * current week, once the commissioner's deadline has passed, gets the
  * standard slate — the group is never hung out to dry with a blank week.
  *
@@ -21,9 +21,9 @@ use Illuminate\Support\Facades\Log;
  * already hold. Scheduled hourly; before the deadline every run is a
  * no-op, so the cost of the granularity is nothing.
  */
-class PublishBoardsCommand extends Command
+class PublishSlatesCommand extends Command
 {
-    protected $signature = 'pickem:publish-boards';
+    protected $signature = 'pickem:publish-slates';
 
     protected $description = "Publish the standard slate for any contest whose commissioner missed the week's deadline";
 
@@ -47,19 +47,19 @@ class PublishBoardsCommand extends Command
         }
 
         /*
-         * ONE SATURDAY, the one this pick'em week's floor is on. An ESPN
-         * week can hold two — 2026's Week 1 has 8/29 and 9/5 — and
-         * sweeping the week would publish a board for both, which is two
-         * weeks of picks dropped on a group at once. floorSaturday() is
-         * the same answer the lobby, the stocking sweep and the preflight
-         * read, cards in order.
+         * ONE SATURDAY, the one this pick'em week is on. An ESPN week can
+         * hold two — 2026's Week 1 has 8/29 and 9/5 — and sweeping the
+         * week would publish a slate for both, which is two weeks of
+         * picks dropped on a group at once. activeSaturday() is the same
+         * answer the lobby, the stocking sweep and the preflight read,
+         * cards in order.
          */
-        $saturday = Cadence::floorSaturday($week);
+        $saturday = Cadence::activeSaturday($week);
 
         $deadline = $saturday === null ? null : Cadence::slateDeadline($saturday);
 
         if ($deadline === null || now()->lessThan($deadline)) {
-            $this->info('Before the deadline; commissioners still have the floor.');
+            $this->info('Before the deadline; the commissioners still have it.');
 
             return self::SUCCESS;
         }
@@ -68,8 +68,8 @@ class PublishBoardsCommand extends Command
             ->where('season_year', $year)
             /*
              * PRIVATE groups only. House rooms are born WITH a published
-             * board at spawn and die with their Saturday — sweeping them
-             * would stamp a fresh board into every dead room weekly, and
+             * slate at spawn and die with their Saturday — sweeping them
+             * would stamp a fresh slate into every dead room weekly, and
              * a flavored contest's frozen settings (a Week 0 seven, a
              * ranked card's size) would mis-size every one of them.
              */
@@ -97,7 +97,7 @@ class PublishBoardsCommand extends Command
             }
         }
 
-        $this->info("Published {$published} standard board(s) of {$due->count()} due.");
+        $this->info("Published {$published} standard slate(s) of {$due->count()} due.");
 
         return self::SUCCESS;
     }

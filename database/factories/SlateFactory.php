@@ -24,7 +24,7 @@ class SlateFactory extends Factory
              * PINNED, and derived from nothing. The fixture week's Saturday
              * is 2026-09-05, and a slate dated by anything live — the
              * week's range, `now()` — is a fixture that moves under every
-             * assertion about the weekly clock. A caller building a board on
+             * assertion about the weekly clock. A caller building a slate on
              * another Saturday passes it explicitly.
              */
             'saturday' => '2026-09-05',
@@ -36,7 +36,7 @@ class SlateFactory extends Factory
         ];
     }
 
-    /** A practice board: graded and paid, never counted. */
+    /** A practice slate: graded and paid, never counted. */
     public function exhibition(): static
     {
         return $this->state(['exhibition' => true]);

@@ -18,7 +18,7 @@ class ClassicMode extends ModeEngine
     public const GAME_POINTS = 10;
 
     /**
-     * The one mode that flexes: an untiered board can be any length, which
+     * The one mode that flexes: an untiered slate can be any length, which
      * is what the flash cards and the dynamic themed rooms ride. The tiered
      * modes deliberately ignore this knob — see their docblocks.
      */

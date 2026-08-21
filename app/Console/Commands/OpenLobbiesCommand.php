@@ -27,7 +27,7 @@ use Throwable;
  * empty shelf must not keep Wishbone's stocked.
  *
  * The target is a SATURDAY, not a week — a split opening week holds two
- * cards, and the floor stocks the one the pick'em clock is on. An entry
+ * cards, and the lobby stocks the one the pick'em clock is on. An entry
  * the Saturday cannot support (Week 0 cannot seat a fifteen-game mode)
  * is the spawner's feasibility gate declining quietly, not a failure.
  */
@@ -47,7 +47,7 @@ class OpenLobbiesCommand extends Command
             return self::SUCCESS;
         }
 
-        $saturday = Cadence::floorSaturday($week);
+        $saturday = Cadence::activeSaturday($week);
 
         if ($saturday === null) {
             $this->info('No Saturday to stock for.');

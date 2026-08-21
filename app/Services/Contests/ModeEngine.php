@@ -9,7 +9,7 @@ use App\Models\SlateGame;
 
 /**
  * The rules of one contest mode, as an object the rest of the phase asks
- * instead of hardcoding: how big a board is, whether and how it tiers, what
+ * instead of hardcoding: how big a slate is, whether and how it tiers, what
  * a pick is worth, and whether a draft is fit to publish.
  *
  * An abstract base rather than an interface, deliberately:
@@ -33,10 +33,10 @@ abstract class ModeEngine
     }
 
     /**
-     * The themed admission rule this contest's boards draw under, or null
+     * The themed admission rule this contest's slates draw under, or null
      * for the standard everything-eligible pool. Read by SuggestSlate; the
-     * engine itself never filters — a filter shapes what reaches the board,
-     * never how the board grades.
+     * engine itself never filters — a filter shapes what reaches the slate,
+     * never how the slate grades.
      */
     public function slateFilter(): ?SlateFilter
     {
@@ -45,7 +45,7 @@ abstract class ModeEngine
         return $filter === null ? null : SlateFilter::tryFrom((string) $filter);
     }
 
-    /** How many games a published board carries. */
+    /** How many games a published slate carries. */
     abstract public function slateSize(): int;
 
     /**
@@ -152,7 +152,7 @@ abstract class ModeEngine
         }
 
         foreach ($games as $slateGame) {
-            // The contest line is what the whole board grades against; a
+            // The contest line is what the whole slate grades against; a
             // game without one cannot be slated in an ATS-only product.
             if ($slateGame->spread === null || $slateGame->favorite_team_id === null) {
                 $problems[] = 'picks.publish.line_missing';
@@ -171,9 +171,9 @@ abstract class ModeEngine
             }
 
             /*
-             * ONE BOARD, ONE SATURDAY. This used to compare week ids, which
+             * ONE SLATE, ONE SATURDAY. This used to compare week ids, which
              * a split ESPN week satisfies twice over: 2026's Week 1 holds
-             * both 8/29 and 9/5, so a board could be built across two
+             * both 8/29 and 9/5, so a slate could be built across two
              * Saturdays a week apart and every check still passed. The
              * slate's own Saturday is the honest comparison.
              */
@@ -218,7 +218,7 @@ abstract class ModeEngine
     }
 
     /**
-     * A complete question: a game on this board, a metric, and — when the
+     * A complete question: a game on this slate, a metric, and — when the
      * metric is about one side — a team that is actually in that game.
      */
     private function tiebreakerDesignated(Slate $slate): bool
@@ -244,7 +244,7 @@ abstract class ModeEngine
         $spec = $this->tierSpec();
 
         // Untiered mode: every tier must be null — a stray tier on a
-        // Classic board is data that would grade differently the day the
+        // Classic slate is data that would grade differently the day the
         // contest's mode was misread.
         if ($spec === null) {
             return $slate->games->every(fn (SlateGame $g) => $g->tier === null);

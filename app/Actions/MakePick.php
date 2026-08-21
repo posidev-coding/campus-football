@@ -17,7 +17,7 @@ use InvalidArgumentException;
  * One call on one game, before it kicks.
  *
  * Every gate lives HERE — verified email, claimed handle, group
- * membership, published board, the temporal lock, and the team actually
+ * membership, published slate, the temporal lock, and the team actually
  * being in the game — because this is reachable from a public Livewire
  * method and a sheet's disabled button is presentation, not enforcement.
  *

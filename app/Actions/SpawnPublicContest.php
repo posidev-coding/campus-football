@@ -17,21 +17,21 @@ use Illuminate\Support\Str;
 
 /**
  * Provision the NEXT public room of one shape — a (mode, flavor) pair on
- * one SATURDAY: a lobby-kind group named from the floor's pools, the
+ * one SATURDAY: a lobby-kind group named from the lobby's pools, the
  * shape's seat cap, ONE contest stamped with the shape's settings — and a
  * PUBLISHED slate, because a public room with nothing to pick is a broken
- * promise on the lobby floor.
+ * promise in the lobby.
  *
  * The slate is CLONED from a published sibling of the SAME shape when one
- * exists: every room of a shape-Saturday plays the identical house board,
+ * exists: every room of a shape-Saturday plays the identical house slate,
  * so "I went 12-3 in Hail Mary" means the same thing in Hail Mary and
  * Flea Flicker, and a room spawned Thursday is immune to the market
  * drifting since the first froze. Contest settings are copied verbatim
- * with the board — a poll landing mid-week must not resize a cloned card.
+ * with the slate — a poll landing mid-week must not resize a cloned card.
  * The first room of a shape resolves its settings fresh from the catalog,
  * which is also the feasibility gate: an impossible Saturday (Week 0
  * cannot seat a fifteen-game mode) spawns NOTHING rather than a thin
- * board that lies.
+ * slate that lies.
  *
  * NO commissioner seat: the house runs these rooms, and no copy inside
  * one may ever say "ask your commissioner".
@@ -95,7 +95,7 @@ class SpawnPublicContest
             : $this->cloneSlate($sibling, $contest->id, $week->id);
 
         if ($published === null) {
-            // No valid slate, no room — leave nothing on the floor.
+            // No valid slate, no room — leave nothing in the lobby.
             $group->delete();
 
             return null;
@@ -107,7 +107,7 @@ class SpawnPublicContest
     /**
      * Rooms wear NAMES, not serials: standard rooms draw from their mode's
      * pool, specialties carry their marquee, and either takes a Roman
-     * numeral when this Saturday's floor already used the name.
+     * numeral when this Saturday's lobby already used the name.
      */
     private function name(ContestMode $mode, ?LobbyFlavor $flavor, Week $week, CarbonInterface $saturday): string
     {
@@ -125,7 +125,7 @@ class SpawnPublicContest
     /**
      * The shape-Saturday's house slate, from any sibling room of the SAME
      * flavor that has one. The flavor condition is load-bearing: a flash
-     * card and the standard board share a mode, and without it they would
+     * card and the standard slate share a mode, and without it they would
      * cross-clone each other's slates.
      */
     private function publishedSibling(ContestMode $mode, Week $week, CarbonInterface $saturday, ?LobbyFlavor $flavor): ?Slate

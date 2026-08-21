@@ -453,13 +453,13 @@ Schedule::command('cfb:kickoff-alerts')
 
 /*
  * The pick'em deadline sweep: past the week's slate deadline, any contest
- * still without a published board gets the standard slate, so a group is
+ * still without a published slate gets the standard card, so a group is
  * never hung out to dry by a commissioner who lost track of Tuesday.
  * Hourly and DB-only — before the deadline each run exits in one query,
  * and the deadline itself is admin-configurable (Cadence), so the hour
  * grain is what makes "end of day" mean end of day whatever it is set to.
  */
-Schedule::command('pickem:publish-boards')
+Schedule::command('pickem:publish-slates')
     ->hourly()
     ->timezone($tz)
     ->when($inSeason)
@@ -467,7 +467,7 @@ Schedule::command('pickem:publish-boards')
 
 /*
  * The settle sweep: rescue grading for games that went final without their
- * event, and turn boards official once the week passes the stat-settling
+ * event, and turn slates official once the week passes the stat-settling
  * window (Cadence::officialFinal — Sunday noon ET by default). Payouts
  * happen only here, keyed, so an hourly cadence risks nothing twice.
  */

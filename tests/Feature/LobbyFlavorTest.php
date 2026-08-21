@@ -18,7 +18,7 @@ use Carbon\CarbonImmutable;
 use Livewire\Livewire;
 
 /*
- * The flavored floor: specialty rooms are (mode, flavor) shapes whose
+ * The flavored lobby: specialty rooms are (mode, flavor) shapes whose
  * rules live entirely in contests.settings, stamped at spawn. The facts
  * this file exists to hold: a flavor's settings freeze at spawn, siblings
  * clone only WITHIN a flavor, an infeasible Saturday spawns nothing, and
@@ -63,7 +63,7 @@ it('spawns a flavored room: marquee name, its own cap, settings stamped on the c
         ->and($room->contests()->sole()->settings)->toBe(['slate_size' => 5]);
 });
 
-it('never cross-clones between a flavor and the standard board of the same mode', function () {
+it('never cross-clones between a flavor and the standard slate of the same mode', function () {
     [, $week] = lobbyFlavorWeek();
 
     $standard = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
@@ -72,13 +72,13 @@ it('never cross-clones between a flavor and the standard board of the same mode'
     $standardSlate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $standard->id))->sole();
     $flashSlate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $flash->id))->sole();
 
-    // Same mode, same Saturday — different boards. Without the flavor in
-    // the sibling key, the flash room would clone the ten-game board and
+    // Same mode, same Saturday — different slates. Without the flavor in
+    // the sibling key, the flash room would clone the ten-game slate and
     // fail its own publish validation.
     expect($standardSlate->games()->count())->toBe(10)
         ->and($flashSlate->games()->count())->toBe(5);
 
-    // And a SECOND standard room still clones the standard board, not the
+    // And a SECOND standard room still clones the standard slate, not the
     // flash one — ten games, identical lines.
     $second = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
     $secondSlate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $second->id))->sole();
@@ -115,7 +115,7 @@ it('freezes a dynamic room at the Saturday\'s whole admitted count', function ()
 
 it('spawns nothing when the Saturday cannot support the flavor', function () {
     // Sixteen lined games, none at night — Under the Lights has no card
-    // to sell, and an honest floor holds no room rather than a thin one.
+    // to sell, and an honest lobby holds no room rather than a thin one.
     [, $week] = lobbyFlavorWeek();
 
     $room = app(SpawnPublicContest::class)->handle(
@@ -145,7 +145,7 @@ it('respawns a filled room as the SAME shape: flavor, cap, settings, Saturday', 
 
     // The whole identity carries: the marquee's numeral successor, the
     // flavor's own cap (never the filled room's dev-tweaked one), and the
-    // cloned five-game board with the settings that size it.
+    // cloned five-game slate with the settings that size it.
     expect($next->name)->toBe('Two-Minute Drill II')
         ->and($next->member_cap)->toBe(10)
         ->and($next->contests()->sole()->settings)->toBe(['slate_size' => 5]);
@@ -156,7 +156,7 @@ it('respawns a filled room as the SAME shape: flavor, cap, settings, Saturday', 
         ->and($nextSlate->saturday->toDateString())->toBe('2026-09-05');
 });
 
-it('sells the floor in catalog order with honest flavored cards', function () {
+it('sells the lobby in catalog order with honest flavored cards', function () {
     [, $week] = lobbyFlavorWeek();
 
     app(SpawnPublicContest::class)->handle(ContestMode::Woodshed, $week);
@@ -239,7 +239,7 @@ it('respawns a filled Week 0 room on Week 0, never the split week\'s main card',
     $nextSlate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $next->id))->sole();
 
     // The CARRY, not saturdayOf()'s busiest-card default: a successor that
-    // opened on 9/5 mid-Week-0 would strand the rehearsal floor.
+    // opened on 9/5 mid-Week-0 would strand the rehearsal lobby.
     expect($nextSlate->saturday->toDateString())->toBe('2026-08-29')
         ->and($next->name)->toBe('Flea Flicker');
 });
@@ -288,7 +288,7 @@ it('warns when a feasible specialty shelf sits empty', function () {
         ->and($flavors['remedy'])->toBe('pickem:open-lobbies');
 });
 
-it('says the kicker house rule out loud, over the board', function () {
+it('says the kicker house rule out loud, over the slate', function () {
     [, $week] = lobbyFlavorWeek();
 
     $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::UpsetAlley);
@@ -326,7 +326,7 @@ it('stocks only what the opening card can seat, through the sweep', function () 
     $rooms = Group::query()->where('kind', Group::KIND_LOBBY)->where('week_id', $week->id)->get();
 
     /*
-     * The rehearsal floor: standard Shotgun downsized to the seven that
+     * The rehearsal lobby: standard Shotgun downsized to the seven that
      * exist, the flash card, and the kicker room at seven. The fifteen-
      * game modes, the themed rooms and the conference family all sat out,
      * quietly — feasibility, not failure.

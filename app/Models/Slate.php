@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * One weekly board: draft → published → settled, and never backwards.
+ * One weekly slate: draft → published → settled, and never backwards.
  *
  * Publishing is what freezes each slate game's line (see PublishSlate);
  * `settled_at` doubles as the settlement claim — SettleSlate's atomic
@@ -50,7 +50,7 @@ class Slate extends Model
     protected function casts(): array
     {
         return [
-            // The SATURDAY being played — the board's real identity, and
+            // The SATURDAY being played — the slate's real identity, and
             // what the whole weekly clock resolves from. `week_id` is still
             // ESPN's week and still drives labels; it is just not the key,
             // because one ESPN week can hold two Saturdays.
@@ -62,13 +62,13 @@ class Slate extends Model
         ];
     }
 
-    /** A practice board: graded and paid, but never counted. */
+    /** A practice slate: graded and paid, but never counted. */
     public function counts(): bool
     {
         return ! $this->exhibition;
     }
 
-    /** The guest commissioner who set this board, if one was drawn. */
+    /** The guest commissioner who set this slate, if one was drawn. */
     public function celebrity(): BelongsTo
     {
         return $this->belongsTo(User::class, 'celebrity_user_id');

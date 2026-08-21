@@ -11,7 +11,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * The commissioner's pre-filled board: the week's best slate-eligible games
+ * The commissioner's pre-filled slate: the week's best slate-eligible games
  * by quality score, tiered when the mode tiers. A suggestion is a starting
  * point — the builder lets the commissioner swap every game — and house
  * lobbies publish it unedited through the same PublishSlate door.
@@ -21,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  * one" stays a per-group opinion.
  *
  * May return fewer rows than the mode wants on a thin week — publish
- * validation is the gate that refuses a short board, and a loud shortfall
+ * validation is the gate that refuses a short slate, and a loud shortfall
  * beats quietly padding with spreadless games.
  */
 class SuggestSlate
@@ -62,7 +62,7 @@ class SuggestSlate
             }
 
             // Everything the row needs, half-point law applied — the
-            // builder writes these verbatim so a suggested board is
+            // builder writes these verbatim so a suggested slate is
             // publishable as suggested.
             $scored[] = [
                 'game_id' => $game->id,
@@ -74,17 +74,17 @@ class SuggestSlate
 
         usort($scored, fn (array $a, array $b) => [$b['score'], $a['game_id']] <=> [$a['score'], $b['game_id']]);
 
-        $board = array_slice($scored, 0, $size);
+        $slate = array_slice($scored, 0, $size);
 
         if ($spec !== null) {
-            $board = $this->assignTiers($board, $spec);
+            $slate = $this->assignTiers($slate, $spec);
         }
 
-        return $board;
+        return $slate;
     }
 
     /**
-     * How many games a board for this contest COULD hold: the same
+     * How many games a slate for this contest COULD hold: the same
      * candidate pipeline for() draws from, down to the usable-line rule.
      * The dynamic flavored rooms freeze their `slate_size` from this
      * number BEFORE publishing, so suggestion and publish validation agree
@@ -108,7 +108,7 @@ class SuggestSlate
         /*
          * ONE SATURDAY, not one week. An ESPN week can hold two of them —
          * 2026's Week 1 has games on both 8/29 and 9/5 — and drawing from
-         * the week suggested a board spanning a fortnight, which is how the
+         * the week suggested a slate spanning a fortnight, which is how the
          * first three published slates ended up mixing the two.
          */
         $saturday ??= Cadence::saturdayOf($week);
@@ -141,21 +141,21 @@ class SuggestSlate
      * Rank order fills tiers top-down: the spec's first tier takes the best
      * games, and so on — tier 1 IS "the best five" by construction.
      *
-     * @param  list<array<string, mixed>>  $board
+     * @param  list<array<string, mixed>>  $slate
      * @param  array<int, int>  $spec
      * @return list<array<string, mixed>>
      */
-    private function assignTiers(array $board, array $spec): array
+    private function assignTiers(array $slate, array $spec): array
     {
         $index = 0;
 
         foreach ($spec as $tier => $count) {
-            for ($i = 0; $i < $count && $index < count($board); $i++, $index++) {
-                $board[$index]['tier'] = $tier;
+            for ($i = 0; $i < $count && $index < count($slate); $i++, $index++) {
+                $slate[$index]['tier'] = $tier;
             }
         }
 
-        return $board;
+        return $slate;
     }
 
     /**

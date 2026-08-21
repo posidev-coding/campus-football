@@ -73,7 +73,7 @@ new class extends Component
         $chosen = ContestMode::tryFrom($this->mode);
 
         if ($this->step !== 2 || $chosen === null) {
-            $this->addError('mode', 'Pick the game your group plays.');
+            $this->addError('mode', 'Pick the mode your group plays.');
 
             return;
         }

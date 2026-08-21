@@ -3,6 +3,7 @@
 use App\Actions\PublishSlate;
 use App\Enums\ContentRating;
 use App\Enums\ContestMode;
+use App\Models\Contest;
 use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Slate;
@@ -15,7 +16,7 @@ use Livewire\Livewire;
  * THE LOBBY — where the Picks tab lands. Outside the `pickem` flag it
  * keeps the coming-soon promise the tab shipped with, verbatim; inside it
  * one zoned scroll ordered by urgency: the week ribbon, the slates that
- * still need picks, your games, last week's payoff, the Find-a-game floor
+ * still need picks, your groups, last week's payoff, the lobby
  * (rooms, the start door, the folded code form), and every mode's rules.
  */
 
@@ -74,7 +75,7 @@ describe('the lobby (inside the flag)', function () {
     it('carries the week\'s state onto each group card, under the week ribbon', function () {
         [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
         $group->update(['name' => 'Rocky Top Rejects']);
-        app(PublishSlate::class)->handle($commissioner, pickemDraftBoard($contest));
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
 
         Livewire::actingAs($commissioner)->test('lobby')
             ->assertSee('Lobby')
@@ -86,12 +87,12 @@ describe('the lobby (inside the flag)', function () {
 
     it('orders the zones by urgency', function () {
         [$commissioner, , $contest] = pickemContest(ContestMode::Tiered);
-        app(PublishSlate::class)->handle($commissioner, pickemDraftBoard($contest));
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
 
         // A second, already-settled game gives the recap zone something.
         $settledGroup = Group::factory()->create();
         GroupMember::factory()->create(['group_id' => $settledGroup->id, 'user_id' => $commissioner->id]);
-        $settledContest = \App\Models\Contest::factory()->create(['group_id' => $settledGroup->id]);
+        $settledContest = Contest::factory()->create(['group_id' => $settledGroup->id]);
         [, $week] = pickemSeasonWeek();
         $settledSlate = Slate::factory()->create([
             'contest_id' => $settledContest->id,
@@ -203,7 +204,7 @@ describe('the lobby (inside the flag)', function () {
         expect(GroupMember::where(['group_id' => $room->id, 'user_id' => $admin->id])->exists())->toBeTrue();
     });
 
-    it('answers a race to the last seat in Voice, on the floor', function () {
+    it('answers a race to the last seat in Voice, in the lobby', function () {
         [, $week] = pickemSeasonWeek();
         $room = Group::factory()->lobby()->create(['week_id' => $week->id, 'member_cap' => 1]);
         GroupMember::factory()->create(['group_id' => $room->id]);

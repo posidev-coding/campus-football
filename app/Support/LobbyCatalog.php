@@ -11,8 +11,8 @@ use App\Services\Contests\SuggestSlate;
 use Carbon\CarbonInterface;
 
 /**
- * The public floor's inventory list: which rooms the stocking sweep keeps
- * open, in the order the floor presents them — and whether a given room
+ * The lobby's inventory list: which rooms the stocking sweep keeps
+ * open, in the order the lobby presents them — and whether a given room
  * is even possible on a given Saturday.
  *
  * Feasibility is the load-bearing half. The season's opening Saturday
@@ -31,7 +31,7 @@ class LobbyCatalog
     private const MIN_FLEX = 5;
 
     /**
-     * The floor, in stocking-and-display order: the three standard rooms
+     * The inventory, in stocking-and-display order: the three standard rooms
      * (the preflight's red line), then the specialty shelf.
      *
      * @return list<array{mode: ContestMode, flavor: ?LobbyFlavor}>
@@ -56,7 +56,7 @@ class LobbyCatalog
     }
 
     /**
-     * The floor's display order: standard rooms first in mode order, then
+     * The lobby's display order: standard rooms first in mode order, then
      * the specialty shelf in flavor-case order — with the viewer's own
      * conference leading the conference family, which is the whole reason
      * the family exists — and evergreen lobbies last. Name breaks ties.
@@ -90,7 +90,7 @@ class LobbyCatalog
 
     /**
      * What a room of this shape carries on this Saturday — or null when
-     * the Saturday cannot support it, which means NO ROOM: a thin board
+     * the Saturday cannot support it, which means NO ROOM: a thin slate
      * that lies about its flavor is worse than an empty shelf.
      *
      * The returned settings are frozen onto the room's contest at spawn.

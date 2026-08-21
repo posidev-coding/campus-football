@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Schema;
  * deadline resolved to a Tuesday that had already passed and its
  * official-final to a Sunday before a single game was played. Worse, the
  * publish check only asked whether a game shared the slate's WEEK, which
- * both Saturdays did, so a board could be built across two of them a week
+ * both Saturdays did, so a slate could be built across two of them a week
  * apart.
  *
  * `week_id` stays: it is still ESPN's week, still what the scoreboard and
@@ -73,7 +73,7 @@ return new class extends Migration
      * Date every existing slate from its OWN games.
      *
      * The earliest Saturday its games kick on, in Eastern — read from the
-     * board rather than inferred from the week, because inferring from the
+     * slate rather than inferred from the week, because inferring from the
      * week is the bug. A slate with no games (an untouched draft) falls back
      * to its week's first Saturday, which is all the information there is.
      */

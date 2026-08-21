@@ -27,7 +27,7 @@ function pickemAdmin(): User
 /**
  * One pinned 2026 regular season and its week 1 — REUSED within a test,
  * because seasons carry a (year, type) unique and a test building several
- * boards would otherwise collide with itself.
+ * slates would otherwise collide with itself.
  */
 function pickemSeasonWeek(): array
 {
@@ -108,13 +108,13 @@ function pickemContest(ContestMode $mode = ContestMode::Classic): array
 }
 
 /**
- * A complete, publishable DRAFT board for the mode: full count, tiers per
+ * A complete, publishable DRAFT slate for the mode: full count, tiers per
  * spec, tiebreaker designated, and every row SEEDED the way AddSlateGame
  * seeds it — the half-pointed contest line, the book's number beside it,
  * and the provenance of both. Publish validates and commits; it copies
  * nothing.
  */
-function pickemDraftBoard(Contest $contest): Slate
+function pickemDraftSlate(Contest $contest): Slate
 {
     [$season, $week] = pickemSeasonWeek();
     $slate = Slate::factory()->create(['contest_id' => $contest->id, 'week_id' => $week->id]);

@@ -61,7 +61,7 @@ new class extends Component
 
     public int $slateId;
 
-    /** The Saturday this board is being built for, as a plain date string. */
+    /** The Saturday this slate is being built for, as a plain date string. */
     public string $saturday = '';
 
     #[Url(except: 'games')]
@@ -98,12 +98,12 @@ new class extends Component
         $week = Week::query()->findOrFail($weekId);
 
         /*
-         * The board is keyed to a SATURDAY, not to ESPN's week — one week
-         * can hold two of them, and floorSaturday() is the one this
+         * The slate is keyed to a SATURDAY, not to ESPN's week — one week
+         * can hold two of them, and activeSaturday() is the one this
          * pick'em week is playing (Tuesday turnover), falling back to the
          * week's primary card outside the week entirely.
          */
-        $saturday = Cadence::floorSaturday($week);
+        $saturday = Cadence::activeSaturday($week);
 
         abort_if($saturday === null, 404);
 
@@ -183,7 +183,7 @@ new class extends Component
     }
 
     #[Computed]
-    public function board()
+    public function slateGames()
     {
         $team = self::TEAM_COLUMNS;
 
@@ -213,7 +213,7 @@ new class extends Component
             ->orderBy('kickoff_at')
             ->get()
             ->filter(fn (Game $game) => $game->inSlateWindow())
-            // ONE BOARD, ONE SATURDAY — the split-week rule. AddSlateGame
+            // ONE SLATE, ONE SATURDAY — the split-week rule. AddSlateGame
             // holds the same line as the gate; this keeps the list honest.
             ->filter(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString()
                 === $this->slate->saturday?->toDateString());
@@ -227,11 +227,11 @@ new class extends Component
         return $this->contest->mode->engine($this->contest->settings)->tierSpec() !== null;
     }
 
-    /** @return array<int, int> tier => count on the board */
+    /** @return array<int, int> tier => count on the slate */
     #[Computed]
     public function tierCounts(): array
     {
-        return $this->board->whereNotNull('tier')->countBy('tier')->all();
+        return $this->slateGames->whereNotNull('tier')->countBy('tier')->all();
     }
 
     #[Computed]
@@ -416,7 +416,7 @@ new class extends Component
     private function fillFromSuggestions(Slate $slate): void
     {
         // The slate's own Saturday, so a split ESPN week cannot suggest a
-        // board spanning two of them.
+        // slate spanning two of them.
         $suggested = app(SuggestSlate::class)->for($this->contest, $slate->week, $slate->saturday);
 
         foreach ($suggested as $i => $row) {
@@ -431,7 +431,7 @@ new class extends Component
 
     private function fresh(): void
     {
-        unset($this->slate, $this->board, $this->candidates, $this->tierCounts, $this->myPicks, $this->myEntries);
+        unset($this->slate, $this->slateGames, $this->candidates, $this->tierCounts, $this->myPicks, $this->myEntries);
     }
 }; ?>
 
@@ -479,8 +479,8 @@ new class extends Component
             </p>
 
             @if ($step === 'games')
-                <span class="tabular shrink-0 text-sm font-medium {{ $this->board->count() === $contest->mode->engine($contest->settings)->slateSize() ? 'text-emerald-700 dark:text-emerald-400' : 'text-zinc-500' }}">
-                    {{ $this->board->count() }} of {{ $contest->mode->engine($contest->settings)->slateSize() }}
+                <span class="tabular shrink-0 text-sm font-medium {{ $this->slateGames->count() === $contest->mode->engine($contest->settings)->slateSize() ? 'text-emerald-700 dark:text-emerald-400' : 'text-zinc-500' }}">
+                    {{ $this->slateGames->count() }} of {{ $contest->mode->engine($contest->settings)->slateSize() }}
                 </span>
             @elseif ($step === 'tiers')
                 <span class="flex shrink-0 items-center gap-2 text-micro font-medium text-zinc-500">
@@ -502,10 +502,10 @@ new class extends Component
                 </div>
 
                 <div class="grid gap-3 sm:grid-cols-2">
-                    @foreach ($this->board as $slateGame)
+                    @foreach ($this->slateGames as $slateGame)
                         @php $game = $slateGame->game; @endphp
                         <div
-                            wire:key="board-{{ $slateGame->id }}"
+                            wire:key="slate-game-{{ $slateGame->id }}"
                             class="flex min-w-0 flex-col rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
                         >
                             <div class="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-1.5 text-micro dark:border-zinc-800/60">
@@ -543,7 +543,7 @@ new class extends Component
                     @endforeach
                 </div>
 
-                @if ($this->board->isEmpty())
+                @if ($this->slateGames->isEmpty())
                     <p class="rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
                         {{ Voice::line('wizard.games.empty') }}
                     </p>
@@ -603,7 +603,7 @@ new class extends Component
                 <p class="text-micro font-medium text-zinc-500">{{ $tierValues->implode(' · ') }}</p>
 
                 <div class="flex flex-col gap-2">
-                    @foreach ($this->board as $slateGame)
+                    @foreach ($this->slateGames as $slateGame)
                         @php $game = $slateGame->game; @endphp
                         <div
                             wire:key="tier-row-{{ $slateGame->id }}"
@@ -647,7 +647,7 @@ new class extends Component
                 <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('wizard.lines.hint') }}</p>
 
                 <div class="flex flex-col gap-2">
-                    @foreach ($this->board as $slateGame)
+                    @foreach ($this->slateGames as $slateGame)
                         @php
                             $game = $slateGame->game;
                             $band = $this->burdenBand($slateGame);
@@ -716,7 +716,7 @@ new class extends Component
                 <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('wizard.tiebreaker.hint') }}</p>
 
                 <div class="flex flex-col gap-2">
-                    @foreach ($this->board as $slateGame)
+                    @foreach ($this->slateGames as $slateGame)
                         @php
                             $game = $slateGame->game;
                             $chosen = $this->slate->tiebreaker_slate_game_id === $slateGame->id;

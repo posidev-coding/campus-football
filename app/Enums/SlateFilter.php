@@ -12,14 +12,14 @@ use Illuminate\Support\Collection;
 
 /**
  * A themed slate's admission rule — which of a Saturday's games belong on a
- * flavored board. Carried as `slate_filter` in `contests.settings`, applied
+ * flavored slate. Carried as `slate_filter` in `contests.settings`, applied
  * by SuggestSlate AFTER its slate-window and Saturday checks, so a filter
  * only ever NARROWS the standard candidate pool; games without a usable
  * line still drop afterward through the quality score.
  *
  * Time-of-day arms run per game in PHP, never in SQL — the ET boundary
  * shifts under DST (the same law as Game::inSlateWindow()). A filter that
- * empties the pool is a room that never spawns, not a short board.
+ * empties the pool is a room that never spawns, not a short slate.
  */
 enum SlateFilter: string
 {

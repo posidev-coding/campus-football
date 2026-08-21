@@ -150,7 +150,7 @@
         instruction (who he rides), said plainly; the tagline under it is
         his voice, and his actual side sits pawed on every card below.
     --}}
-    {{-- A kicker room says its house rule out loud, over the board. --}}
+    {{-- A kicker room says its house rule out loud, over the slate. --}}
     @if (($kickerPoints = $engine->kickerPoints()) !== null && ($kickerNote = App\Support\Voice::line('picks.kicker.underdog_note', ['points' => $kickerPoints])) !== '')
         <div class="rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
             {{ $kickerNote }}

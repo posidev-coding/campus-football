@@ -1,8 +1,8 @@
 {{--
-    A public room on the lobby floor: the game it plays — wearing that
+    A public room in the lobby: the contest it plays — wearing that
     game's mark and colors from the identity seam — the seats left, and
     the door. Rooms wear NAMES ("Hail Mary", "Ranked Action II"), never
-    dates or serials; the mode chip and the floor's week context carry the
+    dates or serials; the mode chip and the lobby's week context carry the
     boring facts. The blurb is the flavor's own one-line rules when the
     room has one, the mode enum's otherwise — either way the pitch can
     never drift from the rules cards. The zinger under a flavored blurb is
@@ -20,7 +20,7 @@
     'action' => 'joinLobby',
     /** @var App\Enums\LobbyFlavor|null a specialty room's identity */
     'flavor' => null,
-    /** @var int|null this Saturday's board size, for dynamic flavors */
+    /** @var int|null this Saturday's slate size, for dynamic flavors */
     'gameCount' => null,
 ])
 

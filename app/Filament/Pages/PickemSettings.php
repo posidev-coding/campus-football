@@ -24,7 +24,7 @@ use Filament\Support\Icons\Heroicon;
  * App\Support\Cadence, and Reset is nulling columns.
  *
  * Two moments live here. The SLATE DEADLINE is when a commissioner's
- * unpublished board forfeits to the standard slate (historically Tuesday
+ * unpublished slate forfeits to the standard card (historically Tuesday
  * midnight or Wednesday end-of-day, Eastern). The OFFICIAL FINAL is when a
  * week's results stop being preliminary — the stat-settling window that
  * lets ESPN's occasional day-after corrections land before a tiebreaker
@@ -69,7 +69,7 @@ class PickemSettings extends Page
             ->components([
                 Form::make([
                     Section::make('Slate deadline')
-                        ->description('When an unpublished board gets the standard slate. Blank means the shipped default: Tuesday, end of day Eastern.')
+                        ->description('When an unpublished slate gets the standard card. Blank means the shipped default: Tuesday, end of day Eastern.')
                         ->schema([
                             Select::make('slate_deadline_dow')
                                 ->label('Day')

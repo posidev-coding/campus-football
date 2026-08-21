@@ -44,7 +44,7 @@ enum ContestMode: string
     /**
      * The one-line rules pitch — product vocabulary like label(), constant
      * across registers, shared by the mode cards and the lobby's room
-     * cards so the game is never described two ways.
+     * cards so the mode is never described two ways.
      */
     public function blurb(): string
     {

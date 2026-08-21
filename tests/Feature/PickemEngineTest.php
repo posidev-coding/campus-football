@@ -23,8 +23,8 @@ use Illuminate\Support\Facades\Http;
 
 // ------------------------------- fixtures (shared ones in PickemFixtures)
 
-/** A complete, publishable board for the mode, tiers filled per its spec. */
-function pickemBoard(ContestMode $mode, ?array $settings = null): Slate
+/** A complete, publishable slate for the mode, tiers filled per its spec. */
+function pickemSlate(ContestMode $mode, ?array $settings = null): Slate
 {
     [$season, $week] = pickemSeasonWeek();
     $contest = Contest::factory()->create(['mode' => $mode, 'settings' => $settings]);
@@ -193,10 +193,10 @@ it('honors a slate_size override on Shotgun, and only on Shotgun', function () {
         ->and(ContestMode::Woodshed->engine(['slate_size' => 5])->slateSize())->toBe(15);
 });
 
-it('publishes a short Shotgun board when the contest carries the knob', function () {
+it('publishes a short Shotgun slate when the contest carries the knob', function () {
     $this->travelTo('2026-09-02 12:00:00');
 
-    $slate = pickemBoard(ContestMode::Classic, ['slate_size' => 5]);
+    $slate = pickemSlate(ContestMode::Classic, ['slate_size' => 5]);
 
     expect($slate->games()->count())->toBe(5)
         ->and(ContestMode::Classic->engine(['slate_size' => 5])->validateForPublish($slate))->toBe([])
@@ -252,59 +252,59 @@ it('keeps the Woodshed Lock priced clear of the kicker seam', function () {
 
 // ----------------------------------------------------- publish validation
 
-it('declares a complete board publishable', function () {
+it('declares a complete slate publishable', function () {
     $this->travelTo('2026-09-02 12:00:00');
 
-    expect(ContestMode::Classic->engine()->validateForPublish(pickemBoard(ContestMode::Classic)))->toBe([])
-        ->and(ContestMode::Tiered->engine()->validateForPublish(pickemBoard(ContestMode::Tiered)))->toBe([]);
+    expect(ContestMode::Classic->engine()->validateForPublish(pickemSlate(ContestMode::Classic)))->toBe([])
+        ->and(ContestMode::Tiered->engine()->validateForPublish(pickemSlate(ContestMode::Tiered)))->toBe([]);
 });
 
-it('names every way a board is not ready', function () {
+it('names every way a slate is not ready', function () {
     $this->travelTo('2026-09-02 12:00:00');
     $engine = ContestMode::Classic->engine();
 
     // One game short.
-    $slate = pickemBoard(ContestMode::Classic);
+    $slate = pickemSlate(ContestMode::Classic);
     $slate->update(['tiebreaker_slate_game_id' => null]);
     $slate->games()->orderByDesc('position')->first()->delete();
     $slate->update(['tiebreaker_slate_game_id' => $slate->games()->first()->id]);
     expect($engine->validateForPublish($slate->fresh()))->toContain('picks.publish.count');
 
     // A game whose line never arrived.
-    $slate = pickemBoard(ContestMode::Classic);
+    $slate = pickemSlate(ContestMode::Classic);
     $slate->games()->first()->update(['spread' => null, 'favorite_team_id' => null]);
     expect($engine->validateForPublish($slate->fresh()))->toContain('picks.publish.line_missing');
 
-    // A weeknight game on a Saturday board.
-    $slate = pickemBoard(ContestMode::Classic);
+    // A weeknight game on a Saturday slate.
+    $slate = pickemSlate(ContestMode::Classic);
     $slate->games()->first()->game->update(['kickoff_day' => 'Fri']);
     expect($engine->validateForPublish($slate->fresh()))->toContain('picks.publish.not_saturday');
 
     /*
      * A game from some other SATURDAY. This used to compare week ids, which
      * a split ESPN week satisfies twice over — 2026's Week 1 holds both 8/29
-     * and 9/5 — so a board spanning a fortnight passed every check. The
+     * and 9/5 — so a slate spanning a fortnight passed every check. The
      * stray here stays in the same week on purpose: only the Saturday moves,
      * which is exactly the case the week comparison could not see.
      */
-    $slate = pickemBoard(ContestMode::Classic);
+    $slate = pickemSlate(ContestMode::Classic);
     $slate->games()->first()->game->update(['kickoff_at' => '2026-09-12 19:30:00']);
     expect($engine->validateForPublish($slate->fresh()))->toContain('picks.publish.wrong_saturday');
 
     // No tiebreaker designated.
-    $slate = pickemBoard(ContestMode::Classic);
+    $slate = pickemSlate(ContestMode::Classic);
     $slate->update(['tiebreaker_slate_game_id' => null]);
     expect($engine->validateForPublish($slate->fresh()))->toContain('picks.publish.tiebreaker');
 
-    // A tier on an untiered board.
-    $slate = pickemBoard(ContestMode::Classic);
+    // A tier on an untiered slate.
+    $slate = pickemSlate(ContestMode::Classic);
     $slate->games()->first()->update(['tier' => 1]);
     expect($engine->validateForPublish($slate->fresh()))->toContain('picks.publish.tiers');
 });
 
-it('refuses a board once its games have started', function () {
+it('refuses a slate once its games have started', function () {
     $this->travelTo('2026-09-02 12:00:00');
-    $slate = pickemBoard(ContestMode::Classic);
+    $slate = pickemSlate(ContestMode::Classic);
 
     $this->travelTo('2026-09-05 20:00:00');
 
@@ -313,7 +313,7 @@ it('refuses a board once its games have started', function () {
 
 it('holds Triple Option to five games in each tier', function () {
     $this->travelTo('2026-09-02 12:00:00');
-    $slate = pickemBoard(ContestMode::Tiered);
+    $slate = pickemSlate(ContestMode::Tiered);
 
     $slate->games()->where('tier', 3)->orderByDesc('position')->first()->update(['tier' => 2]);
 
@@ -397,14 +397,14 @@ it('suggests the ten best lined games for Classic and never a spreadless one', f
     $spreadless = pickemGame($season, $week);
     $spreadless->predictor()->create(['matchup_quality' => 99.0]);
 
-    $board = (new SuggestSlate)->for($contest, $week);
+    $slate = (new SuggestSlate)->for($contest, $week);
 
-    expect($board)->toHaveCount(10)
-        ->and(collect($board)->pluck('game_id'))->not->toContain($spreadless->id)
-        ->and($board[0]['game_id'])->toBe($games[0]->id)
-        ->and(collect($board)->pluck('game_id'))->not->toContain($games[10]->id, $games[11]->id)
-        ->and($board[0]['tier'])->toBeNull()
-        ->and($board[0]['spread'])->toBe(-6.5);
+    expect($slate)->toHaveCount(10)
+        ->and(collect($slate)->pluck('game_id'))->not->toContain($spreadless->id)
+        ->and($slate[0]['game_id'])->toBe($games[0]->id)
+        ->and(collect($slate)->pluck('game_id'))->not->toContain($games[10]->id, $games[11]->id)
+        ->and($slate[0]['tier'])->toBeNull()
+        ->and($slate[0]['spread'])->toBe(-6.5);
 
     Http::assertNothingSent();
 });
@@ -424,11 +424,11 @@ it('banded Triple Option suggestions put the best five in tier 1', function () {
         return $game;
     });
 
-    $board = collect((new SuggestSlate)->for($contest, $week));
+    $slate = collect((new SuggestSlate)->for($contest, $week));
 
-    expect($board)->toHaveCount(15)
-        ->and($board->countBy('tier')->all())->toBe([1 => 5, 2 => 5, 3 => 5])
-        ->and($board->where('tier', 1)->pluck('game_id')->all())
+    expect($slate)->toHaveCount(15)
+        ->and($slate->countBy('tier')->all())->toBe([1 => 5, 2 => 5, 3 => 5])
+        ->and($slate->where('tier', 1)->pluck('game_id')->all())
         ->toBe($games->take(5)->pluck('id')->all());
 
     Http::assertNothingSent();
@@ -448,13 +448,13 @@ it("boosts a game the group's people follow past an otherwise equal one", functi
 
     $membership->user->followedTeams()->attach($followed->home_team_id, ['position' => 1]);
 
-    $board = (new SuggestSlate)->for($contest, $week);
+    $slate = (new SuggestSlate)->for($contest, $week);
 
-    expect($board[0]['game_id'])->toBe($followed->id)
-        ->and($board[0]['score'])->toBe($board[1]['score'] + 8.0);
+    expect($slate[0]['game_id'])->toBe($followed->id)
+        ->and($slate[0]['score'])->toBe($slate[1]['score'] + 8.0);
 });
 
-it('suggests a banded Woodshed board now that its rules landed', function () {
+it('suggests a banded Woodshed slate now that its rules landed', function () {
     Http::fake();
     $this->travelTo('2026-09-02 12:00:00');
 
@@ -467,10 +467,10 @@ it('suggests a banded Woodshed board now that its rules landed', function () {
         $game->predictor()->create(['matchup_quality' => 95 - $i * 3]);
     });
 
-    $board = collect((new SuggestSlate)->for($contest, $week));
+    $slate = collect((new SuggestSlate)->for($contest, $week));
 
-    expect($board)->toHaveCount(15)
-        ->and($board->countBy('tier')->all())->toBe([1 => 5, 2 => 5, 3 => 5]);
+    expect($slate)->toHaveCount(15)
+        ->and($slate->countBy('tier')->all())->toBe([1 => 5, 2 => 5, 3 => 5]);
 
     Http::assertNothingSent();
 });

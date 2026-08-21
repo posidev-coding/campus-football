@@ -10,13 +10,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * One game on one board, carrying the CONTEST LINE it will be graded
+ * One game on one slate, carrying the CONTEST LINE it will be graded
  * against.
  *
  * `spread` is the commissioner's number, not the book's: seeded from
- * game_odds' `current` phase when the game lands on the board (nudged to a
+ * game_odds' `current` phase when the game lands on the slate (nudged to a
  * half point — the league's no-push law), adjustable within
- * ContestLine::MAX_ADJUSTMENT of the market while the board is a draft,
+ * ContestLine::MAX_ADJUSTMENT of the market while the slate is a draft,
  * and immutable once published. `market_spread` keeps the book's own
  * number it was set against; provider and captured-at say whose book and
  * when. Null spread means the book had nothing when the game was added —

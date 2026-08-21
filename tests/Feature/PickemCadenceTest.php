@@ -43,9 +43,9 @@ it('holds the slate window to Saturday noon-to-midnight Eastern', function () {
     expect(pickemGame($season, $week, ['kickoff_at' => '2026-09-04 23:30:00'])->inSlateWindow())->toBeFalse();
 });
 
-it('refuses a board carrying a pre-noon Saturday game', function () {
+it('refuses a slate carrying a pre-noon Saturday game', function () {
     [$commissioner, , $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
 
     $slate->games()->first()->game->update(['kickoff_at' => '2026-09-05 13:30:00']);
 
@@ -147,10 +147,10 @@ it('numbers the split week the way fans do: the first card is Week 0', function 
         ->and(Cadence::displayWeekLabel($week, '2026-08-29'))->toBe('Week 0');
 });
 
-it('sells the cards in order: the floor never skips ahead of an unplayed Saturday', function () {
+it('sells the cards in order: the lobby never skips ahead of an unplayed Saturday', function () {
     /*
      * Thursday 8/20: the pick'em clock's "current Saturday" is the empty
-     * 8/22, which is nobody's card. The floor's next card is 8/29 —
+     * 8/22, which is nobody's card. The lobby's next card is 8/29 —
      * falling back to the week's BUSIEST Saturday would sell 9/5 rooms
      * for five days and then flip BACK to 8/29 at the Tuesday turnover,
      * cards out of order.
@@ -159,17 +159,17 @@ it('sells the cards in order: the floor never skips ahead of an unplayed Saturda
 
     [, $week] = splitPickemWeek();
 
-    expect(Cadence::floorSaturday($week)->toDateString())->toBe('2026-08-29');
+    expect(Cadence::activeSaturday($week)->toDateString())->toBe('2026-08-29');
 
     // At the turnover the current Saturday IS the card; nothing changes.
     $this->travelTo('2026-08-26 16:00:00');
     Cadence::flush();
-    expect(Cadence::floorSaturday($week)->toDateString())->toBe('2026-08-29');
+    expect(Cadence::activeSaturday($week)->toDateString())->toBe('2026-08-29');
 
-    // And the Tuesday after the first card, the floor moves on.
+    // And the Tuesday after the first card, the lobby moves on.
     $this->travelTo('2026-09-01 16:00:00');
     Cadence::flush();
-    expect(Cadence::floorSaturday($week)->toDateString())->toBe('2026-09-05');
+    expect(Cadence::activeSaturday($week)->toDateString())->toBe('2026-09-05');
 });
 
 it('leaves every ordinary week numbered as ESPN numbers it', function () {
@@ -247,13 +247,13 @@ it('publishes the standard slate when the commissioner missed the deadline', fun
     // Before the deadline the sweep must not touch the week. Wednesday now,
     // not Tuesday — the commissioner has until Thursday noon.
     $this->travelTo('2026-09-02 12:00:00');
-    $this->artisan('pickem:publish-boards')->assertSuccessful();
+    $this->artisan('pickem:publish-slates')->assertSuccessful();
     expect(Slate::query()->count())->toBe(0);
 
     // Past Thursday NOON Eastern — travelTo speaks UTC, and 16:00 UTC is
     // noon in Knoxville, so 17:00 is an hour past the deadline.
     $this->travelTo('2026-09-03 17:00:00');
-    $this->artisan('pickem:publish-boards')->assertSuccessful();
+    $this->artisan('pickem:publish-slates')->assertSuccessful();
 
     $slate = Slate::query()->where('contest_id', $contest->id)->sole();
     expect($slate->status)->toBe(Slate::PUBLISHED)
@@ -265,11 +265,11 @@ it('publishes the standard slate when the commissioner missed the deadline', fun
     $slate->games->each(fn ($slateGame) => expect(ContestLine::isHalfPoint((float) $slateGame->spread))->toBeTrue());
 
     // Idempotent: the next hour's run has nothing to do.
-    $this->artisan('pickem:publish-boards')->assertSuccessful();
+    $this->artisan('pickem:publish-slates')->assertSuccessful();
     expect(Slate::query()->count())->toBe(1);
 });
 
-it('never sweeps a board into a house room — lobby slates are born at spawn', function () {
+it('never sweeps a slate into a house room — lobby slates are born at spawn', function () {
     // A Week 0 house room, its contest frozen for the seven-game card.
     $this->travelTo('2026-08-26 12:00:00');
     [, $week] = splitPickemWeek();
@@ -288,16 +288,16 @@ it('never sweeps a board into a house room — lobby slates are born at spawn', 
     /*
      * Past the MAIN card's deadline. The sweep exists for private
      * commissioners who overslept — a dead Week 0 house room must never
-     * receive a second board, least of all one sized by its frozen seven
+     * receive a second slate, least of all one sized by its frozen seven
      * on a twelve-game Saturday.
      */
     $this->travelTo('2026-09-03 17:00:00');
-    $this->artisan('pickem:publish-boards')->assertSuccessful();
+    $this->artisan('pickem:publish-slates')->assertSuccessful();
 
     expect(Slate::query()->where('contest_id', $contest->id)->count())->toBe(1);
 });
 
-it('replaces a stale partial draft but never a published board', function () {
+it('replaces a stale partial draft but never a published slate', function () {
     [$commissioner, , $contest] = pickemContest();
     [$season, $week] = pickemSeasonWeek();
 
@@ -317,6 +317,6 @@ it('replaces a stale partial draft but never a published board', function () {
     expect($published)->not->toBeNull()
         ->and($published->games()->count())->toBe(10);
 
-    // A published board is beyond the fallback's reach.
+    // A published slate is beyond the fallback's reach.
     expect(app(AutoPublishStandardSlate::class)->handle($contest, $week))->toBeNull();
 });

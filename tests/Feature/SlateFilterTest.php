@@ -10,8 +10,8 @@ use Illuminate\Support\Facades\Http;
  * The themed-slate admission rules behind the flavored public rooms. A
  * filter NARROWS the standard Saturday candidate pool and does nothing
  * else: spreadless games still drop through the quality score, publish
- * still refuses a short board, and a filter that empties the pool means a
- * room that never spawns — never a thin board that lies.
+ * still refuses a short slate, and a filter that empties the pool means a
+ * room that never spawns — never a thin slate that lies.
  */
 
 beforeEach(function () {
@@ -19,7 +19,7 @@ beforeEach(function () {
     $this->travelTo('2026-09-02 12:00:00');
 });
 
-it('admits only games with a ranked side to a ranked board', function () {
+it('admits only games with a ranked side to a ranked slate', function () {
     [$season, $week] = pickemSeasonWeek();
     $contest = Contest::factory()->create([
         'settings' => ['slate_filter' => 'ranked', 'slate_size' => 2],
@@ -37,10 +37,10 @@ it('admits only games with a ranked side to a ranked board', function () {
     });
 
     $suggest = new SuggestSlate;
-    $board = collect($suggest->for($contest, $week));
+    $slate = collect($suggest->for($contest, $week));
 
-    expect($board)->toHaveCount(2)
-        ->and($ranked->pluck('id'))->toContain(...$board->pluck('game_id'))
+    expect($slate)->toHaveCount(2)
+        ->and($ranked->pluck('id'))->toContain(...$slate->pluck('game_id'))
         // The count a dynamic room freezes its size from agrees with what
         // the suggester can actually draw — same pipeline by construction.
         ->and($suggest->viableCount($contest, $week))->toBe(3);
@@ -62,9 +62,9 @@ it('draws the primetime line at 7pm Eastern, per game and never in SQL', functio
     $dusk = pickemGame($season, $week, ['kickoff_at' => '2026-09-05 22:59:00']);
     pickemOdd($dusk);
 
-    $board = collect((new SuggestSlate)->for($contest, $week));
+    $slate = collect((new SuggestSlate)->for($contest, $week));
 
-    expect($board->pluck('game_id')->all())->toBe([$night->id]);
+    expect($slate->pluck('game_id')->all())->toBe([$night->id]);
 });
 
 it('admits a conference card by season membership, either side of the ball', function () {
@@ -89,12 +89,12 @@ it('admits a conference card by season membership, either side of the ball', fun
     $outsider = pickemGame($season, $week);
     pickemOdd($outsider);
 
-    $board = collect((new SuggestSlate)->for($contest, $week));
+    $slate = collect((new SuggestSlate)->for($contest, $week));
 
-    expect($board->pluck('game_id')->all())->toBe([$inConference->id]);
+    expect($slate->pluck('game_id')->all())->toBe([$inConference->id]);
 });
 
-it('returns an empty board from a filter that empties the pool', function () {
+it('returns an empty slate from a filter that empties the pool', function () {
     // Lined but unranked: the ranked filter leaves nothing, and the honest
     // answer is [] — the spawner reads viableCount and opens no room.
     [$season, $week] = pickemSeasonWeek();

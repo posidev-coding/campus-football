@@ -31,7 +31,7 @@ beforeEach(function () {
 function lockableWoodshed(): array
 {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Woodshed);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
     $slate = $slate->fresh();
 
@@ -100,7 +100,7 @@ it('takes the Lock only on the featured game, only in the Woodshed, only on a re
 
     // The other modes have no Lock at all.
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
     $tieredMember = User::factory()->create(['handle' => 'tiered']);
     GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $tieredMember->id]);
@@ -142,7 +142,7 @@ it('wears the wager on the surface: the Bear announced, his paw on cards, one to
 
 it('keeps the wager furniture off the other modes\' surfaces', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
     $member = User::factory()->create(['handle' => 'plainweek']);
     GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
@@ -156,7 +156,7 @@ it('keeps the wager furniture off the other modes\' surfaces', function () {
 
 it('shows the founders\' stakes in the builder\'s tiers station', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Woodshed);
-    pickemDraftBoard($contest);
+    pickemDraftSlate($contest);
 
     Livewire\Livewire::actingAs($commissioner)->test('slate-builder', ['group' => $group])
         ->set('step', 'tiers')
@@ -165,9 +165,9 @@ it('shows the founders\' stakes in the builder\'s tiers station', function () {
         ->assertSee('Tier 3 pays 4');
 });
 
-it('refuses a draft board', function () {
+it('refuses a draft slate', function () {
     [, , $contest] = pickemContest(ContestMode::Woodshed);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     $member = User::factory()->create(['handle' => 'early']);
     GroupMember::factory()->create(['group_id' => $contest->group_id, 'user_id' => $member->id]);
 

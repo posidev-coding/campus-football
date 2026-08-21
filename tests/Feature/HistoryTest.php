@@ -98,7 +98,7 @@ it('links a room row back to its /contests address, and badges the W', function 
 
 it('keeps unsettled weeks out, and answers an empty record honestly', function () {
     [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $commissioner->id]);
 
     Livewire::actingAs($commissioner)->test('pickem-history')

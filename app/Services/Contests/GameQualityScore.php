@@ -8,7 +8,7 @@ use App\Support\GameRanks;
 
 /**
  * How much a game deserves a slate slot, 0–100 — the commissioner's
- * SUGGESTION signal, never the author of a board.
+ * SUGGESTION signal, never the author of a slate.
  *
  * Pure over rows we already hold (predictor, odds, rankings): zero ESPN
  * requests, the cfb:aggregate discipline. A game with no usable current
@@ -29,7 +29,7 @@ use App\Support\GameRanks;
  *   conference game  0–5
  *
  * Weights are a first calibration, expected to be tuned against a real
- * season's boards. Callers iterating many games should eager-load `odds`
+ * season's slates. Callers iterating many games should eager-load `odds`
  * and `predictor`; loadMissing below keeps a one-off call safe.
  */
 class GameQualityScore

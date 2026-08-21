@@ -98,7 +98,7 @@ return new class extends Migration
             // Null means "this mode has no tiers" (Classic) — never a
             // default 1. The tiered engine requires 1-3 at publish.
             $table->unsignedTinyInteger('tier')->nullable();
-            // The commissioner's display order within the board.
+            // The commissioner's display order within the slate.
             $table->unsignedTinyInteger('position');
             /*
              * THE FROZEN LINE, copied from game_odds' `current` phase at

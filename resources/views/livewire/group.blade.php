@@ -331,7 +331,7 @@ new class extends Component
     /**
      * The link this group travels by — the primary invite, crediting the
      * sharer when they hold a handle. Never rendered for lobbies: rooms
-     * are joined from the floor, not by invitation.
+     * are joined from the lobby, not by invitation.
      */
     #[Computed]
     public function joinUrl(): string
@@ -555,7 +555,7 @@ new class extends Component
          the note still walk in on the news rather than a changed room. --}}
     @if ($this->contest?->mode_changed_at?->gt(now()->subDays(7)))
         <flux:callout icon="megaphone">
-            <flux:callout.heading>New game: {{ $this->contest->mode->label() }}</flux:callout.heading>
+            <flux:callout.heading>New mode: {{ $this->contest->mode->label() }}</flux:callout.heading>
             <flux:callout.text>{{ Voice::line('group.mode_changed', ['mode' => $this->contest->mode->label()]) }}</flux:callout.text>
         </flux:callout>
     @endif
@@ -758,7 +758,7 @@ new class extends Component
 
     {{-- THE PIVOT: one deliberate act per season, consequences said
          plainly, and the announcement is a statement — never a checkbox.
-         Three live modes made this a radiogroup: pick the new game, then
+         Three live modes made this a radiogroup: pick the new mode, then
          throw the one lever. --}}
     @if ($this->isCommissioner && $this->pivotChoices->isNotEmpty() && $this->contest !== null)
         <flux:modal name="change-mode" class="w-full max-w-md">
@@ -768,7 +768,7 @@ new class extends Component
                     <flux:subheading>{{ Voice::line('mode.change.warning') }}</flux:subheading>
                 </div>
 
-                <div role="radiogroup" aria-label="New game" class="flex flex-col gap-2">
+                <div role="radiogroup" aria-label="New mode" class="flex flex-col gap-2">
                     @foreach ($this->pivotChoices as $choice)
                         <x-mode-card
                             wire:key="pivot-{{ $choice->value }}"

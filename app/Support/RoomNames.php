@@ -6,15 +6,15 @@ use App\Enums\ContestMode;
 use Illuminate\Support\Collection;
 
 /**
- * Names for the public floor's rooms — a place gets a NAME, not a serial
+ * Names for the lobby's rooms — a place gets a NAME, not a serial
  * number, and the name never carries a date or the word "Open": the card's
- * mode chip and the floor's week context say the boring facts.
+ * mode chip and the lobby's week context say the boring facts.
  *
  * Standard rooms draw from a per-mode pool matching the mode's character
  * (play calls, option schemes, backyard lumber); specialty rooms carry
- * their flavor's marquee. When a floor exhausts a pool — or a marquee
+ * their flavor's marquee. When a lobby exhausts a pool — or a marquee
  * room fills — successors take Roman numerals: "Hail Mary II". Pool order
- * is pick order, so an empty floor's first spawn is deterministic and a
+ * is pick order, so an empty lobby's first spawn is deterministic and a
  * test can name it.
  *
  * Names are DATA, not Voice: stored on groups.name (VARCHAR 40, tested
@@ -43,10 +43,10 @@ class RoomNames
     ];
 
     /**
-     * The next standard-room name for this mode: first unused pool name on
-     * the floor, then the pool again in Roman rounds.
+     * The next standard-room name for this mode: first unused pool name in
+     * the lobby, then the pool again in Roman rounds.
      *
-     * @param  Collection<int, string>  $taken  names already on this floor
+     * @param  Collection<int, string>  $taken  names already in this lobby
      */
     public static function next(ContestMode $mode, Collection $taken): string
     {

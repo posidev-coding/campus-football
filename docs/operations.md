@@ -396,9 +396,9 @@ The preflight checks what has to be TRUE underneath the flag, not the flag
 itself: a week resolved from the calendar (never a hardcoded season), an open
 public room with a published slate for EVERY mode, at least fifteen lined
 games in the Saturday window (a game with no posted line can never publish),
-the league clock, and the three sweeps — `pickem:publish-boards`,
+the league clock, and the three sweeps — `pickem:publish-slates`,
 `pickem:settle`, `pickem:open-lobbies` — actually registered. A flag opened
-over an unstocked floor lands a new user in an empty room, which is the one
+over an unstocked lobby lands a new user in an empty room, which is the one
 first impression that cannot be taken back.
 
 It never writes, never stocks anything, and never flips the flag.

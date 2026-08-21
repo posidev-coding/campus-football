@@ -11,7 +11,7 @@ use InvalidArgumentException;
 /**
  * Assign or clear a draft game's tier. Null clears — an untiered mode's
  * games stay null, and the engine's publish validation is what holds a
- * tiered board to its exact spec, not this setter.
+ * tiered slate to its exact spec, not this setter.
  */
 class SetSlateGameTier
 {

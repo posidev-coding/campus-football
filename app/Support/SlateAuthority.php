@@ -33,7 +33,7 @@ class SlateAuthority
         }
     }
 
-    /** A published board is frozen history; only drafts are editable. */
+    /** A published slate is frozen history; only drafts are editable. */
     public static function draft(Slate $slate): void
     {
         if ($slate->status !== Slate::DRAFT) {

@@ -3,7 +3,7 @@
     the identity row as the disclosure button, the enum's ruleLines() as
     the payload. The rules are instructions and stay plain product
     vocabulary — ContestMode::ruleLines() is the ONE source this card, the
-    mode doors, the join landing and the docs all read, so the game can
+    mode doors, the join landing and the docs all read, so the mode can
     never be described two ways.
 
     Collapsed content is x-show, not removed — a test drives the reactive

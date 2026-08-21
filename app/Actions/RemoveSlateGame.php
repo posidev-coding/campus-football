@@ -8,7 +8,7 @@ use App\Models\User;
 use App\Support\SlateAuthority;
 
 /**
- * Take a game off a draft board. Positions are left sparse — they only
+ * Take a game off a draft slate. Positions are left sparse — they only
  * drive an ORDER BY, and reindexing on every removal buys nothing the sort
  * doesn't already have. The tiebreaker FK clears itself (nullOnDelete), so
  * removing the designated game simply re-opens that publish requirement.

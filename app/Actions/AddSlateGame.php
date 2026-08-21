@@ -11,7 +11,7 @@ use App\Support\SlateAuthority;
 use InvalidArgumentException;
 
 /**
- * Put a game on a draft board.
+ * Put a game on a draft slate.
  *
  * Eligibility is checked at ADD time as well as at publish — this is
  * reachable from a public Livewire method, and the builder's filtered list
@@ -25,7 +25,7 @@ class AddSlateGame
         SlateAuthority::commissioner($actor, $slate);
         SlateAuthority::draft($slate);
 
-        // ONE BOARD, ONE SATURDAY — a split ESPN week satisfies the week-id
+        // ONE SLATE, ONE SATURDAY — a split ESPN week satisfies the week-id
         // check twice over, so the slate's own Saturday is the honest half
         // of the eligibility question (the rule publish validation holds).
         $sameSaturday = $game->kickoff_at?->timezone(config('cfb.timezone'))->toDateString()

@@ -11,7 +11,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
 /**
- * One game moved: regrade its picks, and flip any board it finished.
+ * One game moved: regrade its picks, and flip any slate it finished.
  *
  * Dispatched by the GameScoreChanged / GameWentFinal listeners — the
  * event-driven half of "live scoring from the second a game kicks". The
@@ -20,7 +20,7 @@ use Illuminate\Foundation\Queue\Queueable;
  * and everything here treats the event as an idempotent "this game moved"
  * signal — the row is reloaded and never trusted from the event.
  *
- * When the last game of a published board finals, the board flips to
+ * When the last game of a published slate finals, the slate flips to
  * PRELIM — every game final, nothing paid — and waits for the
  * official-final sweep. The status UPDATE is the claim, so a double fire
  * flips once.

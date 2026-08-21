@@ -29,7 +29,7 @@ it('pivots the mode once: stamp set, draft reset, the group told', function () {
 
     // A draft built to Shotgun's shape must not survive into Triple
     // Option — it is reset for refill, the row kept.
-    $draft = pickemDraftBoard($contest);
+    $draft = pickemDraftSlate($contest);
     expect($draft->games()->count())->toBe(10);
 
     app(ChangeGroupMode::class)->handle($commissioner, $group, ContestMode::Tiered);
@@ -66,7 +66,7 @@ it('refuses while a published week is in flight, and relents once it settles', f
     Notification::fake();
 
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
 
     expect(fn () => app(ChangeGroupMode::class)->handle($commissioner, $group, ContestMode::Tiered))
@@ -111,7 +111,7 @@ it('drives the pivot from the clubhouse modal, and answers the blocked lever in 
         ->assertSee('The Woodshed')
         ->call('choosePivot', 'tiered')
         ->call('changeMode')
-        ->assertSee('New game: Triple Option');
+        ->assertSee('New mode: Triple Option');
 
     expect($group->contests()->first()->mode)->toBe(ContestMode::Tiered);
 

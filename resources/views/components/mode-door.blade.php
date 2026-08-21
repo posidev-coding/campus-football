@@ -2,7 +2,7 @@
     A MODE AS A DOOR — the first-run lobby's pitch tile: the mode's mark,
     name and one-line rules on its own colors, walking straight into the
     creation wizard. The blurb is the enum's, so the pitch here, the mode
-    cards and the room cards can never tell the game three ways.
+    cards and the room cards can never tell the mode three ways.
 --}}
 @props([
     /** @var App\Enums\ContestMode */

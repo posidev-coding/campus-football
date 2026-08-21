@@ -17,9 +17,9 @@ use App\Services\Espn\Sync\SyncOdds;
 use Livewire\Livewire;
 
 /*
- * Phase 5 slice 4: building and publishing a board. The one fact this file
+ * Phase 5 slice 4: building and publishing a slate. The one fact this file
  * exists to hold: PUBLISH FREEZES THE LINE — the market moving after
- * publish must never move the board.
+ * publish must never move the slate.
  */
 
 beforeEach(function () {
@@ -28,9 +28,9 @@ beforeEach(function () {
 
 // ---------------------------------------------------------------- publish
 
-it('publishes a full board and freezes each line with its provenance', function () {
+it('publishes a full slate and freezes each line with its provenance', function () {
     [$commissioner, , $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
 
     $problems = app(PublishSlate::class)->handle($commissioner, $slate);
     $slate->refresh();
@@ -46,9 +46,9 @@ it('publishes a full board and freezes each line with its provenance', function 
         ->and($frozen->odds_captured_at->toDateTimeString())->toBe('2026-09-02 09:00:00');
 });
 
-it('keeps a published board still while the market moves on', function () {
+it('keeps a published slate still while the market moves on', function () {
     [$commissioner, , $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
 
     $slateGame = $slate->games()->first();
@@ -74,7 +74,7 @@ it('keeps a published board still while the market moves on', function () {
 
 it('re-publishing is a quiet no-op that never re-freezes newer lines', function () {
     [$commissioner, , $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
 
     $game = $slate->games()->first()->game;
@@ -89,7 +89,7 @@ it('names each violation and stays a draft', function () {
     [$commissioner, , $contest] = pickemContest();
 
     // One short: delete a game (repoint the tiebreaker first).
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     $slate->update(['tiebreaker_slate_game_id' => $slate->games()->first()->id]);
     $slate->games()->orderByDesc('position')->first()->delete();
     $problems = app(PublishSlate::class)->handle($commissioner, $slate->fresh());
@@ -98,29 +98,29 @@ it('names each violation and stays a draft', function () {
 
     // A game whose line never posted was never seeded: refused.
     [$c2, , $contest2] = pickemContest();
-    $slate2 = pickemDraftBoard($contest2);
+    $slate2 = pickemDraftSlate($contest2);
     $slate2->games()->first()->update(['spread' => null, 'favorite_team_id' => null]);
     expect(app(PublishSlate::class)->handle($c2, $slate2->fresh()))
         ->toContain('picks.publish.line_missing');
 
     // THE HALF-POINT LAW: a whole-number line cannot publish.
     [$c4, , $contest4] = pickemContest();
-    $slate4 = pickemDraftBoard($contest4);
+    $slate4 = pickemDraftSlate($contest4);
     $slate4->games()->first()->update(['spread' => -7.0]);
     expect(app(PublishSlate::class)->handle($c4, $slate4->fresh()))
         ->toContain('picks.publish.whole_line');
 
     // No tiebreaker designated.
     [$c3, , $contest3] = pickemContest();
-    $slate3 = pickemDraftBoard($contest3);
+    $slate3 = pickemDraftSlate($contest3);
     $slate3->update(['tiebreaker_slate_game_id' => null]);
     expect(app(PublishSlate::class)->handle($c3, $slate3->fresh()))
         ->toContain('picks.publish.tiebreaker');
 });
 
-it('holds a Triple Option board to its tier spec at publish', function () {
+it('holds a Triple Option slate to its tier spec at publish', function () {
     [$commissioner, , $contest] = pickemContest(ContestMode::Tiered);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     $slate->games()->where('tier', 3)->orderByDesc('position')->first()->update(['tier' => 1]);
 
     expect(app(PublishSlate::class)->handle($commissioner, $slate->fresh()))
@@ -158,7 +158,7 @@ it('seeds a half-pointed contest line from a whole-number book', function () {
 
 it('lets the commissioner move a line up to three off the book, on half points only', function () {
     [$commissioner, , $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     $slateGame = $slate->games()->with('game')->first();
 
     // 6.5 → 7.5 within the band of a -6.5 book: legal.
@@ -176,7 +176,7 @@ it('lets the commissioner move a line up to three off the book, on half points o
     expect(fn () => app(SetSlateGameLine::class)->handle($commissioner, $slate, $slateGame->fresh(), 7.0))
         ->toThrow(InvalidArgumentException::class);
 
-    // A published board's lines are committed.
+    // A published slate's lines are committed.
     app(PublishSlate::class)->handle($commissioner, $slate->fresh());
     expect(fn () => app(SetSlateGameLine::class)->handle($commissioner, $slate->fresh(), $slateGame->fresh(), 6.5))
         ->toThrow(InvalidArgumentException::class);
@@ -184,7 +184,7 @@ it('lets the commissioner move a line up to three off the book, on half points o
 
 it('never lets an adjustment go below half a point or flip the favorite', function () {
     [$commissioner, , $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     $slateGame = $slate->games()->with('game')->first();
 
     // Book -6.5: the floor is 3.5 (band), never zero, never the other side.
@@ -199,7 +199,7 @@ it('never lets an adjustment go below half a point or flip the favorite', functi
 
 it('asks a different question each week: metric and team on the tiebreaker', function () {
     [$commissioner, , $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     $tiebreakerGame = $slate->games()->with('game')->first();
 
     // A one-sided question stores its team; a stranger is refused.
@@ -222,7 +222,7 @@ it('asks a different question each week: metric and team on the tiebreaker', fun
 
 it('refuses to publish a half-designated tiebreaker question', function () {
     [$commissioner, , $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
 
     $slate->update(['tiebreaker_metric' => null]);
     expect(app(PublishSlate::class)->handle($commissioner, $slate->fresh()))
@@ -238,7 +238,7 @@ it('lets only the commissioner publish', function () {
     [, $group, $contest] = pickemContest();
     $member = User::factory()->create();
     GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
 
     expect(fn () => app(PublishSlate::class)->handle($member, $slate))
         ->toThrow(NotGroupCommissioner::class);
@@ -277,7 +277,7 @@ it('offers only the slate Saturday in the builder candidate list', function () {
     [$commissioner, $group] = pickemContest();
     [$season, $week] = pickemSeasonWeek();
 
-    // Both spreadless so neither is suggested onto the board — this pins
+    // Both spreadless so neither is suggested onto the slate — this pins
     // the CANDIDATE list, which has no line requirement.
     $sameSaturday = pickemGame($season, $week, ['kickoff_at' => '2026-08-29 19:30:00']);
     $straySaturday = pickemGame($season, $week);
@@ -293,7 +293,7 @@ it('offers only the slate Saturday in the builder candidate list', function () {
 
 it('clears the tiebreaker when its game is removed', function () {
     [$commissioner, , $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     $tiebreaker = $slate->games()->find($slate->tiebreaker_slate_game_id);
 
     app(RemoveSlateGame::class)->handle($commissioner, $slate, $tiebreaker);
@@ -301,10 +301,10 @@ it('clears the tiebreaker when its game is removed', function () {
     expect($slate->fresh()->tiebreaker_slate_game_id)->toBeNull();
 });
 
-it('refuses edits to a published board and to foreign slate games', function () {
+it('refuses edits to a published slate and to foreign slate games', function () {
     [$commissioner, , $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
-    $foreign = pickemDraftBoard(pickemContest(ContestMode::Tiered)[2])->games()->first();
+    $slate = pickemDraftSlate($contest);
+    $foreign = pickemDraftSlate(pickemContest(ContestMode::Tiered)[2])->games()->first();
 
     expect(fn () => app(SetTiebreaker::class)->handle($commissioner, $slate, $foreign))
         ->toThrow(InvalidArgumentException::class);
@@ -337,7 +337,7 @@ it('opens the wizard pre-filled from suggestions for the commissioner', function
 
 it('publishes from the wizard and lands back on the clubhouse', function () {
     [$commissioner, $group, $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
 
     Livewire::actingAs($commissioner)->test('slate-builder', ['group' => $group])
         ->call('publish')
@@ -364,7 +364,7 @@ it('shows the published slate to everyone and the build prompt only to the commi
     // counts weeks that hold games, so a render before any games exist
     // would prime an empty cache this test then starves on.
     [$commissioner, $group, $contest] = pickemContest();
-    app(PublishSlate::class)->handle($commissioner, pickemDraftBoard($contest));
+    app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
 
     // The frozen contest line rides every card, for every seat in the room.
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])

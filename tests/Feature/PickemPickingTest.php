@@ -24,11 +24,11 @@ beforeEach(function () {
     $this->travelTo('2026-09-02 12:00:00');
 });
 
-/** A published board plus a verified, handled member ready to pick. */
-function pickemLiveBoard(): array
+/** A published slate plus a verified, handled member ready to pick. */
+function pickemLiveSlate(): array
 {
     [$commissioner, $group, $contest] = pickemContest();
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
 
     $member = User::factory()->create(['handle' => 'picksix', 'admin' => true]);
@@ -40,7 +40,7 @@ function pickemLiveBoard(): array
 // ---------------------------------------------------------------- MakePick
 
 it('records a pick, seats the entry, and pays entry XP once per slate', function () {
-    [$member, , $slate] = pickemLiveBoard();
+    [$member, , $slate] = pickemLiveSlate();
     [$first, $second] = $slate->games()->with('game')->orderBy('position')->take(2)->get();
 
     app(MakePick::class)->handle($member, $first, $first->game->home_team_id);
@@ -53,7 +53,7 @@ it('records a pick, seats the entry, and pays entry XP once per slate', function
 });
 
 it('lets a mind change until kickoff, in the same row', function () {
-    [$member, , $slate] = pickemLiveBoard();
+    [$member, , $slate] = pickemLiveSlate();
     $slateGame = $slate->games()->with('game')->first();
 
     app(MakePick::class)->handle($member, $slateGame, $slateGame->game->home_team_id);
@@ -65,7 +65,7 @@ it('lets a mind change until kickoff, in the same row', function () {
 });
 
 it('locks at kickoff by clock, and early by feed', function () {
-    [$member, , $slate] = pickemLiveBoard();
+    [$member, , $slate] = pickemLiveSlate();
     $slateGame = $slate->games()->with('game')->first();
 
     // By feed, before the scheduled time: the game kicked early.
@@ -81,7 +81,7 @@ it('locks at kickoff by clock, and early by feed', function () {
 });
 
 it('holds every gate: verification, handle, membership, and the game itself', function () {
-    [$member, $group, $slate] = pickemLiveBoard();
+    [$member, $group, $slate] = pickemLiveSlate();
     $slateGame = $slate->games()->with('game')->first();
     $home = $slateGame->game->home_team_id;
 
@@ -109,7 +109,7 @@ it('holds every gate: verification, handle, membership, and the game itself', fu
 // ------------------------------------------------------------- tiebreaker
 
 it('takes a tiebreaker call until that game kicks off', function () {
-    [$member, , $slate] = pickemLiveBoard();
+    [$member, , $slate] = pickemLiveSlate();
 
     app(EnterTiebreaker::class)->handle($member, $slate, 52);
     app(EnterTiebreaker::class)->handle($member, $slate, 55);
@@ -124,7 +124,7 @@ it('takes a tiebreaker call until that game kicks off', function () {
 });
 
 it('scales the tiebreaker answer to its question', function () {
-    [$member, , $slate] = pickemLiveBoard();
+    [$member, , $slate] = pickemLiveSlate();
     $slate->loadMissing('tiebreakerGame.game');
 
     // 500 is nonsense as combined points...
@@ -144,7 +144,7 @@ it('scales the tiebreaker answer to its question', function () {
 // ---------------------------------------------------------------- privacy
 
 it('shows others\' picks only after kickoff — your own always', function () {
-    [$member, $group, $slate] = pickemLiveBoard();
+    [$member, $group, $slate] = pickemLiveSlate();
     $rival = User::factory()->create(['handle' => 'rival']);
     GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $rival->id]);
 
@@ -166,7 +166,7 @@ it('shows others\' picks only after kickoff — your own always', function () {
 // ------------------------------------------- screen (the clubhouse surface)
 
 it('renders the surface for a member: sides, frozen numbers, the question', function () {
-    [$member, $group] = pickemLiveBoard();
+    [$member, $group] = pickemLiveSlate();
 
     Livewire::actingAs($member)->test('group', ['group' => $group])
         ->assertSee($group->name)
@@ -177,7 +177,7 @@ it('renders the surface for a member: sides, frozen numbers, the question', func
 });
 
 it('picks from the surface and marks the row', function () {
-    [$member, $group, $slate] = pickemLiveBoard();
+    [$member, $group, $slate] = pickemLiveSlate();
     $slateGame = $slate->games()->with('game')->first();
 
     Livewire::actingAs($member)->test('group', ['group' => $group])
@@ -191,7 +191,7 @@ it('picks from the surface and marks the row', function () {
 });
 
 it('walks a handleless member through the claim, then opens the surface', function () {
-    [, $group] = pickemLiveBoard();
+    [, $group] = pickemLiveSlate();
     $handleless = User::factory()->handleless()->create(['admin' => true]);
     GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $handleless->id]);
 
@@ -205,7 +205,7 @@ it('walks a handleless member through the claim, then opens the surface', functi
 });
 
 it('locks a kicked-off row on the surface', function () {
-    [$member, $group, $slate] = pickemLiveBoard();
+    [$member, $group, $slate] = pickemLiveSlate();
 
     // Locked BY CLOCK, feed still quiet: the card says "Locked" plainly.
     // (A game live by feed shows the Live pulse instead — the state a

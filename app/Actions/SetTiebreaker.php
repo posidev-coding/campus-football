@@ -10,7 +10,7 @@ use App\Support\SlateAuthority;
 use InvalidArgumentException;
 
 /**
- * Designate the board's tiebreaker: which game, what QUESTION about it,
+ * Designate the slate's tiebreaker: which game, what QUESTION about it,
  * and — for one-sided metrics — whose number. The paper league rotated
  * its criterion week to week; the metric enum is that tradition, and
  * settlement resolves the answer from data the app already holds.

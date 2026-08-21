@@ -16,7 +16,7 @@ beforeEach(function () {
 
 it('walks a Triple Option week through five stations', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
-    pickemDraftBoard($contest);
+    pickemDraftSlate($contest);
 
     Livewire::actingAs($commissioner)->test('slate-builder', ['group' => $group])
         ->assertSee('Step 1 of 5')
@@ -34,7 +34,7 @@ it('walks a Triple Option week through five stations', function () {
 
 it('skips the tiers station for Shotgun, and refuses to be steered into it', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
-    pickemDraftBoard($contest);
+    pickemDraftSlate($contest);
 
     Livewire::actingAs($commissioner)->test('slate-builder', ['group' => $group])
         ->assertSee('Step 1 of 4')
@@ -46,7 +46,7 @@ it('skips the tiers station for Shotgun, and refuses to be steered into it', fun
 
 it('nudges a line by WHOLE points and never off the half-point grid', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     $slateGame = $slate->games()->first();
 
     $wizard = Livewire::actingAs($commissioner)->test('slate-builder', ['group' => $group]);
@@ -63,7 +63,7 @@ it('nudges a line by WHOLE points and never off the half-point grid', function (
 
 it('stops quietly at the band\'s edges instead of throwing', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     $slateGame = $slate->games()->first();
 
     $wizard = Livewire::actingAs($commissioner)->test('slate-builder', ['group' => $group]);
@@ -111,7 +111,7 @@ it('holds the law on a WHOLE-NUMBER book: 3.0 seeds 2.5 and tops out at 5.5', fu
 
 it('walks a moved line back to the book', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     $slateGame = $slate->games()->first();
 
     Livewire::actingAs($commissioner)->test('slate-builder', ['group' => $group])
@@ -124,7 +124,7 @@ it('walks a moved line back to the book', function () {
 
 it('previews the slate as a participant would see it, read-only', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
-    pickemDraftBoard($contest);
+    pickemDraftSlate($contest);
 
     Livewire::actingAs($commissioner)->test('slate-builder', ['group' => $group])
         ->set('step', 'preview')

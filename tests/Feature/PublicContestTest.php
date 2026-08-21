@@ -45,7 +45,7 @@ it('spawns a complete room: named, capped, one contest, published slate, no comm
 
     expect($room)->not->toBeNull()
         // The pool's first play call — a NAME, no date, no "Open", no
-        // serial: the mode chip and the floor's week say the boring facts.
+        // serial: the mode chip and the lobby's week say the boring facts.
         ->and($room->name)->toBe('Hail Mary')
         ->and($room->kind)->toBe(Group::KIND_LOBBY)
         ->and($room->week_id)->toBe($week->id)
@@ -129,7 +129,7 @@ it('keeps at least one open room per catalog entry through the sweep, idempotent
      * The three standard rooms plus every specialty this fixture can seat:
      * the flash card, the kicker room, and the small-table Woodshed.
      * Ranked, primetime and the conference family have no qualifying games
-     * here, and feasibility keeps them off the floor.
+     * here, and feasibility keeps them out of the lobby.
      */
     $rooms = Group::query()->where('kind', Group::KIND_LOBBY)->get();
     expect($rooms)->toHaveCount(6)
@@ -143,7 +143,7 @@ it('keeps at least one open room per catalog entry through the sweep, idempotent
     expect(Group::query()->where('kind', Group::KIND_LOBBY)->count())->toBe(6);
 });
 
-it('lists only OPEN rooms on the lobby floor', function () {
+it('lists only OPEN rooms in the lobby', function () {
     [, $week] = publicContestWeek();
     $viewer = pickemAdmin();
 

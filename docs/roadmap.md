@@ -166,9 +166,9 @@ daily-login rewards, no timers, no FOMO.
 - **THE HALF-POINT LAW (added 2026-08-13, a founders' rule): no contest
   line ever sits on a whole number**, so no pick can ever push — every
   call wins or loses. The commissioner OWNS the line: it seeds from the
-  book when a game joins the board (whole numbers shade to a half point),
+  book when a game joins the slate (whole numbers shade to a half point),
   is adjustable up to 3.0 either way while drafting, and publishing
-  COMMITS it — one printed board, office-pool style, and grading never
+  COMMITS it — one printed slate, office-pool style, and grading never
   moves off it whatever the market does after. `market_spread` keeps the
   book's number beside the commissioner's for the audit. A game without a
   posted line can never publish.
@@ -182,11 +182,11 @@ daily-login rewards, no timers, no FOMO.
 
 **Design pillars** (proposals holding until plan iteration 2 revises them):
 
-- **The weekly clock (settled 2026-08-13):** boards slate only games in the
+- **The weekly clock (settled 2026-08-13):** slates carry only games in the
   SATURDAY WINDOW — noon Eastern to midnight, no breakfast kickoffs. The
   commissioner has until the SLATE DEADLINE (default Tuesday end-of-day ET;
   admin-configurable on the Pick'em Settings panel page) to publish; past
-  it, `pickem:publish-boards` publishes the STANDARD slate — best quality
+  it, `pickem:publish-slates` publishes the STANDARD slate — best quality
   games, auto-designated combined-points tiebreaker — so a group is never
   hung out to dry by a commissioner who lost track of Tuesday. Results go
   final in TWO PHASES: preliminary when the last game finals, OFFICIAL at

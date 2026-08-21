@@ -14,9 +14,9 @@ use Illuminate\Support\Facades\Log;
  * hand that turns a week OFFICIAL.
  *
  * Two passes, both DB-only. RESCUE re-dispatches grading for every
- * completed game still on an unsettled board — a game imported
+ * completed game still on an unsettled slate — a game imported
  * already-final never fires GameWentFinal, and one missed sync minute must
- * not strand a slate forever. SETTLE walks every unsettled board whose
+ * not strand a slate forever. SETTLE walks every unsettled slate whose
  * week has passed Cadence::officialFinal and pays it out; the action
  * re-grades first, so a score or stat corrected during the stat-settling
  * window is absorbed before anyone is paid.
@@ -25,7 +25,7 @@ class PickemSettleCommand extends Command
 {
     protected $signature = 'pickem:settle';
 
-    protected $description = 'Regrade stranded games and settle boards whose week has turned official';
+    protected $description = 'Regrade stranded games and settle slates whose week has turned official';
 
     public function handle(SettleSlate $settle): int
     {
@@ -48,7 +48,7 @@ class PickemSettleCommand extends Command
         $settled = 0;
 
         foreach ($open as $slate) {
-            // The board's OWN Saturday, not its week's — a split ESPN week
+            // The slate's OWN Saturday, not its week's — a split ESPN week
             // holds two, and settling the second against the first's clock
             // would call a week official a fortnight early.
             $official = Cadence::officialFinal($slate->saturday);
@@ -57,7 +57,7 @@ class PickemSettleCommand extends Command
                 continue;
             }
 
-            // One bad board must not cost the rest of the league.
+            // One bad slate must not cost the rest of the league.
             try {
                 if ($settle->handle($slate)) {
                     $settled++;
@@ -67,7 +67,7 @@ class PickemSettleCommand extends Command
             }
         }
 
-        $this->info("Redispatched grading for {$rescued} final game(s); settled {$settled} board(s).");
+        $this->info("Redispatched grading for {$rescued} final game(s); settled {$settled} slate(s).");
 
         return self::SUCCESS;
     }

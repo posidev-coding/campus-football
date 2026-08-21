@@ -72,7 +72,7 @@ it('prices the game: tiers of 8/6/4, the Lock at +6/−4, and the flags only it 
 
 it('refuses to publish when the question is not the featured game\'s over/under', function () {
     [, , $contest] = pickemContest(ContestMode::Woodshed);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
 
     $tiebreakerGame = $slate->tiebreakerGame()->with('game')->first();
     $slate->update([
@@ -86,9 +86,9 @@ it('refuses to publish when the question is not the featured game\'s over/under'
 
 // ---------------------------------------------------------------- the Bear
 
-it('boards the Bear at publish: theme by week number, a side on every game', function () {
+it('draws the Bear at publish: theme by week number, a side on every game', function () {
     [$commissioner, , $contest] = pickemContest(ContestMode::Woodshed);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
 
     expect(app(PublishSlate::class)->handle($commissioner, $slate))->toBe([]);
 
@@ -120,9 +120,9 @@ it('fields two Bears in a split opening week — one per card', function () {
         ->and($main->fresh()->bear_theme)->toBe(BearPicks::THEMES[1]);
 });
 
-it('never boards the Bear on the other modes\' slates', function () {
+it('never draws the Bear on the other modes\' slates', function () {
     [$commissioner, , $contest] = pickemContest(ContestMode::Tiered);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
 
     expect(app(PublishSlate::class)->handle($commissioner, $slate))->toBe([]);
 
@@ -183,7 +183,7 @@ it('gives every mode its own mark, colors and rule lines', function () {
 
 it('settles the founders\' way: Lock math in, the Bear strictly beaten pays five more, a backfired Lock goes negative', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Woodshed);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
     $slate = $slate->fresh();
 
@@ -242,7 +242,7 @@ it('settles the founders\' way: Lock math in, the Bear strictly beaten pays five
 
 it('shares the week with the Bear unbeaten: tying him pays nothing extra', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Woodshed);
-    $slate = pickemDraftBoard($contest);
+    $slate = pickemDraftSlate($contest);
     app(PublishSlate::class)->handle($commissioner, $slate);
     $slate = $slate->fresh();
 
