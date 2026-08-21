@@ -163,7 +163,7 @@ new class extends Component
              container's padding is cancelled and the spacing moved
              inside, so the band does not slide under the header. --}}
         @if ($this->weekContext['label'] !== null)
-            <div class="sticky z-20 -mx-4 -mt-5 flex items-baseline justify-between gap-3 bg-white px-4 pt-3 pb-2 dark:bg-zinc-950 top-[env(safe-area-inset-top)] sm:top-[var(--header-offset)]">
+            <div class="sticky z-20 -mx-4 -mt-5 flex items-baseline justify-between gap-3 bg-white px-4 pt-3 pb-2 top-[var(--chrome-offset)] dark:bg-zinc-950">
                 <p class="min-w-0 truncate text-sm font-semibold">
                     {{ $this->weekContext['label'] }}
                     @if ($this->weekContext['date'])

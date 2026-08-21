@@ -66,7 +66,7 @@
 >
     <div
         x-ref="chrome"
-        class="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 flex items-center justify-between gap-3 border-b border-zinc-100 bg-white px-4 py-2 sm:top-[var(--header-offset)] dark:border-zinc-800/60 dark:bg-zinc-950"
+        class="sticky top-[var(--chrome-offset)] z-30 -mx-4 flex items-center justify-between gap-3 border-b border-zinc-100 bg-white px-4 py-2 dark:border-zinc-800/60 dark:bg-zinc-950"
     >
         <span class="shrink-0">
             @if ($surfaceStatus === 'live')

@@ -225,7 +225,7 @@
                          horizontal scroll. Nothing inside may be a dropdown
                          or a menu: this box clips them, and `sticky` opens a
                          stacking context a `fixed` child cannot escape. --}}
-                    <div class="sticky top-[calc(var(--header-offset)+1rem)] flex max-h-[calc(100dvh-var(--header-offset)-2rem)] flex-col gap-4 overflow-y-auto overscroll-contain">
+                    <div class="sticky top-[calc(var(--chrome-offset)+1rem)] flex max-h-[calc(100dvh-var(--chrome-offset)-2rem)] flex-col gap-4 overflow-y-auto overscroll-contain">
                         @foreach ($railPanels as $panel)
                             <x-dynamic-component :component="$panel" wire:key="rail-{{ $panel }}" />
                         @endforeach

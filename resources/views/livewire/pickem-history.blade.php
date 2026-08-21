@@ -103,7 +103,7 @@ new class extends Component
 
             <div wire:key="history-week-{{ $week->id }}-{{ Str::slug($weekLabel) }}" class="flex flex-col gap-2">
                 <flux:subheading
-                    class="sticky z-20 -mx-4 bg-white px-4 py-1.5 dark:bg-zinc-950 top-[env(safe-area-inset-top)] sm:top-[var(--header-offset)]"
+                    class="sticky z-20 -mx-4 bg-white px-4 py-1.5 top-[var(--chrome-offset)] dark:bg-zinc-950"
                 >
                     <span class="font-semibold text-zinc-900 dark:text-zinc-100">{{ $weekLabel }}</span>
                     <span class="text-micro text-zinc-400">· {{ $weekEntries->first()->slate->contest->season_year }}</span>

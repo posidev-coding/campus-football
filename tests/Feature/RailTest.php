@@ -36,11 +36,13 @@ it('emits the aside, gated on lg, for a screen that declares panels', function (
         ->assertSee('hidden w-72 shrink-0 flex-col gap-4 lg:flex', escape: false);
 });
 
-it('sticks the stack rather than each panel', function () {
+it('sticks the stack rather than each panel, below the whole header', function () {
     // Two sticky siblings cannot both hold the top — the second scrolls away.
+    // The offset is the MEASURED header, section strip included: on League
+    // the summed --header-offset left the stack under the strip.
     $this->get(route('scoreboard'))
         ->assertOk()
-        ->assertSee('sticky top-[calc(var(--header-offset)+1rem)]', escape: false);
+        ->assertSee('sticky top-[calc(var(--chrome-offset)+1rem)]', escape: false);
 });
 
 it('declares a rail decision for every routed screen', function () {
