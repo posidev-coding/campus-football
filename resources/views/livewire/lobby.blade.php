@@ -9,11 +9,10 @@ use App\Models\Group;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateEntry;
-use App\Models\TeamSeason;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Cadence;
-use App\Support\LobbyCatalog;
+use App\Support\Lobby;
 use App\Support\RankLadder;
 use App\Support\Voice;
 use Laravel\Pennant\Feature;
@@ -240,75 +239,17 @@ new class extends Component
     /**
      * The public inventory: open transient rooms for the current week
      * (seats free, slate published, week unsettled) plus any evergreen
-     * house lobby. A filled room never shows without its successor — the
-     * join hook spawns Room N+1 the instant Room N fills.
+     * house lobby, minus the seats the reader already holds. A filled
+     * room never shows without its successor — the join hook spawns Room
+     * N+1 the instant Room N fills.
+     *
+     * The read itself lives on App\Support\Lobby so the dashboard's
+     * teaser count and this list can never disagree.
      */
     #[Computed]
     public function publics()
     {
-        $weekId = app(CfbCalendar::class)->defaultWeekId(app(CfbCalendar::class)->currentYear());
-
-        // The lobby sells ONE Saturday at a time — inside a split opening
-        // week, 8/29's rooms and 9/5's must never share it.
-        $week = $weekId === null ? null : Week::find($weekId);
-        $target = $week === null ? null : Cadence::activeSaturday($week)?->toDateString();
-
-        return Group::query()
-            ->where('kind', Group::KIND_LOBBY)
-            ->whereDoesntHave('memberships', fn ($q) => $q->where('user_id', auth()->id()))
-            ->where(fn ($q) => $q
-                ->whereNull('week_id')
-                ->when($weekId !== null, fn ($qq) => $qq->orWhere(fn ($room) => $room
-                    ->where('week_id', $weekId)
-                    ->whereNull('filled_at'))))
-            ->withCount('memberships')
-            ->with(['contests.slates' => fn ($q) => $q
-                ->select('id', 'contest_id', 'week_id', 'status', 'saturday')
-                ->withCount('games')])
-            ->get()
-            ->filter(function (Group $group) use ($target) {
-                if (! $group->isRoom()) {
-                    return true;
-                }
-
-                if ($group->member_cap !== null && $group->memberships_count >= $group->member_cap) {
-                    return false;
-                }
-
-                // Open means PICKABLE: this Saturday's slate is out and
-                // not yet settled away.
-                return $group->contests->first()
-                    ?->slates->contains(fn ($slate) => $slate->week_id === $group->week_id
-                        && $slate->status === Slate::PUBLISHED
-                        && ($target === null || $slate->saturday?->toDateString() === $target)) ?? false;
-            })
-            // Catalog order, not alphabetical — the standard rooms lead,
-            // the specialty shelf follows, and the viewer's own conference
-            // fronts the conference family.
-            ->sortBy(fn (Group $group) => LobbyCatalog::sortKey($group, $this->viewerConference()))
-            ->values();
-    }
-
-    /**
-     * The conference of the viewer's FIRST followed team this season —
-     * the room the conference family leads with, for them. Null for
-     * guests and the unaffiliated: catalog order.
-     */
-    private function viewerConference(): ?string
-    {
-        $teamId = auth()->user()?->followedTeams()
-            ->orderBy('team_follows.position')
-            ->value('teams.id');
-
-        if ($teamId === null) {
-            return null;
-        }
-
-        return TeamSeason::query()
-            ->where('team_id', $teamId)
-            ->where('season_year', app(CfbCalendar::class)->currentYear())
-            ->join('conferences', 'conferences.id', '=', 'team_seasons.conference_id')
-            ->value('conferences.abbreviation');
+        return Lobby::joinable(auth()->user());
     }
 
     public function join(JoinGroup $action)

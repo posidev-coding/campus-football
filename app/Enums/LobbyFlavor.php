@@ -93,6 +93,22 @@ enum LobbyFlavor: string
         return $this->conference() !== null || $this === self::RankedAction;
     }
 
+    /**
+     * The lobby shelf this flavor is sold on. The conference family has
+     * its own shelf; the two short-card flavors are the quick hits;
+     * everything else is a spotlight room. A FLAVORLESS room is a house
+     * room, which is why this lives on the flavor and the null case is
+     * answered by the caller.
+     */
+    public function shelf(): LobbyShelf
+    {
+        return match (true) {
+            $this->conference() !== null => LobbyShelf::Conference,
+            $this === self::TwoMinuteDrill, $this === self::BackPorch => LobbyShelf::QuickHits,
+            default => LobbyShelf::Spotlight,
+        };
+    }
+
     /** The conferences table abbreviation, for the conference family. */
     public function conference(): ?string
     {

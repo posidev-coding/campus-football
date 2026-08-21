@@ -4,11 +4,14 @@ namespace App\Support;
 
 use App\Enums\ContestMode;
 use App\Enums\LobbyFlavor;
+use App\Enums\LobbyShelf;
 use App\Models\Contest;
 use App\Models\Group;
+use App\Models\Slate;
 use App\Models\Week;
 use App\Services\Contests\SuggestSlate;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 
 /**
  * The lobby's inventory list: which rooms the stocking sweep keeps
@@ -86,6 +89,99 @@ class LobbyCatalog
         }
 
         return [1, $index, (string) $room->name];
+    }
+
+    /**
+     * The lobby, shelved: the open rooms grouped into the four blocks the
+     * browser sells them under, plus the catalog entries that could NOT
+     * be stocked this Saturday as dashed "closed" rows.
+     *
+     * ZERO new queries. Everything here is a projection of the collection
+     * Lobby::openRooms() already read — game counts come off the
+     * eager-loaded published slate, seats off the loaded count. Never
+     * call resolve()/viableCount() from a render: feasibility is a sweep
+     * question, and asking it per request is a slate suggestion per row.
+     *
+     * The closed rows are an INFERENCE, and only a safe one when the
+     * sweep has demonstrably run: with no open room at all we cannot tell
+     * "the Saturday can't seat it" from "nothing has been stocked yet",
+     * so an empty lobby shows no closed rows either. A room the viewer is
+     * SEATED in counts as stocked — the shape exists, they are in it — so
+     * it never renders as closed behind their back.
+     *
+     * @param  Collection<int, Group>  $rooms  seat-inclusive, in sortKey order
+     * @return list<array{shelf: LobbyShelf, rooms: list<array{room: Group, mode: ContestMode, gameCount: ?int, seats: int, seated: bool}>, closed: list<array{mode: ContestMode, flavor: ?LobbyFlavor, label: string}>}>
+     */
+    public static function shelves(Collection $rooms): array
+    {
+        $transient = $rooms->filter(fn (Group $room) => $room->isRoom());
+
+        $stocked = [];
+        $byShelf = [];
+
+        foreach ($transient as $room) {
+            $mode = $room->contests->first()?->mode;
+
+            if ($mode === null) {
+                continue;
+            }
+
+            $flavor = $room->flavorEnum();
+            $shelf = $flavor?->shelf() ?? LobbyShelf::House;
+            $stocked[self::shapeKey($mode, $flavor)] = true;
+
+            $byShelf[$shelf->value][] = [
+                'room' => $room,
+                'mode' => $mode,
+                'gameCount' => $room->contests->first()?->slates
+                    ->first(fn ($slate) => $slate->week_id === $room->week_id && $slate->status === Slate::PUBLISHED)
+                    ?->games_count,
+                'seats' => (int) $room->memberships_count,
+                'seated' => Lobby::seated($room),
+            ];
+        }
+
+        // No open room means no evidence either way — say nothing rather
+        // than dash out the whole catalog.
+        $closedByShelf = [];
+
+        if ($stocked !== []) {
+            foreach (self::entries() as $entry) {
+                if (isset($stocked[self::shapeKey($entry['mode'], $entry['flavor'])])) {
+                    continue;
+                }
+
+                $shelf = $entry['flavor']?->shelf() ?? LobbyShelf::House;
+
+                $closedByShelf[$shelf->value][] = [
+                    'mode' => $entry['mode'],
+                    'flavor' => $entry['flavor'],
+                    'label' => $entry['flavor']?->label() ?? $entry['mode']->label(),
+                ];
+            }
+        }
+
+        $shelves = [];
+
+        // Case order IS display order.
+        foreach (LobbyShelf::cases() as $shelf) {
+            $open = $byShelf[$shelf->value] ?? [];
+            $closed = $closedByShelf[$shelf->value] ?? [];
+
+            if ($open === [] && $closed === []) {
+                continue;
+            }
+
+            $shelves[] = ['shelf' => $shelf, 'rooms' => $open, 'closed' => $closed];
+        }
+
+        return $shelves;
+    }
+
+    /** One (mode, flavor) shape, as an array key. */
+    private static function shapeKey(ContestMode $mode, ?LobbyFlavor $flavor): string
+    {
+        return $mode->value.'|'.($flavor?->value ?? '');
     }
 
     /**
