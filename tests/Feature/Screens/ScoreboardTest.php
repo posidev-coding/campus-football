@@ -351,11 +351,11 @@ describe('sticky chrome', function () {
         // are scrolling through.
         $this->get(route('scoreboard'))
             ->assertOk()
-            // The base offset is the standalone status-bar inset — 0 in a
-            // browser tab, the Dynamic Island's height once installed.
-            ->assertSee('sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-5', escape: false)
-            // Clears the layout header, which only exists from sm upward.
-            ->assertSee('sm:top-[var(--header-offset)]', escape: false);
+            // ONE offset at every width: the header's measured height, which
+            // already carries the standalone status-bar inset and the section
+            // strip in the areas that have one. Scores has no strip, so here
+            // it resolves to what the old summed pair gave.
+            ->assertSee('sticky top-[var(--chrome-offset)] z-30 -mx-4 -mt-5', escape: false);
     });
 
     beforeEach(function () {

@@ -80,6 +80,34 @@ describe('the head', function () {
             ->and($html)->toContain('ResizeObserver');
     });
 
+    it('leaves no screen chrome sticking against the bar alone', function () {
+        /*
+         * The source sweep, and the only thing that stops a new screen from
+         * reintroducing the bug: a render assertion cannot catch it, because
+         * in a browser tab the numbers happen to line up on Scores.
+         */
+        $offenders = [];
+
+        foreach (['livewire', 'partials', 'components'] as $dir) {
+            $path = resource_path('views/'.$dir);
+
+            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path)) as $file) {
+                if ($file->isDir() || ! str_ends_with($file->getFilename(), '.blade.php')) {
+                    continue;
+                }
+
+                $body = file_get_contents($file->getPathname());
+
+                if (str_contains($body, 'sm:top-[var(--header-offset)]')
+                    || str_contains($body, 'top-[calc(var(--header-offset)')) {
+                    $offenders[] = $file->getFilename();
+                }
+            }
+        }
+
+        expect($offenders)->toBe([], 'Sticky chrome must clear the WHOLE header: use --chrome-offset.');
+    });
+
     it('carries exactly one theme-color tag', function () {
         /*
          * The appearance sync does querySelector('meta[name=theme-color]') and

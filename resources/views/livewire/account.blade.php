@@ -536,7 +536,7 @@ new class extends Component
          where it sticks instead of drifting up on the first scroll, and the `sm`
          offset is 14 spacing units PLUS ONE PIXEL because the header is `h-14`
          plus its own `border-b`. --}}
-    <div class="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-5 flex items-center justify-between gap-3 bg-white px-4 pt-3 pb-2 sm:top-[var(--header-offset)] lg:col-span-2 dark:bg-zinc-950">
+    <div class="sticky top-[var(--chrome-offset)] z-30 -mx-4 -mt-5 flex items-center justify-between gap-3 bg-white px-4 pt-3 pb-2 lg:col-span-2 dark:bg-zinc-950">
         {{-- The word "Account" is gone from the page. The bottom tab that got
              you here is already lit and already says it, so the heading was
              the screen naming itself twice — the same reason every League
