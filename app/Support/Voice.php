@@ -1023,6 +1023,48 @@ class Voice
         ],
 
         /*
+         * THE LOBBY'S SHELVES — one optional line under each plain
+         * heading. The HEADING is the navigation ("House rooms", "Quick
+         * hits"), so the joke rides underneath it and never in place of
+         * it: a shelf whose name is a punchline is a shelf nobody can
+         * find. All render-guarded — an unwritten register is a quieter
+         * shelf, never a hole.
+         */
+        'lobby.shelf.house' => [
+            'pg' => 'The three standard games, every Saturday.',
+            'pg13' => 'The house games. No gimmicks, no excuses afterward.',
+            'r' => 'The house games. Nowhere to hide behind a theme when you go 3-7.',
+        ],
+
+        'lobby.shelf.quick_hits' => [
+            'pg' => 'Short cards and small tables.',
+            'pg13' => 'Short cards, small tables, quick verdicts.',
+            'r' => 'Short cards, small tables. Fewer picks to blow, and everyone watching you blow them.',
+        ],
+
+        'lobby.shelf.spotlight' => [
+            'pg' => 'Themed rooms — one idea per card.',
+            'pg13' => 'Themed rooms: ranked chaos, night games, dogs that bite.',
+            'r' => 'Themed rooms for people who think they have a specialty. Prove it.',
+        ],
+
+        'lobby.shelf.conference' => [
+            'pg' => 'One league, all Saturday. Play your own.',
+            'pg13' => 'Your league, every game of it. Pretend you watch the road ones.',
+            'r' => 'Your whole league on one card. Time to find out if you actually watch it or just yell about it.',
+        ],
+
+        /*
+         * The lobby teaser on My Picks, under the plain room count. The
+         * COUNT is the information; this is the nudge to walk over.
+         */
+        'lobby.teaser.zinger' => [
+            'pg' => 'Open to anyone — grab a seat and play this Saturday.',
+            'pg13' => 'No group? No problem. Take a seat with strangers and beat them instead.',
+            'r' => 'Seats are open. Go take somebody else\'s Saturday personally.',
+        ],
+
+        /*
          * THE SPECIALTY SHELF — one zinger per flavored room, rendered
          * under the card's factual blurb: LobbyFlavor::blurb() sizes and
          * prices the card, these are the mood. The conference family

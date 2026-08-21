@@ -237,19 +237,19 @@ it('wears the earned rank in the wallet chips, not a hardcoded starting rung', f
         ->assertDontSee('Rookie');
 });
 
-it('names the next rung on the lobby, and skips the line at the top', function () {
+it('names the next rung on My Picks, and skips the line at the top', function () {
     $user = User::factory()->create(['admin' => true, 'content_rating' => ContentRating::Pg13]);
 
     app(GrantWalletEntry::class)->handle($user, 1000, 0, 'test-seed', 'test-seed');
 
-    Livewire::actingAs($user->fresh())->test('lobby')
+    Livewire::actingAs($user->fresh())->test('pickem-home')
         ->assertSee('Rotation')
         ->assertSee(Voice::line('rank.to_next', ['remaining' => '750', 'next' => 'Starter'], for: $user));
 
     $top = User::factory()->create(['admin' => true, 'content_rating' => ContentRating::Pg13]);
     app(GrantWalletEntry::class)->handle($top, 20000, 0, 'test-seed', 'test-seed');
 
-    Livewire::actingAs($top->fresh())->test('lobby')
+    Livewire::actingAs($top->fresh())->test('pickem-home')
         ->assertSee('Legend')
         ->assertSee(Voice::line('rank.topped_out', for: $top));
 });

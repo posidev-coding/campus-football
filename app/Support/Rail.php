@@ -73,7 +73,9 @@ class Rail
         'news' => [],
         'account' => [],
         'get-app' => [],
-        // The lobby: group cards and the public inventory own the width.
+        // My Picks: the reader's own column, top to bottom.
+        'pickem.home' => [],
+        // The lobby: the shelved room rows own the width.
         'pickem.lobby' => [],
         // The clubhouse: the pick grid already grows to xl:grid-cols-3, so
         // the width belongs to the cards, not a panel.

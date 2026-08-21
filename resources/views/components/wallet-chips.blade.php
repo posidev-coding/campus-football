@@ -34,7 +34,7 @@
 
 <div {{ $attributes->class(['flex items-center gap-0.5']) }}>
     <a
-        href="{{ route('pickem.lobby') }}"
+        href="{{ route('pickem.home') }}"
         wire:navigate
         class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
         aria-label="{{ $wallet['lattes'] }} Beast {{ str('Latte')->plural($wallet['lattes']) }} — earning starts with Pick'em"
@@ -45,7 +45,7 @@
     </a>
 
     <a
-        href="{{ route('pickem.lobby') }}"
+        href="{{ route('pickem.home') }}"
         wire:navigate
         class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
         aria-label="{{ $rank }} rank, {{ $wallet['xp'] }} XP"

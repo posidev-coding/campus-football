@@ -39,7 +39,7 @@ new class extends Component
     public function mount(string $code): void
     {
         if (! Feature::active('pickem')) {
-            $this->redirectRoute('pickem.lobby', navigate: true);
+            $this->redirectRoute('pickem.home', navigate: true);
 
             return;
         }

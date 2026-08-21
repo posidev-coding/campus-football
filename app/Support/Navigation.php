@@ -94,24 +94,31 @@ class Navigation
                 // Home and Scores keep their muscle-memory slots on the left,
                 // League and Account stay right. "Picks" rather than
                 // "Pick'em" — the short form is the nav label; the tab lands
-                // on THE LOBBY, and the product name lives on the screen.
+                // on MY PICKS, and the product name lives on the screen.
                 'key' => 'picks',
                 'label' => 'Picks',
                 'icon' => 'check-badge',
-                'route' => 'pickem.lobby',
+                'route' => 'pickem.home',
                 // Only routes that RENDER belong here — the permanent
-                // redirects (picks, picks.groups, picks.group) never paint
-                // a nav to light.
-                'routes' => ['pickem.lobby', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join', 'pickem.leaderboard', 'pickem.history'],
+                // redirects (picks.groups, picks.group) never paint a nav
+                // to light.
+                'routes' => ['pickem.home', 'pickem.lobby', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join', 'pickem.leaderboard', 'pickem.history'],
                 /*
                  * Sections exist only inside the `pickem` flag: outside it
                  * the area is one coming-soon screen and a one-tab strip
                  * would be chrome, not navigation. History earns its slot
                  * because its prime moment — Sunday and Monday — is
                  * exactly when the lobby's inventory is emptiest.
+                 *
+                 * A room or group visit lights MY PICKS, not the Lobby:
+                 * a reader inside one is a seated member playing, and the
+                 * Lobby chip is for the browse. The one exception a chip
+                 * cannot show is walking from the Lobby into a room you
+                 * just joined — which is the moment you stopped browsing.
                  */
                 'sections' => Feature::active('pickem') ? [
-                    ['route' => 'pickem.lobby', 'label' => 'Lobby', 'routes' => ['pickem.lobby', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join']],
+                    ['route' => 'pickem.home', 'label' => 'My Picks', 'routes' => ['pickem.home', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join']],
+                    ['route' => 'pickem.lobby', 'label' => 'Lobby'],
                     ['route' => 'pickem.leaderboard', 'label' => 'Leaderboard'],
                     ['route' => 'pickem.history', 'label' => 'History'],
                 ] : [],

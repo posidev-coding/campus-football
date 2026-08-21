@@ -129,11 +129,13 @@ it('keeps the clubhouse routes behind the pickem flag', function () {
     $this->actingAs($admin)->get(route('pickem.create'))->assertOk();
 });
 
-it('walks the retired URLs to the lobby, permanently', function () {
-    // Printed on teasers and tour stops since before the product existed —
-    // the old paths must arrive, never 404.
-    $this->get('/picks')->assertMovedPermanently()->assertRedirect(route('pickem.lobby'));
-    $this->get('/picks/groups')->assertMovedPermanently()->assertRedirect(route('pickem.lobby'));
+it('serves My Picks at /picks and walks the one retired URL there', function () {
+    // /picks was a 301 to /lobby and is a real screen again. There is
+    // deliberately no redirect the other way: a browser caches a 301
+    // forever, and one pointing back would loop for every dev machine
+    // still holding the old one.
+    $this->get('/picks')->assertOk();
+    $this->get('/picks/groups')->assertMovedPermanently()->assertRedirect(route('pickem.home'));
 });
 
 it('grows the Picks area sections only inside the flag', function () {
@@ -144,9 +146,12 @@ it('grows the Picks area sections only inside the flag', function () {
     $this->actingAs(pickemAdmin());
     $sections = collect(Navigation::areas())->firstWhere('key', 'picks')['sections'];
 
-    expect(collect($sections)->pluck('label')->all())->toBe(['Lobby', 'Leaderboard', 'History'])
-        // Detail pages light the Lobby section, not a dead strip.
-        ->and($sections[0]['routes'])->toContain('pickem.group', 'pickem.room');
+    expect(collect($sections)->pluck('label')->all())->toBe(['My Picks', 'Lobby', 'Leaderboard', 'History'])
+        // A room or group visit lights MY PICKS: a reader inside one is a
+        // seated member playing, not somebody browsing the store. The
+        // Lobby chip lights on the browser alone.
+        ->and($sections[0]['routes'])->toContain('pickem.group', 'pickem.room')
+        ->and($sections[1])->not->toHaveKey('routes');
 });
 
 // ---------------------------------------------------------------- screens

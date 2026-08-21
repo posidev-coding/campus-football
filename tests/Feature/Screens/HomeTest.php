@@ -499,21 +499,22 @@ describe('the placeholder never leaks', function () {
 });
 
 describe('the pick'."'".'em teaser', function () {
-    it('renders as a designed card that opens the Picks screen', function () {
-        // Inert until the Picks screen existed; now the whole card navigates.
+    it('renders as a designed card that opens My Picks', function () {
+        // Inert until the Picks screen existed; now the whole card
+        // navigates — to the reader's own week, not to the store.
         $this->actingAs($this->user)->get(route('home'))
             ->assertOk()
             // escape: false — the label is literal template text, not an
             // escaped Blade echo, so the raw apostrophe is what is in the DOM.
             ->assertSee("Pick'em", escape: false)
             ->assertSee('Coming soon')
-            ->assertSee(route('pickem.lobby'), escape: false);
+            ->assertSee(route('pickem.home'), escape: false);
     });
 
     it('shows guests the same promise', function () {
         $this->get(route('home'))->assertOk()
             ->assertSee('Coming soon')
-            ->assertSee(route('pickem.lobby'), escape: false);
+            ->assertSee(route('pickem.home'), escape: false);
     });
 });
 

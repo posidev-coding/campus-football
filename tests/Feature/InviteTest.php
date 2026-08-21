@@ -152,11 +152,13 @@ it('shows a full room its honest state instead of a dead button', function () {
         ->assertDontSee('Take your seat');
 });
 
-it('bounces the whole screen to the lobby outside the flag', function () {
+it('bounces the whole screen to My Picks outside the flag', function () {
+    // The coming-soon promise lives at BOTH pick'em addresses; the
+    // area's own tab is where a bounced visitor belongs.
     [, $group] = pickemContest();
 
     Livewire::test('join', ['code' => $group->code])
-        ->assertRedirect(route('pickem.lobby'));
+        ->assertRedirect(route('pickem.home'));
 });
 
 it('lets a SIGNED-OUT visitor through the moment the launch config opens', function () {
@@ -192,7 +194,7 @@ it('keeps a signed-out visitor OUT while the launch config is closed', function 
     expect(Feature::for(null)->active('pickem'))->toBeFalse();
 
     Livewire::test('join', ['code' => $group->code])
-        ->assertRedirect(route('pickem.lobby'));
+        ->assertRedirect(route('pickem.home'));
 });
 
 it('never lets a room advertise a code or a /join link', function () {

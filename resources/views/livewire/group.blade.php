@@ -409,7 +409,7 @@ new class extends Component
 
         session()->flash('status', Voice::line('groups.left', ['group' => $this->group->name]));
 
-        return $this->redirectRoute('picks.groups', navigate: true);
+        return $this->redirectRoute('pickem.home', navigate: true);
     }
 
     /** The modal's radio tap. Validation is presentation; the Action gates. */

@@ -23,16 +23,19 @@ Route::livewire('/', 'home')->name('home');
 Route::livewire('app', 'get-app')->name('get-app');
 
 /*
- * Pick'em's front door: THE LOBBY. Outside the `pickem` flag (and for
- * guests) it renders the coming-soon promise the tab shipped with, which
- * is why it sits outside the flag middleware — the flag decides what the
- * screen shows, not whether it exists. The old /picks URL, printed on
- * teasers and tour stops since before the product existed, walks here
- * permanently.
+ * Pick'em's two front doors: MY PICKS at /picks (the reader's own week)
+ * and THE LOBBY at /lobby (the contest browser). Both sit OUTSIDE the
+ * flag middleware and both render the coming-soon promise to guests and
+ * to anyone outside the flag — the flag decides what a screen shows, not
+ * whether it exists.
+ *
+ * Deliberately NO redirect between them. /picks used to 301 to /lobby;
+ * browsers cache a 301 forever, so a redirect the other way would loop
+ * for every dev browser holding the old one. Two real 200s, no hop.
  */
+Route::livewire('picks', 'pickem-home')->name('pickem.home');
 Route::livewire('lobby', 'lobby')->name('pickem.lobby');
-Route::permanentRedirect('picks', 'lobby')->name('picks');
-Route::permanentRedirect('picks/groups', 'lobby')->name('picks.groups');
+Route::permanentRedirect('picks/groups', 'picks')->name('picks.groups');
 
 /*
  * The invite landing: /join/{CODE}, the URL a group actually travels by.
