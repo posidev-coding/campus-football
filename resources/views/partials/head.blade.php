@@ -97,8 +97,8 @@
      reads only the `apple-` prefixed one. `black-translucent` draws under the
      status bar, which is safe because the viewport is `viewport-fit=cover`,
      the body pads the side insets, the layout header pads
-     `env(safe-area-inset-top)` and screen chrome offsets by the same inset
-     via `--header-offset`. --}}
+     `env(safe-area-inset-top)` and screen chrome clears the whole header —
+     that inset included — via the measured `--chrome-offset`. --}}
 <meta name="apple-mobile-web-app-title" content="{{ Brand::shortName() }}">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">

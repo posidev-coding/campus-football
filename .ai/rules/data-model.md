@@ -52,3 +52,6 @@ collides with `Command::arguments()`. Both are fatal at class-load time.
 
 ## STORED is reserved in MySQL 8
 `count(x) stored` in a selectRaw is a 1064 syntax error. Alias it something else.
+
+## SeasonFactory draws years without replacement — don't undo unique()
+seasons carries a (year, type) unique index and SeasonFactory's range is only 12 years, so any fixture graph reaching Season::factory() down two chains (a pick'em slate game does: Week AND Game) collided about one run in twelve — passing under --filter, failing in the suite. fake()->unique() makes the draws collision-free within a test; a test wanting 13+ unpinned seasons overflows loudly, which is the correct failure. Pin or share a season when building multi-game fixtures.

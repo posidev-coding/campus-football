@@ -69,6 +69,28 @@
            rather than restating the sum — the header pads itself by the same
            inset, so the two can never disagree. */
         --header-offset: calc(var(--spacing) * 14 + 1px + env(safe-area-inset-top));
+
+        /* What sticky SCREEN chrome actually has to clear: the whole header,
+           section strip included. --header-offset counts the app bar only, so
+           in an area that HAS a strip it is short by exactly the strip and a
+           sticky band slides underneath it and disappears — measured at 41px
+           of overlap at 390 and 40px at 768, which buried a 40px band whole.
+           Scores has no strip and was always fine, which is why this hid.
+
+           The strip's height is not a constant to restate — it wraps, and it
+           restyles at `lg` — so the LAYOUT publishes the header's measured
+           height here (it owns the header) and every offset reads it. These
+           declarations are the pre-JS fallback and reproduce the old
+           behavior exactly, so a frame before Alpine boots is never worse
+           than what shipped. */
+        --chrome-offset: env(safe-area-inset-top);
+    }
+
+    /* From `sm` the app bar exists; below it the header is the strip alone. */
+    @media (width >= 40rem) {
+        :root {
+            --chrome-offset: var(--header-offset);
+        }
     }
 
     .dark {

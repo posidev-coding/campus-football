@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\EnterFilmRoom;
 use App\Jobs\FetchGameSummary;
 use App\Models\Athlete;
 use App\Models\AthleteGameStat;
@@ -73,6 +74,25 @@ new class extends Component
 
         $this->hydrateSummary();
         $this->normalizeTab();
+        $this->openFilmRoom();
+    }
+
+    /**
+     * Landing on a tab is what pays the Film Room, so this hangs off mount
+     * and the tab hook — NEVER render(), which re-runs on every poll of a
+     * live game and would turn one earn into a query per 30 seconds.
+     */
+    public function updatedTab(): void
+    {
+        $this->normalizeTab();
+        $this->openFilmRoom();
+    }
+
+    private function openFilmRoom(): void
+    {
+        if (auth()->check()) {
+            app(EnterFilmRoom::class)->handle(auth()->user(), $this->game, $this->tab);
+        }
     }
 
     /**
@@ -787,7 +807,7 @@ new class extends Component
         The sheet is NOT nested in here — backdrop-blur makes this the
         containing block for fixed descendants, the search-panel lesson.
     --}}
-    <div class="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-5 border-b border-zinc-200 bg-white/95 px-4 pt-4 pb-3 backdrop-blur sm:top-[var(--header-offset)] dark:border-zinc-800 dark:bg-zinc-950/95">
+    <div class="sticky top-[var(--chrome-offset)] z-30 -mx-4 -mt-5 border-b border-zinc-200 bg-white/95 px-4 pt-4 pb-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
         {{--
             A navigation bar, not a caption: Done · Gameday · Scores.
 
@@ -1076,6 +1096,13 @@ new class extends Component
         <div class="flex flex-col gap-4">
             <x-game-info :game="$game" :attendance="$this->summary?->attendance ?? $game->attendance" />
         </div>
+    </div>
+
+    {{-- The Conversation sits BELOW the facts, and the line between them is
+         the product rule: everything above this rule reports — the score,
+         the box, the drives — and nothing above it jokes. This does. --}}
+    <div class="border-t border-zinc-200 pt-6 dark:border-zinc-800">
+        <livewire:conversation :topic="$game" :key="'talk-game-'.$game->id" />
     </div>
 
     @include('partials.game-league-sheet')

@@ -5,9 +5,13 @@ use App\Http\Controllers\SmsStatusWebhookController;
 use App\Http\Controllers\SmsWebhookController;
 use App\Http\Controllers\StandaloneSeenController;
 use App\Http\Controllers\UnsubscribeController;
+use App\Models\Contest;
+use App\Models\Group;
 use App\Models\User;
 use App\Support\Brand;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
+use Laravel\Pennant\Middleware\EnsureFeaturesAreActive;
 
 Route::livewire('/', 'home')->name('home');
 
@@ -19,10 +23,29 @@ Route::livewire('/', 'home')->name('home');
 Route::livewire('app', 'get-app')->name('get-app');
 
 /*
- * Pick'em's front door, ahead of Pick'em itself — the fifth tab needs a
- * destination that says what is coming rather than a dead slot.
+ * Pick'em's two front doors: MY PICKS at /picks (the reader's own week)
+ * and THE LOBBY at /lobby (the contest browser). Both sit OUTSIDE the
+ * flag middleware and both render the coming-soon promise to guests and
+ * to anyone outside the flag — the flag decides what a screen shows, not
+ * whether it exists.
+ *
+ * Deliberately NO redirect between them. /picks used to 301 to /lobby;
+ * browsers cache a 301 forever, so a redirect the other way would loop
+ * for every dev browser holding the old one. Two real 200s, no hop.
  */
-Route::livewire('picks', 'picks')->name('picks');
+Route::livewire('picks', 'pickem-home')->name('pickem.home');
+Route::livewire('lobby', 'lobby')->name('pickem.lobby');
+Route::permanentRedirect('picks/groups', 'picks')->name('picks.groups');
+
+/*
+ * The invite landing: /join/{CODE}, the URL a group actually travels by.
+ * Public like the lobby and for the same reason — the whole point is a
+ * GUEST tapping a friend's link and seeing what they were invited to
+ * before any wall; the flag check lives in mount() (it scopes to the
+ * user, so middleware would 400 every guest), and joining itself rides
+ * JoinGroup's own gates.
+ */
+Route::livewire('join/{code}', 'join')->name('pickem.join');
 
 /*
  * Brand artifacts, generated rather than served as static files, because their
@@ -165,6 +188,57 @@ Route::middleware(['auth'])->group(function () {
     Route::livewire('account', 'account')->name('account');
 
     /*
+     * Pick'em's group screens, behind the `pickem` flag while the phase
+     * builds out. `auth` but never `verified`: reading is open to any
+     * signed-in member — the verified gate lives inside the mutating
+     * Actions (CreateGroup, JoinGroup, ...), where a public Livewire
+     * method cannot route around it.
+     */
+    Route::middleware([EnsureFeaturesAreActive::using('pickem')])->group(function () {
+        // The Picks area's other two sections. `/lobby` itself stays
+        // public above (it wears the coming-soon outside the flag);
+        // these two have no promise to keep for outsiders.
+        Route::livewire('lobby/leaderboard', 'pickem-leaderboard')->name('pickem.leaderboard');
+        Route::livewire('lobby/history', 'pickem-history')->name('pickem.history');
+
+        /*
+         * The clubhouse claims the short URL — a group is a place people
+         * return to all season, not a page inside the Picks screen. The
+         * old nested path survives as a permanent redirect so anything
+         * that learned it (a shared link, a bookmark) still arrives.
+         *
+         * `groups/new` MUST register before `groups/{group}`, or the
+         * wizard is swallowed as a route-model binding for a group
+         * named "new".
+         */
+        Route::livewire('groups/new', 'group-create')->name('pickem.create');
+        Route::livewire('groups/{group}', 'group')->name('pickem.group');
+        Route::livewire('groups/{group}/build', 'slate-builder')->name('pickem.build');
+
+        /*
+         * A public room is the same clubhouse component wearing its own
+         * address — the screen redirects each kind to its home, so a
+         * shared link always reads /contests/... for a room and
+         * /groups/... for a group.
+         */
+        Route::livewire('contests/{group}', 'group')->name('pickem.room');
+
+        /*
+         * Plain RedirectResponse rather than the redirect() helper: an
+         * aborted Livewire mount leaves Livewire's own redirector bound
+         * in the container, and the helper would hand the router that
+         * object instead of a response on the next request in-process.
+         */
+        Route::get('picks/groups/{group}', fn (Group $group) => new RedirectResponse(route('pickem.group', $group), 301))
+            ->name('picks.group');
+
+        // One mode per group makes the contest redundant in the URL; the
+        // old address walks to the group's wizard.
+        Route::get('picks/build/{contest}', fn (Contest $contest) => new RedirectResponse(route('pickem.build', $contest->group_id), 301))
+            ->name('picks.build');
+    });
+
+    /*
      * The install-signal beacon. POSTed once per session by the layout's
      * beacon island when it finds itself running standalone — the stamp
      * behind User::hasInstalled(). Idempotent by design; see the controller.
@@ -226,7 +300,7 @@ Route::match(['get', 'post'], 'webhooks/sms/status', SmsStatusWebhookController:
 /*
  * Local-only responsive preview. Chrome will not size a window below ~600px,
  * so a real phone viewport is unreachable by resizing; an iframe has no such
- * floor. Registered only in local so it can never exist in production.
+ * limit. Registered only in local so it can never exist in production.
  */
 if (app()->isLocal()) {
     Route::view('__device', 'dev.device')->name('dev.device');

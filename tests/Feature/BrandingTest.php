@@ -39,7 +39,8 @@ describe('the head', function () {
          * draws under the Dynamic Island. Three things keep that safe, and each
          * regressed silently once: the header pads the top inset (the veil),
          * the content spacer counts the tab bar's bottom inset, and screen
-         * chrome offsets by `--header-offset`, which restates the same inset.
+         * chrome clears the whole header via `--chrome-offset`, whose pre-JS
+         * fallback restates the same inset.
          * In a browser tab every env() is 0, so no browser test can SEE the
          * failure — asserting the class strings is the layer a test can hold.
          */
@@ -50,7 +51,61 @@ describe('the head', function () {
 
         $css = file_get_contents(resource_path('css/app.css'));
 
-        expect($css)->toContain('--header-offset: calc(var(--spacing) * 14 + 1px + env(safe-area-inset-top));');
+        expect($css)->toContain('--header-offset: calc(var(--spacing) * 14 + 1px + env(safe-area-inset-top));')
+            // The fallback --chrome-offset resolves to before Alpine measures
+            // the header: the bare inset below `sm`, the bar's height above.
+            ->and($css)->toContain('--chrome-offset: env(safe-area-inset-top);')
+            ->and($css)->toContain('--chrome-offset: var(--header-offset);');
+    });
+
+    it('publishes the header\'s MEASURED height for sticky screen chrome', function () {
+        /*
+         * `--header-offset` is the app bar's height alone. In an area that
+         * carries a section strip (Picks, League) that is short by exactly
+         * the strip, so screen chrome sticking against it slid underneath
+         * and vanished the moment anyone scrolled — measured at 41px of
+         * overlap at 390 and 40px at 768, which buried a 40px band whole.
+         * Scores has no strip, which is why this hid for so long.
+         *
+         * The header measures itself instead, because the strip's height is
+         * not a constant to restate: it wraps, and it restyles at `lg`.
+         */
+        $html = $this->get(route('home'))->assertOk()->content();
+
+        expect($html)->toContain('--chrome-offset')
+            // On the ROOT, never the header node: a Livewire morph strips
+            // inline styles it did not render.
+            ->and($html)->toContain('document.documentElement.style.setProperty')
+            // Re-measured when the strip wraps or the breakpoint flips.
+            ->and($html)->toContain('ResizeObserver');
+    });
+
+    it('leaves no screen chrome sticking against the bar alone', function () {
+        /*
+         * The source sweep, and the only thing that stops a new screen from
+         * reintroducing the bug: a render assertion cannot catch it, because
+         * in a browser tab the numbers happen to line up on Scores.
+         */
+        $offenders = [];
+
+        foreach (['livewire', 'partials', 'components'] as $dir) {
+            $path = resource_path('views/'.$dir);
+
+            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path)) as $file) {
+                if ($file->isDir() || ! str_ends_with($file->getFilename(), '.blade.php')) {
+                    continue;
+                }
+
+                $body = file_get_contents($file->getPathname());
+
+                if (str_contains($body, 'sm:top-[var(--header-offset)]')
+                    || str_contains($body, 'top-[calc(var(--header-offset)')) {
+                    $offenders[] = $file->getFilename();
+                }
+            }
+        }
+
+        expect($offenders)->toBe([], 'Sticky chrome must clear the WHOLE header: use --chrome-offset.');
     });
 
     it('carries exactly one theme-color tag', function () {

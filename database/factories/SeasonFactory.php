@@ -13,7 +13,16 @@ class SeasonFactory extends Factory
     public function definition(): array
     {
         return [
-            'year' => fake()->numberBetween(2015, 2026),
+            /*
+             * unique(): drawn WITHOUT replacement within a test. Seasons
+             * carry a (year, type) unique index, and any fixture graph that
+             * reaches Season::factory() down two chains — a pick'em slate
+             * game does it via Week AND via Game — collided about one run
+             * in twelve on this twelve-year range. The registry resets per
+             * test; a single test wanting 13+ unpinned seasons would
+             * overflow loudly, which beats colliding quietly.
+             */
+            'year' => fake()->unique()->numberBetween(2015, 2026),
             'type' => Season::REGULAR,
         ];
     }

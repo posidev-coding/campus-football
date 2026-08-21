@@ -318,6 +318,50 @@ it('labels the current week during play', function () {
     expect($this->calendar->label())->toBe('Week 7');
 });
 
+it('splits the opening week into WEEK 0 and WEEK 1 stops, each dated by its own games', function () {
+    $week = Week::create([
+        'season_id' => $this->next->id, 'number' => 1, 'name' => 'Week 1',
+        'start_date' => '2026-08-22 07:00', 'end_date' => '2026-09-08 06:59',
+    ]);
+
+    // The real 2026 shape: one card on 8/29, the main card Thu 9/3 through
+    // Sat 9/5 — and NOTHING on the 8/22 the range opens with.
+    foreach (['2026-08-29 20:00', '2026-09-03 23:30', '2026-09-05 19:30'] as $kickoff) {
+        Game::factory()->create([
+            'season_id' => $this->next->id, 'week_id' => $week->id,
+            'kickoff_at' => $kickoff,
+        ]);
+    }
+
+    $entries = collect($this->calendar->weekReleases(2026))->where('week_id', $week->id)->values();
+
+    expect($entries)->toHaveCount(2)
+        ->and($entries[0]['bracket'])->toBe('wk0')
+        ->and($entries[0]['label'])->toBe('WEEK 0')
+        ->and($entries[0]['range'])->toBe('AUG 29')
+        ->and($entries[1]['bracket'])->toBe('')
+        ->and($entries[1]['label'])->toBe('WEEK 1')
+        ->and($entries[1]['range'])->toBe('SEP 3-5')
+        // Half-open segments that meet exactly at the turnover boundary.
+        ->and($entries[1]['bounds'][0])->toBe($entries[0]['bounds'][1]);
+
+    // 8/22 prints NOWHERE — the stops date themselves from games, never
+    // from ESPN's seventeen-day range.
+    expect($entries->pluck('range')->join(' '))->not->toContain('AUG 22');
+
+    /*
+     * And the DEFAULT entry rides the Tuesday turnover, not a kickoff:
+     * Sunday and Monday after the first card still read WEEK 0, and the
+     * app flips to WEEK 1 at midnight ET Tuesday (04:00 UTC).
+     */
+    $entry = fn (string $utc) => $this->calendar->defaultWeekEntry(2026, CarbonImmutable::parse($utc));
+
+    expect($entry('2026-08-26 16:00:00')['label'])->toBe('WEEK 0')
+        ->and($entry('2026-08-30 16:00:00')['label'])->toBe('WEEK 0')
+        ->and($entry('2026-09-01 03:59:00')['label'])->toBe('WEEK 0')
+        ->and($entry('2026-09-01 04:01:00')['label'])->toBe('WEEK 1');
+});
+
 it('survives a second read of the cached week list', function () {
     /*
      * Regression: weekReleases() cached CarbonImmutable instances, which come

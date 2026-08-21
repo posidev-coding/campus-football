@@ -258,13 +258,41 @@ sources, all of them removed on the scoreboard:
 - the block's own `pt-1` — spacing moved INSIDE as `pt-3`, so it belongs to the
   chrome and travels with it instead of scrolling away
 - **one pixel of header border.** `h-14` plus `border-b` is 57px, not 56, so a
-  flat `sm:top-14` left exactly 1px of drift. The offset is
-  `sm:top-[calc(var(--spacing)*14+1px)]`
+  flat `sm:top-14` left exactly 1px of drift.
+- **the whole section strip**, which is the one that actually hurt.
 
 Below `sm` that header can be genuinely EMPTY — Scores is a single-screen area,
 so the bar is `sm:flex` and the strip renders nothing, leaving an unconditional
 `border-b` as a 1px rule floating at the top of the screen. It is now
 `sm:border-b`, plus `border-b` at base only when sections exist.
+
+### Stick against `--chrome-offset`, the MEASURED header (2026-08-21)
+
+Screen chrome used to stick at `top-[env(safe-area-inset-top)]` with
+`sm:top-[var(--header-offset)]`, and `--header-offset` is the app BAR — `h-14`
+plus its border plus the standalone inset. The `<header>` also contains the
+section strip, so in an area that has one the offset was short by exactly the
+strip and every sticky block slid underneath it and disappeared on the first
+scroll. Measured in a real 390px viewport: 41px of overlap at 390 and 40px at
+768, against a 40px band — buried whole, at both widths.
+
+It hid for months because **Scores has no section strip**, so the scoreboard —
+where all of this was worked out and pinned — was always correct. The Lobby's
+Saturday band is what surfaced it: a band nobody can see while scrolling is a
+band with no job.
+
+The header now publishes its own `offsetHeight` as `--chrome-offset` on
+`document.documentElement` (`ResizeObserver` + `resize`, the `--pickem-chrome`
+pattern), and every sticky offset reads that one variable at every width. The
+strip's height is deliberately NOT summed back in: it wraps, and it restyles
+into an underlined tab row at `lg`. The `:root` declarations are the pre-JS
+fallback and reproduce the old pair exactly, so a frame before Alpine boots is
+never worse than what shipped.
+
+No browser test can see this class of regression — in a browser tab every
+`env()` is 0 and the numbers coincide on Scores — so `BrandingTest` holds it
+two ways: the header must publish the variable, and a SOURCE SWEEP fails if any
+Blade file sticks against `--header-offset` again.
 
 Prefer `sticky` with zero travel over `fixed`. They look identical, but `fixed`
 leaves the flow and drops the page underneath it — needing a spacer the exact
@@ -521,10 +549,10 @@ icons do. Account for the same reason Log out and Admin are there: below `sm`
 there is no header, so a control that only exists in the desktop avatar dropdown
 is unreachable on a phone.
 
-That heading is sticky on the same offsets as the scoreboard's chrome —
-`-mt-5` to cancel the container's `py-5`, and `sm:top-[calc(var(--spacing)*14+1px)]`
-for the header's `h-14` plus its border — so it rests exactly where it sticks
-rather than drifting on the first scroll.
+That heading is sticky on the same offset as the scoreboard's chrome — `-mt-5`
+to cancel the container's `py-5`, and `top-[var(--chrome-offset)]` for the
+header's measured height — so it rests exactly where it sticks rather than
+drifting on the first scroll.
 
 The choice is per-BROWSER, not per-account — it is in localStorage, not on
 `users`. Fine for now; syncing across devices would need a column and a write on

@@ -55,3 +55,6 @@ in-flight label, and it silently swallows any hand-asked refresh.
 
 ## Wallet writes go through GrantWalletEntry, keyed when one-time
 Never insert wallet_entries directly. One-time grants pass `key` (the (user_id, key) unique index makes double fires a zero-row no-op); repeatable entries (spends, weekly wins) pass no key. Totals are SUMs via User::walletTotals() — there is deliberately no balance column to drift. Earning requires a verified email, with ONE documented exception: the 25 XP first-team seed in the onboarding moment (key `first-team`).
+
+## Pick'em settlement payouts are KEYED — superseding "weekly wins pass no key"
+The older support.md line saying repeatable weekly wins pass no key predates event-driven settlement and is SUPERSEDED for pick'em: SettleSlate can double-fire (sweep overlap, retried jobs), so its payouts ride idempotency keys — `slate:{id}:win` (100 XP + 1 latte per winner) and `slate:{id}:pts` (points × 10 XP) — and the (user_id, key) unique index is what makes a re-settle pay nobody twice. Payouts happen ONLY at official settlement (past Cadence::officialFinal), never at the preliminary flip. The settle claim (whereNull settled_at → update) comes LAST; everything before it is idempotent by construction.

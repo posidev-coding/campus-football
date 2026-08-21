@@ -499,34 +499,35 @@ describe('the placeholder never leaks', function () {
 });
 
 describe('the pick'."'".'em teaser', function () {
-    it('renders as a designed card that opens the Picks screen', function () {
-        // Inert until the Picks screen existed; now the whole card navigates.
+    it('renders as a designed card that opens My Picks', function () {
+        // Inert until the Picks screen existed; now the whole card
+        // navigates — to the reader's own week, not to the store.
         $this->actingAs($this->user)->get(route('home'))
             ->assertOk()
             // escape: false — the label is literal template text, not an
             // escaped Blade echo, so the raw apostrophe is what is in the DOM.
             ->assertSee("Pick'em", escape: false)
             ->assertSee('Coming soon')
-            ->assertSee(route('picks'), escape: false);
+            ->assertSee(route('pickem.home'), escape: false);
     });
 
     it('shows guests the same promise', function () {
         $this->get(route('home'))->assertOk()
             ->assertSee('Coming soon')
-            ->assertSee(route('picks'), escape: false);
+            ->assertSee(route('pickem.home'), escape: false);
     });
 });
 
 describe('the wallet chips', function () {
     it('puts the gamification placeholders on both surfaces for a signed-in reader', function () {
         // Home's brand bar below `sm`, the layout header above — one key,
-        // whichever is visible. Zero-state literals until the gamification
-        // schema exists; both chips open the Picks screen, which says
-        // "Coming soon" so the zeros never pretend the feature is live.
+        // whichever is visible. The rank is COMPUTED from the XP beside it
+        // (RankLadder), so a fresh account reads Walk-On rather than a
+        // hardcoded starting rung; both chips open the Picks screen.
         $html = $this->actingAs($this->user)
             ->get(route('home'))
             ->assertOk()
-            ->assertSee('Rookie')
+            ->assertSee('Walk-On')
             ->assertSee('0 XP')
             ->assertSee('Beast Lattes', escape: false)
             ->content();
@@ -539,7 +540,7 @@ describe('the wallet chips', function () {
         $this->get(route('home'))
             ->assertOk()
             ->assertDontSee('data-tour="wallet"', escape: false)
-            ->assertDontSee('Rookie');
+            ->assertDontSee('Walk-On');
     });
 
     it('references currency art that actually exists on disk', function () {

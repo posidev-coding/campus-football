@@ -184,7 +184,7 @@ The cache-layer twin of "never write a default when a feed returns nothing".
 Production served a fully populated stats screen whose season menu had NO
 options: the menu is built from "which years have rows", the page was first
 opened while the team-stats backfill was still draining, and `Cache::remember`
-pinned `[]` as authoritative for an hour at a time — while the boards beside
+pinned `[]` as authoritative for an hour at a time — while the slates beside
 it healed on their own per-year keys. **`App\Support\Remember::filled()`**
 serves a cached value only when non-empty, stores only non-empty results, and
 treats an already-cached empty as a miss — so deploying it healed production

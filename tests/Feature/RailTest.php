@@ -36,11 +36,13 @@ it('emits the aside, gated on lg, for a screen that declares panels', function (
         ->assertSee('hidden w-72 shrink-0 flex-col gap-4 lg:flex', escape: false);
 });
 
-it('sticks the stack rather than each panel', function () {
+it('sticks the stack rather than each panel, below the whole header', function () {
     // Two sticky siblings cannot both hold the top — the second scrolls away.
+    // The offset is the MEASURED header, section strip included: on League
+    // the summed --header-offset left the stack under the strip.
     $this->get(route('scoreboard'))
         ->assertOk()
-        ->assertSee('sticky top-[calc(var(--header-offset)+1rem)]', escape: false);
+        ->assertSee('sticky top-[calc(var(--chrome-offset)+1rem)]', escape: false);
 });
 
 it('declares a rail decision for every routed screen', function () {
@@ -58,12 +60,12 @@ it('declares a rail decision for every routed screen', function () {
     // Only the Livewire page routes — brand artifacts, webhooks and auth
     // screens have no app layout to hang a rail on.
     $pages = $screens->filter(fn (string $name) => in_array($name, [
-        'home', 'get-app', 'picks', 'scoreboard', 'game', 'standings', 'rankings',
+        'home', 'get-app', 'pickem.home', 'pickem.lobby', 'pickem.join', 'scoreboard', 'game', 'standings', 'rankings',
         'stats', 'news', 'article', 'search', 'teams', 'team', 'conference',
         'players', 'player', 'coach', 'recruiting', 'account',
     ], true));
 
-    expect($pages)->toHaveCount(19);
+    expect($pages)->toHaveCount(21);
 
     foreach ($pages as $name) {
         expect(Rail::mapKeys())->toContain($name);

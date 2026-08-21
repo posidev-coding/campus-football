@@ -450,3 +450,40 @@ Schedule::command('cfb:kickoff-alerts')
     ->between('11:00', '03:00')
     ->when($inSeason)
     ->withoutOverlapping();
+
+/*
+ * The pick'em deadline sweep: past the week's slate deadline, any contest
+ * still without a published slate gets the standard card, so a group is
+ * never hung out to dry by a commissioner who lost track of Tuesday.
+ * Hourly and DB-only — before the deadline each run exits in one query,
+ * and the deadline itself is admin-configurable (Cadence), so the hour
+ * grain is what makes "end of day" mean end of day whatever it is set to.
+ */
+Schedule::command('pickem:publish-slates')
+    ->hourly()
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+/*
+ * The settle sweep: rescue grading for games that went final without their
+ * event, and turn slates official once the week passes the stat-settling
+ * window (Cadence::officialFinal — Sunday noon ET by default). Payouts
+ * happen only here, keyed, so an hourly cadence risks nothing twice.
+ */
+Schedule::command('pickem:settle')
+    ->hourly()
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+/*
+ * The lobby's shelf: at least one open public room per available mode for
+ * the current week. The join hook restocks on fill in real time; this is
+ * the belt that opens the week's first rooms and repairs any gap.
+ */
+Schedule::command('pickem:open-lobbies')
+    ->hourly()
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();

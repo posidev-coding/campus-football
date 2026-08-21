@@ -1,0 +1,174 @@
+<?php
+
+namespace App\Services\Contests;
+
+use App\Models\Contest;
+use App\Models\Game;
+use App\Models\Week;
+use App\Support\Cadence;
+use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+
+/**
+ * The commissioner's pre-filled slate: the week's best slate-eligible games
+ * by quality score, tiered when the mode tiers. A suggestion is a starting
+ * point — the builder lets the commissioner swap every game — and house
+ * lobbies publish it unedited through the same PublishSlate door.
+ *
+ * Group affinity is applied HERE rather than inside GameQualityScore, so
+ * the base score stays a per-game fact while "your people care about this
+ * one" stays a per-group opinion.
+ *
+ * May return fewer rows than the mode wants on a thin week — publish
+ * validation is the gate that refuses a short slate, and a loud shortfall
+ * beats quietly padding with spreadless games.
+ */
+class SuggestSlate
+{
+    /** What a game either side of which the group follows gains. */
+    private const AFFINITY_BONUS = 8.0;
+
+    /**
+     * @return list<array<string, mixed>> one entry per suggested game:
+     *                                    game_id, score, tier, plus ContestLine::seedValues() verbatim
+     */
+    /**
+     * @param  CarbonInterface|null  $saturday  the ONE Saturday to draw from;
+     *                                          defaults to the week's primary card
+     */
+    public function for(Contest $contest, Week $week, ?CarbonInterface $saturday = null): array
+    {
+        $engine = $contest->mode->engine($contest->settings);
+        $size = $engine->slateSize();
+        $spec = $engine->tierSpec();
+
+        $candidates = $this->candidates($contest, $week, $saturday);
+
+        $followed = $this->followedTeamIds($contest);
+
+        $scored = [];
+
+        foreach ($candidates as $game) {
+            $score = GameQualityScore::for($game);
+
+            // Null is "cannot be slated", not a zero — skip, never rank.
+            if ($score === null) {
+                continue;
+            }
+
+            if ($followed->contains($game->home_team_id) || $followed->contains($game->away_team_id)) {
+                $score += self::AFFINITY_BONUS;
+            }
+
+            // Everything the row needs, half-point law applied — the
+            // builder writes these verbatim so a suggested slate is
+            // publishable as suggested.
+            $scored[] = [
+                'game_id' => $game->id,
+                'score' => round($score, 2),
+                'tier' => null,
+                ...ContestLine::seedValues($game),
+            ];
+        }
+
+        usort($scored, fn (array $a, array $b) => [$b['score'], $a['game_id']] <=> [$a['score'], $b['game_id']]);
+
+        $slate = array_slice($scored, 0, $size);
+
+        if ($spec !== null) {
+            $slate = $this->assignTiers($slate, $spec);
+        }
+
+        return $slate;
+    }
+
+    /**
+     * How many games a slate for this contest COULD hold: the same
+     * candidate pipeline for() draws from, down to the usable-line rule.
+     * The dynamic flavored rooms freeze their `slate_size` from this
+     * number BEFORE publishing, so suggestion and publish validation agree
+     * by construction — a size frozen from this count always fills.
+     */
+    public function viableCount(Contest $contest, Week $week, ?CarbonInterface $saturday = null): int
+    {
+        return $this->candidates($contest, $week, $saturday)
+            ->filter(fn (Game $game) => GameQualityScore::for($game) !== null)
+            ->count();
+    }
+
+    /**
+     * The one candidate pool: the Saturday's slate-window games, narrowed
+     * by the contest's themed filter when its settings carry one.
+     *
+     * @return Collection<int, Game>
+     */
+    private function candidates(Contest $contest, Week $week, ?CarbonInterface $saturday = null): Collection
+    {
+        /*
+         * ONE SATURDAY, not one week. An ESPN week can hold two of them —
+         * 2026's Week 1 has games on both 8/29 and 9/5 — and drawing from
+         * the week suggested a slate spanning a fortnight, which is how the
+         * first three published slates ended up mixing the two.
+         */
+        $saturday ??= Cadence::saturdayOf($week);
+
+        // The CALENDAR DATE, never converted through a timezone.
+        // `slates.saturday` is a date column and arrives as UTC midnight;
+        // shifting that into Eastern lands on 8pm the previous day and
+        // matches no game at all.
+        $target = $saturday?->format('Y-m-d');
+
+        $candidates = Game::query()
+            ->slateEligible()
+            ->where('week_id', $week->id)
+            ->upcoming()
+            ->with(['odds', 'predictor'])
+            ->get()
+            // The time-of-day half of the window is a per-game check — the
+            // ET boundary is not safely expressible in SQL.
+            ->filter(fn (Game $game) => $game->inSlateWindow())
+            ->filter(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString() === $target);
+
+        $filter = $contest->mode->engine($contest->settings)->slateFilter();
+
+        return $filter === null
+            ? $candidates
+            : $filter->apply($candidates, $contest->settings ?? [], $week);
+    }
+
+    /**
+     * Rank order fills tiers top-down: the spec's first tier takes the best
+     * games, and so on — tier 1 IS "the best five" by construction.
+     *
+     * @param  list<array<string, mixed>>  $slate
+     * @param  array<int, int>  $spec
+     * @return list<array<string, mixed>>
+     */
+    private function assignTiers(array $slate, array $spec): array
+    {
+        $index = 0;
+
+        foreach ($spec as $tier => $count) {
+            for ($i = 0; $i < $count && $index < count($slate); $i++, $index++) {
+                $slate[$index]['tier'] = $tier;
+            }
+        }
+
+        return $slate;
+    }
+
+    /**
+     * Every team any member of the contest's group follows. A pivot-to-pivot
+     * join, which Eloquent has no relation shape for — the query builder is
+     * the honest tool here.
+     */
+    private function followedTeamIds(Contest $contest): Collection
+    {
+        return DB::table('team_follows')
+            ->join('group_members', 'group_members.user_id', '=', 'team_follows.user_id')
+            ->where('group_members.group_id', $contest->group_id)
+            ->distinct()
+            ->pluck('team_follows.team_id');
+    }
+}

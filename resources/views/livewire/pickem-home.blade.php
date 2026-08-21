@@ -1,0 +1,496 @@
+<?php
+
+use App\Actions\JoinGroup;
+use App\Enums\ContestMode;
+use App\Exceptions\ContestFull;
+use App\Exceptions\PickemParticipationGated;
+use App\Models\Contest;
+use App\Models\Group;
+use App\Models\Pick;
+use App\Models\Slate;
+use App\Models\SlateEntry;
+use App\Models\Week;
+use App\Services\CfbCalendar;
+use App\Support\Cadence;
+use App\Support\Lobby;
+use App\Support\RankLadder;
+use App\Support\Voice;
+use Laravel\Pennant\Feature;
+use Livewire\Attributes\Computed;
+use Livewire\Component;
+
+/**
+ * MY PICKS — the reader's own pick'em week, and nothing anybody else's.
+ * One column ordered by urgency: the week's dateline, the slates still
+ * waiting on picks, the groups they play in, last week's payoff, their
+ * rung on the ladder, and the two doors out (an invite code, and the
+ * Lobby). Outside the `pickem` flag it keeps the coming-soon promise the
+ * Picks tab shipped with, verbatim, at this address too.
+ *
+ * Split from the lobby 2026-08-20: one screen was doing two jobs — your
+ * week and the store — and thirteen open rooms is the volume that made
+ * the seam obvious. THE STORE IS NOT HERE. What is here is one COUNT of
+ * what is open, sold as a door, because the alternative is a dashboard
+ * paying for the whole inventory graph to print a number.
+ *
+ * One query per CONCERN across all groups, never per card: contests,
+ * slates, my picks, my entries, my weekly wins — each is a single read
+ * however many groups the reader belongs to. The zones above are pure
+ * PROJECTIONS of that one cards() read, never a second query.
+ */
+new class extends Component
+{
+    public string $code = '';
+
+    #[Computed]
+    public function showPersonal(): bool
+    {
+        return auth()->check() && Feature::active('pickem');
+    }
+
+    /**
+     * The reader's rung, and the climb to the next one.
+     *
+     * The header chip has room for the NAME and nothing else, so this is the
+     * only surface where the next rung is named — which is what stops
+     * "Captain" from being a word with no scale behind it. No extra query:
+     * walletTotals() is memoized per request and the ladder is arithmetic.
+     *
+     * @return array{name: string, floor: int, next: string|null, at: int|null, remaining: int|null, progress: float}|null
+     */
+    #[Computed]
+    public function rank(): ?array
+    {
+        return auth()->check()
+            ? RankLadder::for($this->walletXp)
+            : null;
+    }
+
+    #[Computed]
+    public function walletXp(): int
+    {
+        return auth()->check() ? auth()->user()->walletTotals()['xp'] : 0;
+    }
+
+    /**
+     * Every group card's state, assembled flat.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function cards()
+    {
+        $groups = auth()->user()->groups()->withCount('memberships')->orderBy('name')->get();
+
+        if ($groups->isEmpty()) {
+            return collect();
+        }
+
+        $contests = Contest::query()
+            ->whereIn('group_id', $groups->pluck('id'))
+            ->where('season_year', app(CfbCalendar::class)->currentYear())
+            ->get()
+            ->keyBy('group_id');
+
+        $weekId = $contests->isEmpty()
+            ? null
+            : app(CfbCalendar::class)->defaultWeekId($contests->first()->season_year);
+
+        $slates = $weekId === null ? collect() : Slate::query()
+            ->whereIn('contest_id', $contests->pluck('id'))
+            ->where('week_id', $weekId)
+            ->with('games.game:id,kickoff_at,status,completed')
+            ->get()
+            ->keyBy('contest_id');
+
+        // My tallies, one aggregate each: picks made + live points per
+        // slate, my entry per slate, my weekly wins per contest.
+        $made = Pick::query()
+            ->join('slate_games', 'slate_games.id', '=', 'picks.slate_game_id')
+            ->whereIn('slate_games.slate_id', $slates->pluck('id'))
+            ->where('picks.user_id', auth()->id())
+            ->groupBy('slate_games.slate_id')
+            ->selectRaw('slate_games.slate_id, COUNT(*) AS made, COALESCE(SUM(picks.points), 0) AS pts')
+            ->get()
+            ->keyBy('slate_id');
+
+        $entries = SlateEntry::query()
+            ->whereIn('slate_id', $slates->pluck('id'))
+            ->where('user_id', auth()->id())
+            ->get()
+            ->keyBy('slate_id');
+
+        $wins = SlateEntry::query()
+            ->join('slates', 'slates.id', '=', 'slate_entries.slate_id')
+            ->whereIn('slates.contest_id', $contests->pluck('id'))
+            ->where('slates.status', Slate::SETTLED)
+            ->where('slate_entries.user_id', auth()->id())
+            ->groupBy('slates.contest_id')
+            ->selectRaw('slates.contest_id, COALESCE(SUM(slate_entries.won), 0) AS wins')
+            ->pluck('wins', 'contest_id');
+
+        $week = $weekId === null ? null : Week::find($weekId);
+        $deadline = $week === null ? null : Cadence::slateDeadline($week);
+
+        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $deadline) {
+            $contest = $contests->get($group->id);
+            $slate = $contest === null ? null : $slates->get($contest->id);
+            $tally = $slate === null ? null : $made->get($slate->id);
+            $entry = $slate === null ? null : $entries->get($slate->id);
+
+            $state = match (true) {
+                $slate === null || $slate->status === Slate::DRAFT => 'waiting',
+                $slate->status === Slate::SETTLED => 'final',
+                $slate->status === Slate::PRELIM => 'prelim',
+                $slate->games->contains(fn ($slateGame) => $slateGame->game->hasKickedOff()) => 'live',
+                default => 'upcoming',
+            };
+
+            return [
+                'group' => $group,
+                'contest' => $contest,
+                'commissioner' => $group->pivot->role === App\Models\GroupMember::COMMISSIONER,
+                'state' => $state,
+                'made' => (int) ($tally->made ?? 0),
+                'total' => $slate?->games->count() ?? 0,
+                'points' => $state === 'final'
+                    ? (int) ($entry->final_points ?? 0)
+                    : (int) ($tally->pts ?? 0),
+                'won' => (bool) ($entry->won ?? false),
+                'wins' => (int) ($wins[$contest?->id] ?? 0),
+                'firstKick' => $slate?->games->map(fn ($slateGame) => $slateGame->game->kickoff_at)->filter()->min(),
+                'deadline' => $deadline,
+            ];
+        });
+    }
+
+    /**
+     * The zone that answers "what do I do right now": published slates
+     * still taking picks where mine are not all in. A pure projection of
+     * cards() — no query of its own.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function needsPicks()
+    {
+        return $this->cards
+            ->filter(fn (array $card) => in_array($card['state'], ['upcoming', 'live'], true)
+                && $card['total'] > 0
+                && $card['made'] < $card['total'])
+            ->values();
+    }
+
+    /**
+     * The week's dateline entry from the calendar. Null skips the ribbon
+     * entirely — never a substituted week.
+     *
+     * @return array<string, mixed>|null
+     */
+    #[Computed]
+    public function weekEntry(): ?array
+    {
+        return app(CfbCalendar::class)->defaultWeekEntry(app(CfbCalendar::class)->currentYear());
+    }
+
+    /**
+     * The ribbon's one clock line, by urgency: games live now beats the
+     * next kickoff beats a commissioner's slate deadline. Null when none
+     * of it applies — the ribbon then carries the dateline alone.
+     *
+     * @return array{type: string, at: \Carbon\CarbonInterface|null}|null
+     */
+    #[Computed]
+    public function ribbonClock(): ?array
+    {
+        $cards = $this->cards;
+
+        if ($cards->contains(fn (array $card) => $card['state'] === 'live')) {
+            return ['type' => 'live', 'at' => null];
+        }
+
+        $kick = $cards
+            ->filter(fn (array $card) => $card['state'] === 'upcoming')
+            ->pluck('firstKick')
+            ->filter()
+            ->min();
+
+        if ($kick !== null) {
+            return ['type' => 'kick', 'at' => $kick];
+        }
+
+        $waiting = $cards->first(fn (array $card) => $card['state'] === 'waiting'
+            && $card['commissioner']
+            && $card['deadline'] !== null);
+
+        return $waiting === null ? null : ['type' => 'deadline', 'at' => $waiting['deadline']];
+    }
+
+    /**
+     * The Monday payoff: my settled weeks from the last seven days.
+     *
+     * @return \Illuminate\Support\Collection<int, SlateEntry>
+     */
+    #[Computed]
+    public function lastWeek()
+    {
+        return SlateEntry::query()
+            ->where('user_id', auth()->id())
+            ->whereHas('slate', fn ($q) => $q
+                ->where('status', Slate::SETTLED)
+                ->where('settled_at', '>=', now()->subDays(7)))
+            ->with('slate.contest.group:id,name,kind,week_id')
+            ->get();
+    }
+
+    /**
+     * HOW MANY rooms are open this Saturday — the teaser's whole payload.
+     *
+     * A COUNT, never the inventory: the browser owns the graph, and a
+     * dashboard that reads openRooms() to print an integer is a second
+     * full lobby read on every load. LobbyRoomsTest pins this number
+     * equal to what the Lobby actually lists.
+     */
+    #[Computed]
+    public function roomsOpen(): int
+    {
+        return Lobby::openRoomCount(auth()->user());
+    }
+
+    public function join(JoinGroup $action)
+    {
+        $code = strtoupper(trim($this->code));
+
+        $group = $code === '' ? null : Group::query()->where('code', $code)->first();
+
+        if ($group === null) {
+            $this->addError('code', Voice::line('groups.join.bad_code'));
+
+            return;
+        }
+
+        return $this->takeSeat($action, $group, 'code');
+    }
+
+    private function takeSeat(JoinGroup $action, Group $group, string $errorBag)
+    {
+        try {
+            $action->handle(auth()->user(), $group);
+        } catch (PickemParticipationGated) {
+            $this->addError($errorBag, Voice::line('groups.verify_first'));
+
+            return;
+        } catch (ContestFull) {
+            $this->addError($errorBag, Voice::line('contest.room.full'));
+
+            return;
+        }
+
+        session()->flash('status', Voice::line('groups.joined', ['group' => $group->name]));
+
+        // Each kind lands at its own address — no clubhouse double-hop.
+        return $this->redirectRoute(
+            $group->isRoom() ? 'pickem.room' : 'pickem.group',
+            $group,
+            navigate: true,
+        );
+    }
+}; ?>
+
+<div class="flex flex-col gap-6 lg:mx-auto lg:w-full lg:max-w-3xl">
+    @if ($this->showPersonal)
+        {{-- ============================== MY PICKS =================== --}}
+        {{-- The section strip names this place — the h1 stays for screen
+             readers only, the house rule. --}}
+        <h1 class="sr-only">My Picks</h1>
+
+        <x-verify-email-callout :body-key="'verify.picks.body'" :dismissable="false" />
+
+        @if (session('status'))
+            <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
+                {{ session('status') }}
+            </div>
+        @endif
+
+        {{-- The week's dateline. No calendar entry, no ribbon — never a
+             substituted week. --}}
+        @if ($this->weekEntry !== null)
+            <x-week-ribbon :entry="$this->weekEntry" :clock="$this->ribbonClock" />
+        @endif
+
+        {{-- What needs you right now: slates still taking your picks,
+             each row walking straight into its clubhouse. --}}
+        @if ($this->needsPicks->isNotEmpty())
+            <div class="flex flex-col gap-2">
+                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Needs your picks</flux:subheading>
+                <flux:subheading>{{ Voice::line('lobby.needs.subheading') }}</flux:subheading>
+
+                @foreach ($this->needsPicks as $card)
+                    <a
+                        href="{{ $card['group']->isRoom() ? route('pickem.room', $card['group']) : route('pickem.group', $card['group']) }}"
+                        wire:navigate
+                        wire:key="needs-{{ $card['group']->id }}"
+                        class="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50/50 px-4 py-3 hover:border-blue-300 dark:border-blue-900 dark:bg-blue-950/20 dark:hover:border-blue-800"
+                    >
+                        <span class="min-w-0">
+                            <span class="block truncate font-semibold leading-tight">{{ $card['group']->name }}</span>
+                            <x-slate-progress :made="$card['made']" :total="$card['total']" class="pt-1" />
+                        </span>
+                        <span class="flex shrink-0 items-center gap-1.5 text-micro text-zinc-500">
+                            @if ($card['firstKick'])
+                                kicks {{ $card['firstKick']->setTimezone(config('cfb.timezone'))->format('D g:ia') }}
+                            @endif
+                            <flux:icon name="chevron-right" variant="micro" class="text-zinc-400" />
+                        </span>
+                    </a>
+                @endforeach
+            </div>
+        @endif
+
+        {{-- Your groups — GROUPS, not "games": a game is played on a
+             field. Before the first one, the three doors are the pitch
+             AND the create affordance, so there is no second big card
+             saying the same thing. --}}
+        @if ($this->cards->isNotEmpty())
+            <div class="flex flex-col gap-2">
+                <div class="flex items-baseline justify-between gap-3">
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Your groups</flux:subheading>
+                    <a href="{{ route('pickem.create') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
+                        Start a group
+                    </a>
+                </div>
+
+                @foreach ($this->cards as $card)
+                    <x-group-card wire:key="lobby-group-{{ $card['group']->id }}" :card="$card" />
+                @endforeach
+            </div>
+        @else
+            <div class="flex flex-col gap-2">
+                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Pick your mode</flux:subheading>
+                <flux:subheading>{{ Voice::line('lobby.first_run.body') }}</flux:subheading>
+
+                <div class="flex flex-col gap-2 pt-1">
+                    @foreach (ContestMode::cases() as $mode)
+                        <x-mode-door wire:key="door-{{ $mode->value }}" :mode="$mode" />
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
+        {{-- The Monday payoff, compact: last week's settled results while
+             they are still the conversation. --}}
+        @if ($this->lastWeek->isNotEmpty())
+            <div class="flex flex-col gap-2">
+                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Last week</flux:subheading>
+                @foreach ($this->lastWeek as $entry)
+                    <a
+                        href="{{ $entry->slate->contest->group->isRoom() ? route('pickem.room', $entry->slate->contest->group_id) : route('pickem.group', $entry->slate->contest->group_id) }}"
+                        wire:navigate
+                        wire:key="settled-{{ $entry->id }}"
+                        class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-2.5 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
+                    >
+                        <p class="min-w-0 truncate text-sm font-medium">{{ $entry->slate->contest->group->name }}</p>
+                        <p class="flex shrink-0 items-center gap-2 text-sm">
+                            <span class="tabular font-semibold">{{ $entry->final_points ?? 0 }} pts</span>
+                            @if ($entry->won)
+                                <flux:badge size="sm" color="green">Winner</flux:badge>
+                            @endif
+                        </p>
+                    </a>
+                @endforeach
+            </div>
+        @endif
+
+        {{-- THE LADDER, one row. The header chip has room for the rung
+             and nothing else, so this is where the next one is named and
+             the climb has a number on it. --}}
+        @if ($this->rank !== null)
+            <div class="flex flex-col gap-1.5 rounded-xl border border-zinc-200 px-4 py-3 dark:border-zinc-700">
+                <div class="flex items-baseline justify-between gap-3">
+                    <span class="min-w-0 truncate font-semibold">{{ $this->rank['name'] }}</span>
+                    <span class="tabular shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
+                        {{ number_format($this->walletXp) }} XP
+                    </span>
+                </div>
+
+                @if ($this->rank['next'] !== null)
+                    {{-- A share of the CURRENT rung's span, so the bar resets
+                         at each promotion instead of creeping toward Legend
+                         all season. --}}
+                    <div class="h-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                        <div
+                            class="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
+                            style="width: {{ round($this->rank['progress'] * 100, 2) }}%"
+                        ></div>
+                    </div>
+                    <p class="text-micro text-zinc-500 dark:text-zinc-400">
+                        {{ Voice::line('rank.to_next', [
+                            'remaining' => number_format($this->rank['remaining']),
+                            'next' => $this->rank['next'],
+                        ]) }}
+                    </p>
+                @else
+                    {{-- No next rung. `remaining` is null here, never a zero
+                         standing in for it — so the climb line is SKIPPED
+                         rather than rendered as a finished bar with no name. --}}
+                    <p class="text-micro text-zinc-500 dark:text-zinc-400">{{ Voice::line('rank.topped_out') }}</p>
+                @endif
+            </div>
+        @endif
+
+        {{-- The code stays as the spoken-word fallback, folded away —
+             links are how a group travels now. --}}
+        <div
+            x-data="{ open: @js($errors->has('code')) }"
+            class="rounded-xl border border-zinc-200 dark:border-zinc-700"
+        >
+            <button
+                type="button"
+                x-on:click="open = ! open"
+                x-bind:aria-expanded="open"
+                class="flex w-full items-center justify-between gap-3 p-4 text-start"
+            >
+                <div class="min-w-0">
+                    <p class="font-semibold">Have an invite code?</p>
+                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('groups.join.subheading') }}</p>
+                </div>
+                <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
+            </button>
+
+            <div x-show="open" x-cloak class="border-t border-zinc-100 p-4 dark:border-zinc-800/60">
+                <form wire:submit="join" class="flex flex-col gap-3">
+                    {{-- The format rule stays plain: 8 characters, told straight. --}}
+                    <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />
+                    <flux:button type="submit" variant="primary" class="self-start">Join the group</flux:button>
+                </form>
+            </div>
+        </div>
+
+        {{-- THE LOBBY, as a door: a plain count and one line of Voice.
+             The store lives at its own address now — this is the sign
+             above it, not a shelf of it. --}}
+        @php $teaser = Voice::line('lobby.teaser.zinger'); @endphp
+        <a
+            href="{{ route('pickem.lobby') }}"
+            wire:navigate
+            class="flex items-center justify-between gap-3 rounded-xl border border-dashed border-zinc-300 px-4 py-3 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
+        >
+            <span class="min-w-0">
+                <span class="block font-semibold leading-tight">The Lobby</span>
+                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                    @if ($this->roomsOpen > 0)
+                        {{ $this->roomsOpen }} {{ Str::plural('room', $this->roomsOpen) }} open this Saturday
+                    @else
+                        {{ Voice::line('lobby.publics.empty') }}
+                    @endif
+                </span>
+                @if ($this->roomsOpen > 0 && $teaser !== '')
+                    <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">{{ $teaser }}</span>
+                @endif
+            </span>
+            <flux:icon name="chevron-right" variant="micro" class="shrink-0 text-zinc-400" />
+        </a>
+    @else
+        @include('partials.pickem-promise')
+    @endif
+</div>

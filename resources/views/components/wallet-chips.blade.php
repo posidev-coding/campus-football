@@ -1,17 +1,18 @@
 {{--
     The gamification shelf: Beast Latte balance, rank and XP, as chips.
 
-    The balance and XP are REAL now — summed from the wallet_entries ledger
-    (User::walletTotals(), one memoized query for both render sites) — because
-    verification pays out and the onboarding moment seeds 25 XP. The rank is
-    still the literal starting "Rookie": the ladder is Phase 7's to define,
-    and a rank computed from nothing would be a default standing in for
-    missing data. Both chips open the Picks screen, which says "Coming soon"
-    out loud, so the numbers never pretend the game is live before it is.
+    The balance and XP are REAL — summed from the wallet_entries ledger
+    (User::walletTotals(), one memoized query for both render sites) — and so
+    is the RANK now: App\Support\RankLadder turns the XP total into a rung
+    (Walk-On through Legend). It is a pure computation over the number
+    already in hand, not a second query and not a stored column, so the chip
+    cannot disagree with the ledger beside it. Both chips open the Picks
+    screen, which says "Coming soon" out loud outside the flag, so the
+    numbers never pretend the game is live before it is.
 
     This file is THE seam for the currency: the only place in the app that
     knows its name or its art. If App Store review ever reads the can as
-    alcohol imagery (roadmap Phase 9 carries the contingency), the swap — art,
+    alcohol imagery (roadmap Phase 7 carries the contingency), the swap — art,
     name, or a per-user variant — happens here and nowhere else. In-app copy
     never uses drinking vocabulary: they are Beast Lattes, the app's currency,
     full stop.
@@ -26,11 +27,14 @@
     from `sm`. Both carry `data-tour="wallet"` from the call site, so the tour
     spotlights whichever is visible — the search step's two-surfaces pattern.
 --}}
-@php $wallet = auth()->user()->walletTotals(); @endphp
+@php
+    $wallet = auth()->user()->walletTotals();
+    $rank = App\Support\RankLadder::name($wallet['xp']);
+@endphp
 
 <div {{ $attributes->class(['flex items-center gap-0.5']) }}>
     <a
-        href="{{ route('picks') }}"
+        href="{{ route('pickem.home') }}"
         wire:navigate
         class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
         aria-label="{{ $wallet['lattes'] }} Beast {{ str('Latte')->plural($wallet['lattes']) }} — earning starts with Pick'em"
@@ -41,12 +45,12 @@
     </a>
 
     <a
-        href="{{ route('picks') }}"
+        href="{{ route('pickem.home') }}"
         wire:navigate
         class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
-        aria-label="Rookie rank, {{ $wallet['xp'] }} XP — earning starts with Pick'em"
+        aria-label="{{ $rank }} rank, {{ $wallet['xp'] }} XP"
     >
-        <span>Rookie</span>
+        <span>{{ $rank }}</span>
         <span class="rounded bg-zinc-100 px-1 py-px text-micro font-semibold text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">{{ $wallet['xp'] }} XP</span>
     </a>
 </div>

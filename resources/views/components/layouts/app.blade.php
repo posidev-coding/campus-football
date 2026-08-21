@@ -63,12 +63,36 @@
              what keeps chrome and content out from behind it. The header
              renders on EVERY screen — even "empty" below `sm` — so in
              standalone its translucent blur is exactly a status-bar backdrop,
-             and in a browser tab the inset is 0 and nothing changes. Screen
-             chrome at z-30 offsets by the same inset via `--header-offset`. --}}
-        <header @class([
-            'sticky top-0 z-40 border-zinc-200 bg-white/85 pt-[env(safe-area-inset-top)] backdrop-blur sm:border-b dark:border-zinc-800 dark:bg-zinc-950/85',
-            'border-b' => $hasSections,
-        ])>
+             and in a browser tab the inset is 0 and nothing changes.
+
+             The header PUBLISHES its measured height as `--chrome-offset`,
+             which is what sticky screen chrome sticks against. It has to be
+             measured rather than summed: `--header-offset` is the app bar
+             alone, and in an area carrying a section strip that is short by
+             the strip — sticky chrome then slid under it and vanished on
+             every Picks and League screen. The strip is not a constant to
+             add back (it wraps, and it restyles at `lg`), so the element
+             that knows its own height is the one that says it. The variable
+             goes on `document.documentElement`, never on this node: a
+             Livewire morph strips inline styles it did not render. --}}
+        <header
+            x-data="{
+                publishOffset() {
+                    document.documentElement.style.setProperty(
+                        '--chrome-offset', $el.offsetHeight + 'px'
+                    )
+                },
+            }"
+            x-init="
+                publishOffset()
+                new ResizeObserver(() => publishOffset()).observe($el)
+            "
+            x-on:resize.window="publishOffset()"
+            @class([
+                'sticky top-0 z-40 border-zinc-200 bg-white/85 pt-[env(safe-area-inset-top)] backdrop-blur sm:border-b dark:border-zinc-800 dark:bg-zinc-950/85',
+                'border-b' => $hasSections,
+            ])
+        >
             {{-- Reclaimed on mobile: 56px of brand mark, search icon and avatar
                  that the tab bar carries instead. --}}
             <div class="hidden h-14 items-center gap-4 px-4 sm:flex">
@@ -201,7 +225,7 @@
                          horizontal scroll. Nothing inside may be a dropdown
                          or a menu: this box clips them, and `sticky` opens a
                          stacking context a `fixed` child cannot escape. --}}
-                    <div class="sticky top-[calc(var(--header-offset)+1rem)] flex max-h-[calc(100dvh-var(--header-offset)-2rem)] flex-col gap-4 overflow-y-auto overscroll-contain">
+                    <div class="sticky top-[calc(var(--chrome-offset)+1rem)] flex max-h-[calc(100dvh-var(--chrome-offset)-2rem)] flex-col gap-4 overflow-y-auto overscroll-contain">
                         @foreach ($railPanels as $panel)
                             <x-dynamic-component :component="$panel" wire:key="rail-{{ $panel }}" />
                         @endforeach

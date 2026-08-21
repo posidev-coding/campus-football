@@ -368,6 +368,41 @@ for i in $(seq 1 12); do
 done
 ```
 
+## The Pick'em flip is a config change, and it needs a purge behind it
+
+`Feature::define('pickem', ...)` reads `config('cfb.pickem_open')`, which reads
+`PICKEM_OPEN`. False keeps the real surfaces to admins and everybody else on
+the coming-soon screen; true opens them to every signed-in user. It lives in
+config rather than in the closure so launch is an environment change with an
+instant rollback, and so the preflight can REPORT the flag's state without
+resolving Pennant — which would persist a row as a side effect of asking.
+
+```
+php artisan pickem:preflight        # readiness; non-zero while anything blocks
+# set PICKEM_OPEN=true
+php artisan config:clear
+php artisan pennant:purge pickem    # REQUIRED — see below
+```
+
+**The purge is not optional.** Pennant's database driver PERSISTS every
+resolved value, so the closure runs once per user and the answer is read from
+a `features` row after that. Flipping the config reaches nobody who has
+already loaded a page: they keep the false stored for them, and the launch
+silently does nothing for exactly the people who were already here. The
+preflight's `Stored flag values` row counts those rows and prints the purge
+command; `PickemPreflightTest` pins the whole sequence.
+
+The preflight checks what has to be TRUE underneath the flag, not the flag
+itself: a week resolved from the calendar (never a hardcoded season), an open
+public room with a published slate for EVERY mode, at least fifteen lined
+games in the Saturday window (a game with no posted line can never publish),
+the league clock, and the three sweeps — `pickem:publish-slates`,
+`pickem:settle`, `pickem:open-lobbies` — actually registered. A flag opened
+over an unstocked lobby lands a new user in an empty room, which is the one
+first impression that cannot be taken back.
+
+It never writes, never stocks anything, and never flips the flag.
+
 `--env=testing` does NOT switch databases — there is no `.env.testing`, so
 artisan loads `.env` and `migrate:fresh --env=testing` drops the DEVELOPMENT
 database. phpunit.xml's `<env>` block applies to PHPUnit runs only. Validate

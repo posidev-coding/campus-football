@@ -4,6 +4,7 @@ use App\Models\Game;
 use App\Models\Team;
 use App\Services\CfbCalendar;
 use App\Support\Scope;
+use Carbon\CarbonImmutable;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -199,6 +200,23 @@ new class extends Component
         return $this->slate()['pinned'];
     }
 
+    /**
+     * The active scroller entry's kickoff bounds, when it carries them —
+     * only a split opening week's segments do.
+     *
+     * @return array{0: int, 1: int}|null
+     */
+    private function activeBounds(): ?array
+    {
+        foreach ($this->weeks as $entry) {
+            if ($entry['week_id'] === $this->week && ($entry['bracket'] ?? '') === $this->bracket) {
+                return $entry['bounds'] ?? null;
+            }
+        }
+
+        return null;
+    }
+
     private function scopedGames()
     {
         if ($this->week === null) {
@@ -217,6 +235,12 @@ new class extends Component
             ->where('week_id', $this->week)
             ->when($this->bracket === 'cfp', fn ($q) => $q->playoff())
             ->when($this->bracket === 'bowls', fn ($q) => $q->bowlsOnly())
+            // The split opening week: its two scroller stops share one
+            // week_id, and the entry's kickoff bounds are what tell the
+            // 8/29 card from the 9/5 one.
+            ->when(($bounds = $this->activeBounds()) !== null, fn ($q) => $q
+                ->where('kickoff_at', '>=', CarbonImmutable::createFromTimestamp($bounds[0]))
+                ->where('kickoff_at', '<', CarbonImmutable::createFromTimestamp($bounds[1])))
             ->orderBy('kickoff_at');
 
         $teamIds = Scope::teamIds($this->scope, $this->year());
@@ -321,11 +345,13 @@ new class extends Component
          the chrome and travels with it rather than scrolling away. Net space
          above the title goes from 24px to 12px.
 
-         The offsets are shared: `--header-offset` is the header's real height
-         from `sm` up — `h-14` plus its own `border-b` plus the standalone
-         status-bar inset — and below `sm` the bare inset keeps the chrome out
-         from under the Dynamic Island. Sticking at a flat `top-14` once left
-         the block one pixel of travel, which is small but is still the drift
+         The offset is shared: `--chrome-offset` is the header's MEASURED
+         height — the app bar, its border, the standalone status-bar inset,
+         and the section strip when the area carries one. Scores has no
+         strip, so here it resolves to the same number the old summed
+         `--header-offset` gave; on Picks and League it is bigger, which is
+         the bug it exists to fix. Sticking at a flat `top-14` once left the
+         block one pixel of travel, which is small but is still the drift
          this is meant to remove.
 
          Still `sticky`, not `fixed`. With zero travel the two are visually
@@ -335,7 +361,7 @@ new class extends Component
          `--scores-chrome` exists to measure. --}}
     <div
         x-ref="chrome"
-        class="sticky top-[env(safe-area-inset-top)] z-30 -mx-4 -mt-5 flex flex-col gap-3 bg-white px-4 pt-3 pb-0 sm:top-[var(--header-offset)] dark:bg-zinc-950"
+        class="sticky top-[var(--chrome-offset)] z-30 -mx-4 -mt-5 flex flex-col gap-3 bg-white px-4 pt-3 pb-0 dark:bg-zinc-950"
     >
         <div class="flex items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-2">

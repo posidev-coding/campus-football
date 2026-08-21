@@ -673,6 +673,671 @@ class Voice
             'pg13' => 'Done — no more weekly emails. Your scores will have to find you some other way.',
             'r' => "Done. No more weekly emails. You're on your own out there.",
         ],
+
+        /*
+         * Groups — Pick'em's social half, and a LOUD surface. The register
+         * rises with the reader, the roast stays on picks and records, and
+         * the one hard instruction (the code format) lives in the view as
+         * plain text, not here.
+         */
+        'groups.mine.empty' => [
+            'pg' => 'No groups yet. Start one and invite your people.',
+            'pg13' => 'No groups yet. Start one — somebody in the chat has to be the commissioner.',
+            'r' => 'No groups yet. Start one, or keep talking with nothing on the line.',
+        ],
+
+        'groups.lobbies.subheading' => [
+            'pg' => 'Open to everyone. Jump into a public lobby and start picking.',
+            'pg13' => 'No invite? Public lobbies take walk-ons. Jump in and pick this week.',
+            'r' => 'No invite? Public lobbies take anybody. Jump in and prove something.',
+        ],
+
+        'groups.join.subheading' => [
+            'pg' => "Got a code? Enter it and you're in.",
+            'pg13' => 'Got a code from your group? Punch it in.',
+            'r' => 'Got a code? Punch it in and get in here.',
+        ],
+
+        'groups.join.bad_code' => [
+            'pg' => "That code doesn't match any group. Check it and try again.",
+            'pg13' => 'No group answers to that code. Check it with whoever sent it.',
+            'r' => "That code opens nothing. Somebody fat-fingered it, and it wasn't us.",
+        ],
+
+        'groups.joined' => [
+            'pg' => "You're in :group. Welcome.",
+            'pg13' => "You're in :group. Picks open when the slate drops.",
+            'r' => "You're in :group. Fresh meat.",
+        ],
+
+        'groups.created' => [
+            'pg' => ':group is live. Share the code and get your people in.',
+            'pg13' => ':group is live. Share the code — a league of one is just a diary.',
+            'r' => ':group is live. Share the code and start collecting victims.',
+        ],
+
+        'groups.verify_first' => [
+            'pg' => 'Verify your email first — then you can create and join groups.',
+            'pg13' => "Verify your email first. The league needs to know you're real.",
+            'r' => 'Verify your email first. No ghosts in this league.',
+        ],
+
+        'groups.invite.hint' => [
+            'pg' => 'Share this link to invite people to :group.',
+            'pg13' => 'This link is the invite. Send it to your people.',
+            'r' => 'This link is the key to the door. Hand it out on purpose.',
+        ],
+
+        // Rides the share sheet BESIDE the URL — the url field carries the
+        // link, so the text sells the tap.
+        'groups.invite.share_text' => [
+            'pg' => 'Join :group — we pick college football games against the spread every week.',
+            'pg13' => 'Join :group. One slate a week, everyone on the record.',
+            'r' => 'Join :group. Every pick on the record, every excuse in writing.',
+        ],
+
+        'groups.leave.commissioner' => [
+            'pg' => "Commissioners can't leave while the group has members.",
+            'pg13' => "You're the commissioner — the last one out. Everyone else leaves first.",
+            'r' => "You're the commissioner. Captains go down with the ship.",
+        ],
+
+        'groups.left' => [
+            'pg' => 'You left :group.',
+            'pg13' => "You're out of :group.",
+            'r' => "You're out of :group. They'll cope.",
+        ],
+
+        'groups.member.removed' => [
+            'pg' => ':name was removed from the group.',
+            'pg13' => ':name is out of the group.',
+            'r' => ':name got cut.',
+        ],
+
+        /*
+         * The publish violations — the engine's validateForPublish() keys
+         * rendered as feedback: each one keeps its instruction intact and
+         * wears only as much personality as fits beside it. The key names
+         * are the engine's contract and never change; the prose speaks
+         * THE SLATE like everything else.
+         */
+        'picks.publish.count' => [
+            'pg' => 'This slate needs exactly :size games. Add or trim until it\'s right.',
+            'pg13' => 'The slate takes exactly :size games — no more, no less. Fill it out.',
+            'r' => ':size games. Not :size-ish. Fix the slate.',
+        ],
+
+        'picks.publish.line_missing' => [
+            'pg' => 'Every game needs a posted spread before publishing. Swap out any game still waiting on a line.',
+            'pg13' => 'No line, no game. Swap out anything still waiting on a spread.',
+            'r' => 'No spread, no seat. Cut the games the books won\'t touch.',
+        ],
+
+        'picks.publish.whole_line' => [
+            'pg' => 'Every line must sit on a half point — no whole numbers, so no ties.',
+            'pg13' => 'Half-point lines only. Nobody drives home on a push in this league.',
+            'r' => 'Half points only. Pushes are for leagues without the nerve to pick a side.',
+        ],
+
+        'picks.publish.not_saturday' => [
+            'pg' => 'Only Saturday games from noon Eastern on can go on the slate.',
+            'pg13' => 'Saturday, noon to midnight Eastern — that\'s the whole window, and the whole religion.',
+            'r' => 'Saturday, noon Eastern onward. No breakfast kickoffs, no Tuesday-night specials.',
+        ],
+
+        /*
+         * Replaces the old `wrong_week` 2026-08-20. A slate is ONE SATURDAY,
+         * not one ESPN week: 2026's Week 1 holds two of them, so the week
+         * comparison passed for games a fortnight apart.
+         */
+        'picks.publish.wrong_saturday' => [
+            'pg' => 'One of these games isn\'t on this slate\'s Saturday. Remove it.',
+            'pg13' => 'There\'s a game from another Saturday on here. Off it goes.',
+            'r' => 'One of these escaped from another Saturday. Round it up.',
+        ],
+
+        'picks.publish.started' => [
+            'pg' => 'A game on the slate has already kicked off. Swap it out.',
+            'pg13' => 'One of these already kicked off. You can\'t pick a game that\'s playing.',
+            'r' => 'One of these already kicked. Even this league has rules.',
+        ],
+
+        'picks.publish.tiebreaker' => [
+            'pg' => 'Pick a tiebreaker game before publishing.',
+            'pg13' => 'The slate needs a tiebreaker game. Old league law.',
+            'r' => 'No tiebreaker, no slate. The founders would riot.',
+        ],
+
+        'picks.publish.tiers' => [
+            'pg' => 'Each tier needs exactly five games.',
+            'pg13' => 'Five games per tier, three tiers, no freelancing.',
+            'r' => 'Five per tier. This is a slate, not a suggestion box.',
+        ],
+
+        'picks.publish.featured_metric' => [
+            'pg' => "The Woodshed's tiebreaker is always the featured game's combined points. Switch the question back.",
+            'pg13' => "In the Woodshed the question is the featured game's over/under — founders' law. Switch it back.",
+            'r' => "The Woodshed asks ONE question: the featured game's total. The founders wrote it; you don't get to edit it.",
+        ],
+
+        /*
+         * The clubhouse — one group's home, rebuilt around THE SLATE (the
+         * word "board" is retired product-wide, including internals; these
+         * are the first keys written for the new vocabulary).
+         */
+        'group.slate.waiting' => [
+            'pg' => 'No slate yet. Your commissioner sets the week\'s games — picks open here the moment it lands.',
+            'pg13' => 'No slate yet. The commissioner is on the clock — picks open the second it drops.',
+            'r' => 'No slate yet. The commissioner is sitting on the week. Go rattle their cage.',
+        ],
+
+        'group.slate.build_prompt' => [
+            'pg' => 'This week\'s slate isn\'t set yet — that\'s the commissioner\'s job, and that\'s you.',
+            'pg13' => 'No slate, no picks. The week is waiting on you, commissioner.',
+            'r' => 'The week doesn\'t exist until you set the slate. That gavel isn\'t decorative.',
+        ],
+
+        'group.season.empty' => [
+            'pg' => 'No weeks in the books yet. Season standings start counting when the first slate goes final.',
+            'pg13' => 'Nothing on the ledger yet. Standings start counting the first time a week goes official.',
+            'r' => 'Zero weeks settled. Nobody\'s earned a thing here yet — change that Saturday.',
+        ],
+
+        /*
+         * The creation wizard: name, THE GAME, the invite moment. The
+         * one-season rule rides create.mode.hint — fine print that must
+         * stay legible in every register, because it is the rule the
+         * pivot modal later holds people to.
+         */
+        'create.subheading' => [
+            'pg' => 'Give your group a name — the one your people will see all season.',
+            'pg13' => 'Name the group. Choose wisely — it\'s on the standings all season.',
+            'r' => 'Name the group. This is what somebody loses to every week, so make it hurt.',
+        ],
+
+        'create.mode.hint' => [
+            'pg' => 'Your group plays one game for the whole season. You can change it once, and everyone in the group is told.',
+            'pg13' => 'One game, all season. You get a single mid-season change, and the whole group hears about it.',
+            'r' => 'One game, all season. You get exactly one change of heart, and the group gets a note about it — no quiet rewrites.',
+        ],
+
+        'create.share.text' => [
+            'pg' => 'Join my :group pick\'em group — use code :code.',
+            'pg13' => 'Join :group. Code :code. Bring your best calls.',
+            'r' => 'Join :group. Code :code. Bring picks or bring excuses.',
+        ],
+
+        /*
+         * The mode pivot — one per season, announced. The blocked lines
+         * carry the WHY, because a refused lever with no reason reads as
+         * a bug.
+         */
+        'mode.change.warning' => [
+            'pg' => 'One change per season — this is it. The group\'s slates switch to the new mode from the next published week.',
+            'pg13' => 'This is your one change this season. Once you pull it, the lever\'s gone until next year.',
+            'r' => 'One lever, one pull, one season. After this the league office stops taking your calls.',
+        ],
+
+        'mode.change.note' => [
+            'pg' => 'Everyone in the group gets a note about the change.',
+            'pg13' => 'Everyone gets a note — nobody finds out from the standings.',
+            'r' => 'Everyone gets a note. Rule changes in the dark are how leagues die.',
+        ],
+
+        'mode.change.done' => [
+            'pg' => 'Done — your group plays :mode now.',
+            'pg13' => ':mode it is. The group\'s been told.',
+            'r' => ':mode it is. The note\'s out — brace for the group chat.',
+        ],
+
+        'mode.change.blocked.used' => [
+            'pg' => 'Your group already changed its mode this season — one change is the limit.',
+            'pg13' => 'That was the one change. The league runs on this rule; see you next season.',
+            'r' => 'You already pulled the lever this season. It doesn\'t grow back.',
+        ],
+
+        'mode.change.pick_one' => [
+            'pg' => 'Pick the new mode first.',
+            'pg13' => 'Pick the new mode first — the lever needs a target.',
+            'r' => "Pick a mode before pulling the lever. It's not a slot machine.",
+        ],
+
+        'mode.change.blocked.inflight' => [
+            'pg' => 'A week is still being played. The game can change after it goes official.',
+            'pg13' => 'There\'s a live week on the table. Let it settle, then change the game.',
+            'r' => 'Mid-hand rule changes? No. Let the week settle first.',
+        ],
+
+        /*
+         * The commissioner's wizard — five stations, one ritual. The
+         * whole-point-law line rides wizard.lines.hint; the half-point
+         * grid is the league's own physics and gets said plainly in every
+         * register.
+         */
+        'wizard.games.hint' => [
+            'pg' => 'The suggestions are a starting point — every slot is yours to change.',
+            'pg13' => 'Suggestions get you started; the commissioner gets the last word.',
+            'r' => 'The suggestions are advice. You were elected for a reason.',
+        ],
+
+        'wizard.games.empty' => [
+            'pg' => 'No games on the slate yet. Add from the list below, or fill it from suggestions.',
+            'pg13' => 'Blank slate. Fill it from suggestions, or hand-pick like a purist.',
+            'r' => 'Blank slate. Auto-fill it, or do it the hard way and own the results.',
+        ],
+
+        'wizard.no_candidates' => [
+            'pg' => 'No eligible games for this week yet — lines are still being posted.',
+            'pg13' => 'Nothing eligible yet. The books haven\'t posted this week\'s lines.',
+            'r' => 'Nothing to slate yet. Even the books are still thinking.',
+        ],
+
+        'wizard.tiers.hint' => [
+            'pg' => 'Sort the slate into tiers — tier 1 games pay the most. Five in each.',
+            'pg13' => 'Tier 1 is where the points live. Five per tier — spend them wisely.',
+            'r' => 'The big points live up top. Put the real games there and own the fallout.',
+        ],
+
+        'wizard.lines.hint' => [
+            'pg' => 'Nudge a line one whole point at a time, up to 3 off the book — every line stays on a half point, so every pick wins or loses, never ties.',
+            'pg13' => 'One whole point per tap, up to 3 off the book. Lines live on half points — no pushes in this league, ever.',
+            'r' => 'Whole-point nudges, half-point lines, 3 off the book at most. Ties are a failure of leadership.',
+        ],
+
+        'wizard.tiebreaker.hint' => [
+            'pg' => 'Pick the tiebreaker game and its question — the closest call settles tied weeks.',
+            'pg13' => 'Choose the week\'s question. When the top of the room ties, the closest call takes it.',
+            'r' => 'Pick the question that settles the arguments. Somebody\'s going to lose by one yard of it.',
+        ],
+
+        'wizard.preview.hint' => [
+            'pg' => 'This is exactly what your group will see. Look it over, then publish.',
+            'pg13' => 'What you see here is what they get. Look it over, then send it.',
+            'r' => 'This is the week you\'re about to hang on the wall. Look hard, then publish.',
+        ],
+
+        'wizard.deadline' => [
+            'pg' => 'Publish by :due, or the standard slate publishes itself so your group never misses a week.',
+            'pg13' => 'The clock says :due. Miss it and the standard slate ships without you.',
+            'r' => ':due, commissioner. Miss it and the league office publishes for you — and takes the credit.',
+        ],
+
+        'wizard.published' => [
+            'pg' => 'The slate is published — your group can start picking.',
+            'pg13' => 'Slate\'s up. Let the second-guessing begin.',
+            'r' => 'Slate\'s up. May God have mercy on their picks.',
+        ],
+
+        'wizard.already_published' => [
+            'pg' => 'This week\'s slate is already out. Your group is picking against it right now.',
+            'pg13' => 'The week is out the door — the clubhouse owns it now.',
+            'r' => 'Published means published. Go watch them wrestle with your lines.',
+        ],
+
+        'leaderboard.empty' => [
+            'pg' => 'Nothing on the ledger for this window yet. XP lands as picks land.',
+            'pg13' => 'Nobody\'s earned a thing in this window. First pick plants the flag.',
+            'r' => 'An empty leaderboard is a dare. Go make some picks.',
+        ],
+
+        'history.empty' => [
+            'pg' => 'No settled weeks yet. Your results collect here after each week goes official.',
+            'pg13' => 'Nothing in the books yet. Every settled week files itself here — wins and otherwise.',
+            'r' => 'No history yet. Play a week and this page starts keeping receipts.',
+        ],
+
+        'contest.room.full' => [
+            'pg' => 'That room just filled up. A fresh one should be open right below it.',
+            'pg13' => 'Too slow — that room\'s full. The next one\'s already open.',
+            'r' => 'Room\'s full. The next one\'s open — move faster this time.',
+        ],
+
+        'contest.room.winner' => [
+            'pg' => ':name wins the week.',
+            'pg13' => ':name takes the week.',
+            'r' => ':name ran this room. Everyone else, form an orderly line to complain.',
+        ],
+
+        'lobby.publics.empty' => [
+            'pg' => 'Public rooms open when the week\'s slate posts. Check back — there\'s always a seat.',
+            'pg13' => 'Rooms open when the week\'s slate drops. Come back and grab a seat before they fill.',
+            'r' => 'No rooms open. When the slate drops, seats go fast — don\'t be the one refreshing at kickoff.',
+        ],
+
+        'lobby.first_run.body' => [
+            'pg' => 'Three ways to play, all against the spread. Start a group and bring your people.',
+            'pg13' => 'Three games, one league office, zero pushes. Pick your poison and drag your group in.',
+            'r' => 'Three games, no pushes, nowhere to hide. Pick one and go recruit somebody to beat.',
+        ],
+
+        'lobby.needs.subheading' => [
+            'pg' => 'Slates are open — get your picks in before kickoff.',
+            'pg13' => "Open slates don't pick themselves. Kickoff is the deadline.",
+            'r' => "Unpicked games become zeros at kickoff. Zeros are how legends don't happen.",
+        ],
+
+        'lobby.rules.subheading' => [
+            'pg' => 'Every mode in plain words — points, the Lock, and the Bear.',
+            'pg13' => 'The rules, straight: what pays what, and what the Bear is doing here.',
+            'r' => "Read the rules once, argue about them forever. That's the sport.",
+        ],
+
+        /*
+         * THE LOBBY'S SHELVES — one optional line under each plain
+         * heading. The HEADING is the navigation ("House rooms", "Quick
+         * hits"), so the joke rides underneath it and never in place of
+         * it: a shelf whose name is a punchline is a shelf nobody can
+         * find. All render-guarded — an unwritten register is a quieter
+         * shelf, never a hole.
+         */
+        'lobby.shelf.house' => [
+            'pg' => 'The three standard games, every Saturday.',
+            'pg13' => 'The house games. No gimmicks, no excuses afterward.',
+            'r' => 'The house games. Nowhere to hide behind a theme when you go 3-7.',
+        ],
+
+        'lobby.shelf.quick_hits' => [
+            'pg' => 'Short cards and small tables.',
+            'pg13' => 'Short cards, small tables, quick verdicts.',
+            'r' => 'Short cards, small tables. Fewer picks to blow, and everyone watching you blow them.',
+        ],
+
+        'lobby.shelf.spotlight' => [
+            'pg' => 'Themed rooms — one idea per card.',
+            'pg13' => 'Themed rooms: ranked chaos, night games, dogs that bite.',
+            'r' => 'Themed rooms for people who think they have a specialty. Prove it.',
+        ],
+
+        'lobby.shelf.conference' => [
+            'pg' => 'One league, all Saturday. Play your own.',
+            'pg13' => 'Your league, every game of it. Pretend you watch the road ones.',
+            'r' => 'Your whole league on one card. Time to find out if you actually watch it or just yell about it.',
+        ],
+
+        /*
+         * The lobby teaser on My Picks, under the plain room count. The
+         * COUNT is the information; this is the nudge to walk over.
+         */
+        'lobby.teaser.zinger' => [
+            'pg' => 'Open to anyone — grab a seat and play this Saturday.',
+            'pg13' => 'No group? No problem. Take a seat with strangers and beat them instead.',
+            'r' => 'Seats are open. Go take somebody else\'s Saturday personally.',
+        ],
+
+        /*
+         * THE SPECIALTY SHELF — one zinger per flavored room, rendered
+         * under the card's factual blurb: LobbyFlavor::blurb() sizes and
+         * prices the card, these are the mood. The conference family
+         * shares one key with a :conference replacement.
+         */
+        'lobby.flavor.zinger.ranked_action' => [
+            'pg' => 'Every ranked team, one card. Bring a pencil.',
+            'pg13' => 'All the ranked teams at once. Your poll takes are about to be graded.',
+            'r' => "Every ranked team on one card. Somebody's poll darling is getting exposed by 4pm.",
+        ],
+
+        'lobby.flavor.zinger.under_lights' => [
+            'pg' => 'Night games only — the good stuff.',
+            'pg13' => 'Nothing before 7. Chaos keeps late hours.',
+            'r' => 'After dark is when the bad beats come out. Daylight is for cowards.',
+        ],
+
+        'lobby.flavor.zinger.two_minute' => [
+            'pg' => 'Five picks, in and out.',
+            'pg13' => "Five picks. Blow this one and it's fully on you.",
+            'r' => 'Five picks. Tank a five-game card and the room will remember.',
+        ],
+
+        'lobby.flavor.zinger.upset_alley' => [
+            'pg' => 'Back a dog that wins outright and collect the bonus.',
+            'pg13' => 'Dogs that bite pay extra here.',
+            'r' => 'Chalk is for cowards. Dogs that win outright get paid.',
+        ],
+
+        'lobby.flavor.zinger.back_porch' => [
+            'pg' => "The founders' game at a small table — no hiding.",
+            'pg13' => 'Ten seats. Small table, long memories.',
+            'r' => 'Ten seats, nowhere to hide, and the Bear smells fear at close range.',
+        ],
+
+        'lobby.flavor.zinger.conference' => [
+            'pg' => ':conference pride, settled on Saturday.',
+            'pg13' => ':conference Saturdays are a family argument with kickoff times.',
+            'r' => "A full :conference Saturday: twelve grudges and somebody's coach on the hot seat by midnight.",
+        ],
+
+        /*
+         * The upset kicker's house rule, said plainly over the slate — an
+         * instruction first, so every register keeps the mechanics
+         * (cover AND win outright, +:points) intact.
+         */
+        'picks.kicker.underdog_note' => [
+            'pg' => 'Upset kicker: a dog pick that covers AND wins outright pays :points extra.',
+            'pg13' => 'Upset kicker: your dog covers and wins the game, you bank +:points on top.',
+            'r' => 'Upset kicker: dog covers, dog wins outright — +:points and permanent bragging rights.',
+        ],
+
+        /*
+         * The invite landing — /join/{CODE}, the URL a group travels by.
+         * The preview card's facts stay plain; these lines are the mood
+         * around the one decision on the screen.
+         */
+        'join.pitch' => [
+            'pg' => 'Pick against the spread with :group every week — one slate, everyone in.',
+            'pg13' => 'One slate a week, everyone on the record. :group is waiting on you.',
+            'r' => ':group wants you on the record. Scared money picks nothing.',
+        ],
+
+        'join.miss' => [
+            'pg' => "That invite doesn't match a group. Ask your friend for a fresh link — or start your own.",
+            'pg13' => 'This link opens nothing. Get a fresh one from whoever sent it — or start your own group and send the links yourself.',
+            'r' => 'Dead link. Shake down whoever sent it for a real one — or start your own group and do it right.',
+        ],
+
+        'join.room.played' => [
+            'pg' => "This week's games are underway. Catch the next room when the new slate posts.",
+            'pg13' => "This room's week already kicked. Fresh rooms open when the next slate drops.",
+            'r' => 'You missed kickoff — this room is playing without you. Next slate, be early.',
+        ],
+
+        /*
+         * THE BEAR SPEAKS — one taunt per weekly theme, rendered under his
+         * factual theme line (BearPicks::themeLine says WHO he rides; these
+         * say it in his voice). He roasts picks and teams, never people —
+         * the house's creature keeps the house's rules.
+         */
+        'picks.bear.tagline.favorites' => [
+            'pg' => "I'll take the good teams. You take your chances.",
+            'pg13' => 'Chalk never apologizes. Neither do I.',
+            'r' => 'Riding every favorite and sleeping like a cub. Fade me, cowards.',
+        ],
+
+        'picks.bear.tagline.dogs' => [
+            'pg' => 'Every underdog has his day. This week they all do.',
+            'pg13' => 'All dogs, all week. Bite me.',
+            'r' => 'All dogs this week. When they hit, I want to hear every excuse.',
+        ],
+
+        'picks.bear.tagline.home' => [
+            'pg' => 'Home cooking all week. The crowd counts for something.',
+            'pg13' => "Every home team. 100,000 screaming reasons I'm right.",
+            'r' => 'Home teams only. A road favorite is just a point total waiting to die.',
+        ],
+
+        'picks.bear.tagline.road' => [
+            'pg' => 'Road teams all week. Silence is my favorite sound.',
+            'pg13' => 'All road teams. Nothing sweeter than a quiet stadium.',
+            'r' => 'Every road team. I live to hear a home crowd shut all the way up.',
+        ],
+
+        'picks.bear.tagline.alternating' => [
+            'pg' => 'A little chalk, a little chaos — I like balance.',
+            'pg13' => 'Chalk, dog, chalk, dog. Balance is a weapon.',
+            'r' => 'Half chalk, half chaos, zero mercy. Good luck reading me.',
+        ],
+
+        'group.mode_changed' => [
+            'pg' => 'Your commissioner changed the group\'s game to :mode. New slates play by its rules.',
+            'pg13' => 'The commissioner switched the group to :mode. New week, new rules.',
+            'r' => 'Commissioner\'s decree: :mode from here on. Adapt or donate points.',
+        ],
+
+        'notify.mode_changed.subject' => [
+            'pg' => ':group plays :mode now',
+            'pg13' => ':group plays :mode now',
+            'r' => ':group plays :mode now',
+        ],
+
+        'notify.mode_changed.body' => [
+            'pg' => 'Your commissioner changed :group\'s game to :mode. From the next slate, that\'s what you\'re picking.',
+            'pg13' => 'The commissioner moved :group to :mode. New rules from the next slate — check the group before you pick.',
+            'r' => 'The commissioner moved :group to :mode. New rules, same trash talk. Check the group before you pick.',
+        ],
+
+        /*
+         * The pick surface — the control the whole product exists for.
+         * The lock label itself stays plain ("Locked") because it is a
+         * state a reader scans for; everything around it speaks.
+         */
+        'picks.claim.heading' => [
+            'pg' => 'Claim your handle',
+            'pg13' => 'Claim your handle',
+            'r' => 'Claim your handle',
+        ],
+
+        'picks.claim.body' => [
+            'pg' => 'Picks need a name on them. Pick a handle so your group knows whose calls are whose.',
+            'pg13' => 'Picks need a name on them. Claim your handle — it\'s what the group sees when you\'re right, and when you\'re not.',
+            'r' => 'Picks need a name on them. Claim your handle — it\'s what the group screenshots when your calls age badly.',
+        ],
+
+        'picks.claim.done' => [
+            'pg' => '@:handle it is. Make your picks.',
+            'pg13' => '@:handle it is. Now get your picks in.',
+            'r' => '@:handle. No hiding now.',
+        ],
+
+        'picks.tiebreaker.hint' => [
+            'pg' => 'Answer the week\'s tiebreaker question — the closest call wins the ties.',
+            'pg13' => 'Call the week\'s tiebreaker number. Closest settles the arguments.',
+            'r' => 'Call the number. Closest settles every argument this slate starts.',
+        ],
+
+        'picks.tiebreaker.saved' => [
+            'pg' => 'Tiebreaker saved: :total points.',
+            'pg13' => ':total points, on the record.',
+            'r' => ':total points. Bold. It\'s on the record.',
+        ],
+
+        /*
+         * The Conversation. A LOUD surface everywhere it appears — including
+         * on Game and Team, whose FACTS stay pure: the chrome around the
+         * thread speaks, the box score above it never does.
+         *
+         * The composer's placeholder is deliberately NOT here. It is an
+         * affordance, and a joke standing between a writer and the box they
+         * type in is friction, not voice.
+         */
+        'talk.house_rule' => [
+            'pg' => 'Roast the pick, the team, the record. Never the person.',
+            'pg13' => 'Roast the pick, the team, the record — never the person.',
+            'r' => 'Roast the pick, the team, the record. Never the person. That one isn\'t negotiable.',
+        ],
+
+        'talk.subheading.game' => [
+            'pg' => 'Talk about the game — the call, the clock, the coaching.',
+            'pg13' => 'The call, the clock, the coaching. All fair game.',
+            'r' => 'Say what you want about this game. The people reading are off limits.',
+        ],
+
+        'talk.subheading.team' => [
+            'pg' => 'Talk about this team — the season, the schedule, the record.',
+            'pg13' => 'The season, the schedule, the record. Say your piece.',
+            'r' => 'Season, schedule, record — all of it is fair. Everybody reading is not.',
+        ],
+
+        'talk.subheading.group' => [
+            'pg' => 'Your group\'s room. Talk about the slate.',
+            'pg13' => 'Your group\'s room. Where the bad picks get remembered.',
+            'r' => 'Your group\'s room. Nothing said here gets forgotten by November.',
+        ],
+
+        'talk.empty.game' => [
+            'pg' => 'Nobody has said anything yet. Go first.',
+            'pg13' => 'Dead quiet. Somebody has to go first.',
+            'r' => 'Nothing here yet. Be the one who starts it.',
+        ],
+
+        'talk.empty.team' => [
+            'pg' => 'Nobody is talking about this team yet.',
+            'pg13' => 'Nobody is talking about this team. Fix that.',
+            'r' => 'Silence. Depending on the season, that might be mercy.',
+        ],
+
+        'talk.empty.group' => [
+            'pg' => 'Your group hasn\'t said anything yet.',
+            'pg13' => 'Your group is quiet. Suspiciously quiet.',
+            'r' => 'Nobody\'s talking. Everybody\'s sitting on a bad week.',
+        ],
+
+        'talk.claim.body' => [
+            'pg' => 'Posts need a name on them. Claim a handle and you can join in.',
+            'pg13' => 'Posts need a name on them. Claim your handle — anonymous takes are worth what they cost.',
+            'r' => 'Posts need a name on them. Claim your handle and own what you say.',
+        ],
+
+        'talk.claim.done' => [
+            'pg' => '@:handle it is. Say something.',
+            'pg13' => '@:handle it is. Start talking.',
+            'r' => '@:handle. Now everyone knows who to blame.',
+        ],
+
+        'talk.verify_first' => [
+            'pg' => 'Verify your email first — then you can join the conversation.',
+            'pg13' => 'Verify your email first. The room likes to know who\'s talking.',
+            'r' => 'Verify your email first. Nobody mouths off from behind a curtain here.',
+        ],
+
+        'talk.not_member' => [
+            'pg' => 'Join the group to talk in it.',
+            'pg13' => 'You\'re reading someone else\'s room. Join it to say anything.',
+            'r' => 'Reading is free. Talking costs a membership.',
+        ],
+
+        'talk.guest' => [
+            'pg' => 'Sign in to join the conversation.',
+            'pg13' => 'Sign in if you want a say in this.',
+            'r' => 'Sign in. Lurking is free; talking isn\'t.',
+        ],
+
+        'talk.too_fast' => [
+            'pg' => 'Give it a moment — :seconds seconds before your next post.',
+            'pg13' => 'Easy. :seconds seconds before you go again.',
+            'r' => 'Slow down. :seconds seconds before the next one.',
+        ],
+
+        'talk.deleted' => [
+            'pg' => 'Post removed.',
+            'pg13' => 'Gone. Like it never happened.',
+            'r' => 'Deleted. We\'ll all pretend we didn\'t read it.',
+        ],
+
+        /*
+         * The ladder. Rung NAMES are not here on purpose — a rank is a label
+         * the reader scans for and compares with somebody else's, so it says
+         * the same word in every register. What speaks is the copy around it.
+         */
+        'rank.to_next' => [
+            'pg' => ':remaining XP to :next.',
+            'pg13' => ':remaining XP and you\'re a :next.',
+            'r' => ':remaining XP from :next. Nobody\'s handing it to you.',
+        ],
+
+        'rank.topped_out' => [
+            'pg' => 'Top of the ladder. Nothing left to climb.',
+            'pg13' => 'Top of the ladder. There is nothing above this.',
+            'r' => 'Top of the ladder. Everyone else is still climbing.',
+        ],
     ];
 
     /**

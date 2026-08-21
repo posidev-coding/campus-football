@@ -645,6 +645,12 @@ describe('the hand-asked refresh', function () {
     });
 
     it('stays hidden for the first half of the sync cycle', function () {
+        // The one exact-count assertion in this family, so the clock is
+        // FROZEN: the fixture's `now()` and the component's `now()` are
+        // otherwise separate reads, and a second ticking between them made
+        // the countdown 19 about one full-suite run in a while.
+        $this->freezeTime();
+
         // Freshly synced: the stored copy is newer than the 60s window, so a
         // forced fetch would spend 544 KB to learn nothing.
         GameSummary::create([

@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Cache;
  * rows arrive asynchronously — a backfill drains through queued jobs long
  * after the command that started it exits. Cache::remember treats whatever
  * the first request computes as authoritative, so a page opened before the
- * backfill landed pinned an EMPTY year list for a full TTL while the boards
+ * backfill landed pinned an EMPTY year list for a full TTL while the slates
  * beside it (cached per year) healed on their own. Production served a
  * populated stats screen with a season menu holding no options.
  *

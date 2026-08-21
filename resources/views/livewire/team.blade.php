@@ -902,4 +902,13 @@ new class extends Component
             </flux:callout>
         @endforelse
     @endif
+
+    {{-- Below the facts here too, and NOT a sixth tab: the team nav is a
+         measured 358px row with 54px spare that deliberately does not
+         scroll, and a tab plus its gap spends nearly all of it. The talk
+         belongs to the team rather than to Schedule or News, so it sits at
+         the foot of every tab instead of inside one. --}}
+    <div class="border-t border-zinc-200 pt-6 dark:border-zinc-800">
+        <livewire:conversation :topic="$team" :key="'talk-team-'.$team->id" />
+    </div>
 </div>

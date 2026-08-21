@@ -69,13 +69,14 @@ describe('the header', function () {
     });
 
     it('carries the wallet chips on every screen for a signed-in reader', function () {
-        // The gamification placeholders are app chrome from `sm` — scoreboard
-        // rather than Home proves the header, not the brand bar, renders them.
+        // The wallet chips are app chrome from `sm` — scoreboard rather than
+        // Home proves the header, not the brand bar, renders them. Walk-On is
+        // the ladder's bottom rung, computed from a fresh account's zero XP.
         $this->actingAs(User::factory()->create())
             ->get(route('scoreboard'))
             ->assertOk()
             ->assertSee('data-tour="wallet"', escape: false)
-            ->assertSee('Rookie');
+            ->assertSee('Walk-On');
     });
 
     it('offers a guest no appearance control it cannot anchor', function () {

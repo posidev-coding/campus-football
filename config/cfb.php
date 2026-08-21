@@ -30,6 +30,22 @@ return [
     'upload_disk' => env('UPLOAD_DISK', 'public'),
 
     /*
+     * THE PICK'EM FLIP.
+     *
+     * The `pickem` Pennant flag reads this: false keeps the real surfaces to
+     * admins and everybody else on the coming-soon screen, true opens them to
+     * every signed-in user. It lives in config rather than in the flag's
+     * closure so the launch is an environment change with an instant rollback,
+     * not a deploy — and so `pickem:preflight` can REPORT the flag's state
+     * without resolving Pennant and writing a row as a side effect of asking.
+     *
+     * Run `php artisan pickem:preflight` before setting it. A flag opened over
+     * an unstocked public floor lands a new user in an empty room, which is
+     * the one first impression that cannot be taken back.
+     */
+    'pickem_open' => (bool) env('PICKEM_OPEN', false),
+
+    /*
      * How many emails a day we will spend on things nobody asked for
      * individually — the newsletter, and later any digest.
      *
