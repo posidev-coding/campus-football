@@ -1195,6 +1195,138 @@ class Voice
         ],
 
         /*
+         * THE WEEKLY LOOP — picks are due, and here is how you did.
+         *
+         * Every one of these renders from a QUEUED job, so every caller
+         * passes `for:` or the reader silently gets the PG-13 line. Subjects
+         * carry the FACT and may read the same in all three registers; the
+         * body is where the register lives. The instruction survives every
+         * rung: a reminder that does not say what is owed and when it locks
+         * is a joke wearing a reminder's clothes.
+         */
+        'notify.reminder.subject' => [
+            'pg' => ':owed picks due in :group',
+            'pg13' => ':owed picks due in :group',
+            'r' => ':owed picks due in :group',
+        ],
+
+        'notify.reminder.multi' => [
+            'pg' => ':owed picks due across :count cards',
+            'pg13' => ':owed picks due across :count cards',
+            'r' => ':owed picks due across :count cards',
+        ],
+
+        'notify.reminder.body' => [
+            'pg' => 'You have :owed of :total picks left in :group. First kickoff is :when, and picks lock game by game from there.',
+            'pg13' => ':owed picks still open in :group. First kick is :when, and every game locks the second it starts — there are no extensions.',
+            'r' => ':owed picks sitting open in :group. First kick :when. Anything unpicked grades as a zero, which is a decision you are making on purpose.',
+        ],
+
+        'notify.reminder.push' => [
+            'pg' => ':owed picks left in :group.',
+            'pg13' => ':owed picks still open in :group. The clock is running.',
+            'r' => ':owed picks open in :group. Zeros are forever.',
+        ],
+
+        /* One line, no greeting: an SMS is read from a lock screen. */
+        'notify.reminder.sms' => [
+            'pg' => ':owed picks due in :group. First kick :when.',
+            'pg13' => ':owed picks open in :group, first kick :when. Unpicked games score nothing.',
+            'r' => ':owed picks open in :group, first kick :when. Unpicked is a zero, every time.',
+        ],
+
+        'notify.last_call.subject' => [
+            'pg' => 'Last call — :owed picks in :group',
+            'pg13' => 'Last call — :owed picks in :group',
+            'r' => 'Last call — :owed picks in :group',
+        ],
+
+        'notify.last_call.body' => [
+            'pg' => 'First kickoff is :when and you still have :owed picks open in :group.',
+            'pg13' => 'Last call: :owed picks open in :group, first kick :when. After that they are zeros.',
+            'r' => 'Last call. :owed picks open in :group, kickoff :when, and nobody is going to make them for you.',
+        ],
+
+        'notify.last_call.push' => [
+            'pg' => 'Last call — :owed picks in :group.',
+            'pg13' => 'Last call: :owed picks open in :group, kick at :when.',
+            'r' => 'Last call. :owed unpicked in :group, :when.',
+        ],
+
+        'notify.results.subject' => [
+            'pg' => ':week is official — :group',
+            'pg13' => ':week is official — :group',
+            'r' => ':week is official — :group',
+        ],
+
+        'notify.results.won.body' => [
+            'pg' => 'You won :week in :group with :points points — :xp XP and a Beast Latte.',
+            'pg13' => 'You took :week in :group. :points points, :xp XP, and a Beast Latte with your name on it.',
+            'r' => ':points points, and :week belongs to you. :xp XP, one Beast Latte, and a group chat that has to sit with it.',
+        ],
+
+        'notify.results.won.shared' => [
+            'pg' => 'You tied with :others for the win, and everyone who tied gets paid in full.',
+            'pg13' => 'You and :others tied it. Split week, full payout each.',
+            'r' => 'You and :others tied. Both paid, and neither of you gets to gloat cleanly.',
+        ],
+
+        'notify.results.lost.body' => [
+            'pg' => ':week is official in :group. You finished :place of :field with :points points.',
+            'pg13' => ':week is in the books: :place of :field in :group, :points points.',
+            'r' => ':week is official. :place of :field in :group on :points points. Somebody had to be.',
+        ],
+
+        'notify.results.missed.body' => [
+            'pg' => ':group finished :week without you. :winner won it.',
+            'pg13' => ':group played :week without you. :winner won, and will be telling people.',
+            'r' => ':week happened without you. :winner took it, and you have no receipts to argue with.',
+        ],
+
+        'notify.results.exhibition' => [
+            'pg' => 'This was a practice week — it does not count toward the season.',
+            'pg13' => 'Practice week. It pays, but the season does not remember it.',
+            'r' => 'Practice week. Pays the same, counts for nothing, and every brag comes with an asterisk.',
+        ],
+
+        /*
+         * The nemesis: whoever finished one place away. Not a stored
+         * relationship — a weekly pick'em rivalry genuinely IS week to week,
+         * and this is the adjacency the settled field already knows. It
+         * roasts the RESULT, never the person, which is what keeps it inside
+         * the age rating.
+         */
+        'notify.results.nemesis' => [
+            'pg' => ':rival finished one spot ahead of you, by :margin points.',
+            'pg13' => ':rival finished one spot ahead — :margin points, and that is the whole gap.',
+            'r' => ':rival beat you by :margin points and one place. Remember it next Saturday.',
+        ],
+
+        'notify.results.nemesis.won' => [
+            'pg' => ':rival finished :margin points behind you.',
+            'pg13' => ':rival came up :margin points short. They will mention it.',
+            'r' => ':rival missed you by :margin. Enjoy it, briefly.',
+        ],
+
+        'notify.results.bear.beat' => [
+            'pg' => 'You beat the Bear by :margin, and that is the bonus.',
+            'pg13' => 'You beat the Bear by :margin. He does not take it well.',
+            'r' => 'Beat the Bear by :margin. He is going to remember your name.',
+        ],
+
+        'notify.results.bear.lost' => [
+            'pg' => 'The Bear finished :margin points ahead of you this week.',
+            'pg13' => 'The Bear got you by :margin. He is insufferable about it.',
+            'r' => 'The Bear beat you by :margin without watching a single snap.',
+        ],
+
+        'notify.inbox.empty' => [
+            'pg' => 'Nothing here yet. Kickoff alerts and your weekly results land here.',
+            'pg13' => 'Empty for now. Kickoff alerts, pick reminders and Saturday\'s damage all land here.',
+            'r' => 'Nothing yet. Give it one Saturday and this fills with things you would rather not reread.',
+        ],
+
+        /*
          * The pick surface — the control the whole product exists for.
          * The lock label itself stays plain ("Locked") because it is a
          * state a reader scans for; everything around it speaks.

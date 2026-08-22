@@ -55,6 +55,15 @@ new class extends Component
      */
     public bool $newsletter_opt_in = true;
 
+    /**
+     * The pick'em loop — reminders and results.
+     *
+     * Its own switch rather than a second meaning for the newsletter's: the
+     * two lists answer different questions, and the unsubscribe footer on
+     * each names which one it silences.
+     */
+    public bool $pickem_notify_opt_in = true;
+
     /** The pending upload. Null unless a file is mid-flight. */
     public $photo = null;
 
@@ -110,6 +119,7 @@ new class extends Component
         $this->handle = $user->handle ?? '';
         $this->content_rating = $user->content_rating->value;
         $this->newsletter_opt_in = $user->newsletter_opt_in;
+        $this->pickem_notify_opt_in = $user->pickem_notify_opt_in;
         $this->phone = PhoneNumber::format($user->phone) ?? '';
         $this->sms_opt_in = $user->sms_opt_in;
     }
@@ -271,6 +281,19 @@ new class extends Component
      * Turning it back on clears nothing: `unsubscribed_at` records that they
      * once said no, and that stays true.
      */
+    /**
+     * Turning it off stamps `unsubscribed_at` the same way the newsletter
+     * does — the column records that this person once said no to something,
+     * which stays true whichever list it was.
+     */
+    public function updatedPickemNotifyOptIn(bool $value): void
+    {
+        auth()->user()->forceFill([
+            'pickem_notify_opt_in' => $value,
+            'unsubscribed_at' => $value ? auth()->user()->unsubscribed_at : now(),
+        ])->save();
+    }
+
     public function updatedNewsletterOptIn(bool $value): void
     {
         auth()->user()->forceFill([
@@ -650,6 +673,20 @@ new class extends Component
             wire:model.live="newsletter_opt_in"
             label="Weekly email"
             description="How your teams did, and what's next. One a week, and you can stop it any time."
+            align="right"
+        />
+
+        <flux:separator />
+
+        {{-- A SEPARATE switch from the weekly email, because they are separate
+             consents: plenty of people want to be told their picks are due and
+             do not want a Sunday digest. One shared switch would mean the
+             unsubscribe that stops the digest silently stops the reminders too,
+             which reads as the app being broken rather than as a preference. --}}
+        <flux:switch
+            wire:model.live="pickem_notify_opt_in"
+            label="Pick'em reminders and results"
+            description="When your picks are due, and how the week finished. Only while you're in a group."
             align="right"
         />
 
