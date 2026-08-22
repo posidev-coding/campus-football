@@ -31,7 +31,7 @@ use NotificationChannels\WebPush\HasPushSubscriptions;
 #[Fillable([
     'first_name', 'last_name', 'handle', 'email', 'password',
     'avatar', 'timezone', 'content_rating', 'newsletter_opt_in',
-    'phone', 'sms_opt_in',
+    'pickem_notify_opt_in', 'phone', 'sms_opt_in',
 ])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser, MustVerifyEmail
@@ -63,6 +63,10 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         'timezone' => 'America/New_York',
         'content_rating' => ContentRating::Pg13->value,
         'newsletter_opt_in' => true,
+        /* True, and a SEPARATE switch from the newsletter: joining a pick'em
+           group is itself the request to be told about it, but somebody may
+           well want their picks-are-due nudge without the Sunday digest. */
+        'pickem_notify_opt_in' => true,
         /* False, unlike the newsletter. Signing up for a football app can
            fairly be read as wanting email about football; it cannot be read as
            consent to be texted. */
@@ -86,6 +90,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'admin' => 'boolean',
             'content_rating' => ContentRating::class,
             'newsletter_opt_in' => 'boolean',
+            'pickem_notify_opt_in' => 'boolean',
             'unsubscribed_at' => 'datetime',
             'phone_verified_at' => 'datetime',
             'sms_opt_in' => 'boolean',

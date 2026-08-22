@@ -130,9 +130,20 @@ new class extends Component
             ->pluck('wins', 'contest_id');
 
         $week = $weekId === null ? null : Week::find($weekId);
-        $deadline = $week === null ? null : Cadence::slateDeadline($week);
 
-        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $deadline) {
+        /*
+         * The deadline belongs to a SATURDAY, not to a week — and a card
+         * without a slate yet is asking about the Saturday being sold, not
+         * the week's busiest one. Passing the Week here resolved through
+         * saturdayOf(), so inside the split opening week (8/29 and 9/5) every
+         * group on 8/29 was shown a deadline a week late. The settle sweep
+         * already reads `$slate->saturday` and the publish sweep already
+         * reads activeSaturday(); this is the third caller agreeing with them.
+         */
+        $pending = $week === null ? null : Cadence::activeSaturday($week);
+        $fallbackDeadline = $pending === null ? null : Cadence::slateDeadline($pending);
+
+        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $fallbackDeadline) {
             $contest = $contests->get($group->id);
             $slate = $contest === null ? null : $slates->get($contest->id);
             $tally = $slate === null ? null : $made->get($slate->id);
@@ -158,8 +169,12 @@ new class extends Component
                     : (int) ($tally->pts ?? 0),
                 'won' => (bool) ($entry->won ?? false),
                 'wins' => (int) ($wins[$contest?->id] ?? 0),
-                'firstKick' => $slate?->games->map(fn ($slateGame) => $slateGame->game->kickoff_at)->filter()->min(),
-                'deadline' => $deadline,
+                'firstKick' => $slate?->firstKickoff(),
+                // A published slate answers for its OWN Saturday; a group
+                // still waiting on one is told about the card being sold.
+                'deadline' => $slate === null
+                    ? $fallbackDeadline
+                    : Cadence::slateDeadline($slate->saturday),
             ];
         });
     }

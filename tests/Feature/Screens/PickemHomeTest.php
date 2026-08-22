@@ -123,6 +123,37 @@ describe('my week (inside the flag)', function () {
             ->assertSee('of 15');
     });
 
+    it('dates a group card from its OWN Saturday inside a split week', function () {
+        /*
+         * 2026's Week 1 holds two cards, 8/29 and 9/5. Reading the deadline
+         * off the WEEK resolves through saturdayOf() — the busier 9/5 — so a
+         * group playing 8/29 was told its picks were due 9/3, a week after
+         * the games had been played. This lands on the rehearsal Saturday,
+         * which is the only real one before launch.
+         */
+        $this->travelTo('2026-08-26 16:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        [, $week] = splitPickemWeek();
+
+        $slate = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'saturday' => '2026-08-29',
+            'status' => Slate::PUBLISHED,
+            'published_at' => now(),
+        ]);
+
+        $card = Livewire::actingAs($commissioner)->test('pickem-home')
+            ->instance()->cards->firstWhere('contest.id', $contest->id);
+
+        // Thursday noon before the card being played, not before the next one.
+        expect($card['deadline']->toDateString())->toBe('2026-08-27')
+            ->and($card['deadline']->toDateString())->not->toBe('2026-09-03');
+
+        unset($slate);
+    });
+
     it('makes the mode doors the only create affordance on a first run', function () {
         /*
          * The doors ARE the pitch and the create door both. The old screen
