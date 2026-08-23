@@ -46,6 +46,18 @@ return [
     'pickem_open' => (bool) env('PICKEM_OPEN', false),
 
     /*
+     * Whether a pick reminder may also go out by SMS.
+     *
+     * OFF, and shipped that way on purpose. The path is wired and tested and
+     * the consent gate (User::canReceiveSms) already refuses anyone who has
+     * not verified a number and said yes — but a recurring weekly text is
+     * money and a carrier-complaint surface in a way an email is not, and
+     * nobody has verified a number yet. Flipping this is a decision to take
+     * once the pilot is real, not a default to discover.
+     */
+    'pickem_reminder_sms' => (bool) env('PICKEM_REMINDER_SMS', false),
+
+    /*
      * How many emails a day we will spend on things nobody asked for
      * individually — the newsletter, and later any digest.
      *

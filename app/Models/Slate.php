@@ -88,6 +88,28 @@ class Slate extends Model
             ->min();
     }
 
+    /**
+     * The next kickoff that has NOT happened yet — when the picks a reader
+     * still owes begin to lock.
+     *
+     * Distinct from firstKickoff() and the reminder's real anchor. Once the
+     * noon games have started, the first kickoff is in the past and stops
+     * being a deadline for anybody; the 4pm card is still open and still
+     * worth a last call. Anchoring on firstKickoff() would drop the whole
+     * slate out of the window the moment its earliest game began, taking
+     * every still-makeable pick with it.
+     *
+     * Null once every game has kicked: there is nothing left to be late for.
+     */
+    public function nextKickoff(): ?CarbonInterface
+    {
+        return $this->games
+            ->reject(fn (SlateGame $slateGame) => $slateGame->game?->hasKickedOff() ?? true)
+            ->map(fn (SlateGame $slateGame) => $slateGame->game?->kickoff_at)
+            ->filter()
+            ->min();
+    }
+
     /** A practice slate: graded and paid, but never counted. */
     public function counts(): bool
     {

@@ -314,9 +314,17 @@ Schedule::call(fn () => app(SyncNews::class)->followed())
 /*
  * The weekly email.
  *
- * Sunday morning, AFTER the 04:00-05:40 nightly block has landed games,
- * standings and box scores — sending before it would report Saturday's slate
- * from Friday's data, which is the one mistake a results email cannot make.
+ * TUESDAY morning, moved off Sunday 2026-08-22 when the pick'em results
+ * announcement claimed Sunday noon. Both are BULK mail and both spend the
+ * same `mail_daily_budget`, so sharing a day meant the second one released
+ * its tail into Monday — and results that arrive after the group has
+ * finished arguing are results nobody reads.
+ *
+ * Tuesday is not merely "not Sunday": it is the pick'em week's own turnover
+ * (Cadence::TURNOVER_DOW), so the digest now lands as the new week opens
+ * rather than competing with the old week's payoff. Still after the
+ * 04:00-05:40 nightly block, which is the constraint that put it at 08:00 —
+ * sending before it would report Saturday from Friday's data.
  *
  * Deliberately NOT `->when($inSeason)`. Almost everything else in this file is
  * gated, because there is nothing upstream to fetch in June; this is the
@@ -325,7 +333,7 @@ Schedule::call(fn () => app(SyncNews::class)->followed())
  * line, not an empty email.
  */
 Schedule::command('cfb:newsletter')
-    ->weeklyOn(ScheduleClass::SUNDAY, '08:00')
+    ->weeklyOn(ScheduleClass::TUESDAY, '08:00')
     ->timezone($tz)
     ->withoutOverlapping();
 
@@ -462,6 +470,27 @@ Schedule::command('cfb:kickoff-alerts')
 Schedule::command('pickem:publish-slates')
     ->hourly()
     ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping();
+
+/*
+ * "Your picks are due" — a day out from first kickoff, then ninety minutes
+ * out. Anchored on the first KICKOFF, never the commissioner's deadline:
+ * that is when an unpublished slate forfeits to the standard card, while
+ * players lock game by game at kickoff.
+ *
+ * This is the one NEW wake pattern the notification phase adds, and the
+ * window is why. The live tier already holds 11:00-03:00 awake, but a
+ * Friday-lunchtime wave one and a Saturday-morning last call both fall
+ * outside it, so the window has to open at 08:00. The cost is small and
+ * bounded: the sweep is DB-only, and its first query is its own guard —
+ * `status = published AND stamp IS NULL` over a table bounded by contests
+ * times Saturdays, so a tick with nothing due is one indexed read.
+ */
+Schedule::command('pickem:remind')
+    ->everyFifteenMinutes()
+    ->timezone($tz)
+    ->between('08:00', '23:45')
     ->when($inSeason)
     ->withoutOverlapping();
 

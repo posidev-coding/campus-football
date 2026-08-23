@@ -4,6 +4,7 @@ use App\Models\Game;
 use App\Models\Season;
 use App\Models\Week;
 use App\Services\CfbCalendar;
+use App\Support\Cadence;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
@@ -27,6 +28,34 @@ it('schedules the kickoff sweep on the five-minute cadence the stamp assumes', f
 
     expect($entry)->not->toBeNull()
         ->and($entry->expression)->toBe('*/5 * * * *');
+});
+
+it('keeps the two bulk mail sends on different days', function () {
+    /*
+     * The weekly digest and the pick'em results announcement are both BULK
+     * mail spending the same `mail_daily_budget`. Sharing Sunday meant the
+     * second one released its tail into Monday, and results that arrive
+     * after the group has finished arguing are results nobody reads. The
+     * digest moved to Tuesday — which is also the pick'em week's own
+     * turnover, so it now opens the new week rather than trailing the old.
+     */
+    $newsletter = collect(app(Schedule::class)->events())
+        ->first(fn (Event $event) => str_contains($event->command ?? '', 'cfb:newsletter'));
+
+    expect($newsletter)->not->toBeNull()
+        ->and($newsletter->expression)->toBe('0 8 * * '.Cadence::TURNOVER_DOW)
+        ->and($newsletter->expression)->not->toBe('0 8 * * 0');
+});
+
+it('sweeps pick reminders often enough for a ninety-minute last call', function () {
+    // The last call has a 90-minute window; a cadence slower than that
+    // starts missing cards entirely. The window opens at 08:00 because a
+    // Friday-lunchtime wave one falls outside the live tier's 11:00-03:00.
+    $entry = collect(app(Schedule::class)->events())
+        ->first(fn (Event $event) => str_contains($event->command ?? '', 'pickem:remind'));
+
+    expect($entry)->not->toBeNull()
+        ->and($entry->expression)->toBe('*/15 * * * *');
 });
 
 it('schedules recruiting by relative token, never a resolved year', function () {
