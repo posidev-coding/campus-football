@@ -14,6 +14,20 @@ use App\Models\WalletEntry;
 use App\Services\Contests\PickGrader;
 use App\Services\Espn\Sync\SyncGames;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Notification;
+
+/*
+ * Settlement dispatches AnnounceSlateResults now, so this fake is not
+ * decoration: without it every settle in this file sends real results mail
+ * while asserting about points.
+ *
+ * Notification only, never Bus::fake() — these tests ride REAL job dispatch
+ * for grading (GradeGamePicks off the score events), and faking the bus
+ * swallows that too. The symptom is a pick whose result stays null.
+ */
+beforeEach(function () {
+    Notification::fake();
+});
 
 /*
  * Phase 5 slice 6: live scoring and two-phase settlement. Grading rides

@@ -14,6 +14,20 @@ use App\Models\User;
 use App\Models\WalletEntry;
 use App\Services\Contests\BearPicks;
 use App\Services\Contests\WoodshedMode;
+use Illuminate\Support\Facades\Notification;
+
+/*
+ * Settlement dispatches AnnounceSlateResults now, so this fake is not
+ * decoration: without it every settle in this file sends real results mail
+ * while asserting about points.
+ *
+ * Notification only, never Bus::fake() — these tests ride REAL job dispatch
+ * for grading (GradeGamePicks off the score events), and faking the bus
+ * swallows that too. The symptom is a pick whose result stays null.
+ */
+beforeEach(function () {
+    Notification::fake();
+});
 
 /*
  * The founders' game, end to end: tiers of 8/6/4, the Lock at +6/−4 (the
