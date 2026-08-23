@@ -279,7 +279,13 @@ class PickemPreflight
      */
     private function scheduleCheck(): array
     {
-        $wanted = ['pickem:publish-slates', 'pickem:settle', 'pickem:open-lobbies'];
+        /*
+         * pickem:remind joined this list 2026-08-22. It is not optional
+         * scenery: unscheduled, nobody is ever told their picks are due,
+         * and the failure is invisible — every other check stays green
+         * while the weekly loop silently does not happen.
+         */
+        $wanted = ['pickem:publish-slates', 'pickem:settle', 'pickem:open-lobbies', 'pickem:remind'];
 
         $scheduled = collect(app(Schedule::class)->events())
             ->map(fn ($event) => $event->command ?? '')

@@ -236,6 +236,67 @@ log fetched "an hour ago" and called it fresh — true Sunday to Friday, false o
 Saturday, where the poll window is 15 minutes. Pin fixtures to a value that holds
 under the TIGHTEST window, not the usual one.
 
+## The weekly loop: two waves, two claims, three channels
+
+Shipped 2026-08-22. Three sends, all riding plumbing that already existed.
+
+**Pick reminders** — `pickem:remind`, every fifteen minutes 08:00–23:45 in
+season. Two waves off the same sweep: `remind` a day before the next open
+kickoff, `last_call` ninety minutes before it, each with its own stamp on
+`slates` (`picks_reminded_at`, `last_call_sent_at`). A slate is stamped even
+when nobody was due, the `games.kickoff_alert_sent_at` discipline — "checked,
+nothing to send" must not become "retry forever" at that cadence.
+
+The anchor is `Slate::nextKickoff()`, not `slateDeadline()` and not
+`firstKickoff()`. The commissioner's deadline is when an unpublished slate
+forfeits to the standard card; players lock game by game at kickoff. And the
+FIRST kickoff stops being anybody's deadline once the noon games start, while
+the late card is still pickable — anchoring there dropped the whole slate out
+of the window the moment its earliest game began.
+
+Wave two is suppressed when wave one fired inside `LAST_CALL_SUPPRESS_HOURS`,
+so a late-published card does not produce two messages in twelve hours.
+
+**Results** — dispatched from `SettleSlate`'s claim, the only once-ever
+signal in that path, and dispatched as an ID because the in-memory `$slate`
+is stale from that line onward (the claim is a query-builder update, so
+`status` still reads prelim). `AnnounceSlateResults` takes its OWN claim on
+`results_announced_at` before building the batch.
+
+**Why two claims.** `settled_at` claims the money and
+`results_announced_at` claims the noise. A queue retry re-runs the whole
+fan-out, so without the second claim every entrant is mailed twice; and a
+botched announcement is repaired with `pickem:announce --slate=<id>`, which
+clears that stamp and replays, while payouts stay keyed and spent. Nothing
+in the announcement path can reach the wallet.
+
+**The audience roots in `group_members`**, never `slate_entries` — for both
+the reminder and the "you missed it" half of results. An entry row is
+created lazily on the first pick, so a member who picked nothing is invisible
+to any query rooted there, and is precisely who both messages are for.
+
+**Channels per moment:**
+
+| | mail | push | database | vonage |
+| --- | --- | --- | --- | --- |
+| Pick reminder | ✅ verified + `pickem_notify_opt_in` | ✅ | ✗ stale after lock | behind `PICKEM_REMINDER_SMS`, off |
+| Results (entrant) | ✅ | ✅ | ✅ | ✗ |
+| Results (missed it) | ✗ never | ✅ | ✅ | ✗ |
+
+Mail on the pick'em list is its own consent (`pickem_notify_opt_in`, its own
+`List-Id`, and the signed unsubscribe names the list) — somebody may want
+their reminder and not the Sunday digest.
+
+**The mail budget is one bucket.** The weekly digest and the results
+announcement are both bulk; the digest moved from Sunday 08:00 to TUESDAY
+08:00 so they do not share a day and release each other's tail into tomorrow.
+Tuesday is also the pick'em week's turnover.
+
+**Never resolve Pennant in a sweep.** The reminder mirrors
+`config('cfb.pickem_open')` the way `pickem:preflight` does — the database
+driver persists a row per resolve, so `Feature::for($user)` inside a loop
+writes a row per user per run.
+
 ## Web push: VAPID keys, and the subscription is the consent
 
 Push rides `laravel-notification-channels/webpush` (over `minishlink/web-push`;
@@ -352,6 +413,19 @@ php artisan cfb:summaries --missing [--year=2025] # box scores, 1 req/game
 php artisan cfb:coaches [--missing|--current]     # careers + tenures, 2+2N req/coach
 php artisan cfb:aggregate                         # season totals, 0 requests
 ```
+
+The pick'em loop's own commands, all DB-only and all safe to dry-run:
+
+```
+php artisan pickem:remind --dry                   # who would be nudged, stamps nothing
+php artisan pickem:remind --wave=last_call        # one wave rather than both
+php artisan pickem:announce --slate=42 --dry      # what a replay would re-send
+php artisan pickem:announce --slate=42            # clears results_announced_at, replays
+```
+
+`pickem:announce` refuses a slate that has not settled. It is a repair for
+the ANNOUNCEMENT, never a settle button: payouts are keyed and `settled_at`
+is untouched by anything it does.
 
 **A seed is not finished when `cfb:migrate` exits.** Its `rosters` and `stats`
 steps QUEUE `SyncTeamSeason` jobs rather than running inline, and seeding
