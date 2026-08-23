@@ -62,10 +62,10 @@ it('declares a rail decision for every routed screen', function () {
     $pages = $screens->filter(fn (string $name) => in_array($name, [
         'home', 'get-app', 'pickem.home', 'pickem.lobby', 'pickem.join', 'scoreboard', 'game', 'standings', 'rankings',
         'stats', 'news', 'article', 'search', 'teams', 'team', 'conference',
-        'players', 'player', 'coach', 'recruiting', 'account',
+        'players', 'player', 'coach', 'recruiting', 'account', 'notifications',
     ], true));
 
-    expect($pages)->toHaveCount(21);
+    expect($pages)->toHaveCount(22);
 
     foreach ($pages as $name) {
         expect(Rail::mapKeys())->toContain($name);
