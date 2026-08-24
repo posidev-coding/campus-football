@@ -136,6 +136,22 @@ window.cfbPush = {
     },
 };
 
+/*
+ * The clipboard, guarded ONCE. writeText rejects off https and under
+ * permissions policies, and every copy button used to call it bare —
+ * flipping its "Copied" label over a clipboard that never changed, with
+ * an unhandled rejection in the console as the only witness. Resolves
+ * true only when the text actually landed; ChromeConsistencyTest bans
+ * bare navigator.clipboard in Blade so buttons cannot drift back.
+ */
+window.cfbClipboard = {
+    async copy(text) {
+        if (!navigator.clipboard) return false;
+
+        return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+    },
+};
+
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js');

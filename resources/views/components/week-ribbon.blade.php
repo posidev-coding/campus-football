@@ -29,7 +29,7 @@
         <p class="flex shrink-0 items-center gap-1.5 text-sm font-medium">
             @if ($clock['type'] === 'live')
                 <span class="flex items-center gap-1.5 font-semibold text-red-400">
-                    <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
+                    <x-live-dot />
                     Games live
                 </span>
             @elseif ($clock['type'] === 'kick' && $clock['at'] !== null)

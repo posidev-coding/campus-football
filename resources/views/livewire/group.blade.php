@@ -520,9 +520,12 @@ new class extends Component
                     x-data="{
                         copied: false,
                         copy() {
-                            navigator.clipboard.writeText(@js($this->joinUrl));
-                            this.copied = true;
-                            setTimeout(() => this.copied = false, 2000);
+                            window.cfbClipboard.copy(@js($this->joinUrl)).then((ok) => {
+                                if (! ok) return;
+
+                                this.copied = true;
+                                setTimeout(() => this.copied = false, 2000);
+                            });
                         },
                     }"
                 >
@@ -684,14 +687,20 @@ new class extends Component
                     copiedCode: false,
                     canShare: typeof navigator.share === 'function',
                     copyLink() {
-                        navigator.clipboard.writeText(@js($this->joinUrl));
-                        this.copiedLink = true;
-                        setTimeout(() => this.copiedLink = false, 2000);
+                        window.cfbClipboard.copy(@js($this->joinUrl)).then((ok) => {
+                            if (! ok) return;
+
+                            this.copiedLink = true;
+                            setTimeout(() => this.copiedLink = false, 2000);
+                        });
                     },
                     copyCode() {
-                        navigator.clipboard.writeText(@js($group->code));
-                        this.copiedCode = true;
-                        setTimeout(() => this.copiedCode = false, 2000);
+                        window.cfbClipboard.copy(@js($group->code)).then((ok) => {
+                            if (! ok) return;
+
+                            this.copiedCode = true;
+                            setTimeout(() => this.copiedCode = false, 2000);
+                        });
                     },
                     share() {
                         navigator.share({

@@ -181,9 +181,12 @@ new class extends Component
                 copied: false,
                 canShare: typeof navigator.share === 'function',
                 copy() {
-                    navigator.clipboard.writeText(@js($this->joinUrl));
-                    this.copied = true;
-                    setTimeout(() => this.copied = false, 2000);
+                    window.cfbClipboard.copy(@js($this->joinUrl)).then((ok) => {
+                        if (! ok) return;
+
+                        this.copied = true;
+                        setTimeout(() => this.copied = false, 2000);
+                    });
                 },
                 share() {
                     navigator.share({

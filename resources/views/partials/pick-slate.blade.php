@@ -71,7 +71,7 @@
         <span class="shrink-0">
             @if ($surfaceStatus === 'live')
                 <span class="flex items-center gap-1 text-sm font-semibold text-red-600 dark:text-red-400">
-                    <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
+                    <x-live-dot />
                     Live
                 </span>
             @elseif ($surfaceStatus === 'prelim')

@@ -936,7 +936,7 @@ new class extends Component
                     <div class="flex w-20 shrink-0 flex-col items-center gap-0.5 text-center">
                         @if ($this->isLive)
                             <span class="flex items-center gap-1 text-micro font-semibold text-red-600 dark:text-red-400">
-                                <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
+                                <x-live-dot />
                                 {{ $game->status_detail ?? 'Live' }}
                             </span>
 

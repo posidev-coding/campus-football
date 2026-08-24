@@ -31,7 +31,7 @@
 
         @if ($status === 'live')
             <span class="flex shrink-0 items-center gap-1 text-micro font-semibold text-red-600 dark:text-red-400">
-                <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
+                <x-live-dot />
                 Live
             </span>
         @elseif ($status === 'prelim')

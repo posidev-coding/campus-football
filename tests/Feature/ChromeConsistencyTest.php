@@ -143,3 +143,38 @@ it('renders no select boxes at all', function () {
     expect($violations)->toBe([], implode(', ', $violations)
         .' — renders a select box. Use <x-season-menu> or <x-filter-menu>.');
 });
+
+it('speaks the merged idioms through their components, never inlined', function () {
+    /*
+     * The consolidation sweep: each of these patterns lives in exactly one
+     * component now, and re-inlining it is how the copies drift apart —
+     * or, for the clipboard, how the unguarded writeText that lied
+     * "Copied" over a rejected promise comes back.
+     */
+    $banned = [
+        'animate-pulse rounded-full bg-current' => [
+            'components/live-dot.blade.php',
+            '<x-live-dot />',
+        ],
+        'navigator.clipboard' => [
+            null,
+            'window.cfbClipboard.copy() — the guarded machine in app.js',
+        ],
+        'border-green-200 bg-green-50' => [
+            'components/notice.blade.php',
+            '<x-notice tone="success">',
+        ],
+    ];
+
+    $violations = [];
+
+    foreach (bladeViews() as $path => $contents) {
+        foreach ($banned as $pattern => [$home, $instead]) {
+            if (str_contains($contents, $pattern) && $path !== $home) {
+                $violations[] = "{$path} inlines [{$pattern}] — use {$instead}";
+            }
+        }
+    }
+
+    expect($violations)->toBe([], implode(' | ', $violations));
+});
