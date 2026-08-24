@@ -179,6 +179,28 @@ return [
             'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
         ],
 
+        /*
+         * Pulse's ingest stream, buffered here and drained to MySQL by
+         * `pulse:work` so telemetry never rides the request path.
+         *
+         * Its OWN database rather than sharing the cache's DB 1: `cache:clear`
+         * flushes that database, and it is run deliberately (it also re-arms
+         * the mail/SMS budgets and the ESPN limiter). Buffered telemetry must
+         * never be collateral damage of a routine clear.
+         */
+        'pulse' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('REDIS_PULSE_DB', '2'),
+            'max_retries' => env('REDIS_MAX_RETRIES', 3),
+            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
+            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+        ],
+
     ],
 
 ];

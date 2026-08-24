@@ -298,15 +298,14 @@ At 75 users (top of the pilot range):
 | Weekly recaps | Sonnet 5 | 323 | 3,900 | 520 | **$4.20** |
 | Notification copy pool (build-time) | Sonnet 5 | 12 | 4,000 | 3,000 | **$0.46** |
 | Bear taunts | Haiku 4.5 | 60 | 2,000 | 600 | **$0.30** |
-| College GameDay (incl. web search) | Sonnet 5 | 17 | 8,000 | 300 | **$0.49** |
+| College GameDay (**fallback only** — feed is primary) | Sonnet 5 | ~1 | 8,000 | 300 | **$0.03** |
 | Maintenance advisor | Claude Code | 4–8 | — | — | **$0.00** |
 | Application monitoring | Pulse (self-hosted) | — | — | — | **$0.00** |
-| | | | | **Total** | **~$9.60** |
+| | | | | **Total** | **~$9.14** |
 
 Rates: Haiku 4.5 $1/$5 per MTok · Sonnet 5 $2/$10 · Batch API halves both ·
-cache read 0.1× · **web search $10/1,000 searches — used only by Phase 7**,
-where it is both mandatory (it is the anti-hallucination guard) and negligible
-at ~17 searches a month.
+cache read 0.1× · **web search $10/1,000 searches — used only on Phase 7's
+fallback path**, a handful of searches a season.
 
 Stat answers are budgeted at **5 per user per week** on the Tuesday-to-Tuesday
 pick'em cadence — 1,629 questions a month across the pilot. The real figure will
@@ -379,11 +378,11 @@ constraint here.
 
 ---
 
-## Phase 1 — Sensors (build first; valuable with or without AI)
+## Phase 1 — Sensors (build first; valuable with or without AI) ✅ **Complete 2026-08-24**
 
 Every piece mirrors an existing shape in the codebase.
 
-**1.1 Install Laravel Pulse, ingesting through Redis.**
+**1.1 Install Laravel Pulse, ingesting through Redis.** ✅ **Landed 2026-08-24.**
 `composer require laravel/pulse`, publish, migrate, add the `pulse` Redis
 connection on DB 2, set `PULSE_INGEST_DRIVER=redis` **locally and in
 production**, and run `pulse:work` in both — full detail in the performance
@@ -400,44 +399,174 @@ production is the only detector that class of bug has.
 
 Gate the `/pulse` dashboard behind the existing `User::isAdmin()`.
 
-**1.2 Client error capture.** `window.onerror` + `unhandledrejection` POST to a
+> **As built.** `laravel/pulse` v1.8.0 (it pulls `laravel/sentinel` and
+> `doctrine/sql-formatter` with it). Ingest defaults to `redis` on connection
+> `pulse` (Redis DB 2) in `config/pulse.php` itself, not only in the
+> environment, so a machine with no `PULSE_*` vars still agrees with the
+> directive. `pulse:work` rides `composer dev` locally — **it is still owed a
+> Cloud daemon in production**, and until it has one nothing reaches MySQL
+> there. `CacheInteractions` and `Queues` are off by default (volume; reasoning
+> in `config/pulse.php` and `docs/operations.md`); `Servers` is registered but
+> silent without `pulse:check`. The `viewPulse` gate is defined in
+> `AppServiceProvider` — Pulse's own default answers `environment('local')`,
+> which is open to every developer locally and closed to everybody in
+> production. Verified end to end: a slow query reached Redis DB 2, `pulse:work
+> --stop-when-empty` drained it to `pulse_entries` and `pulse_aggregates`.
+> Tests: `tests/Feature/Admin/PulseTest.php`.
+
+**1.2 Client error capture.** ✅ **Landed 2026-08-24.** `window.onerror` + `unhandledrejection` POST to a
 Redis-rate-limited endpoint that dedupes by fingerprint in Redis before writing
 `client_errors`. **No APM covers this** — it is the class of bug a 390px PWA
 ships silently, and it is currently invisible.
 
-**1.3 Queue-failure capture.** A `Queue::failing()` listener writing a
+**1.3 Queue-failure capture.** ✅ **Landed 2026-08-24.** A `Queue::failing()` listener writing a
 `feed_runs`-shaped row. Pulse's Exceptions recorder catches thrown exceptions,
 but Cloud's managed queues hide the *failed job record* from the app entirely
 (`RecentSyncFailures` says so in its own description), so this stays hand-built.
 
-**1.4 UX funnel events.** `ux_events` with a **bounded, named** event vocabulary
-(~8: onboarding step reached, team picker completed, invite link opened,
-registration completed, slate entered, first pick made, slate abandoned with
-zero picks, tour dismissed). **Redis hash counters on the request path, nightly
-job persists the rollup** — no row per event, no MySQL write in the pick or
-onboarding flows. Aggregate only, no free-text. This is the "UX friction" signal,
-and no off-the-shelf APM can produce it because the events are specific to this
-product.
+**1.4 UX funnel events.** ✅ **Landed 2026-08-24.** `ux_events` with a
+**bounded, named** event vocabulary (~8: onboarding step reached, team picker
+completed, invite link opened, registration completed, slate entered, first pick
+made, slate abandoned with zero picks, tour dismissed). **Redis hash counters on
+the request path, nightly job persists the rollup** — no row per event, no MySQL
+write in the pick or onboarding flows. Aggregate only, no free-text. This is the
+"UX friction" signal, and no off-the-shelf APM can produce it because the events
+are specific to this product.
 
-**1.5 `App\Support\OpsReport`.** A third report class in the established shape.
+> **As built.** Vocabulary is `App\Enums\UxSignal`, eight cases; counters ride
+> `App\Actions\RecordUxEvent` into Redis DB 2 (the telemetry database, beside
+> Pulse's stream, out of `cache:clear`'s reach), and `cfb:ux-rollup` persists
+> **finished days only** at 04:55 on the existing wake. **"Slate abandoned with
+> zero picks" is derived, not counted** — it is `slate_entered` minus
+> `first_pick_made`, and a third counter for a difference is a third counter
+> that can disagree with the other two. `slate_entered` is deduped per member
+> per slate per day, because it fires on MOUNT and a `wire:navigate` hop
+> re-mounts; that dedupe key is the only place a user id appears, it is TTL'd in
+> Redis and never persisted. Every failure is swallowed — a counter is never
+> worth a 500 on a pick. Tests speak to a real Redis on **DB 15**, pinned in
+> `phpunit.xml` so the suite cannot write into a developer's telemetry.
+>
+> ⚠️ **phpredis stringifies an array argument to the literal `"Array"`.**
+> `sadd($key, [$member])` silently adds one member named `Array` and still
+> returns 1 the first time, so every subject deduped to the same subject and the
+> rollup found no days to roll up. Pass set members as SCALARS. Caught by a
+> test, not by review.
+
+**1.5 `App\Support\OpsReport`.** ✅ **Landed 2026-08-24.** A third report class in the established shape.
 `CoverageReport` and `PickemPreflight` already agree on
 `{key, label, status: ok|warn|fail, detail, remedy}` — `PickemPreflight`'s
 docblock says it is *"shaped like CoverageReport on purpose."* `OpsReport` makes
 it three, aggregating Pulse's aggregates plus 1.2–1.3.
 
-**1.6 `cfb:telemetry --json`.** One command emitting the snapshot: `OpsReport`,
-`CoverageReport::checks()`, `SyncSchedule::tasks()`, recent `feed_runs` errors,
-Pulse's slow-request / slow-query / exception aggregates, client errors, funnel
-rollups. Aggregate only, no user identifiers.
+**1.6 `cfb:telemetry --json`.** ✅ **Landed 2026-08-24.** One command emitting
+the snapshot: `OpsReport`, `CoverageReport::checks()`, `PickemPreflight::checks()`,
+`SyncSchedule::tasks()`, recent `feed_runs` errors split into commands and jobs,
+Pulse's slow-request / slow-query / slow-job / outgoing / exception entries
+grouped by key, client errors, funnel rollups. Aggregate only, no user
+identifiers.
 
-Files: `app/Support/OpsReport.php`, `app/Console/Commands/TelemetryCommand.php`,
-`app/Listeners/RecordJobFailure.php`, `app/Actions/RecordUxEvent.php`,
-`config/pulse.php`, new migrations, `routes/console.php` (nightly rollup —
-ungated, `withoutOverlapping()`, `->timezone($tz)`, riding the existing
-04:00–07:00 wake rather than adding one; a scheduled task holds a scale-to-zero
-cluster up for the whole sleep timeout).
+> **As built (1.5 + 1.6).** `OpsReport` carries seven rows in the shared
+> `{key, label, status, detail, remedy}` shape — a test asserts it matches
+> `PickemPreflight` key-for-key. One of them watches the MONITOR rather than the
+> app: a stalled `pulse:work` looks exactly like no traffic, so the ingest row
+> reads the Redis stream length and names `pulse:work` as the remedy. The
+> pick-through row DERIVES abandonment from the two funnel counters. Its 50%
+> warn threshold is a first calibration and has never seen a real Saturday.
+>
+> `cfb:telemetry` defaults to a terminal read and takes `--json` for the
+> `/ops/telemetry` route Phase 3 will add. It **always exits zero** — `cfb:doctor`
+> is the deploy gate, and a snapshot command that fails a pipeline because a
+> request was slow is one somebody turns off. Pulse entries are grouped by key
+> so a route that was slow two hundred times is one line with a count, which is
+> what keeps the payload prompt-sized.
+>
+> The no-identity rule is asserted, not trusted: a test fires every sensor with
+> a distinctively-identified user and asserts the payload contains no email, no
+> handle, no id and no `user_id`. `SyncSchedule::tasks()` hands back Eloquent
+> `FeedRun` instances for the admin table, so the command projects six fields
+> off each rather than serializing the model.
+>
+> ⚠️ **`signal` is a reserved word in MySQL 8**, like `STORED`. An unbackticked
+> one in a `selectRaw` is a 1064, not a wrong answer.
+
+Files, as built: `app/Support/OpsReport.php`,
+`app/Console/Commands/TelemetryCommand.php`,
+`app/Console/Commands/RollUpUxEventsCommand.php`,
+`app/Actions/RecordUxEvent.php`, `app/Actions/RecordClientError.php`,
+`app/Http/Controllers/ClientErrorController.php`, `app/Enums/UxSignal.php`,
+`app/Models/ClientError.php`, `app/Models/UxEvent.php`, `config/pulse.php`,
+four migrations, `routes/console.php` (nightly rollup at 04:55 — ungated,
+`withoutOverlapping()`, `->timezone($tz)`, riding the existing 04:00–07:00 wake
+rather than adding one; a scheduled task holds a scale-to-zero cluster up for
+the whole sleep timeout).
+
+> **One deviation.** The plan named `app/Listeners/RecordJobFailure.php`.
+> `app/Listeners` is a NEW BASE FOLDER, which `CLAUDE.md` requires approval for,
+> and `AppServiceProvider` already states the standing choice in a comment —
+> *"Closures here rather than a Listeners folder (no new base folder)"* — for the
+> event-driven scoring listeners. So the `Queue::failing` hook is a closure in
+> `AppServiceProvider` and the write is `FeedRun::jobFailed()`, beside
+> `begin`/`complete`/`fail`. Same behavior, existing layout.
 
 ---
+
+## Phase 1b — The Game Quality snapshot ✅ **Landed 2026-08-24**
+
+**The one piece of this plan that had a real deadline**, and it was never
+"future work" — rehearsal is Aug 29 and the first public Saturday is Sep 5.
+Every slate published before this existed is gone as calibration data
+permanently, because the data it captures cannot be reconstructed afterwards.
+See the Future-work section below for the measurement: **4,847 completed games
+across 2021–2025 carry zero `matchup_quality` and zero odds of any kind**, so
+three of the score's five components — 85 of its 100 points — have no history
+to be tuned against and never will.
+
+**It was not "a few lines in `PublishSlate`."** It is four pieces, because the
+extraction has to come first:
+
+**1. `slate_games.quality` + `slate_games.quality_parts`.** `decimal(5,2)`
+nullable and `json` nullable, both after `tier`; cast `float` and `array`.
+Nullable means "could not be scored" and never 0.
+
+**2. `GameQualityScore::components()` and `::total()`.** `for()` becomes the two
+composed, so both `SuggestSlate` callers are untouched. `components()` returns
+the RAW inputs (`matchup_quality`, `spread`, `open_spread`, `home_rank`,
+`away_rank`, `conference_game`) beside the weighted parts, under a `'v' => 1`
+token — a re-fit is solving for the weights, so it needs the feature, not the
+product.
+
+> ⚠️ **The bug this fixed on the way past.** The original had no `else` branch,
+> so a missing `matchup_quality` silently contributed 0 and a missing open
+> silently contributed 0. Persisting that would teach a future re-fit that
+> unrated games are *bad* games. They are **unmeasured**, which is not the same
+> thing. A part is now `null` when its signal is ABSENT and `0.0` only when it
+> is present-and-zero — `total()` skips the nulls, so the live score is
+> unchanged.
+
+**3. The write in `PublishSlate::force()`** — inside the existing transaction,
+after validation passes and before the status flip, with
+`games.game.odds` + `games.game.predictor` eager-loaded first. **Not**
+`SuggestSlate::AFFINITY_BONUS`: the base score is a per-game fact, affinity is a
+per-group opinion, and folding it in would make one matchup score differently on
+two rooms' slates.
+
+**4. Tests, broken back.** No predictor yields `weighted.matchup === null` (not
+`0.0`) with the score still summing the rest; no usable current odd yields BOTH
+columns null; re-publishing never rewrites the snapshot.
+
+Two traps, both verified:
+
+- **`PublishSlate` only did `loadMissing('contest')`.** Measured without the
+  eager load, a 6-game slate costs **25 queries against 13 for 2** — three extra
+  reads per row, inside a transaction holding a write lock; a 15-game slate would
+  be ~45. **No feature test can see this**: `preventLazyLoading`'s per-instance
+  flag is false under test, so it resolves silently and N+1s only in production.
+  Guarded by a query-count comparison plus a source sweep.
+- **`components()` can legitimately return null at publish.** It reads the LIVE
+  current-phase odd, while the slate's line was frozen into `slate_games.spread`
+  earlier — possibly days earlier. The null is recorded honestly. Tightness and
+  movement stay recomputable later from `spread` / `market_spread` /
+  `odds_provider` / `odds_captured_at`, which the row already stores.
 
 ## Phase 2 — The workbook and the Kanban
 
@@ -652,80 +781,167 @@ Plus a per-user daily cap via `RateLimiter`.
 
 ## Phase 7 — College GameDay
 
-**The premise is correct: ESPN's feeds do not carry this.** Nothing in the four
-synced hosts exposes where GameDay is broadcasting from. It is the one weekly
-fact in the product that no feed provides — which makes it the single best
-justification for the AI SDK in the whole plan, because here the model is
-*legitimately* the data source rather than a narrator over one.
+**The premise is correct: ESPN's four synced hosts do not carry this.** Nothing
+in the JSON feeds exposes where GameDay is broadcasting from — which is why this
+started as the best justification for the AI SDK in the whole plan.
 
-That also makes it the **riskiest** feature here, and it inverts the Phase 5
-rule. Everywhere else the model never emits a fact. Here it must. So the guards
-carry the weight instead.
+**Then a real feed turned up.** The promo page hydrates from an `index.json`
+that carries two weeks of locations, so the design flipped: **the feed is
+primary, the model is the fallback**, and the model went from being the data
+source to being the thing that covers the weeks the feed lags.
+
+That is a better outcome and a cheaper one — but it does not make this safe by
+default. The feed is **hand-maintained and demonstrably dirty**: it currently
+ships last season's venue under this season's matchup, and alt text naming the
+wrong school. So the guards below still carry the weight; they simply apply to
+both paths now rather than to the model alone. The Phase 5 rule — the model
+never emits a fact — is *restored* here rather than suspended: the model
+proposes a location, and our own `venues`/`games` data decides whether it is
+real.
+
+### The source: a real JSON feed exists — and it is the primary source
+
+Fetching `https://promo.espn.com/collegegameday/` as HTML returns **only ESPN's
+boilerplate footer** — the page is JavaScript-hydrated, so a plain
+`Http::get()` on the page gets nothing. But the network tab's XHR shows the page
+hydrates from an **`index.json`** behind it, and that file carries exactly what
+this feature needs.
+
+**Capture the exact URL from the network tab and pin it in config** — it was read
+from a browser session, not derived, so do not guess the path.
+
+**This inverts the design.** The feed is the primary source and the resolution is
+deterministic; **the model drops to a fallback**, used only when the feed is
+missing, stale, or changes shape. That is the right shape — a feed we can parse
+beats a model we have to guard, the same reasoning that has the rest of this app
+reading ESPN's feeds rather than reasoning about football.
+
+#### What to read — and only this
+
+From `matchups[]`, take **`cutoffTime`, `location`, `date`, `prefix`**. Nothing
+else in the payload is trustworthy. The live 2026-08-24 sample carried:
+
+```
+matchups[0]  cutoffTime 2026-09-05T09:00:00  location "Baton Rouge, LA"  prefix "Week 1 Live from"
+matchups[1]  cutoffTime 2026-09-12T09:00:00  location "AUSTIN, TX"       prefix "Week 2 Live from"
+```
+
+Two weeks of lookahead, which means fewer fetches and a free "next week" line on
+the card.
+
+#### ⚠️ The payload is dirty — these are load-bearing traps
+
+The page is clearly hand-maintained, and last season's content was left in place
+rather than removed (the `sectionVisibleBeforeCutoff` / `AfterCutoff` booleans
+hide it instead). Verified in the live sample:
+
+- **`map.*` is unmaintained carryover from a previous season, and it will lie to
+  you.** `matchups[0]` is Baton Rouge / LSU, but its `map` block reads
+  `locationName: "South Oval"`, `address: "Norman Oklahoma"`, `imageSrc:
+  ou-map.png` — **Oklahoma**. `matchups[1]` is Austin / Texas, but its `map`
+  reads `"Aggie Park"`, `"College Station"`, `tam-map.png` — **Texas A&M**.
+  Reading location from `map` puts *Norman, Oklahoma* on the home page during an
+  LSU week. **Never read `map`.**
+- **`homeTeamLogoAlt` is wrong in the live data.** `matchups[0]`'s alt text says
+  `"Ohio State logo"` while its `homeTeamLogoSrc` is `lsu.png`. **Never derive
+  team identity from alt text** — resolve from `location` + date instead.
+- **`schedule.dates` (Dec 2025), `videos.playlist` (2025 Heisman/CFP),
+  `announcement`, `schoolBannerOne`** are all last-season leftovers. Ignore them.
+- **`id` formatting is inconsistent** — `"Clemson-vs-LSU"` versus
+  `"Ohio State vs Texas"`. Do not parse it.
+- **`location` casing is inconsistent** — `"Baton Rouge, LA"` versus
+  `"AUSTIN, TX"`. Normalize before matching.
+- **Asset paths are stamped `/2025/`** even for 2026 content — the scaffold is
+  reused, so key nothing on the path year.
+- `instagram.city` even carries a typo ("Baton Rougue"). Treat every field
+  outside the four named above as decoration.
+
+#### The resolver — validated end to end against our own data
+
+Match on **`(city, state, saturday)`** into `venues` joined to `games`. Run
+against the live payload on 2026-08-24, both weeks resolved uniquely and
+correctly:
+
+| Feed | Resolves to |
+| --- | --- |
+| Baton Rouge, LA · 2026-09-05 | **LSU vs Clemson**, Tiger Stadium ✓ |
+| AUSTIN, TX · 2026-09-12 | **Texas vs Ohio State**, DKR-Texas Memorial ✓ |
+
+**And the same query proves why the date is load-bearing:** Austin on **Sep 5**
+is Texas–Texas State, and Baton Rouge on **Sep 12** is LSU–Louisiana Tech. A
+resolver keyed on city alone lands on the wrong game in both directions. City +
+state + the specific Saturday is the key — and the code must **assert that match
+is unique** rather than take `first()`, since a city can host a neutral-site game
+alongside a home team's.
+
+This resolution also *is* the contradiction check from the guards below: a
+`location` that matches no game that Saturday is rejected, not displayed.
+
+#### Freshness guard — the trap this feed sets
+
+Because `matchups[]` is hand-maintained, it will at some point lag. **If no
+`cutoffTime` matches the upcoming Saturday, the answer is `unknown`** — never
+render the most recent matchup as though it were this week's. That is the
+"never write a default when data is missing" rule applied to a feed that
+helpfully keeps stale rows around.
+
+`faq` in the same payload confirms the cadence: *"The locations — usually
+announced a week in advance — are chosen by ESPN based on competitive matchups,
+rivalries and other factors."* That validates the Sun–Thu schedule below.
+
+#### Discipline
+
+One request per week, no polling, and it does **not** go through `EspnClient` —
+that client exists for the JSON feeds and their cost tiers, and a promo-page
+fetch does not belong inside its rate limiter or User-Agent allowlist. Cache the
+parsed result; store the raw payload hash so a shape change is detectable rather
+than silent.
+
+Still worth evaluating as fallbacks: the show's social account (where the
+location often lands first), and Wikipedia's per-season GameDay tables — well
+maintained, historical, and the practical backfill source.
 
 ### The routine
 
-An in-app `laravel/ai` agent (**not** a Claude Code routine — this is production
-data that must land in the database and render on a user-facing screen), using
-Anthropic's **`WebSearch` provider tool** with structured output:
-
-```
-{ site, city, state, host_team_name, game_hint,
-  announced: bool, confidence, source_url }
-```
-
-Scheduled daily around 09:00 ET, **Sunday through Thursday, in-season only**,
-and it **stops for the week the moment a Saturday is confirmed** — so a normal
-week costs one or two runs, not five. Idempotent on `(season_year, saturday)`,
-the same keyed-idempotency the wallet entries and the workbook use.
-`Cadence::currentSaturday()` names the target. Gate on
+`cfb:gameday`, scheduled daily around 09:00 ET, **Sunday through Thursday,
+in-season only**, stopping for the week the moment a Saturday resolves — so a
+normal week is one or two runs, not five. Idempotent on
+`(season_year, saturday)`, the same keyed idempotency the wallet entries and the
+workbook use. `Cadence::currentSaturday()` names the target; gate on
 `CfbCalendar::phase()->isLive()`.
 
-### Source candidates — evaluate, don't assume
+Two paths, in order:
 
-**`https://promo.espn.com/collegegameday/`** is worth investigating as a
-first-party source, and is the obvious place to look. **It is a candidate, not
-the chosen reference** — do not build the feature around it without checking it
-properly first.
+1. **The feed.** Fetch `index.json`, read the four trusted fields, resolve
+   `(city, state, saturday)` against `venues`/`games`. No AI, no cost. This will
+   be the path essentially every week.
+2. **The model, only on failure** — feed unreachable, shape changed, no
+   `cutoffTime` matching the upcoming Saturday, or a `location` that resolves to
+   more than one game. An in-app `laravel/ai` agent (**not** a Claude Code
+   routine — this is production data that must land in the database and render on
+   a user-facing screen) using Anthropic's **`WebSearch` provider tool** with
+   structured output:
 
-What one automated fetch on 2026-08-24 returned: **only ESPN's boilerplate
-footer** — Terms of Use, Privacy Policy, Disney Ad Sales — with no campus, no
-city, no featured game, and no schedule. That is the signature of a
-JavaScript-hydrated page whose body never reaches a plain HTML-to-text
-conversion. If that holds, a `Http::get()` scrape in Laravel gets nothing
-useful, and it would need either a headless browser or the JSON endpoint behind
-the hydration.
+   ```
+   { site, city, state, host_team_name, game_hint,
+     announced: bool, confidence, source_url }
+   ```
 
-**That was one automated fetch, not a verdict.** Before ruling it in or out,
-check by hand: open it in a real browser, watch the network tab for an
-underlying JSON call (that endpoint, if it exists, is far better than scraping
-the page — stable, parseable, and cheap), and try a normal browser User-Agent.
-
-If a first-party endpoint does exist, **prefer it over the AI path entirely** and
-demote the model to a fallback for the weeks it goes stale or changes shape. A
-feed we can parse beats a model we have to guard, every time — which is the same
-reasoning that makes the rest of this app read ESPN's feeds rather than reason
-about football.
-
-Whatever the source, respect the house discipline: this is an ESPN host, so one
-request per week, no polling, and it does **not** go through `EspnClient` — that
-client exists for the JSON feeds and their cost tiers, and a promo-page scrape
-does not belong inside its rate limiter or its User-Agent allowlist.
-
-Also worth evaluating alongside it: the show's own social account (the location
-is usually announced there first), and Wikipedia's per-season GameDay table,
-which is well-maintained, historical, and would double as the backfill source
-mentioned below.
+   Its output goes through the *same* resolver and the *same* guards as the feed.
+   Expect this to fire a handful of times a season, not weekly.
 
 ### The guards, which are the actual feature
 
-0. **If a parseable first-party source exists, use it and skip the model.** The
-   guards below apply to the AI path; they are not a reason to prefer it.
+Guards 2–6 apply to **both** paths — the feed is not more trustworthy than the
+model just because it is first-party, as the `map` block above proves. Guard 1
+applies to the model path only.
+
 1. **Search is mandatory; parametric memory is not a source.** A response with no
    `source_url`, or one the search did not return, is discarded as unknown. The
-   model may not answer from what it remembers. Giving the search a strong hint
-   toward the promo page or whatever source proves best is fine — pinning it to
-   one domain via `allowed_domains` is not, since the fallback's whole value is
-   working the week the primary source breaks.
+   model may not answer from what it remembers. Hinting the search toward the
+   promo page is fine — pinning it to one domain via `allowed_domains` is not,
+   since the fallback's whole value is working the week the primary source
+   breaks.
 2. **The site must resolve to a `Team` we already hold**, via `Search::teams()`.
    An unresolvable campus is unknown, never displayed as fact.
 3. **The contradiction check — the strongest guard, and free.** GameDay
@@ -783,17 +999,19 @@ three registers. Georgia may appear here freely: the copy-and-voice rule bars it
 from *examples and jokes*, and explicitly permits it "as live data," which is
 exactly what this is.
 
-**Cost:** ~17 calls/month worst case at ~$0.32, plus web search at $10 per 1,000
-searches (~$0.17). **Under $0.50/month.** Use Sonnet 5 rather than Haiku here —
-the volume is trivial and a wrong campus on the home page is the expensive kind
-of error.
+**Cost:** now that the feed is the primary path, the model fires only on
+fallback — call it a handful of times a season rather than weekly. **Well under
+$0.10/month**, and most months exactly $0.00. Use Sonnet 5 rather than Haiku on
+that path: the volume is trivial and a wrong campus on the home page is the
+expensive kind of error.
 
 ---
 
-## Future work — calibrating the Game Quality Score
+## Future work — re-fitting the Game Quality Score
 
-Not a phase. Recorded because the investigation that produced it should not have
-to be repeated, and because **one piece of it expires**.
+Not a phase, and no longer urgent: the piece that expired is **Phase 1b**, which
+has landed. Recorded because the investigation that produced it should not have
+to be repeated.
 
 ### The finding
 
@@ -825,14 +1043,9 @@ identical inputs, cannot be audited when someone asks why a game was a Dive, and
 not `0.0`, for a game that cannot be scored. It would be a differently-shaped
 guess over the same sparse inputs, with strictly worse properties.
 
-### ⏰ The part that expires — do this before the first public Saturday
-
-**Snapshot the score and all five of its components onto `slate_games` at
-publish time.** Every published slate then becomes a labeled row. It costs
-nothing, needs no AI, and is a few lines in `PublishSlate`.
-
-**Slates published before this exists are gone as calibration data forever.**
-Same argument as Phase 1's telemetry, same deadline.
+The finding above is long-term work with no deadline, with ONE exception, and
+that exception is no longer filed here: it is **Phase 1b**, above. Everything
+that remains in this section is the part that can wait.
 
 ### Then, once a season of labels exists
 
@@ -909,7 +1122,7 @@ worktree is committed and merged**; nothing here waits for Sep 1 or Sep 5.
 | --- | --- | --- |
 | 0 | Phase 0 — Console setup | None — no code at all |
 | 1 | **Phase 1 — sensors** | None — net-new files |
-| 1b | **⏰ Game Quality snapshot** (Future-work section) | `PublishSlate` — a few lines, **expires Sep 5** |
+| 1b | **Phase 1b — Game Quality snapshot** ✅ landed | `PublishSlate` + a `GameQualityScore` extraction — four pieces, not a few lines |
 | 2 | **Phase 2 — Filament theme + workbook** | None — panel only, excluded from sweeps |
 | 3 | **Phase 3 — advisor routine** | None — new routes only |
 | 4 | Phase 6 — budget guard | None |
@@ -924,9 +1137,11 @@ sensors are already recording. Phase 2's Filament theme also unblocks the admin
 UI requests that poking will generate, and the workbook is the right intake for
 them.
 
-**Item 1b is the one thing here with a real deadline.** It is a few lines in
-`PublishSlate` and needs no AI, but slates published before it exists are gone as
-calibration data permanently. Do it alongside Phase 1.
+**Item 1b was the one thing here with a real deadline** — rehearsal Aug 29,
+first public Saturday Sep 5 — and it has landed. It needed no AI, but it was
+four pieces rather than a few lines: the components/total extraction had to come
+first, and it turned up a live null-handling bug on the way. Slates published
+before it existed are gone as calibration data permanently.
 
 **Phase 7 (GameDay) is ordered ahead of recaps and Search answers** because it is
 the highest visible payoff per line of code, it touches only a new Home card
@@ -970,14 +1185,20 @@ Per `CLAUDE.md`, in order:
      randomizes `alt_color` and `abbreviation`.
    - Target the Filament **widget class**, not the page — widget content is not
      in the page's HTML.
-   - **GameDay, the highest-risk surface — test the guards, not the happy path:**
-     a response with no `source_url` yields `unknown`; a host team with no home
-     game that Saturday is **rejected** (the contradiction check, and this is the
-     one test that matters most); an unresolvable campus yields `unknown`; a
-     `confirmed` row is never overwritten by a later run; a second run in the
-     same week is a no-op; the off-season phase renders no card at all. Fake the
-     agent — `preventStrayPrompts()` means a real web search can never fire in
-     CI, which would otherwise cost money on every run.
+   - **GameDay, the highest-risk surface — test the guards, not the happy path.**
+     Save the live 2026-08-24 `index.json` as a fixture, dirt included, and
+     assert against it: `(city, state, saturday)` resolves Baton Rouge/Sep 5 to
+     LSU–Clemson and Austin/Sep 12 to Texas–Ohio State; **Austin/Sep 5 does not
+     resolve to the Sep 12 game** (the date is load-bearing); a `location`
+     matching two games that Saturday is rejected rather than `first()`-ed;
+     nothing is ever read from `map`, `homeTeamLogoAlt`, `schedule`, or
+     `videos` — a source sweep is the honest way to hold that; a payload whose
+     newest `cutoffTime` predates the upcoming Saturday yields `unknown`, **not**
+     the stale matchup. Then the model path: no `source_url` yields `unknown`; a
+     host team with no home game that Saturday is rejected; a `confirmed` row is
+     never overwritten; a second run in the same week is a no-op; the off-season
+     renders no card at all. Fake the agent — `preventStrayPrompts()` means a
+     real web search can never fire in CI and cost money on every run.
 2. **`vendor/bin/pint --dirty --format agent`** after any PHP change.
 3. **`npm run build`** after any Blade change, or new Tailwind utilities are
    missing at runtime and it reads as a design bug.
@@ -1022,9 +1243,11 @@ Per `CLAUDE.md`, in order:
 7. **GameDay auto-publish vs. admin confirm.** Recommendation: auto-publish when
    every guard passes (the contradiction check is strong), hold as `proposed`
    otherwise. Flip to always-confirm if the first few weeks prove noisy.
-8. **GameDay source.** Investigate `promo.espn.com/collegegameday/` by hand
-   before building — a parseable first-party endpoint, if one exists behind it,
-   beats the AI path and demotes the model to a fallback. See Phase 7.
+8. ~~GameDay source.~~ **Settled 2026-08-24:** `promo.espn.com/collegegameday/`
+   hydrates from an `index.json` that carries two weeks of locations. The feed is
+   the primary source, the model is the fallback. Remaining task is to capture
+   the exact endpoint URL from the network tab and pin it in config — and to read
+   Phase 7's trap list before parsing a single field.
 9. ~~Whether Phases 4–5 wait for Sep 1.~~ **Settled:** nothing waits for a date.
    Everything user-facing ships flag-closed and flips when tuned.
 
@@ -1033,16 +1256,23 @@ Per `CLAUDE.md`, in order:
 ## Where this plan lives
 
 This file — `docs/plans/ai-layer.md` — **is** the durable copy, written
-2026-08-24. It was intended to stay uncommitted until launch hardening merged,
-but the concurrent hardening session swept it into commits `ac2c194` and
-`3d18153` on the `launch-hardening` branch — presumably via `git add -A`. No
-harm done: it is a documentation file with no runtime effect, and it now rides
-in with that branch. Worth knowing only if those commits are being reviewed
-individually.
+2026-08-24 and living on the **`ai-layer`** branch, cut from the tip of
+`launch-hardening` so the implementation starts against current code rather than
+a stale `main`. Once hardening merges, this branch's diff against `main` collapses
+to this one file.
+
+It briefly rode on `launch-hardening` by accident: a concurrent session's
+`git add -A` swept it into commits `ac2c194` and `3d18153`. It was removed there
+in `6086242`, so it will not reach `main` under the hardening heading. It remains
+in that branch's *history* — rewriting commits already pushed to origin was not
+worth the tidiness.
 
 `docs/` is the established home for long-form project knowledge; the `plans/`
 subdirectory keeps a working plan distinct from the reference documents around
 it, which describe what is already true rather than what is intended.
+
+**Build the work on this branch**, phase by phase, and keep this file updated as
+decisions land — it is a working document, not a record.
 
 **To resume in a fresh session:** read this file top to bottom, then start at
 **Phase 0**. Nothing in it needs re-deciding.

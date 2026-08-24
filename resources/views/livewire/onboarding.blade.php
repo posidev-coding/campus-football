@@ -1,7 +1,9 @@
 <?php
 
 use App\Actions\GrantWalletEntry;
+use App\Actions\RecordUxEvent;
 use App\Enums\ContentRating;
+use App\Enums\UxSignal;
 use App\Livewire\Concerns\PicksTeams;
 use App\Models\User;
 use App\Support\Voice;
@@ -62,6 +64,12 @@ new class extends Component
         // picker. A guest carrying a stale hand-off flag still has to make
         // an account first, so auth decides which pane an open overlay shows.
         $this->step = auth()->check() ? 'team' : 'name';
+
+        // The top of the funnel. Counted for GUESTS only, so the number means
+        // "somebody started signing up" rather than "the overlay mounted".
+        if (! auth()->check()) {
+            app(RecordUxEvent::class)->handle(UxSignal::OnboardingOpened);
+        }
 
         /*
          * The PARKED moment: an invite-path registration landed on the
@@ -180,12 +188,20 @@ new class extends Component
          */
         session()->flash('onboarding.moment', true);
 
+        app(RecordUxEvent::class)->handle(UxSignal::OnboardingRegistered);
+
         $this->redirect(route('home'));
     }
 
     /** Finish: stop the prompt coming back, close, and hand off to the tour. */
     public function done(): void
     {
+        // Reached only from the picker's skip: afterTeamAdded() closes the
+        // overlay itself and never comes through here.
+        if (! auth()->user()?->hasOnboarded()) {
+            app(RecordUxEvent::class)->handle(UxSignal::OnboardingSkipped);
+        }
+
         $this->markOnboarded();
 
         $this->dispatch('close-onboarding');
@@ -225,6 +241,8 @@ new class extends Component
             reason: GrantWalletEntry::REASON_FIRST_TEAM,
             key: GrantWalletEntry::REASON_FIRST_TEAM,
         );
+
+        app(RecordUxEvent::class)->handle(UxSignal::OnboardingTeamPicked);
 
         // Following a team IS completing onboarding — the CTA must not return
         // on the next visit to a page that now has their team on it.

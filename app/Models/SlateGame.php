@@ -28,6 +28,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * There is no points column: a pick's value is f(mode, tier), the mode
  * engine's to compute.
  *
+ * `quality` and `quality_parts` are the GameQualityScore SNAPSHOT, frozen at
+ * publish. They are calibration data, not product: nothing reads them to
+ * decide anything, and they exist because the score's inputs are
+ * current-window feeds that no history carries. Null means "could not be
+ * scored at publish" — a live current line, which the frozen `spread` beside
+ * it no longer is — and never zero. See the migration for the measurement.
+ *
  * `bear_team_id` is the Bear's side of this matchup on Woodshed slates,
  * stamped at publish by BearPicks and public by design — the Bear is the
  * house's creature, not a Pick row, so privacy-until-kickoff never applied
@@ -36,6 +43,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[Fillable([
     'slate_id', 'game_id', 'tier', 'position', 'spread', 'market_spread',
     'favorite_team_id', 'bear_team_id', 'odds_provider', 'odds_captured_at',
+    'quality', 'quality_parts',
 ])]
 class SlateGame extends Model
 {
@@ -48,6 +56,8 @@ class SlateGame extends Model
             'spread' => 'float',
             'market_spread' => 'float',
             'odds_captured_at' => 'datetime',
+            'quality' => 'float',
+            'quality_parts' => 'array',
         ];
     }
 

@@ -3,8 +3,10 @@
 use App\Actions\ChangeGroupMode;
 use App\Actions\JoinGroup;
 use App\Actions\LeaveGroup;
+use App\Actions\RecordUxEvent;
 use App\Actions\RemoveGroupMember;
 use App\Enums\ContestMode;
+use App\Enums\UxSignal;
 use App\Exceptions\ContestFull;
 use App\Exceptions\GroupNeedsCommissioner;
 use App\Exceptions\ModeChangeBlocked;
@@ -78,6 +80,32 @@ new class extends Component
         } elseif (! $group->isRoom() && request()->routeIs('pickem.room')) {
             $this->redirectRoute('pickem.group', $group, navigate: true);
         }
+
+        $this->countSlateEntry();
+    }
+
+    /**
+     * The funnel's "a member opened a slate they could pick" — the
+     * denominator that makes the first pick a rate rather than a count.
+     *
+     * Free: `$this->slate` is a memoized computed the slate view is about to
+     * render anyway, and the guard skips it entirely on the other tabs. Once
+     * per member per slate per day, because a navigate hop re-mounts.
+     */
+    private function countSlateEntry(): void
+    {
+        if ($this->view !== 'slate' || auth()->guest() || $this->seatOf(auth()->user()) === null) {
+            return;
+        }
+
+        if ($this->slate?->isPublished() !== true) {
+            return;
+        }
+
+        app(RecordUxEvent::class)->handleOnce(
+            UxSignal::SlateEntered,
+            "{$this->slate->id}:".auth()->id(),
+        );
     }
 
     /** #[Url] hydrates without firing this hook, hence mount() normalizes too. */

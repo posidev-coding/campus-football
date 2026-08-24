@@ -1,0 +1,49 @@
+<?php
+
+namespace App\Enums;
+
+/**
+ * The product funnel's whole vocabulary — eight named signals, and nothing
+ * else may be counted.
+ *
+ * BOUNDED ON PURPOSE. This is the one telemetry surface no off-the-shelf APM
+ * can produce, because the events are specific to this product; the price of
+ * that is that a free-text event name would let the funnel grow a hundred
+ * one-off counters nobody ever reads, and would put user-chosen strings into
+ * a store meant for arithmetic. An enum makes the vocabulary a code review.
+ *
+ * Counted in Redis and rolled up nightly — see App\Actions\RecordUxEvent.
+ * Aggregate only: there is deliberately no user id, no session and no free
+ * text anywhere in this pipeline, so the snapshot the advisor reads can carry
+ * the funnel without carrying anybody's identity.
+ *
+ * "Slate abandoned with zero picks" is deliberately NOT a case. It is
+ * SlateEntered minus FirstPickMade, and a third counter for a difference is a
+ * third counter that can disagree with the other two.
+ */
+enum UxSignal: string
+{
+    /** The wizard's first screen rendered for a guest. */
+    case OnboardingOpened = 'onboarding_opened';
+
+    /** An account was created through the wizard. */
+    case OnboardingRegistered = 'onboarding_registered';
+
+    /** The favorite-team moment was completed — the arrival. */
+    case OnboardingTeamPicked = 'onboarding_team_picked';
+
+    /** The favorite-team moment was skipped. */
+    case OnboardingSkipped = 'onboarding_skipped';
+
+    /** The guided tour ended, whether by finishing it or closing it. */
+    case TourDismissed = 'tour_dismissed';
+
+    /** Somebody opened a /join/{CODE} link. The top of the acquisition funnel. */
+    case InviteOpened = 'invite_opened';
+
+    /** A member loaded a published slate they were eligible to pick. */
+    case SlateEntered = 'slate_entered';
+
+    /** A member's FIRST pick on a slate — the moment they are really playing. */
+    case FirstPickMade = 'first_pick_made';
+}

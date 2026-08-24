@@ -152,6 +152,106 @@ window.cfbClipboard = {
     },
 };
 
+/*
+ * Client-side error capture — the one signal no server-side monitor can see.
+ *
+ * Pulse watches requests, queries, jobs and thrown exceptions; all of that is
+ * the SERVER. A dead x-init, a rejected fetch or a swiper that never observes
+ * is a 200 in every log and a green suite in CI — the automated tab produces
+ * no rendering frames, so no test drives the code that breaks. The browser is
+ * the only witness, and until now it was talking to a console nobody reads.
+ *
+ * Deliberately modest about what it sends:
+ *
+ *   - Cross-origin scripts report a bare "Script error." with no file and no
+ *     position. That is a browser extension or a third party, it is not
+ *     actionable, and it would be most of the volume. Dropped.
+ *   - One report per distinct error per page, and at most five in total. A
+ *     render loop can fire onerror thousands of times in a second, and the
+ *     server's Redis dedupe should not be the only thing standing in front of
+ *     that.
+ *   - Every failure inside the reporter is swallowed. A reporter that can
+ *     throw is a reporter that reports itself, forever.
+ *
+ * Registered here rather than in a pre-paint head script, which would catch
+ * strictly more: the three inline scripts above it are a stamped attribute and
+ * a counter, and buying those with a second reporting path is not worth it.
+ */
+window.cfbErrors = {
+    endpoint: document.querySelector('meta[name=cfb-error-endpoint]')?.content ?? null,
+    seen: new Set(),
+    sent: 0,
+    max: 5,
+
+    report(fields) {
+        if (!this.endpoint || this.sent >= this.max) return;
+
+        /* A thrown error with no file and no position came from a
+         * cross-origin script we cannot see into — an extension or a third
+         * party, not actionable, and most of the volume. A REJECTION legitimately
+         * has neither, so the guard is scoped to the one it can judge. */
+        if (fields.kind === 'error' && !fields.source && !fields.line) return;
+
+        const key = `${fields.kind}|${fields.message}|${fields.source}|${fields.line}|${fields.col}`;
+
+        if (this.seen.has(key)) return;
+
+        this.seen.add(key);
+        this.sent++;
+
+        const token = document.querySelector('meta[name=csrf-token]')?.content;
+
+        if (!token) return;
+
+        fetch(this.endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': token,
+            },
+            body: JSON.stringify({
+                ...fields,
+                path: window.location.pathname,
+                viewport: window.innerWidth,
+                standalone: window.matchMedia('(display-mode: standalone)').matches
+                    || window.navigator.standalone === true,
+            }),
+            keepalive: true,
+        }).catch(() => {});
+    },
+};
+
+window.addEventListener('error', (event) => {
+    try {
+        window.cfbErrors.report({
+            kind: 'error',
+            message: String(event.message ?? 'Unknown error'),
+            source: event.filename || null,
+            line: event.lineno || null,
+            col: event.colno || null,
+            stack: event.error?.stack ? String(event.error.stack) : null,
+        });
+    } catch { /* never let the reporter be the bug */ }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    try {
+        const reason = event.reason;
+
+        window.cfbErrors.report({
+            kind: 'unhandledrejection',
+            message: String(reason?.message ?? reason ?? 'Unhandled rejection'),
+            /* A rejection carries no filename of its own; the first stack
+             * frame is the closest thing to one, and it is what makes two
+             * rejections distinguishable at all. */
+            source: reason?.stack ? (String(reason.stack).match(/https?:\/\/[^\s):]+/)?.[0] ?? null) : null,
+            line: null,
+            col: null,
+            stack: reason?.stack ? String(reason.stack) : null,
+        });
+    } catch { /* never let the reporter be the bug */ }
+});
+
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js');

@@ -10,6 +10,8 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Models/** | .ai/rules/boost/models.md |
 | tests/** | .ai/rules/boost/tests.md |
 | app/Notifications/**, app/Jobs/**, app/Console/Commands/** | .ai/rules/commands.md |
+| config/** | .ai/rules/config.md |
+| app/Actions/**,app/Support/**,app/Console/Commands/** | .ai/rules/console-commands.md |
 | app/Services/Contests/** | .ai/rules/contests.md |
 | resources/views/livewire/**, resources/views/mail/**, app/Support/Voice.php, app/Notifications/**, app/Enums/ContentRating.php, app/Enums/TiebreakerMetric.php, app/Support/Cadence.php | .ai/rules/copy-and-voice.md |
 | resources/views/**, resources/css/** | .ai/rules/css.md |

@@ -43,6 +43,11 @@
         <env name="UPLOAD_DISK" value="public"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
+        <!-- The funnel counters are real Redis hashes, not a cache abstraction,
+             so the suite would otherwise write test counts into the telemetry
+             database a developer is also using — and `cfb:ux-rollup` would
+             then persist them. DB 15 is the suite's own; nothing else uses it. -->
+        <env name="REDIS_PULSE_DB" value="15"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
     </php>
