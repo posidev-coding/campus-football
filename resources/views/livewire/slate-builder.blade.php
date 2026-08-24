@@ -510,7 +510,7 @@ new class extends Component
                         >
                             <div class="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-1.5 text-micro dark:border-zinc-800/60">
                                 <span class="shrink-0 font-medium text-zinc-600 dark:text-zinc-400">
-                                    {{ $game->kickoff_at?->setTimezone(config('cfb.timezone'))->format('D g:ia') ?? 'TBD' }}
+                                    {{ $game->kickoffLabel('day') ?? 'TBD' }}
                                 </span>
                                 <button
                                     type="button"
@@ -561,7 +561,7 @@ new class extends Component
                                 {{ $game->awayTeam?->placeName() ?? 'TBD' }} at {{ $game->homeTeam?->placeName() ?? 'TBD' }}
                             </p>
                             <p class="text-sm text-zinc-500 dark:text-zinc-400">
-                                {{ $game->kickoff_at->timezone(config('cfb.timezone'))->format('D g:i A') }}
+                                {{ $game->kickoffLabel('day') }}
                                 @if ($line = $this->lineFor($game))
                                     · {{ $line }}
                                 @else

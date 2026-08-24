@@ -957,7 +957,7 @@ new class extends Component
                                 {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('D M j') }}
                             </span>
                             <span class="text-stat font-semibold">
-                                {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('g:ia') }}
+                                {{ $game->kickoffLabel('time') }}
                             </span>
                         @endif
                     </div>

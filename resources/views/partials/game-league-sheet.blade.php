@@ -159,7 +159,7 @@
                                                 <span class="text-micro text-zinc-400">Final</span>
                                             @else
                                                 <span class="text-stat font-medium">
-                                                    {{ $row->kickoff_at->setTimezone(config('cfb.timezone'))->format('g:ia') }}
+                                                    {{ $row->kickoffLabel('time') }}
                                                 </span>
                                                 @if ($row->broadcasts)
                                                     <span class="truncate text-micro text-zinc-400">{{ $row->broadcasts[0] }}</span>

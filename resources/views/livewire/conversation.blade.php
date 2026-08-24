@@ -272,7 +272,7 @@ new class extends Component
                             {{ $post->user->handle ? '@'.$post->user->handle : $post->user->name }}
                         </span>
                         <span class="shrink-0 text-micro text-zinc-500 dark:text-zinc-400">
-                            {{ $post->created_at->diffForHumans(short: true) }}
+                            {{ $post->created_at->diffForHumans() }}
                         </span>
                     </p>
                     {{-- break-words, because one 500-character word is a legal

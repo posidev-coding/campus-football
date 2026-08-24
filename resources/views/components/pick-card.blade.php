@@ -105,7 +105,7 @@
                 <span class="shrink-0 font-medium text-zinc-500">Final</span>
             @else
                 <span class="shrink-0 font-medium text-zinc-600 dark:text-zinc-400">
-                    {{ $game->kickoff_at?->setTimezone(config('cfb.timezone'))->format('D g:ia') ?? 'TBD' }}
+                    {{ $game->kickoffLabel('day') ?? 'TBD' }}
                 </span>
                 @if ($locked)
                     {{-- The state a reader scans for; it stays plain. --}}

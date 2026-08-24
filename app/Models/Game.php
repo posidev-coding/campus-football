@@ -176,6 +176,33 @@ class Game extends Model
      * would leave picks open on a game already being played. Shared by the
      * pick lock and publish validation so the two can never disagree.
      */
+    /**
+     * The kickoff, in ET, in one of the app's three named styles — the
+     * consolidation of five drifted hand-rolled formats ("7:30 PM" beside
+     * "7:30pm" on sibling screens). Display stays ET for the pilot
+     * audience; the user-timezone control is a deliberate post-launch
+     * deferral. Null kickoff returns null — callers say 'TBD' themselves,
+     * never a substituted time.
+     *
+     *   time   "7:30pm"          — beside a date something else prints
+     *   day    "Sat 7:30pm"      — cards inside a known week
+     *   date   "Sat, Sep 5 · 7:30pm" — standalone mentions
+     */
+    public function kickoffLabel(string $style = 'day'): ?string
+    {
+        if ($this->kickoff_at === null) {
+            return null;
+        }
+
+        $local = $this->kickoff_at->setTimezone(config('cfb.timezone'));
+
+        return match ($style) {
+            'time' => $local->format('g:ia'),
+            'day' => $local->format('D g:ia'),
+            'date' => $local->format('D, M j · g:ia'),
+        };
+    }
+
     public function hasKickedOff(): bool
     {
         // NOT isPast(): that is a strict less-than, which would leave picks

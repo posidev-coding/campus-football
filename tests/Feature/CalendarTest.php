@@ -470,3 +470,15 @@ it('never builds a season whose dates disagree with its year', function () {
 
     expect($pinned->start_date->toDateString())->toBe('2032-01-01');
 });
+
+it('speaks kickoff in exactly three named styles, ET, null for TBD', function () {
+    // The consolidation of five drifted hand-rolled formats — "7:30 PM"
+    // sat beside "7:30pm" on sibling screens. Null means TBD and the
+    // caller says so; a substituted time is the v3 default-writing sin.
+    $game = Game::factory()->make(['kickoff_at' => '2026-09-05 23:30:00']);
+
+    expect($game->kickoffLabel('time'))->toBe('7:30pm')
+        ->and($game->kickoffLabel('day'))->toBe('Sat 7:30pm')
+        ->and($game->kickoffLabel('date'))->toBe('Sat, Sep 5 · 7:30pm')
+        ->and(Game::factory()->make(['kickoff_at' => null])->kickoffLabel('day'))->toBeNull();
+});
