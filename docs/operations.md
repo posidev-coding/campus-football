@@ -70,6 +70,34 @@ looks exactly like "no traffic."** Locally it rides `composer dev` alongside
 server / queue / pail / vite. In production it is a Cloud daemon, beside the
 three managed queues.
 
+**The dashboard's own result cache is the `array` store, not our Redis cache**
+(`PULSE_CACHE_DRIVER=array`), and this is not a preference. Pulse caches each
+card's result as an OBJECT — a `(object)` of counts, a Collection of them.
+Laravel 13 ships `cache.serializable_classes => false`, which makes every cache
+read `unserialize(..., ['allowed_classes' => false])` to close gadget-chain
+attacks if `APP_KEY` ever leaks, so an object written to ANY serializing store
+comes back as `__PHP_Incomplete_Class` and the card fatals on `->hits`. That is
+also the mechanism behind our own standing rule that nothing but a scalar or an
+array goes in the cache.
+
+That setting is **global, not per-store** — `CacheManager::getSerializableClasses()`
+takes the store's config and ignores it — so a dedicated Redis store does not
+escape it, and relaxing it app-wide would trade the whole application's
+protection for one admin-only page. The `array` store does not serialize at all.
+
+Two costs, both accepted:
+
+- Card queries re-run on each `wire:poll.5s` rather than being cached for five
+  seconds. One admin, one viewer, aggregates over our own tables.
+- **`pulse:restart` no longer reaches a running `pulse:work`.** The signal is a
+  cache write in one process read by another, and the array store is
+  per-process. Restart the daemon directly: locally that is `composer dev`, in
+  production a deploy.
+
+Every card broke on this, not just Cache — Cache is simply the one that
+dereferences its object unconditionally, so it failed first with zero data
+while the others were waiting for their first row.
+
 Two recorders are deliberately **off**: `CacheInteractions` (every cache read is
 an entry, and this app reads the cache hard on every page — TeamGlance, Brand,
 standings) and `Queues` (every job state transition, and the sync commands fan

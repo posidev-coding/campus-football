@@ -413,6 +413,23 @@ Gate the `/pulse` dashboard behind the existing `User::isAdmin()`.
 > production. Verified end to end: a slow query reached Redis DB 2, `pulse:work
 > --stop-when-empty` drained it to `pulse_entries` and `pulse_aggregates`.
 > Tests: `tests/Feature/Admin/PulseTest.php`.
+>
+> ⚠️ **`PULSE_CACHE_DRIVER=array` is required, and the dashboard is unusable
+> without it.** Pulse caches each card's result as an object; Laravel 13's
+> `cache.serializable_classes => false` (the gadget-chain default, and the
+> mechanism behind our own "never cache a non-scalar" rule) returns every object
+> from a serializing store as `__PHP_Incomplete_Class`. The setting is GLOBAL,
+> not per-store, so a dedicated Redis store does not escape it. Cost: card
+> queries re-run on each 5s poll, and `pulse:restart` stops reaching a running
+> `pulse:work` (restart the daemon directly). Found in a browser, not by the
+> suite — see the testing note below.
+>
+> ⚠️ **A test that renders `/pulse` proves nothing about the cards.** They are
+> all `#[Lazy]`, so the page returns 200 with skeletons and the cards run on a
+> later round trip. `Livewire::withoutLazyLoading()` fixes that — but it applies
+> to the NEXT component only, so calling it once in a `beforeEach` leaves the
+> second render returning the placeholder again, which is exactly the render
+> that would have caught this. Call it before EVERY render, and render twice.
 
 **1.2 Client error capture.** ✅ **Landed 2026-08-24.** `window.onerror` + `unhandledrejection` POST to a
 Redis-rate-limited endpoint that dedupes by fingerprint in Redis before writing

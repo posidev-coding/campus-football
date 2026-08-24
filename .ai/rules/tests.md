@@ -58,3 +58,10 @@ Once any Livewire::test() has run in the Pest process, Livewire injects `<script
 
 ## No feature test can catch a missing eager load
 `Model::preventLazyLoading()` is on in testing (the static reads true), but the PER-INSTANCE `$preventsLazyLoading` flag on a model retrieved during a test is false, so an unloaded relation resolves silently and only throws in dev/production. A `<x-game-card>` in a new rail panel shipped a 500 on /rankings through a fully green suite. Two consequences: a fixture whose FK is null (GameFactory leaves `venue_id` null) hides it twice over, and a render assertion proves nothing. Guard this class of bug with a SOURCE sweep asserting the query loads what the view reads, the way RailTest does.
+
+## withoutLazyLoading() applies to the NEXT component only
+A `#[Lazy]` Livewire component (every Pulse dashboard card is one) renders only a skeleton under `Livewire::test()` — the page returns 200, the card's `render()` never runs, and the test is green over code that fatals in a browser. Same family as "widget content is not in its page's HTML".
+
+`Livewire::withoutLazyLoading()` fixes it, but it applies to the NEXT component only. Called once in a `beforeEach`, the second render silently falls back to the `animate-pulse` placeholder — and for anything cached, the SECOND render is the one that matters, because the first returns the closure's own value and never round-trips the store. Call it before EVERY render, and render twice.
+
+This is how the Pulse dashboard shipped broken through a green suite: `assertOk()` on `/pulse` passed while all nine cards fataled on `__PHP_Incomplete_Class`.

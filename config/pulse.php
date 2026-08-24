@@ -119,7 +119,32 @@ return [
     |
     */
 
-    'cache' => env('PULSE_CACHE_DRIVER'),
+    /*
+     * THE ARRAY STORE, NOT THE APP'S REDIS CACHE — and this is load-bearing.
+     *
+     * Pulse caches each dashboard card's result as an OBJECT (a `(object)` of
+     * counts, a Collection of them). Laravel 13 ships `cache.serializable_classes
+     * => false`, which makes every cache read `unserialize(..., ['allowed_classes'
+     * => false])` to close gadget-chain attacks if APP_KEY ever leaks — so an
+     * object written to ANY serializing store comes back as
+     * `__PHP_Incomplete_Class` and the card fatals on `->hits`. That setting is
+     * global, not per-store (`CacheManager::getSerializableClasses()` ignores the
+     * store's own config), so a dedicated Redis store would not escape it, and
+     * relaxing it app-wide would trade the whole app's protection for one
+     * admin-only page. It is also the mechanism behind our own standing rule
+     * that nothing but a scalar or an array goes in the cache.
+     *
+     * The array store does not serialize at all, so objects survive. What it
+     * costs, both accepted:
+     *
+     *   - Card queries re-run on each `wire:poll.5s` instead of being cached for
+     *     five seconds. One admin, one viewer, aggregates over our own tables.
+     *   - `pulse:restart` stops reaching a running `pulse:work`: the signal is a
+     *     cache write in one process read by another, and the array store is
+     *     per-process. Restart the daemon directly — locally that is `composer
+     *     dev`, in production a deploy.
+     */
+    'cache' => env('PULSE_CACHE_DRIVER', 'array'),
 
     /*
     |--------------------------------------------------------------------------
