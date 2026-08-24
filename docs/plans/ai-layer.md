@@ -378,7 +378,7 @@ constraint here.
 
 ---
 
-## Phase 1 — Sensors (build first; valuable with or without AI)
+## Phase 1 — Sensors (build first; valuable with or without AI) ✅ **Complete 2026-08-24**
 
 Every piece mirrors an existing shape in the codebase.
 
@@ -414,12 +414,12 @@ Gate the `/pulse` dashboard behind the existing `User::isAdmin()`.
 > --stop-when-empty` drained it to `pulse_entries` and `pulse_aggregates`.
 > Tests: `tests/Feature/Admin/PulseTest.php`.
 
-**1.2 Client error capture.** `window.onerror` + `unhandledrejection` POST to a
+**1.2 Client error capture.** ✅ **Landed 2026-08-24.** `window.onerror` + `unhandledrejection` POST to a
 Redis-rate-limited endpoint that dedupes by fingerprint in Redis before writing
 `client_errors`. **No APM covers this** — it is the class of bug a 390px PWA
 ships silently, and it is currently invisible.
 
-**1.3 Queue-failure capture.** A `Queue::failing()` listener writing a
+**1.3 Queue-failure capture.** ✅ **Landed 2026-08-24.** A `Queue::failing()` listener writing a
 `feed_runs`-shaped row. Pulse's Exceptions recorder catches thrown exceptions,
 but Cloud's managed queues hide the *failed job record* from the app entirely
 (`RecentSyncFailures` says so in its own description), so this stays hand-built.
@@ -452,23 +452,61 @@ are specific to this product.
 > rollup found no days to roll up. Pass set members as SCALARS. Caught by a
 > test, not by review.
 
-**1.5 `App\Support\OpsReport`.** A third report class in the established shape.
+**1.5 `App\Support\OpsReport`.** ✅ **Landed 2026-08-24.** A third report class in the established shape.
 `CoverageReport` and `PickemPreflight` already agree on
 `{key, label, status: ok|warn|fail, detail, remedy}` — `PickemPreflight`'s
 docblock says it is *"shaped like CoverageReport on purpose."* `OpsReport` makes
 it three, aggregating Pulse's aggregates plus 1.2–1.3.
 
-**1.6 `cfb:telemetry --json`.** One command emitting the snapshot: `OpsReport`,
-`CoverageReport::checks()`, `SyncSchedule::tasks()`, recent `feed_runs` errors,
-Pulse's slow-request / slow-query / exception aggregates, client errors, funnel
-rollups. Aggregate only, no user identifiers.
+**1.6 `cfb:telemetry --json`.** ✅ **Landed 2026-08-24.** One command emitting
+the snapshot: `OpsReport`, `CoverageReport::checks()`, `PickemPreflight::checks()`,
+`SyncSchedule::tasks()`, recent `feed_runs` errors split into commands and jobs,
+Pulse's slow-request / slow-query / slow-job / outgoing / exception entries
+grouped by key, client errors, funnel rollups. Aggregate only, no user
+identifiers.
 
-Files: `app/Support/OpsReport.php`, `app/Console/Commands/TelemetryCommand.php`,
-`app/Listeners/RecordJobFailure.php`, `app/Actions/RecordUxEvent.php`,
-`config/pulse.php`, new migrations, `routes/console.php` (nightly rollup —
-ungated, `withoutOverlapping()`, `->timezone($tz)`, riding the existing
-04:00–07:00 wake rather than adding one; a scheduled task holds a scale-to-zero
-cluster up for the whole sleep timeout).
+> **As built (1.5 + 1.6).** `OpsReport` carries seven rows in the shared
+> `{key, label, status, detail, remedy}` shape — a test asserts it matches
+> `PickemPreflight` key-for-key. One of them watches the MONITOR rather than the
+> app: a stalled `pulse:work` looks exactly like no traffic, so the ingest row
+> reads the Redis stream length and names `pulse:work` as the remedy. The
+> pick-through row DERIVES abandonment from the two funnel counters. Its 50%
+> warn threshold is a first calibration and has never seen a real Saturday.
+>
+> `cfb:telemetry` defaults to a terminal read and takes `--json` for the
+> `/ops/telemetry` route Phase 3 will add. It **always exits zero** — `cfb:doctor`
+> is the deploy gate, and a snapshot command that fails a pipeline because a
+> request was slow is one somebody turns off. Pulse entries are grouped by key
+> so a route that was slow two hundred times is one line with a count, which is
+> what keeps the payload prompt-sized.
+>
+> The no-identity rule is asserted, not trusted: a test fires every sensor with
+> a distinctively-identified user and asserts the payload contains no email, no
+> handle, no id and no `user_id`. `SyncSchedule::tasks()` hands back Eloquent
+> `FeedRun` instances for the admin table, so the command projects six fields
+> off each rather than serializing the model.
+>
+> ⚠️ **`signal` is a reserved word in MySQL 8**, like `STORED`. An unbackticked
+> one in a `selectRaw` is a 1064, not a wrong answer.
+
+Files, as built: `app/Support/OpsReport.php`,
+`app/Console/Commands/TelemetryCommand.php`,
+`app/Console/Commands/RollUpUxEventsCommand.php`,
+`app/Actions/RecordUxEvent.php`, `app/Actions/RecordClientError.php`,
+`app/Http/Controllers/ClientErrorController.php`, `app/Enums/UxSignal.php`,
+`app/Models/ClientError.php`, `app/Models/UxEvent.php`, `config/pulse.php`,
+four migrations, `routes/console.php` (nightly rollup at 04:55 — ungated,
+`withoutOverlapping()`, `->timezone($tz)`, riding the existing 04:00–07:00 wake
+rather than adding one; a scheduled task holds a scale-to-zero cluster up for
+the whole sleep timeout).
+
+> **One deviation.** The plan named `app/Listeners/RecordJobFailure.php`.
+> `app/Listeners` is a NEW BASE FOLDER, which `CLAUDE.md` requires approval for,
+> and `AppServiceProvider` already states the standing choice in a comment —
+> *"Closures here rather than a Listeners folder (no new base folder)"* — for the
+> event-driven scoring listeners. So the `Queue::failing` hook is a closure in
+> `AppServiceProvider` and the write is `FeedRun::jobFailed()`, beside
+> `begin`/`complete`/`fail`. Same behavior, existing layout.
 
 ---
 

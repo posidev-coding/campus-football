@@ -107,6 +107,23 @@ class RecordUxEvent
         $this->handle($signal, $on);
     }
 
+    /**
+     * What today has counted so far, before the nightly rollup persists it.
+     *
+     * Any report that leaves this out is blind to the last few hours — which
+     * is exactly the window somebody is reading a report to understand.
+     */
+    public function todayCount(UxSignal $signal): int
+    {
+        try {
+            $day = now()->timezone(config('cfb.timezone'))->format('Y-m-d');
+
+            return (int) Redis::connection('pulse')->hget(self::dayKey($day), $signal->value);
+        } catch (Throwable) {
+            return 0;
+        }
+    }
+
     public static function dayKey(string $day): string
     {
         return "ux:{$day}";
