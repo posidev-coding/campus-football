@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Notifications\PickReminderNotification;
 use App\Support\PickReminders;
 use App\Support\Voice;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Notification;
 use NotificationChannels\WebPush\WebPushChannel;
 
@@ -353,6 +354,18 @@ it('carries mail and push, and holds SMS behind its switch', function () {
     // Opting out of the pick'em list drops mail and nothing else.
     $member->forceFill(['pickem_notify_opt_in' => false])->save();
     expect($notification->via($member->fresh()))->toBe([WebPushChannel::class]);
+});
+
+it('sends the reminder in-job, never double-queued', function () {
+    /*
+     * Negative pin: SendPickReminder is already a queued job carrying the
+     * batch and both budget middlewares. A ShouldQueue notification inside
+     * it would double-queue the send, move the actual mail OUTSIDE
+     * ThrottleMail, and outlive the staleness re-check the job exists for.
+     * Re-adding the interface fails here.
+     */
+    expect(new PickReminderNotification([], PickReminders::WAVE_REMIND))
+        ->not->toBeInstanceOf(ShouldQueue::class);
 });
 
 it('speaks the reader\'s register, with no authenticated user to fall back on', function () {

@@ -1,6 +1,10 @@
 <?php
 
 use App\Enums\ContentRating;
+use App\Jobs\SendSlateResult;
+use App\Models\GroupMember;
+use App\Models\Slate;
+use App\Models\SlateEntry;
 use App\Models\User;
 use App\Notifications\SlateSettled;
 use App\Support\Navigation;
@@ -116,6 +120,41 @@ it('leaves a dated row rather than an empty one for a retired key', function () 
 
     Livewire::actingAs($user)->test('inbox')
         ->assertSee('no longer available');
+});
+
+it('holds the inbox row the moment the sending job returns', function () {
+    /*
+     * Deliberately UN-faked: this is the one test that proves the database
+     * channel writes in-job. SlateSettled is not ShouldQueue, so the row
+     * exists synchronously when SendSlateResult::handle() returns — with a
+     * queued notification this would need a worker nobody runs here, and
+     * the mail would send outside ThrottleMail's budget.
+     */
+    $this->travelTo('2026-09-13 13:00:00');
+
+    [, $week] = pickemSeasonWeek();
+    [, $group, $contest] = pickemContest();
+
+    $slate = Slate::factory()->create([
+        'contest_id' => $contest->id,
+        'week_id' => $week->id,
+        'saturday' => '2026-09-12',
+        'status' => Slate::SETTLED,
+        'settled_at' => now(),
+        'published_at' => '2026-09-08 12:00:00',
+    ]);
+
+    // Every refusable channel off: the inbox is what must land regardless.
+    $reader = User::factory()->create(['pickem_notify_opt_in' => false, 'email_verified_at' => null]);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $reader->id]);
+    SlateEntry::factory()->create([
+        'slate_id' => $slate->id, 'user_id' => $reader->id, 'final_points' => 10, 'won' => true,
+    ]);
+
+    (new SendSlateResult($slate->id, $reader->id))->handle();
+
+    expect($reader->notifications()->count())->toBe(1)
+        ->and($reader->notifications()->sole()->data['kind'])->toBe('slate-results');
 });
 
 it('gives Account its first section strip, signed in only', function () {
