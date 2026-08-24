@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Notifications\SlateSettled;
 use App\Support\Navigation;
 use App\Support\Voice;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 
@@ -169,4 +171,56 @@ it('gives Account its first section strip, signed in only', function () {
     // A guest has no inbox, and a one-tab strip is chrome, not navigation.
     auth()->logout();
     expect(collect(Navigation::areas())->firstWhere('key', 'account')['sections'])->toBe([]);
+});
+
+describe('the unread dot', function () {
+    it('marks the tab, the section chip and the avatar — dot only, no number', function () {
+        $user = User::factory()->create();
+        inboxRow($user);
+
+        // The phone tab bar (Account tab) and the desktop avatar wrapper
+        // both carry the presence dot; neither ever shows a count.
+        $this->actingAs($user)->get(route('home'))
+            ->assertOk()
+            ->assertSee('Unread notifications')
+            ->assertSee('bg-red-500');
+
+        // The Account area's section strip marks the Notifications chip.
+        $this->actingAs($user)->get(route('account'))
+            ->assertOk()
+            ->assertSeeInOrder(['Notifications', 'bg-red-500'], escape: false);
+    });
+
+    it('shows nothing when everything is read', function () {
+        $user = User::factory()->create();
+        inboxRow($user, ['read_at' => now()]);
+
+        $this->actingAs($user)->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('Unread notifications');
+    });
+
+    it('answers the three render sites with one indexed count', function () {
+        $user = User::factory()->create();
+        inboxRow($user);
+
+        DB::enableQueryLog();
+        $user->unreadNoteCount();
+        $user->unreadNoteCount();
+        $user->unreadNoteCount();
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        expect($count)->toBe(1)
+            ->and($user->unreadNoteCount())->toBe(1);
+    });
+
+    it('rides the composite reader index, not a filesort', function () {
+        // (notifiable_type, notifiable_id, read_at, created_at): the dot's
+        // COUNT, the inbox ordering and Filament's badge poll all filter in
+        // exactly that shape.
+        $indexes = collect(Schema::getIndexes('notifications'))->pluck('name');
+
+        expect($indexes)->toContain('notifications_reader_unread_index');
+    });
 });

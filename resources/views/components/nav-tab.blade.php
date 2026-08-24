@@ -3,6 +3,9 @@
     'icon',
     'label',
     'active' => null,
+    // A presence dot — something inside is unread. Never a number: a count
+    // is a demand, a dot is an invitation, and nothing here polls for it.
+    'badge' => false,
 ])
 
 @php
@@ -28,6 +31,15 @@
 >
     {{-- Solid when current, outline otherwise: at 5-6 tabs the labels get
          small, so the icon carries most of the state. --}}
-    <flux:icon :name="$icon" :variant="$active ? 'solid' : 'outline'" class="size-6" />
+    <span class="relative">
+        <flux:icon :name="$icon" :variant="$active ? 'solid' : 'outline'" class="size-6" />
+
+        @if ($badge)
+            {{-- The ring matches the bar so the dot reads as sitting ON the
+                 icon rather than clipped by it. --}}
+            <span class="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-zinc-950" aria-hidden="true"></span>
+            <span class="sr-only">Unread notifications</span>
+        @endif
+    </span>
     <span class="w-full truncate text-center leading-tight">{{ $label }}</span>
 </a>

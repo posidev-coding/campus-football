@@ -37,6 +37,7 @@
                 :icon="$area['icon']"
                 :label="Navigation::label($area)"
                 :active="Navigation::isCurrent($area)"
+                :badge="$area['key'] === 'account' && (auth()->user()?->unreadNoteCount() ?? 0) > 0"
                 wire:key="area-{{ $area['key'] }}"
                 data-tour="{{ $area['key'] }}"
             />
