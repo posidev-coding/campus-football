@@ -17,6 +17,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/views/**, resources/css/** | .ai/rules/css.md |
 | app/Models/**, database/migrations/**, database/factories/** | .ai/rules/data-model.md |
 | app/Services/Espn/**, app/Console/Commands/**, app/Jobs/**, routes/console.php, routes/** | .ai/rules/espn-sync.md |
+| resources/views/filament/**,app/Filament/** | .ai/rules/filament.md |
 | app/Livewire/**, resources/views/livewire/**, resources/views/components/** | .ai/rules/livewire-alpine.md |
 | resources/views/livewire/pickem-home.blade.php,resources/views/livewire/lobby.blade.php,app/Support/Lobby.php,routes/web.php | .ai/rules/livewire-support.md |
 | app/Actions/PostToConversation.php,app/Actions/DeleteConversationPost.php,resources/views/livewire/conversation.blade.php | .ai/rules/livewire.md |
