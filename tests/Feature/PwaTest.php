@@ -181,3 +181,23 @@ describe('the service worker', function () {
             ->and($worker)->toContain("VERSION = 'v2'");
     });
 });
+
+describe('self-contained pages honor the appearance choice', function () {
+    it('reads flux.appearance pre-paint on the offline floor and every status page', function () {
+        /*
+         * These pages themed by the OS media query alone, so a reader who
+         * chose Light inside the app hit a DARK error page — and the
+         * theme-color meta was pinned dark either way. The try/catch is
+         * load-bearing: localStorage throws in some embedded contexts,
+         * and an error page must never error.
+         */
+        foreach ([$this->get(route('offline')), $this->view('errors.404')] as $page) {
+            $html = (string) $page;
+
+            expect($html)->toContain("localStorage.getItem('flux.appearance')")
+                ->and($html)->toContain('try {')
+                ->and($html)->toContain(':root[data-theme="dark"]')
+                ->and($html)->toContain('media="(prefers-color-scheme: light)" content="#ffffff"');
+        }
+    });
+});

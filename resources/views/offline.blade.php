@@ -17,7 +17,16 @@
 {{-- Matches partials/head: the zoom lock matters MOST here, since this page
      only ever renders inside the installed app or a flaky browser tab. --}}
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="{{ Brand::color('ink') }}">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="{{ Brand::color('ink') }}">
+{{-- Pre-paint, try/catch: honor the appearance chosen INSIDE the app
+     (flux.appearance in localStorage) — these self-contained pages themed
+     by the OS alone, so a Light-mode reader hit a dark error page. No
+     stored choice leaves the media query in charge. --}}
+<script>
+    try { var t = localStorage.getItem('flux.appearance'); if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+
 <title>Offline — {{ Brand::name() }}</title>
 <style>
     :root { color-scheme: light dark; }
@@ -50,12 +59,18 @@
         color: #ffffff;
         cursor: pointer;
     }
+    /* System dark, unless the reader chose Light in the app. */
     @media (prefers-color-scheme: dark) {
-        body { background: #09090b; color: #f4f4f5; }
-        .wordmark { color: #a1a1aa; }
-        p { color: #a1a1aa; }
-        button { background: #3b82f6; }
+        :root:not([data-theme="light"]) body { background: #09090b; color: #f4f4f5; }
+        :root:not([data-theme="light"]) .wordmark { color: #a1a1aa; }
+        :root:not([data-theme="light"]) p { color: #a1a1aa; }
+        :root:not([data-theme="light"]) button { background: #3b82f6; }
     }
+    /* The explicit in-app choice wins over any OS setting. */
+    :root[data-theme="dark"] body { background: #09090b; color: #f4f4f5; }
+    :root[data-theme="dark"] .wordmark { color: #a1a1aa; }
+    :root[data-theme="dark"] p { color: #a1a1aa; }
+    :root[data-theme="dark"] button { background: #3b82f6; }
 </style>
 </head>
 <body>

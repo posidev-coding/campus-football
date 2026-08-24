@@ -32,7 +32,16 @@
 <meta charset="utf-8">
 {{-- Matches partials/head: standalone has no chrome to un-zoom with. --}}
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="{{ $ink }}">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="{{ $ink }}">
+{{-- Pre-paint, try/catch: honor the appearance chosen INSIDE the app
+     (flux.appearance in localStorage) — these self-contained pages themed
+     by the OS alone, so a Light-mode reader hit a dark error page. No
+     stored choice leaves the media query in charge. --}}
+<script>
+    try { var t = localStorage.getItem('flux.appearance'); if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+
 <title>@yield('title') &mdash; {{ $brandName }}</title>
 <style>
     :root { color-scheme: light dark; }
@@ -75,13 +84,20 @@
         text-decoration: underline;
         text-underline-offset: 2px;
     }
+    /* System dark, unless the reader chose Light in the app. */
     @media (prefers-color-scheme: dark) {
-        body { background: #09090b; color: #f4f4f5; }
-        .wordmark { color: #a1a1aa; }
-        p { color: #a1a1aa; }
-        .action { background: #3b82f6; }
-        .quiet { color: #a1a1aa; }
+        :root:not([data-theme="light"]) body { background: #09090b; color: #f4f4f5; }
+        :root:not([data-theme="light"]) .wordmark { color: #a1a1aa; }
+        :root:not([data-theme="light"]) p { color: #a1a1aa; }
+        :root:not([data-theme="light"]) .action { background: #3b82f6; }
+        :root:not([data-theme="light"]) .quiet { color: #a1a1aa; }
     }
+    /* The explicit in-app choice wins over any OS setting. */
+    :root[data-theme="dark"] body { background: #09090b; color: #f4f4f5; }
+    :root[data-theme="dark"] .wordmark { color: #a1a1aa; }
+    :root[data-theme="dark"] p { color: #a1a1aa; }
+    :root[data-theme="dark"] .action { background: #3b82f6; }
+    :root[data-theme="dark"] .quiet { color: #a1a1aa; }
 </style>
 </head>
 <body>

@@ -976,20 +976,23 @@ Per `CLAUDE.md`, in order:
 6. **Guests and the answer path** → signed-in only, as recommended. Note the
    GameDay card is the opposite: it renders for everyone including guests, since
    it is one cached row per week and costs nothing per view.
-8. **GameDay auto-publish vs. admin confirm.** Recommendation: auto-publish when
+7. **GameDay auto-publish vs. admin confirm.** Recommendation: auto-publish when
    every guard passes (the contradiction check is strong), hold as `proposed`
    otherwise. Flip to always-confirm if the first few weeks prove noisy.
-7. ~~Whether Phases 4–5 wait for Sep 1.~~ **Settled:** nothing waits for a date.
-   Phases 4–5 ship flag-closed and flip when tuned.
+8. ~~Whether Phases 4–5 wait for Sep 1.~~ **Settled:** nothing waits for a date.
+   Everything user-facing ships flag-closed and flips when tuned.
 
 ---
 
 ## Where this plan lives
 
 This file — `docs/plans/ai-layer.md` — **is** the durable copy, written
-2026-08-24 and deliberately left **uncommitted** so it does not disturb the
-launch-hardening branch. Commit it on its own branch off `main` once that work
-merges.
+2026-08-24. It was intended to stay uncommitted until launch hardening merged,
+but the concurrent hardening session swept it into commits `ac2c194` and
+`3d18153` on the `launch-hardening` branch — presumably via `git add -A`. No
+harm done: it is a documentation file with no runtime effect, and it now rides
+in with that branch. Worth knowing only if those commits are being reviewed
+individually.
 
 `docs/` is the established home for long-form project knowledge; the `plans/`
 subdirectory keeps a working plan distinct from the reference documents around
