@@ -359,3 +359,38 @@
     color: var(--color-zinc-400);
 }
 .dark .article-body hr { border-color: var(--color-zinc-800); }
+
+/*
+ * THE ONE FOCUS RING. The UA's blue outline is invisible on a
+ * team-colored fill — the pick sides were exactly that — so interactive
+ * surfaces wear `.focus-ring` and draw the ring in their own
+ * currentColor, offset off the fill. Focus-visible only: pointer taps
+ * stay clean, keyboards always see where they are.
+ */
+@layer utilities {
+    .focus-ring:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+    }
+}
+
+/*
+ * REDUCED MOTION, honored globally. One block, so honoring the setting
+ * is the default state of the app rather than a per-animation memory
+ * test — before this exactly one motion-safe: check existed app-wide.
+ * Near-zero rather than zero durations, so transitionend/animationend
+ * still fire for anything listening.
+ */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    html {
+        scroll-behavior: auto !important;
+    }
+}

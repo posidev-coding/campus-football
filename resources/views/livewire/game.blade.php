@@ -968,7 +968,8 @@ new class extends Component
                         <div class="flex min-w-0 flex-col">
                             <span class="flex items-center gap-1 truncate text-sm font-semibold @if ($index === 1) justify-end @endif @if ($lost) text-zinc-400 @endif">
                                 @if ($possession)
-                                    <span class="size-1.5 shrink-0 rounded-full bg-amber-500" title="Possession"></span>
+                                    <span class="size-1.5 shrink-0 rounded-full bg-amber-500" title="Possession" aria-hidden="true"></span>
+                                    <span class="sr-only">has possession</span>
                                 @endif
                                 @if ($side['rank'])
                                     <span class="text-micro font-medium text-zinc-400">{{ $side['rank'] }}</span>

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scroll-smooth">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="motion-safe:scroll-smooth">
 <head>
     {{-- Shared with layouts/auth so the two cannot drift. They held byte-identical
          heads before, which is exactly how one layout ends up without a favicon. --}}

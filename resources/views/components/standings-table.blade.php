@@ -63,6 +63,10 @@
                 >
                     <td class="tabular whitespace-nowrap px-3 py-1.5 text-zinc-500">{{ $row['rank'] }}</td>
                     <td class="w-full max-w-0 truncate py-1.5 pe-3 {{ $viewer ? 'font-semibold' : 'font-medium' }}">
+                        @if ($viewer)
+                            {{-- The tint is invisible to a screen reader. --}}
+                            <span class="sr-only">You — </span>
+                        @endif
                         @if ($row['user'] !== null)
                             {{ $row['user']->handle !== null ? '@'.$row['user']->handle : $row['user']->name }}
                         @else

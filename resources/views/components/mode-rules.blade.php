@@ -24,8 +24,12 @@
     <button
         type="button"
         x-on:click="open = ! open"
+        {{-- Server-rendered initial state, Alpine keeps it true after: a
+             reader before (or without) JS still hears a real disclosure. --}}
+        aria-expanded="{{ $open ? 'true' : 'false' }}"
         x-bind:aria-expanded="open"
-        class="flex w-full items-center gap-3 p-4 text-start"
+        aria-controls="mode-rules-{{ $mode->value }}"
+        class="focus-ring flex w-full items-center gap-3 p-4 text-start"
     >
         <span class="flex size-9 shrink-0 items-center justify-center rounded-lg border {{ $palette['tile'] }}">
             <flux:icon :name="$mode->icon()" variant="mini" class="{{ $palette['icon'] }}" />
@@ -39,7 +43,7 @@
         <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
     </button>
 
-    <div x-show="open" x-cloak class="border-t border-zinc-100 px-4 py-3 dark:border-zinc-800/60">
+    <div id="mode-rules-{{ $mode->value }}" x-show="open" x-cloak class="border-t border-zinc-100 px-4 py-3 dark:border-zinc-800/60">
         <ul class="flex flex-col gap-1.5">
             @foreach ($mode->ruleLines() as $line)
                 <li wire:key="rule-{{ $mode->value }}-{{ $loop->index }}" class="flex gap-2 text-sm text-zinc-600 dark:text-zinc-300">

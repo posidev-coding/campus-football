@@ -40,7 +40,7 @@
         <div
             x-ref="strip"
             @class([
-                'flex snap-x snap-mandatory gap-1 overflow-x-auto scroll-smooth pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+                'flex snap-x snap-mandatory gap-1 overflow-x-auto motion-safe:scroll-smooth pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
                 'px-4' => $bleed,
             ])
         >

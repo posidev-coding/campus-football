@@ -191,14 +191,16 @@
                     wire:target="{{ $sideTargets }}"
                 @endif
                 @disabled(! $tappable)
-                @if ($picked) aria-pressed="true" @endif
+                {{-- BOTH sides carry aria-pressed: a one-of-two choice
+                     read as two unrelated buttons without the false half. --}}
+                @if ($interactive) aria-pressed="{{ $picked ? 'true' : 'false' }}" @endif
                 @style([
                     '--team-accent: '.$palette?->surface => $palette,
                     '--team-accent-contrast: '.$palette?->text => $palette,
                     '--team-keyline: '.$team?->altAccentColor() => $palette && $team?->altAccentColor(),
                 ])
                 @class([
-                    'flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-start transition-colors',
+                    'focus-ring flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-start transition-colors',
                     // The fill: TeamPalette's computed pairing, un-branded in
                     // dark mode by the utility itself — where the light
                     // border below is the selection signal instead.
@@ -283,7 +285,7 @@
                     @if ($staked) aria-pressed="true" @endif
                     data-lock-toggle
                     @class([
-                        'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors',
+                        'focus-ring flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors',
                         'border-red-900/40 bg-zinc-900 text-red-300 dark:border-red-950 dark:bg-black dark:text-red-400' => $staked,
                         'border-zinc-200 text-zinc-700 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500' => ! $staked && $pick !== null,
                         'border-zinc-200 text-zinc-400 dark:border-zinc-800' => $pick === null,
