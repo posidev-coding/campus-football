@@ -59,7 +59,7 @@ it('speaks every register on the rebuild\'s new families', function (string $key
         'owed' => '3', 'total' => '10', 'count' => '2', 'when' => 'noon',
         'week' => 'Week 1', 'points' => '14', 'xp' => '100', 'place' => '3rd',
         'field' => '9', 'winner' => 'X', 'others' => 'X', 'rival' => 'X',
-        'margin' => '4',
+        'margin' => '4', 'max' => '200',
     ];
 
     $pg = Voice::line($key, $replace, for: User::factory()->make(['content_rating' => ContentRating::Pg]));
@@ -94,6 +94,9 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'join.room.played',
     'mode.change.pick_one',
     'picks.publish.featured_metric',
+    'picks.tiebreaker.invalid',
+    'picks.locked.notice',
+    'picks.claim.reason',
     'picks.bear.tagline.favorites',
     'picks.bear.tagline.dogs',
     'picks.bear.tagline.home',

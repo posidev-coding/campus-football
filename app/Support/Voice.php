@@ -1361,6 +1361,35 @@ class Voice
             'r' => ':total points. Bold. It\'s on the record.',
         ],
 
+        // The refusal when an answer is outside what the question could
+        // produce. The bounds stay in the line — the instruction survives
+        // every register.
+        'picks.tiebreaker.invalid' => [
+            'pg' => 'Keep it between 0 and :max.',
+            'pg13' => 'Between 0 and :max — a number a football game could actually produce.',
+            'r' => 'Between 0 and :max. This is football, not pinball.',
+        ],
+
+        /*
+         * The race a countdown cannot hide: a reader sitting on the slate
+         * at kickoff taps a card the very second it locks. Silence there
+         * reads as a dead button; this is the honest answer. Roasts the
+         * pick that never happened, never the person.
+         */
+        'picks.locked.notice' => [
+            'pg' => 'That game just kicked off — picks lock at kickoff.',
+            'pg13' => 'That game kicked. Whatever you were about to pick stays unpicked.',
+            'r' => 'Kicked. The line closed while that pick was still a thought.',
+        ],
+
+        // The sticky chrome's reason line for the handleless — the claim
+        // box below is the action; this names why the cards render locked.
+        'picks.claim.reason' => [
+            'pg' => 'Claim a handle to make your picks.',
+            'pg13' => 'Claim a handle to pick — the group needs a name to argue with.',
+            'r' => 'No handle, no picks. Claim one below.',
+        ],
+
         /*
          * The Conversation. A LOUD surface everywhere it appears — including
          * on Game and Team, whose FACTS stay pure: the chrome around the

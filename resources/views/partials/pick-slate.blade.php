@@ -83,7 +83,14 @@
             @endif
         </span>
 
-        @if ($interactive && in_array($surfaceStatus, ['upcoming', 'live'], true))
+        @if ($interactive && $this->needsHandle)
+            {{-- The REASON the cards render locked, in the band that stays
+                 on screen while they scroll — the claim box below is the
+                 action; this is the explanation that travels with them. --}}
+            <span class="min-w-0 truncate text-sm font-medium text-amber-600 dark:text-amber-500">
+                {{ App\Support\Voice::line('picks.claim.reason') }}
+            </span>
+        @elseif ($interactive && in_array($surfaceStatus, ['upcoming', 'live'], true))
             <x-slate-progress :made="$made" :total="$gameIds->count()" class="min-w-0" />
         @endif
 
@@ -104,7 +111,14 @@
                         if (this.remaining <= 0) return;
                         this.timer = setInterval(() => {
                             this.remaining = Math.max(0, this.remaining - 1);
-                            if (this.remaining === 0) this.stop();
+                            if (this.remaining === 0) {
+                                this.stop();
+                                // The ring knows the exact second the rows
+                                // lock; ONE refresh renders them locked, so
+                                // the racing tap mostly cannot happen —
+                                // MakesPicks' locked notice catches the rest.
+                                $wire.$refresh();
+                            }
                         }, 1000);
                     },
                     stop() {
@@ -244,6 +258,10 @@
                     />
                     <flux:button type="submit" size="sm" :disabled="$tiebreakerLocked">Save</flux:button>
                 </form>
+
+                {{-- Server-side refusal: the input's min/max decorate the
+                     picker but do not block a wire:submit. --}}
+                <flux:error name="totals.{{ $slate->id }}" />
 
                 @if ($entry?->tiebreaker_total !== null)
                     <p class="text-xs text-zinc-500 dark:text-zinc-400">

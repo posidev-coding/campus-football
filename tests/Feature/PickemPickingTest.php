@@ -198,9 +198,13 @@ it('walks a handleless member through the claim, then opens the surface', functi
 
     Livewire::actingAs($handleless)->test('group', ['group' => $group])
         ->assertSee('Claim your handle')
+        // The sticky band names the REASON the cards render locked; the
+        // claim box is the action, this line travels with the scroll.
+        ->assertSee(Voice::line('picks.claim.reason', for: $handleless))
         ->set('handle', 'freshmeat')
         ->call('claim')
-        ->assertDontSee('Claim your handle');
+        ->assertDontSee('Claim your handle')
+        ->assertDontSee(Voice::line('picks.claim.reason', for: $handleless));
 
     expect($handleless->fresh()->handle)->toBe('freshmeat');
 });
@@ -214,6 +218,72 @@ it('locks a kicked-off row on the surface', function () {
     $slate->games()->with('game')->first()->game->update(['kickoff_at' => now()->subHour()]);
 
     Livewire::actingAs($member)->test('group', ['group' => $group])->assertSee('Locked');
+});
+
+describe('the kickoff race', function () {
+    it('answers the racing tap with the locked notice, never silence', function () {
+        /*
+         * hasKickedOff() is render-time only: a reader sitting on the
+         * slate at kickoff still sees an open row and taps it. Silence
+         * there reads as a dead button — the pre-tap render said the row
+         * was live, so "already renders locked" is false at tap time.
+         */
+        [$member, $group, $slate] = pickemLiveSlate();
+        $slateGame = $slate->games()->with('game')->first();
+
+        $surface = Livewire::actingAs($member)->test('group', ['group' => $group]);
+
+        $this->travelTo('2026-09-05 19:30:01');
+
+        $surface->call('pick', $slateGame->id, $slateGame->game->home_team_id)
+            ->assertSet('notice', Voice::line('picks.locked.notice', for: $member));
+
+        expect(Pick::count())->toBe(0);
+    });
+
+    it('tells the countdown ring to refresh the surface at zero', function () {
+        // End state, not animation: the ring's interval calls one
+        // $wire.$refresh() when it hits zero, so the rows render locked
+        // the second they are.
+        [$member, $group] = pickemLiveSlate();
+
+        Livewire::actingAs($member)->test('group', ['group' => $group])
+            ->assertSeeHtml('$wire.$refresh()');
+    });
+
+    it('answers a racing tiebreaker save the same way', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+
+        $surface = Livewire::actingAs($member)->test('group', ['group' => $group]);
+
+        $this->travelTo('2026-09-05 19:30:01');
+
+        $surface->set('totals.'.$slate->id, 45)
+            ->call('saveTotal', $slate->id)
+            ->assertSet('notice', Voice::line('picks.locked.notice', for: $member));
+    });
+});
+
+describe('the tiebreaker validates', function () {
+    it('refuses an implausible answer with the reason on the input, then saves a real one', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+
+        $surface = Livewire::actingAs($member)->test('group', ['group' => $group]);
+
+        $surface->set('totals.'.$slate->id, 9999)
+            ->call('saveTotal', $slate->id)
+            ->assertHasErrors('totals.'.$slate->id)
+            ->assertSee(Voice::line('picks.tiebreaker.invalid', ['max' => 200], for: $member));
+
+        expect(SlateEntry::query()->where('user_id', $member->id)->whereNotNull('tiebreaker_total')->exists())
+            ->toBeFalse();
+
+        // A plausible answer clears the refusal and lands.
+        $surface->set('totals.'.$slate->id, 45)
+            ->call('saveTotal', $slate->id)
+            ->assertHasNoErrors()
+            ->assertSet('notice', Voice::line('picks.tiebreaker.saved', ['total' => 45], for: $member));
+    });
 });
 
 describe('the surface absorbs every refusal', function () {
@@ -275,9 +345,11 @@ describe('the surface absorbs every refusal', function () {
         // A stale slate id: silent, the refreshed card is the answer.
         $surface->call('saveTotal', 999999)->assertSet('notice', null);
 
-        // An implausible answer: refused by the action, absorbed here.
+        // An implausible answer: refused server-side with the reason ON
+        // the input — min/max on a number input do not block a wire:submit.
         $surface->set('totals.'.$slate->id, 99999)
             ->call('saveTotal', $slate->id)
+            ->assertHasErrors('totals.'.$slate->id)
             ->assertSet('notice', null);
 
         expect(SlateEntry::query()->where('user_id', $member->id)->whereNotNull('tiebreaker_total')->exists())

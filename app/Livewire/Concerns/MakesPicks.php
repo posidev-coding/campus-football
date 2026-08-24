@@ -97,8 +97,10 @@ trait MakesPicks
             $slateGame = SlateGame::query()->findOrFail($slateGameId);
             $action->handle(auth()->user(), $slateGame, $teamId);
         } catch (PickLocked) {
-            // The row already renders locked; a race at kickoff just
-            // re-renders into that state.
+            // A race at kickoff: the row rendered OPEN when they tapped,
+            // so silence reads as a dead button. Say it, then the refresh
+            // below renders the row locked.
+            $this->notice = Voice::line('picks.locked.notice');
         } catch (PickemParticipationGated) {
             $this->notice = Voice::line('groups.verify_first');
         } catch (HandleRequired) {
@@ -121,7 +123,8 @@ trait MakesPicks
             $slateGame = SlateGame::query()->findOrFail($slateGameId);
             $action->handle(auth()->user(), $slateGame, $locked);
         } catch (PickLocked) {
-            // The wager froze with the game; the toggle renders spent.
+            // Same race as pick(): the toggle rendered live when tapped.
+            $this->notice = Voice::line('picks.locked.notice');
         } catch (PickemParticipationGated) {
             $this->notice = Voice::line('groups.verify_first');
         } catch (HandleRequired) {
@@ -141,10 +144,30 @@ trait MakesPicks
         $total = (int) ($this->totals[$slateId] ?? 0);
 
         try {
-            $entry = $action->handle(auth()->user(), Slate::query()->findOrFail($slateId), $total);
+            $slate = Slate::query()->findOrFail($slateId);
+
+            /*
+             * Validated HERE, not only client-side: min/max on a number
+             * input decorate the picker but do not block a wire:submit,
+             * so 9999 sailed straight into the action. The action's own
+             * plausibility throw stays underneath as the defense against
+             * a caller that skips this.
+             */
+            $max = $slate->tiebreaker_metric?->maxPrediction() ?? 200;
+
+            if ($total < 0 || $total > $max) {
+                $this->addError("totals.{$slateId}", Voice::line('picks.tiebreaker.invalid', ['max' => $max]));
+
+                return;
+            }
+
+            $this->resetErrorBag("totals.{$slateId}");
+
+            $entry = $action->handle(auth()->user(), $slate, $total);
             $this->notice = Voice::line('picks.tiebreaker.saved', ['total' => $entry->tiebreaker_total]);
         } catch (PickLocked) {
-            // Locked with the game; the input renders disabled already.
+            // The same kickoff race as pick() — the input rendered enabled.
+            $this->notice = Voice::line('picks.locked.notice');
         } catch (PickemParticipationGated) {
             $this->notice = Voice::line('groups.verify_first');
         } catch (HandleRequired) {
