@@ -299,6 +299,10 @@ new class extends Component
                 'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'venue:id,name',
+                // The odds-strip's fallback is a query-builder call that
+                // preventLazyLoading cannot see — without this it was a
+                // silent query per schedule card on the default tab.
+                'odds',
             ])
             ->whereIn('season_id', $seasonIds)
             ->where(fn ($q) => $q->where('home_team_id', $this->team->id)->orWhere('away_team_id', $this->team->id))

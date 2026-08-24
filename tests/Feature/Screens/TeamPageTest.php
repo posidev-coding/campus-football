@@ -131,6 +131,24 @@ it('orders leaders by the published category order, not insertion order', functi
         ->assertSeeInOrder(['Passing', 'Tackles']);
 });
 
+it('eager loads every relation the schedule cards read, odds included', function () {
+    /*
+     * A SOURCE sweep, the RailTest reasoning: preventLazyLoading cannot
+     * see the odds-strip's fallback — it is a query-builder call, not a
+     * lazy relation read — so the schedule tab silently paid one odds
+     * query per card on the most-visited detail page.
+     */
+    $schedule = str(file_get_contents(resource_path('views/livewire/team.blade.php')))
+        ->after('function schedule')
+        ->before('#[Computed]');
+
+    foreach (['homeTeam', 'awayTeam', 'venue', 'odds'] as $relation) {
+        expect($schedule->contains("'{$relation}"))->toBeTrue(
+            "The team schedule query must eager load [{$relation}] for its game cards."
+        );
+    }
+});
+
 it('groups the roster by position group', function () {
     Livewire::test('team', ['team' => $this->team])
         ->set('year', 2025)
