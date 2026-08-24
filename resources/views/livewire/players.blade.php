@@ -440,7 +440,7 @@ new class extends Component
              margin. Two columns halve that to ~1,600px, which still clears.
              Three would leave ~1,067px and let the observer re-enter before
              the guard settles. --}}
-        <div class="-mt-1 grid gap-1.5 xl:grid-cols-2">
+        <div wire:loading.class="opacity-60 pointer-events-none" wire:target="q, scope, position, sort" class="motion-safe:transition-opacity -mt-1 grid gap-1.5 xl:grid-cols-2">
             @foreach ($this->players as $row)
                 {{-- The season is passed explicitly rather than left to default
                      to `latestSeason`: that would lazy-load a relation per row,

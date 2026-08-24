@@ -1056,7 +1056,11 @@ new class extends Component
          `minmax(0,1fr)` rather than `1fr`: a bare `1fr` track is
          `minmax(auto,1fr)` and keeps its min-content width, which is the same
          overflow trap `min-w-0` fixes on a flex item. --}}
-    <div class="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6">
+    <div
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="tab"
+        class="flex flex-col gap-4 motion-safe:transition-opacity lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6"
+    >
         <div class="flex min-w-0 flex-col gap-4">
             @if ($tab === 'preview')
                 @include('partials.game-preview')
@@ -1088,7 +1092,11 @@ new class extends Component
          the product rule: everything above this rule reports — the score,
          the box, the drives — and nothing above it jokes. This does. --}}
     <div class="border-t border-zinc-200 pt-6 dark:border-zinc-800">
-        <livewire:conversation :topic="$game" :key="'talk-game-'.$game->id" />
+        {{-- `lazy`: the thread is the foot of the page, and its queries
+             belonged to the scroll that reaches it, not to first paint.
+             No permalink anchors into a post (verified), so nothing
+             needs the thread hydrated before its skeleton scrolls in. --}}
+        <livewire:conversation :topic="$game" lazy :key="'talk-game-'.$game->id" />
     </div>
 
     @include('partials.game-league-sheet')

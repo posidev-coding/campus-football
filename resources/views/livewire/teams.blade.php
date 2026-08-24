@@ -150,6 +150,11 @@ new class extends Component
         </x-slot:actions>
     </x-filter-bar>
 
+    <div
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="year, scope, q"
+        class="flex flex-col gap-4 motion-safe:transition-opacity"
+    >
     @forelse ($this->grouped as $group)
         <div class="flex flex-col gap-2" wire:key="conf-{{ $group['conference']?->id }}">
             <flux:subheading>
@@ -179,4 +184,5 @@ new class extends Component
             <flux:callout.text>Nothing matches for {{ $year }}.</flux:callout.text>
         </flux:callout>
     @endforelse
+    </div>
 </div>

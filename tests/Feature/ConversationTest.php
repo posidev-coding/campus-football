@@ -413,7 +413,14 @@ it('mounts the conversation on all three host screens', function () {
     }
 });
 
-it('renders inside the clubhouse for real', function () {
+it('embeds lazily inside the clubhouse, and hydrates to the real thread', function () {
+    /*
+     * `lazy` since the loading pass: the thread is the FOOT of the page,
+     * so first paint carries the skeleton and the x-intersect hydrator,
+     * and the posts' queries belong to the scroll that reaches them. The
+     * page pin is the SHELL; the hydrated half is proven on the component
+     * itself, which is what the intersect mounts.
+     */
     [$commissioner, $group] = pickemContest(ContestMode::Classic);
 
     ConversationPost::factory()->create([
@@ -421,6 +428,11 @@ it('renders inside the clubhouse for real', function () {
     ]);
 
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSeeHtml('wire:name="conversation"')
+        ->assertSeeHtml('x-intersect')
+        ->assertSee('animate-pulse');
+
+    Livewire::actingAs($commissioner)->test('conversation', ['topic' => $group->fresh()])
         ->assertSee('Slate is soft this week.')
         ->assertSee(Voice::line('talk.subheading.group', for: $commissioner));
 });

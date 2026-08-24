@@ -140,13 +140,17 @@ new class extends Component
     >
         <div class="flex items-center gap-2" :class="open && 'border-b border-zinc-200 px-4 py-2 dark:border-zinc-800'">
             <flux:input
-                wire:model.live.debounce.200ms="q"
+                wire:model.live.debounce.300ms="q"
                 @focus="open = true"
                 icon="magnifying-glass"
                 placeholder="Teams, players, coaches, games…"
                 clearable
                 class="flex-1"
             />
+
+            {{-- The in-flight tell, in the input row where the eye already
+                 is — a keystroke's round trip used to be a dead interval. --}}
+            <flux:icon.loading wire:loading wire:target="q" class="size-4 shrink-0 text-zinc-400" />
 
             {{-- The one-tap way out. Escape works too, but a phone has no
                  Escape key. Clears the query so reopening starts fresh. --}}
@@ -166,7 +170,13 @@ new class extends Component
              scrolling the page underneath — which would otherwise need a body
              scroll lock, and a class toggled onto <html> strands there when a
              result link navigates away mid-open. --}}
-        <div x-cloak x-show="open" class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+        <div
+            x-cloak
+            x-show="open"
+            wire:loading.class="opacity-60"
+            wire:target="q"
+            class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] motion-safe:transition-opacity"
+        >
             @include('partials.search-results', [
                 'q' => $q,
                 'teams' => $this->teams,

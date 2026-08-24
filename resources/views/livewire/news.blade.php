@@ -39,7 +39,7 @@ new class extends Component
          job — 322px cells at `lg`, 343px at four across the widest shell.
          Cards stretch to their row: `article-card` already pushes its meta
          line down with `mt-auto`, so an equal-height row fills correctly. --}}
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+    <div wire:loading.class="opacity-60 pointer-events-none" wire:target="gotoPage, nextPage, previousPage" class="motion-safe:transition-opacity grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         @forelse ($this->articles as $article)
             <x-article-card :article="$article" wire:key="article-{{ $article->id }}" />
         @empty

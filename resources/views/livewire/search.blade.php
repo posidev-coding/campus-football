@@ -134,7 +134,7 @@ new class extends Component
     <flux:modal name="search" variant="bare" class="my-[10vh] max-h-screen w-full max-w-[32rem] overflow-y-hidden">
         <flux:command class="inline-flex max-h-[70vh] flex-col border-none shadow-lg">
             <flux:command.input
-                wire:model.live.debounce.200ms="q"
+                wire:model.live.debounce.300ms="q"
                 placeholder="Search teams, players, coaches, games…"
                 closable
             />

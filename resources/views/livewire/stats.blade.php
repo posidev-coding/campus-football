@@ -272,6 +272,11 @@ new class extends Component
         class="-mt-1"
     />
 
+    <div
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="view, side, scope, year"
+        class="flex flex-col gap-4 motion-safe:transition-opacity"
+    >
     @forelse ($this->groups as $group)
         {{-- `$view` in the key as well as `$side`: without it Livewire morphs a
              team board into the player board at the same index, and the row
@@ -357,4 +362,5 @@ new class extends Component
             </flux:callout.text>
         </flux:callout>
     @endforelse
+    </div>
 </div>

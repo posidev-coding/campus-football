@@ -90,6 +90,11 @@ new class extends Component
         />
     </div>
 
+    <div
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="scope, view"
+        class="flex flex-col gap-4 motion-safe:transition-opacity"
+    >
     @if ($this->rows !== [])
         {{-- The SAME table the clubhouse ranks a week with — one ranked-
              rows vocabulary, so the leaderboard cannot drift from the room.
@@ -125,4 +130,5 @@ new class extends Component
             </flux:button>
         </x-empty-state>
     @endif
+</div>
 </div>

@@ -389,8 +389,14 @@ new class extends Component
     </div>
 
     {{-- Short-polls our own cache, never ESPN, and only while a game is
-         actually in progress. --}}
-    <div @if ($this->hasLiveGames) wire:poll.30s.visible @endif class="flex flex-col gap-5">
+         actually in progress. Dims while the chrome navigates — a week or
+         scope change was a dead interval with no acknowledgment at all. --}}
+    <div
+        @if ($this->hasLiveGames) wire:poll.30s.visible @endif
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="week, scope, bracket"
+        class="flex flex-col gap-5 motion-safe:transition-opacity"
+    >
         {{-- The viewer's teams first, in the order they set on Account. These
              games were lifted OUT of the day groups below, so they appear
              once, not twice — floating a game is moving it, not copying it.

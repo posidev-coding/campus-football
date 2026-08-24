@@ -256,7 +256,11 @@ new class extends Component
          `items-start` because these are panels, not cards: stretching a
          four-row conference to match a sixteen-row one paints a tall empty
          box under the short table. --}}
-    <div class="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-6 lg:gap-y-5 2xl:grid-cols-3">
+    <div
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="scope, year"
+        class="flex flex-col gap-4 motion-safe:transition-opacity lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-6 lg:gap-y-5 2xl:grid-cols-3"
+    >
     @forelse ($this->standings as $conferenceName => $rows)
         <div class="flex flex-col gap-2">
             <flux:subheading>

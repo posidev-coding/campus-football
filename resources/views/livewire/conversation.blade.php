@@ -45,6 +45,23 @@ new class extends Component
 {
     use ClaimsHandle;
 
+    /**
+     * The skeleton the hosts' `lazy` embeds paint until the scroll gets
+     * here: the thread is the FOOT of Game, Team and Group, so its
+     * queries belong to the reader who reaches it, never to first paint.
+     * Same root tag as the real render, so the swap cannot jump layout.
+     */
+    public function placeholder(): string
+    {
+        return <<<'HTML'
+            <section class="flex flex-col gap-3" aria-hidden="true">
+                <div class="h-5 w-16 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800"></div>
+                <div class="h-4 w-2/3 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800"></div>
+                <div class="h-16 animate-pulse rounded-xl bg-zinc-100 dark:bg-zinc-800"></div>
+            </section>
+            HTML;
+    }
+
     /** One of PostToConversation::SCOPES. */
     public string $topicType;
 

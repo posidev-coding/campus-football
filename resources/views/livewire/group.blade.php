@@ -619,6 +619,11 @@ new class extends Component
         key-prefix="group-tab"
     />
 
+    <div
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="view"
+        class="flex flex-col gap-5 motion-safe:transition-opacity"
+    >
     @if ($view === 'slate')
         @if ($this->slate?->isPublished())
             {{-- A room's week has a winner, and the room says so out loud. --}}
@@ -782,12 +787,18 @@ new class extends Component
         @endif
     @endif
 
+    </div>
+
     {{-- The room's talk, at the foot of the room and under every tab — it
          belongs to the GROUP, not to whichever tab you happen to be on. Not
          a fourth tab: x-plate holds three, and a slate's chatter following
          you from Slate to Members is the point rather than a side effect. --}}
     <div class="border-t border-zinc-200 pt-6 dark:border-zinc-800">
-        <livewire:conversation :topic="$group" :key="'talk-group-'.$group->id" />
+        {{-- `lazy`: the thread is the foot of the page, and its queries
+             belonged to the scroll that reaches it, not to first paint.
+             No permalink anchors into a post (verified), so nothing
+             needs the thread hydrated before its skeleton scrolls in. --}}
+        <livewire:conversation :topic="$group" lazy :key="'talk-group-'.$group->id" />
     </div>
 
     {{-- THE PIVOT: one deliberate act per season, consequences said
