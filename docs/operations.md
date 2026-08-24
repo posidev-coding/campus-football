@@ -477,6 +477,14 @@ php artisan config:clear
 php artisan pennant:purge pickem    # REQUIRED — see below
 ```
 
+> Launch-hardening note (2026-08-24): the chrome and launch copy no
+> longer resolve Pennant at all — Navigation, the Home teaser, the guest
+> pitch and the tour all read the config mirror directly, so the flip
+> reaches them purge-free. The purge remains REQUIRED while the ROUTES
+> still ride `EnsureFeaturesAreActive`; once `PENNANT_STORE=array` lands
+> in production (runbook step 5 — both flags are config-derived), delete
+> the purge line from this checklist.
+
 **The purge is not optional.** Pennant's database driver PERSISTS every
 resolved value, so the closure runs once per user and the answer is read from
 a `features` row after that. Flipping the config reaches nobody who has

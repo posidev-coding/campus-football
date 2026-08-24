@@ -680,11 +680,52 @@ the same keyed-idempotency the wallet entries and the workbook use.
 `Cadence::currentSaturday()` names the target. Gate on
 `CfbCalendar::phase()->isLive()`.
 
+### Source candidates — evaluate, don't assume
+
+**`https://promo.espn.com/collegegameday/`** is worth investigating as a
+first-party source, and is the obvious place to look. **It is a candidate, not
+the chosen reference** — do not build the feature around it without checking it
+properly first.
+
+What one automated fetch on 2026-08-24 returned: **only ESPN's boilerplate
+footer** — Terms of Use, Privacy Policy, Disney Ad Sales — with no campus, no
+city, no featured game, and no schedule. That is the signature of a
+JavaScript-hydrated page whose body never reaches a plain HTML-to-text
+conversion. If that holds, a `Http::get()` scrape in Laravel gets nothing
+useful, and it would need either a headless browser or the JSON endpoint behind
+the hydration.
+
+**That was one automated fetch, not a verdict.** Before ruling it in or out,
+check by hand: open it in a real browser, watch the network tab for an
+underlying JSON call (that endpoint, if it exists, is far better than scraping
+the page — stable, parseable, and cheap), and try a normal browser User-Agent.
+
+If a first-party endpoint does exist, **prefer it over the AI path entirely** and
+demote the model to a fallback for the weeks it goes stale or changes shape. A
+feed we can parse beats a model we have to guard, every time — which is the same
+reasoning that makes the rest of this app read ESPN's feeds rather than reason
+about football.
+
+Whatever the source, respect the house discipline: this is an ESPN host, so one
+request per week, no polling, and it does **not** go through `EspnClient` — that
+client exists for the JSON feeds and their cost tiers, and a promo-page scrape
+does not belong inside its rate limiter or its User-Agent allowlist.
+
+Also worth evaluating alongside it: the show's own social account (the location
+is usually announced there first), and Wikipedia's per-season GameDay table,
+which is well-maintained, historical, and would double as the backfill source
+mentioned below.
+
 ### The guards, which are the actual feature
 
+0. **If a parseable first-party source exists, use it and skip the model.** The
+   guards below apply to the AI path; they are not a reason to prefer it.
 1. **Search is mandatory; parametric memory is not a source.** A response with no
    `source_url`, or one the search did not return, is discarded as unknown. The
-   model may not answer from what it remembers.
+   model may not answer from what it remembers. Giving the search a strong hint
+   toward the promo page or whatever source proves best is fine — pinning it to
+   one domain via `allowed_domains` is not, since the fallback's whole value is
+   working the week the primary source breaks.
 2. **The site must resolve to a `Team` we already hold**, via `Search::teams()`.
    An unresolvable campus is unknown, never displayed as fact.
 3. **The contradiction check — the strongest guard, and free.** GameDay
@@ -712,7 +753,9 @@ the same keyed-idempotency the wallet entries and the workbook use.
 
 Historical GameDay sites are a genuinely nice dataset and a one-time backfill
 run could seed prior seasons — worth doing once the live path is proven, not
-before.
+before. Wikipedia's per-season tables are the practical backfill source, and the
+same contradiction check validates every backfilled row against our own
+`games` data for free.
 
 ### The card
 
@@ -979,7 +1022,10 @@ Per `CLAUDE.md`, in order:
 7. **GameDay auto-publish vs. admin confirm.** Recommendation: auto-publish when
    every guard passes (the contradiction check is strong), hold as `proposed`
    otherwise. Flip to always-confirm if the first few weeks prove noisy.
-8. ~~Whether Phases 4–5 wait for Sep 1.~~ **Settled:** nothing waits for a date.
+8. **GameDay source.** Investigate `promo.espn.com/collegegameday/` by hand
+   before building — a parseable first-party endpoint, if one exists behind it,
+   beats the AI path and demotes the model to a fallback. See Phase 7.
+9. ~~Whether Phases 4–5 wait for Sep 1.~~ **Settled:** nothing waits for a date.
    Everything user-facing ships flag-closed and flips when tuned.
 
 ---
