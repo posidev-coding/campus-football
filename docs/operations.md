@@ -141,16 +141,31 @@ The chrome-consistency sweeps exclude `filament/` views: the admin panel
 renders inside Filament's design system, and the phone-first rules enforced
 on an admin table is the right rule on the wrong product.
 
-**The panel does NOT load `resources/css/app.css`, so Tailwind utilities
-written in an admin view have no definitions behind them.** The first Sync
-Health page laid itself out with `grid grid-cols-2 gap-4` and `flex
-items-center gap-3` and rendered as one unaligned column — every class
-silently absent, which reads as bad design rather than a missing stylesheet.
-So the page is built entirely from Filament's own widgets and tables, which
-carry their own CSS: a `StatsOverviewWidget` for spend, `TableWidget`s with
-`->records(array)` for the computed coverage and schedule rows, and a normal
-Eloquent table for failures. Anything genuinely custom needs a Filament theme
-registered first. Page-scoped widgets set `protected static bool $isDiscovered
+**The panel does NOT load `resources/css/app.css`, and never will** — that
+stylesheet carries Flux's bundle, the brand variables and the phone-first
+chrome, none of which belong to an admin table. For a long time that meant
+Tailwind utilities written in an admin view had no definitions behind them: the
+first Sync Health page laid itself out with `grid grid-cols-2 gap-4` and `flex
+items-center gap-3` and rendered as one unaligned column, every class silently
+absent, which reads as bad design rather than a missing stylesheet. So the page
+is built entirely from Filament's own widgets and tables, which carry their own
+CSS: a `StatsOverviewWidget` for spend, `TableWidget`s with `->records(array)`
+for the computed coverage and schedule rows, and a normal Eloquent table for
+failures.
+
+**Since 2026-08-24 the panel has its OWN compiled Tailwind**, at
+`resources/css/filament/admin/theme.css`, registered with `->viteTheme()`. It
+scans `app/Filament/**` and `resources/views/filament/**` — and only those, so a
+custom admin view written anywhere else still compiles to nothing and renders
+unstyled, which is the same silent failure in a new place. `PanelThemeTest`
+pins both `@source` lines and the Vite input entry.
+
+Two things the theme does not change. **Flux is still unavailable in the panel**
+— its components need Flux's own CSS and JS bundles, which the panel does not
+load. And a **built Vite manifest is now required for more admin pages than
+before**: `->viteTheme()` resolves through Vite, so `/admin` 500s on a checkout
+where `npm run build` has not run. Two admin page tests already had that
+property; four do now. `composer setup` and the Cloud deploy both build. Page-scoped widgets set `protected static bool $isDiscovered
 = false` so they do not also appear on the dashboard — and their content is
 NOT in the page's own HTML, so a test must target the widget class, not the
 page.
