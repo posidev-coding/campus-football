@@ -168,16 +168,16 @@ describe('the service worker', function () {
     it('carries the push handlers that make a tapped notification the deep link', function () {
         /*
          * notificationclick focusing/opening the installed app is the ONLY
-         * real deep link an iOS home-screen web app has — and VERSION stays
-         * v1 on purpose: the bump contract is scoped to caching strategy
-         * and the offline page, which these handlers do not touch. A bump
-         * appearing here should have to mean it.
+         * real deep link an iOS home-screen web app has. VERSION is v2 —
+         * bumped when activate() learned to prune stale /build/ entries,
+         * which IS a caching-strategy change; the bump contract stands,
+         * and a bump appearing here should still have to mean it.
          */
         $worker = file_get_contents(public_path('sw.js'));
 
         expect($worker)->toContain("addEventListener('push'")
             ->and($worker)->toContain("addEventListener('notificationclick'")
             ->and($worker)->toContain('openWindow')
-            ->and($worker)->toContain("VERSION = 'v1'");
+            ->and($worker)->toContain("VERSION = 'v2'");
     });
 });

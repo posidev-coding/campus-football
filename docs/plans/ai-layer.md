@@ -298,19 +298,22 @@ At 75 users (top of the pilot range):
 | Weekly recaps | Sonnet 5 | 323 | 3,900 | 520 | **$4.20** |
 | Notification copy pool (build-time) | Sonnet 5 | 12 | 4,000 | 3,000 | **$0.46** |
 | Bear taunts | Haiku 4.5 | 60 | 2,000 | 600 | **$0.30** |
+| College GameDay (incl. web search) | Sonnet 5 | 17 | 8,000 | 300 | **$0.49** |
 | Maintenance advisor | Claude Code | 4–8 | — | — | **$0.00** |
 | Application monitoring | Pulse (self-hosted) | — | — | — | **$0.00** |
-| | | | | **Total** | **~$9.11** |
+| | | | | **Total** | **~$9.60** |
 
 Rates: Haiku 4.5 $1/$5 per MTok · Sonnet 5 $2/$10 · Batch API halves both ·
-cache read 0.1× · web search $10/1,000 searches (**not used in v1**).
+cache read 0.1× · **web search $10/1,000 searches — used only by Phase 7**,
+where it is both mandatory (it is the anti-hallucination guard) and negligible
+at ~17 searches a month.
 
 Stat answers are budgeted at **5 per user per week** on the Tuesday-to-Tuesday
 pick'em cadence — 1,629 questions a month across the pilot. The real figure will
 land lower: the intent cache collapses identical questions, and during a pilot
 where everyone is asking about the same Saturday, that overlap is large.
 
-**Headline: the pilot fits in about $9/month; $20–25 is 2–3× headroom.**
+**Headline: the pilot fits in under $10/month; $20–25 is 2–3× headroom.**
 Running the stat answers on Sonnet 5 instead of Haiku puts it near $16 — still
 inside budget. A 5× usage spike on Haiku lands near $25, which is exactly where
 the enforced ceiling in Phase 6 earns its keep.
@@ -647,6 +650,185 @@ Plus a per-user daily cap via `RateLimiter`.
 
 ---
 
+## Phase 7 — College GameDay
+
+**The premise is correct: ESPN's feeds do not carry this.** Nothing in the four
+synced hosts exposes where GameDay is broadcasting from. It is the one weekly
+fact in the product that no feed provides — which makes it the single best
+justification for the AI SDK in the whole plan, because here the model is
+*legitimately* the data source rather than a narrator over one.
+
+That also makes it the **riskiest** feature here, and it inverts the Phase 5
+rule. Everywhere else the model never emits a fact. Here it must. So the guards
+carry the weight instead.
+
+### The routine
+
+An in-app `laravel/ai` agent (**not** a Claude Code routine — this is production
+data that must land in the database and render on a user-facing screen), using
+Anthropic's **`WebSearch` provider tool** with structured output:
+
+```
+{ site, city, state, host_team_name, game_hint,
+  announced: bool, confidence, source_url }
+```
+
+Scheduled daily around 09:00 ET, **Sunday through Thursday, in-season only**,
+and it **stops for the week the moment a Saturday is confirmed** — so a normal
+week costs one or two runs, not five. Idempotent on `(season_year, saturday)`,
+the same keyed-idempotency the wallet entries and the workbook use.
+`Cadence::currentSaturday()` names the target. Gate on
+`CfbCalendar::phase()->isLive()`.
+
+### The guards, which are the actual feature
+
+1. **Search is mandatory; parametric memory is not a source.** A response with no
+   `source_url`, or one the search did not return, is discarded as unknown. The
+   model may not answer from what it remembers.
+2. **The site must resolve to a `Team` we already hold**, via `Search::teams()`.
+   An unresolvable campus is unknown, never displayed as fact.
+3. **The contradiction check — the strongest guard, and free.** GameDay
+   broadcasts from a campus hosting a game. If the named host team has **no home
+   game that Saturday** in our own `games` data, the answer contradicts the
+   database and is rejected. This is deterministic, costs nothing, and catches
+   the most likely hallucination outright.
+4. **Scope the search to football and to the specific date.** There is a
+   basketball College GameDay; an unscoped query will happily return it.
+5. **Unknown is a first-class state, never a guess.** Failing every check writes
+   `status: unknown`, and the card says so. This is the *"never write a default
+   when data is missing"* rule applied to a feature whose whole job is producing
+   a value — which is exactly why it needs saying here.
+6. **Admin override in Filament.** When the routine fails, a human types the
+   campus in ten seconds. Same philosophy as the commissioner owning the line: an
+   automated suggestion, a human with the final word. Confirmed rows are never
+   overwritten by a later run.
+
+### Storage
+
+`gameday_weeks` — one row per Saturday: `season_year`, `saturday`, `site`,
+`city`, `state`, `team_id` (nullable), `game_id` (nullable), `status`
+(`unknown` · `proposed` · `confirmed`), `confidence`, `source_url`,
+`announced_at`, `checked_at`. Unique on `(season_year, saturday)`.
+
+Historical GameDay sites are a genuinely nice dataset and a one-time backfill
+run could seed prior seasons — worth doing once the live path is proven, not
+before.
+
+### The card
+
+`<x-gameday-card>` on Home, in **one fixed slot** below the team-news block and
+above `<x-pickem-teaser />` — with "your teams" above it and the league's
+Saturday below, which is where the week's headline belongs. Same slot in every
+state, so nothing reflows.
+
+Four states:
+
+- **Confirmed** — site, host team, the game and its kickoff, linked to the game
+  screen.
+- **Proposed** (passed the checks, awaiting admin confirm) — renders, since it
+  survived the contradiction check.
+- **Not yet announced** — honest. GameDay's next stop is typically announced
+  Sunday or Monday, so early-week emptiness is normal and worth saying rather
+  than hiding.
+- **Off-season** — the card does not render at all. A dead card for seven months
+  is clutter, not presence.
+
+**Voice:** the location is a fact and stays factual; the framing around it is
+LOUD, and gets louder when GameDay is at a followed team's campus — that is a
+personal event, and the card takes that team's `TeamPalette` treatment. Write all
+three registers. Georgia may appear here freely: the copy-and-voice rule bars it
+from *examples and jokes*, and explicitly permits it "as live data," which is
+exactly what this is.
+
+**Cost:** ~17 calls/month worst case at ~$0.32, plus web search at $10 per 1,000
+searches (~$0.17). **Under $0.50/month.** Use Sonnet 5 rather than Haiku here —
+the volume is trivial and a wrong campus on the home page is the expensive kind
+of error.
+
+---
+
+## Future work — calibrating the Game Quality Score
+
+Not a phase. Recorded because the investigation that produced it should not have
+to be repeated, and because **one piece of it expires**.
+
+### The finding
+
+`App\Services\Contests\GameQualityScore` scores 0–100 from five additive
+components. Three of them — matchup quality (60 of the 100 points), spread
+tightness (20), line movement (5) — depend on ESPN feeds that are
+**current-window only**:
+
+| Season | Games | `matchup_quality` | Any spread |
+| --- | ---: | ---: | ---: |
+| 2021–2025 | 4,847 | **0** | **0** |
+| 2026 | 946 | 99 | 121 |
+
+Measured 2026-08-24. Nearly 4,800 completed games and **zero historical odds or
+predictors**; `matchup_quality` is a rolling ~2-week window.
+
+**Consequence: the weights cannot be back-tested, and no replacement — LLM,
+regression, or otherwise — can be trained or validated against history.** The
+class docblock already anticipated this: *"Weights are a first calibration,
+expected to be tuned against a real season's slates."* That tuning has never
+happened because the data does not exist.
+
+### Why not just have an LLM score it
+
+Asked and answered: no. The score sets tier point values (9/7/4 and 8/6/4) in a
+competition where standings depend on them. An LLM is non-deterministic across
+identical inputs, cannot be audited when someone asks why a game was a Dive, and
+**always returns a number** — where the current code correctly returns `null`,
+not `0.0`, for a game that cannot be scored. It would be a differently-shaped
+guess over the same sparse inputs, with strictly worse properties.
+
+### ⏰ The part that expires — do this before the first public Saturday
+
+**Snapshot the score and all five of its components onto `slate_games` at
+publish time.** Every published slate then becomes a labeled row. It costs
+nothing, needs no AI, and is a few lines in `PublishSlate`.
+
+**Slates published before this exists are gone as calibration data forever.**
+Same argument as Phase 1's telemetry, same deadline.
+
+### Then, once a season of labels exists
+
+1. **Define the outcome.** The best label is **pick split** — a game the room
+   split near 50/50 was genuinely uncertain, which is what a good pick'em game
+   *is*, regardless of what ESPN's model thought. Secondary: final margin against
+   the frozen line, and Conversation posts on that game.
+2. **Re-fit the weights with plain regression.** Deterministic, auditable, and it
+   ships as a deploy.
+3. **Add features already synced and currently unused:** `home_win_prob` /
+   `away_win_prob` on `games`; `home_opp_strength`, `away_opp_strength`,
+   `home_pred_pt_diff` on `game_predictors`; the `injuries` table; ranking
+   momentum across `rankings`. More features beat a smarter scorer.
+
+### Where AI does help, once the above exists
+
+- **News → structured flags as a score input.** Extract a bounded enum from the
+  articles already synced — starting QB out, coach fired this week,
+  rivalry/trophy game, conference-title implications — and feed it to the
+  **deterministic** score as a small bonus. The model does language→structure;
+  arithmetic stays arithmetic. Only games in the upcoming slate window, batched
+  daily. This adds signal the numbers genuinely do not have.
+- **The advisor proposing weight changes** as a workbook item you review — never
+  a live adjustment.
+- **Narration** ("why this game"), which is recommendation 3 below.
+
+### A separate finding worth a workbook item
+
+Sep 5 has 60 games but only **30 with a usable current line**.
+`GameQualityScore::for()` returns `null` without one and `SuggestSlate` excludes
+those games entirely, so a commissioner drafting a 15-game Triple Option slate is
+choosing from half the board. That is *consistent* — the half-point law means a
+game without a posted line can never publish — but it means **line coverage
+bounds slate quality more tightly than the score does**. Worth knowing before the
+first real slate, and worth checking whether more providers or an earlier capture
+would widen it.
+
+---
+
 ## Additional use cases worth considering
 
 Ranked by value per dollar.
@@ -684,11 +866,13 @@ worktree is committed and merged**; nothing here waits for Sep 1 or Sep 5.
 | --- | --- | --- |
 | 0 | Phase 0 — Console setup | None — no code at all |
 | 1 | **Phase 1 — sensors** | None — net-new files |
+| 1b | **⏰ Game Quality snapshot** (Future-work section) | `PublishSlate` — a few lines, **expires Sep 5** |
 | 2 | **Phase 2 — Filament theme + workbook** | None — panel only, excluded from sweeps |
 | 3 | **Phase 3 — advisor routine** | None — new routes only |
 | 4 | Phase 6 — budget guard | None |
-| 5 | Phase 4 — recaps | Newsletter — **ships flag-closed** |
-| 6 | Phase 5 — Search answers | Search — **ships flag-closed** |
+| 5 | Phase 7 — College GameDay | Home — new card, **ships flag-closed** |
+| 6 | Phase 4 — recaps | Newsletter — **ships flag-closed** |
+| 7 | Phase 5 — Search answers | Search — **ships flag-closed** |
 
 **Items 0–3 are the priority and should land within days.** They touch no product
 surface at all, so they carry no launch risk — and they are the ones that pay
@@ -697,15 +881,24 @@ sensors are already recording. Phase 2's Filament theme also unblocks the admin
 UI requests that poking will generate, and the workbook is the right intake for
 them.
 
-**Items 5 and 6 are not gated on a date either — they are gated on a flag.**
+**Item 1b is the one thing here with a real deadline.** It is a few lines in
+`PublishSlate` and needs no AI, but slates published before it exists are gone as
+calibration data permanently. Do it alongside Phase 1.
+
+**Phase 7 (GameDay) is ordered ahead of recaps and Search answers** because it is
+the highest visible payoff per line of code, it touches only a new Home card
+rather than an existing pipeline, and its whole value is weekly and in-season —
+every week it is not shipped is a week of it missing.
+
+**Items 5–7 are not gated on a date either — they are gated on a flag.**
 They edit files launch hardening also changed (the newsletter pipeline and
 Search), so re-read those first. Then land them the way every Phase 5 slice
 landed: green and invisible behind `ai-recaps` and `ai-answers`, both defined as
-closures reading `config/cfb.php` so flipping either is an environment change
-with instant rollback. Build now, flip when the copy and the intent vocabulary
-have been tuned against real usage — and remember `pennant:purge <flag>` is
-required on any flip, because the database driver's stored rows shadow the new
-config for anyone who has already loaded a page.
+closures reading `config/cfb.php` so flipping each is an environment change with
+instant rollback (`ai-recaps`, `ai-answers`, `gameday`). Build now, flip when the
+copy and the intent vocabulary have been tuned against real usage — and remember
+`pennant:purge <flag>` is required on any flip, because the database driver's
+stored rows shadow the new config for anyone who has already loaded a page.
 
 ---
 
@@ -734,12 +927,22 @@ Per `CLAUDE.md`, in order:
      randomizes `alt_color` and `abbreviation`.
    - Target the Filament **widget class**, not the page — widget content is not
      in the page's HTML.
+   - **GameDay, the highest-risk surface — test the guards, not the happy path:**
+     a response with no `source_url` yields `unknown`; a host team with no home
+     game that Saturday is **rejected** (the contradiction check, and this is the
+     one test that matters most); an unresolvable campus yields `unknown`; a
+     `confirmed` row is never overwritten by a later run; a second run in the
+     same week is a no-op; the off-season phase renders no card at all. Fake the
+     agent — `preventStrayPrompts()` means a real web search can never fire in
+     CI, which would otherwise cost money on every run.
 2. **`vendor/bin/pint --dirty --format agent`** after any PHP change.
 3. **`npm run build`** after any Blade change, or new Tailwind utilities are
    missing at runtime and it reads as a design bug.
-4. **Device widths** for the Search answer card — the only new *product* surface:
-   `/__device?path=/search&w=390,768&h=800`. Chrome will not
-   size below ~600px — use the harness, not a resized window.
+4. **Device widths** for the two new product surfaces — the GameDay card and the
+   Search answer card: `/__device?path=/&w=390,768&h=800` and
+   `?path=/search&w=390,768&h=800`. Chrome will not size below ~600px — use the
+   harness, not a resized window. Check the GameDay card in **all four states**;
+   the slot must not reflow between them.
 5. **Cost verification before trusting the model above.** Run one real recap and
    one real answer, read `usage` off the response, and compare against the table.
    Do this before enabling anything for real users. Confirm
@@ -770,7 +973,12 @@ Per `CLAUDE.md`, in order:
    unfinished admin console alike.
 4. **The two `/ops/*` HTTP surfaces**, or the PR-based fallback for writes.
 5. **"Game quality"** → ESPN retrospective, as recommended.
-6. **Guests and the answer path** → signed-in only, as recommended.
+6. **Guests and the answer path** → signed-in only, as recommended. Note the
+   GameDay card is the opposite: it renders for everyone including guests, since
+   it is one cached row per week and costs nothing per view.
+8. **GameDay auto-publish vs. admin confirm.** Recommendation: auto-publish when
+   every guard passes (the contradiction check is strong), hold as `proposed`
+   otherwise. Flip to always-confirm if the first few weeks prove noisy.
 7. ~~Whether Phases 4–5 wait for Sep 1.~~ **Settled:** nothing waits for a date.
    Phases 4–5 ship flag-closed and flip when tuned.
 

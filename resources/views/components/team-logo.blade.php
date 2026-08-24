@@ -34,6 +34,7 @@
         src="{{ $team->logo }}"
         alt=""
         loading="lazy"
+        decoding="async"
         {{ $attributes->class([$box, 'shrink-0 object-contain', 'dark:hidden' => (bool) $team->logo_dark]) }}
     >
 
@@ -42,6 +43,7 @@
             src="{{ $team->logo_dark }}"
             alt=""
             loading="lazy"
+            decoding="async"
             {{ $attributes->class([$box, 'hidden shrink-0 object-contain dark:block']) }}
         >
     @endif

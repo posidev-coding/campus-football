@@ -8,7 +8,7 @@
  * activate() drops every cache that does not carry the current name.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `cfb-${VERSION}`;
 const OFFLINE_URL = '/offline';
 
@@ -33,6 +33,38 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys()
             .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+            /* Stale deploys inside the SAME cache: /build/ files are content-
+             * hashed so an old entry is never re-served by URL, but nothing
+             * ever evicted them — they accumulated across deploys until
+             * quota pressure threatened the whole cache, offline page
+             * included. The manifest names the current build; every /build/
+             * entry it does not name goes. Failing to fetch the manifest
+             * prunes nothing rather than everything. */
+            .then(() => Promise.all([
+                caches.open(CACHE),
+                fetch('/build/manifest.json').then((response) => (response.ok ? response.json() : null)).catch(() => null),
+            ]))
+            .then(([cache, manifest]) => {
+                if (!manifest) return;
+
+                const current = new Set();
+
+                Object.values(manifest).forEach((entry) => {
+                    if (entry.file) current.add('/build/' + entry.file);
+                    (entry.css || []).forEach((file) => current.add('/build/' + file));
+                    (entry.assets || []).forEach((file) => current.add('/build/' + file));
+                });
+
+                return cache.keys().then((requests) => Promise.all(
+                    requests
+                        .filter((request) => {
+                            const path = new URL(request.url).pathname;
+
+                            return path.startsWith('/build/') && !current.has(path);
+                        })
+                        .map((request) => cache.delete(request))
+                ));
+            })
             .then(() => self.clients.claim())
     );
 });

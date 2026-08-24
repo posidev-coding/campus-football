@@ -4,7 +4,12 @@
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../vendor/livewire/flux/stubs/**/*.blade.php';
 @source '../../vendor/livewire/flux-pro/stubs/**/*.blade.php';
-@source '../../storage/framework/views/*.php';
+/* NO @source at storage/framework/views. Scanning the compiled-view cache
+   made the production bundle depend on whichever views happened to be
+   compiled — empty in a fresh Cloud container, so prod CSS was not
+   reproducible — and the 161 rules it contributed were utilities for
+   vendor templates (Filament's neutral palette, error pages) that never
+   load this stylesheet at all. Verified by selector diff, 2026-08-24. */
 
 @custom-variant dark (&:where(.dark, .dark *));
 

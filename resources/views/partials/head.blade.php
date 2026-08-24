@@ -95,6 +95,13 @@
 <link rel="icon" href="{{ Brand::asset('favicon-svg') }}" type="image/svg+xml">
 <link rel="icon" href="{{ Brand::asset('icon-192') }}" type="image/png" sizes="192x192">
 <link rel="apple-touch-icon" sizes="180x180" href="{{ Brand::asset('apple-touch') }}">
+{{-- Every team logo lives on ESPN's CDN: warming the connection here
+     saves the DNS + TLS round trips off the first card's paint. Measured
+     2026-08-24: the dark-variant double-fetch does NOT occur (lazy +
+     display:none never loads), so the two-img structure stays. --}}
+<link rel="preconnect" href="https://a.espncdn.com">
+<link rel="dns-prefetch" href="https://a.espncdn.com">
+
 <link rel="manifest" href="{{ route('manifest') }}">
 
 {{-- Add to Home Screen on iOS. `apple-mobile-web-app-title` is the label under
