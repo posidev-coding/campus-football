@@ -163,8 +163,20 @@ class Navigation
                 'label' => 'Account',
                 'icon' => 'user-circle',
                 'route' => 'account',
-                'routes' => ['account'],
-                'sections' => [],
+                'routes' => ['account', 'notifications'],
+                /*
+                 * The first strip this area has ever rendered. Notifications
+                 * live here rather than behind a header bell because below
+                 * `sm` there IS no header — a bell would be unreachable on a
+                 * phone, which is where the notifications were tapped from.
+                 *
+                 * Signed-in only: a guest has no inbox, and a one-tab strip
+                 * is chrome rather than navigation.
+                 */
+                'sections' => auth()->check() ? [
+                    ['route' => 'account', 'label' => 'Account'],
+                    ['route' => 'notifications', 'label' => 'Notifications'],
+                ] : [],
                 // Shown to guests too, pointing at sign-in — the tab bar is the
                 // only navigation on a phone, so a signed-out visitor with no
                 // Account tab has no way to sign in at all.

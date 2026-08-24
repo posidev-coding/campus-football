@@ -16,7 +16,7 @@ it('never says "board" on a pick\'em surface, in any register', function () {
 
     $families = [
         'picks.', 'groups.', 'group.', 'lobby.', 'contest.', 'create.',
-        'mode.', 'wizard.', 'history.', 'leaderboard.', 'notify.mode_changed',
+        'mode.', 'wizard.', 'history.', 'leaderboard.', 'notify.',
         'join.', 'talk.',
     ];
 
@@ -48,8 +48,22 @@ it('never says "board" on a pick\'em surface, in any register', function () {
 });
 
 it('speaks every register on the rebuild\'s new families', function (string $key) {
-    $pg = Voice::line($key, ['group' => 'X', 'mode' => 'X', 'code' => 'X', 'name' => 'X', 'due' => 'X'], for: User::factory()->make(['content_rating' => ContentRating::Pg]));
-    $r = Voice::line($key, ['group' => 'X', 'mode' => 'X', 'code' => 'X', 'name' => 'X', 'due' => 'X'], for: User::factory()->make(['content_rating' => ContentRating::R]));
+    /*
+     * One replacement set for every key in the dataset. It has to carry the
+     * union of their tokens: a token missing from here renders as a literal
+     * ":thing" in the output, which this test's own assertions would not
+     * notice — the no-stray-token sweep below is what catches that.
+     */
+    $replace = [
+        'group' => 'X', 'mode' => 'X', 'code' => 'X', 'name' => 'X', 'due' => 'X',
+        'owed' => '3', 'total' => '10', 'count' => '2', 'when' => 'noon',
+        'week' => 'Week 1', 'points' => '14', 'xp' => '100', 'place' => '3rd',
+        'field' => '9', 'winner' => 'X', 'others' => 'X', 'rival' => 'X',
+        'margin' => '4',
+    ];
+
+    $pg = Voice::line($key, $replace, for: User::factory()->make(['content_rating' => ContentRating::Pg]));
+    $r = Voice::line($key, $replace, for: User::factory()->make(['content_rating' => ContentRating::R]));
 
     expect($pg)->not->toBe('')
         ->and($r)->not->toBe('')
@@ -85,4 +99,53 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'picks.bear.tagline.home',
     'picks.bear.tagline.road',
     'picks.bear.tagline.alternating',
+    // The weekly loop. Subjects are deliberately register-identical (the
+    // fact never jokes), so they belong to the sweeps above, not to this one.
+    'notify.reminder.body',
+    'notify.reminder.push',
+    'notify.reminder.sms',
+    'notify.last_call.body',
+    'notify.last_call.push',
+    'notify.results.won.body',
+    'notify.results.won.shared',
+    'notify.results.lost.body',
+    'notify.results.missed.body',
+    'notify.results.exhibition',
+    'notify.results.nemesis',
+    'notify.results.nemesis.won',
+    'notify.results.bear.beat',
+    'notify.results.bear.lost',
+    'notify.inbox.empty',
 ]);
+
+it('leaves no stray token in the weekly loop\'s copy', function () {
+    /*
+     * Voice::line() returns '' for an unknown KEY, silently — and leaves a
+     * ":token" standing where a replacement was not supplied, equally
+     * silently. Both ship an email that looks broken to a reader and looks
+     * fine to every other test, so the whole family is swept here.
+     */
+    $lines = (new ReflectionClass(Voice::class))->getConstant('LINES');
+
+    $replace = [
+        'group' => 'Vol Nation', 'owed' => '3', 'total' => '10', 'count' => '2',
+        'when' => 'noon', 'week' => 'Week 1', 'points' => '14', 'xp' => '100',
+        'place' => '3rd', 'field' => '9', 'winner' => 'dave', 'others' => 'dave',
+        'rival' => 'dave', 'margin' => '4', 'mode' => 'Shotgun',
+    ];
+
+    foreach ($lines as $key => $variants) {
+        if (! str_starts_with($key, 'notify.')) {
+            continue;
+        }
+
+        foreach (array_keys($variants) as $register) {
+            $rendered = Voice::line($key, $replace, for: User::factory()->make([
+                'content_rating' => ContentRating::from($register),
+            ]));
+
+            expect($rendered)->not->toBe('', "{$key}.{$register} resolved empty")
+                ->and($rendered)->not->toMatch('/:[a-z_]+/', "{$key}.{$register} left a token: {$rendered}");
+        }
+    }
+});

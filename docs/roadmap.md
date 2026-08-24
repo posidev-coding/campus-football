@@ -67,8 +67,9 @@ My Picks at `/picks` is the reader's own week, the Lobby at `/lobby` is a
 contest browser of shelved uniform rows — pass 3's single scroll was shaped
 for three rooms and the flavored build shipped thirteen. The same pass made
 the pick'em vocabulary law in the code (see [product.md](product.md)). The
-flag is still admin-only: flipping it is a decision, not a slice. Phase 6's
-notification loop is what comes next.
+flag is still admin-only: flipping it is a decision, not a slice — and the
+one now scheduled for Sep 5, with Aug 29 rehearsed behind the closed flag.
+Phase 6's notification loop landed 2026-08-22, ahead of it.
 
 ### Phase 1 — Data foundation ✅
 
@@ -314,21 +315,55 @@ by the half-point law: pushes are structurally impossible.
   above it stay factual.
 - Roast the pick, the team, the record — never the person.
 
-## Phase 6 — Notifications and the weekly loop ← **next**
+## Phase 6 — Notifications and the weekly loop ✅ (August 2026)
 
-Partly built already — `WeeklyDigest`, `SendWeeklyNewsletter`, the SMS
-channel, and now WEB PUSH end to end: VAPID + `push_subscriptions`
-(subscription = consent, device-scoped, no server flag), the service worker's
-`push`/`notificationclick` handlers (a tapped push opens the INSTALLED app —
-the only true deep link an iOS PWA has), the Account device switch and Home's
-standalone-only nudge, a welcome push proving the pipe, and `cfb:kickoff-alerts`
-sweeping the live window for followed teams. What is missing is the loop that
-makes them matter: pick reminders before lock, results when a slate settles,
-and a rival's result when it stings — all of which ride the same plumbing
-with nothing to unwind.
+The plumbing was already there — web push end to end (VAPID,
+`push_subscriptions`, the service worker's `push`/`notificationclick`
+handlers), `WeeklyDigest`, the SMS channel with its single consent gate,
+`cfb:kickoff-alerts`. What was missing was the loop that makes them matter.
+Shipped 2026-08-22, ahead of the Sep 5 flip:
+
+- **Pick reminders** (`pickem:remind`, two waves: a day out, then ninety
+  minutes). Anchored on the next OPEN kickoff — not the commissioner's
+  deadline, which is when an unpublished slate forfeits, and not the first
+  kickoff either, which stops being anybody's deadline once the noon games
+  start while the late card is still pickable.
+- **Results** when a slate settles, dispatched off `SettleSlate`'s claim —
+  the only once-ever signal in that path.
+- **The rival**, folded into the results as a LINE rather than a fourth
+  send: the person one place above you, or one below when you won. A weekly
+  pick'em rivalry is week to week, and the settled field already knows who
+  that is. No table, no declaration. The Bear gets the same treatment.
+- **The inbox** at `/notifications`, a section of Account. The `database`
+  channel costs no budget and no consent, and with zero push subscriptions
+  at launch it is the only channel that reaches everybody.
+
+**The two rules this phase established:**
+
+1. **The audience roots in MEMBERSHIPS, never in entries.** A
+   `slate_entries` row is created lazily on a member's first pick, so
+   somebody who has picked nothing has no entry and no picks — and is
+   exactly who a reminder is for. A sweep built the obvious way reminds only
+   the people who already played, silently, while looking correct.
+2. **Two claims, never one.** `settled_at` claims the money;
+   `results_announced_at` claims the noise. Keeping them apart is what makes
+   a botched announcement repairable (`pickem:announce --slate=`) without the
+   wallet hearing about it, and what stops a queue retry mailing the room
+   twice.
+
+The weekly digest moved off Sunday to Tuesday in the same pass: it and the
+results announcement are both bulk mail spending one daily budget, and
+sharing a day released the second one's tail into Monday.
 
 Reverb is installed and only the default private user channel is registered.
-Live pick'em standings during a Saturday are the case that would justify it.
+Live pick'em standings during a Saturday remain the case that would justify
+it — and that case gets stronger once real people are playing.
+
+**Still open:** SMS reminders are wired, throttled, tested and OFF
+(`PICKEM_REMINDER_SMS`); nothing prunes read notifications for a surviving
+user; there is no cross-feature per-user rate limit, so a member of three
+contests whose followed team also kicks can hear from the app several times
+on one Saturday.
 
 ## Phase 7 — Native mobile
 

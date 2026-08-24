@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\TiebreakerMetric;
+use Carbon\CarbonInterface;
 use Database\Factories\SlateFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -58,8 +59,55 @@ class Slate extends Model
             'exhibition' => 'boolean',
             'published_at' => 'datetime',
             'settled_at' => 'datetime',
+            'picks_reminded_at' => 'datetime',
+            'last_call_sent_at' => 'datetime',
+            'results_announced_at' => 'datetime',
             'tiebreaker_metric' => TiebreakerMetric::class,
         ];
+    }
+
+    /**
+     * The first kickoff on this slate — the moment picks START locking.
+     *
+     * NOT the commissioner's deadline. `Cadence::slateDeadline()` is when an
+     * unpublished slate forfeits to the standard card; players lock GAME BY
+     * GAME at kickoff (`Game::hasKickedOff()`), so the first kickoff is the
+     * only clock a player reminder can honestly be anchored on.
+     *
+     * Derived rather than stored, and read off the loaded relation: every
+     * caller already has `games.game` in hand, and a column would be one more
+     * thing to keep true when a game is rescheduled. Null when the slate has
+     * no games or none of them has a kickoff yet — callers SKIP, they never
+     * substitute a time.
+     */
+    public function firstKickoff(): ?CarbonInterface
+    {
+        return $this->games
+            ->map(fn (SlateGame $slateGame) => $slateGame->game?->kickoff_at)
+            ->filter()
+            ->min();
+    }
+
+    /**
+     * The next kickoff that has NOT happened yet — when the picks a reader
+     * still owes begin to lock.
+     *
+     * Distinct from firstKickoff() and the reminder's real anchor. Once the
+     * noon games have started, the first kickoff is in the past and stops
+     * being a deadline for anybody; the 4pm card is still open and still
+     * worth a last call. Anchoring on firstKickoff() would drop the whole
+     * slate out of the window the moment its earliest game began, taking
+     * every still-makeable pick with it.
+     *
+     * Null once every game has kicked: there is nothing left to be late for.
+     */
+    public function nextKickoff(): ?CarbonInterface
+    {
+        return $this->games
+            ->reject(fn (SlateGame $slateGame) => $slateGame->game?->hasKickedOff() ?? true)
+            ->map(fn (SlateGame $slateGame) => $slateGame->game?->kickoff_at)
+            ->filter()
+            ->min();
     }
 
     /** A practice slate: graded and paid, but never counted. */

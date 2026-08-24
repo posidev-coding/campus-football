@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Jobs\AnnounceSlateResults;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\User;
@@ -91,7 +92,15 @@ class SettleSlate
 
         $this->pay($slate, $totals, $winners);
 
-        // The claim, last: everything above survives a double fire.
+        /*
+         * The claim, last: everything above survives a double fire.
+         *
+         * NOTHING BELOW MAY READ $slate->status OR $slate->settled_at. This
+         * is a query-builder update, not a model save, so the in-memory
+         * instance still says `published`/`prelim` with a null settled_at —
+         * a guard written against it here would never fire, and would look
+         * completely correct.
+         */
         $claimed = Slate::query()
             ->whereKey($slate->id)
             ->whereNull('settled_at')
@@ -101,7 +110,21 @@ class SettleSlate
                 'tiebreaker_actual' => $actual,
             ]);
 
-        return $claimed === 1;
+        if ($claimed !== 1) {
+            return false;
+        }
+
+        /*
+         * The announcement hangs off the CLAIM, which is the only once-ever
+         * signal in this path — and it is a dispatch rather than a send: the
+         * job re-reads a committed row instead of trusting anything in memory
+         * here, and takes its own separate claim so a queue retry cannot mail
+         * the room twice. Settled_at claims the money; results_announced_at
+         * claims the noise, and the two must be repairable apart.
+         */
+        AnnounceSlateResults::dispatch($slate->id);
+
+        return true;
     }
 
     /**

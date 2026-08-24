@@ -172,6 +172,28 @@ it('sells the cards in order: the lobby never skips ahead of an unplayed Saturda
     expect(Cadence::activeSaturday($week)->toDateString())->toBe('2026-09-05');
 });
 
+it('answers the deadline for the card being played, not the week\'s busiest', function () {
+    /*
+     * The split-week trap, on the surface that shows it. Passing the WEEK
+     * resolves through saturdayOf() — the busiest card, 9/5 — so on the 8/29
+     * Saturday every group was shown a deadline a week late, on the one
+     * rehearsal Saturday before launch. The slate's own Saturday is the
+     * answer, matching what the settle sweep already reads.
+     */
+    $this->travelTo('2026-08-26 16:00:00');
+
+    [, $week] = splitPickemWeek();
+
+    $weekForm = Cadence::slateDeadline($week);
+    $cardForm = Cadence::slateDeadline(Cadence::activeSaturday($week));
+
+    // Thursday noon before each card: 8/27 for the card in front, 9/3 for
+    // the one behind it. They are a week apart, which is the whole bug.
+    expect($cardForm->toDateString())->toBe('2026-08-27')
+        ->and($weekForm->toDateString())->toBe('2026-09-03')
+        ->and($cardForm->toDateString())->not->toBe($weekForm->toDateString());
+});
+
 it('leaves every ordinary week numbered as ESPN numbers it', function () {
     [$season, $week] = pickemSeasonWeek();
     pickemGame($season, $week);

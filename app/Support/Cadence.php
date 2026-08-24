@@ -55,6 +55,30 @@ class Cadence
 
     public const OFFICIAL_TIME = '12:00:00';
 
+    /**
+     * How far ahead of the FIRST KICKOFF the pick reminder goes out.
+     *
+     * A player's clock is not the commissioner's: DEADLINE_DOW is when an
+     * unpublished slate forfeits to the standard card, while picks themselves
+     * lock game by game at kickoff. Twenty-four hours puts the nudge on
+     * Friday for a Saturday card — late enough that the slate is certainly
+     * published, early enough to still be actionable over a lunch break.
+     */
+    public const REMINDER_LEAD_HOURS = 24;
+
+    /** The last call, in minutes before first kickoff. */
+    public const LAST_CALL_MINUTES = 90;
+
+    /**
+     * How recently wave one must have fired to suppress the last call.
+     *
+     * A slate published late — Friday night, for a Saturday noon kick —
+     * blows straight past the 24-hour window, so wave one correctly fires on
+     * the next tick. Without this, wave two then lands ninety minutes later:
+     * two messages inside twelve hours for a card they just heard about.
+     */
+    public const LAST_CALL_SUPPRESS_HOURS = 6;
+
     private static ?PickemSetting $memo = null;
 
     /** @var array<int, CarbonImmutable|null> split boundaries, keyed by week id */

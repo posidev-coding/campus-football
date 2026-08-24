@@ -19,11 +19,26 @@ use Illuminate\View\View;
  * Answers GET and POST. GET is somebody clicking the footer link; POST is
  * Gmail's and Apple Mail's own one-click control (RFC 8058), which sends no
  * session and expects a bare 200 rather than a page.
+ *
+ * The URL names WHICH LIST it is silencing. There are two — the weekly digest
+ * and the pick'em loop — and they are separate consents on purpose: stopping
+ * the Sunday email must not also stop being told your picks are due, or the
+ * app reads as broken to somebody who only wanted less mail on a Sunday.
+ * An unknown or absent list silences the newsletter, which is the one every
+ * already-sent footer link points at.
  */
 class UnsubscribeController extends Controller
 {
+    /** The list a signed link may name, mapped to the column it clears. */
+    private const LISTS = [
+        'newsletter' => 'newsletter_opt_in',
+        'pickem' => 'pickem_notify_opt_in',
+    ];
+
     public function __invoke(Request $request, User $user): View|Response
     {
+        $column = self::LISTS[$request->string('list')->toString()] ?? 'newsletter_opt_in';
+
         /*
          * Idempotent on purpose. A mail client may fire its one-click more than
          * once, and a second unsubscribe must not look like a failure — so this
@@ -32,9 +47,11 @@ class UnsubscribeController extends Controller
          * `unsubscribed_at` is only stamped the FIRST time. It records that they
          * once said no, which is the thing worth keeping if they later opt back
          * in and somebody is deciding whether to re-enroll them in something.
+         * It is stamped by EITHER list: the fact recorded is "this person has
+         * said no to something", not which thing.
          */
         $user->forceFill([
-            'newsletter_opt_in' => false,
+            $column => false,
             'unsubscribed_at' => $user->unsubscribed_at ?? now(),
         ])->save();
 

@@ -188,6 +188,17 @@ Route::middleware(['auth'])->group(function () {
     Route::livewire('account', 'account')->name('account');
 
     /*
+     * The inbox. Signed-in only, and inside the auth group for the obvious
+     * reason: it is nothing but this reader's own notifications.
+     *
+     * The COMPONENT is `inbox`, not `notifications` — Filament registers a
+     * Livewire component under that name and the admin panel's toast stack
+     * wins the lookup, so the screen renders as an empty notification tray.
+     * The route keeps the honest name.
+     */
+    Route::livewire('notifications', 'inbox')->name('notifications');
+
+    /*
      * Pick'em's group screens, behind the `pickem` flag while the phase
      * builds out. `auth` but never `verified`: reading is open to any
      * signed-in member — the verified gate lives inside the mutating

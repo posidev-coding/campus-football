@@ -72,6 +72,8 @@ class Rail
         'recruiting' => [],
         'news' => [],
         'account' => [],
+        // The inbox: one column of rows, and nothing that wants a sidecar.
+        'notifications' => [],
         'get-app' => [],
         // My Picks: the reader's own column, top to bottom.
         'pickem.home' => [],

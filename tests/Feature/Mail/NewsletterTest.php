@@ -10,6 +10,7 @@ use Illuminate\Mail\Message;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
+use Livewire\Livewire;
 use Symfony\Component\Mime\Email;
 
 describe('who gets it', function () {
@@ -84,6 +85,31 @@ describe('the voice', function () {
     });
 });
 
+describe('the pick\'em list', function () {
+    it('is its own switch on Account, and stamps the same refusal', function () {
+        $user = User::factory()->create([
+            'newsletter_opt_in' => true,
+            'pickem_notify_opt_in' => true,
+        ]);
+
+        Livewire::actingAs($user)->test('account')
+            ->set('pickem_notify_opt_in', false);
+
+        // The pick'em list goes quiet; the weekly digest does not.
+        expect($user->fresh()->pickem_notify_opt_in)->toBeFalse()
+            ->and($user->fresh()->newsletter_opt_in)->toBeTrue()
+            // `unsubscribed_at` records that they once said no to SOMETHING.
+            ->and($user->fresh()->unsubscribed_at)->not->toBeNull();
+    });
+
+    it('defaults on for a freshly created account, before any refresh', function () {
+        // Mirrors the column default in $attributes: without it the instance
+        // create() hands back has null here, and every caller treating it as
+        // a bool is wrong.
+        expect(User::factory()->create()->pickem_notify_opt_in)->toBeTrue();
+    });
+});
+
 describe('unsubscribing', function () {
     it('works while signed out, which is the only state that matters', function () {
         $user = User::factory()->create(['newsletter_opt_in' => true]);
@@ -93,6 +119,45 @@ describe('unsubscribing', function () {
 
         expect($user->fresh()->newsletter_opt_in)->toBeFalse()
             ->and($user->fresh()->unsubscribed_at)->not->toBeNull();
+    });
+
+    it('silences only the list the link names', function () {
+        /*
+         * Two lists, two consents. Somebody who wants less mail on a Sunday
+         * must not also stop being told their picks are due — one shared
+         * switch would make that unsubscribe read as the app breaking.
+         */
+        $user = User::factory()->create([
+            'newsletter_opt_in' => true,
+            'pickem_notify_opt_in' => true,
+        ]);
+
+        $this->get(URL::signedRoute('newsletter.unsubscribe', [
+            'user' => $user->id, 'list' => 'pickem',
+        ]))->assertOk();
+
+        expect($user->fresh()->pickem_notify_opt_in)->toBeFalse()
+            ->and($user->fresh()->newsletter_opt_in)->toBeTrue();
+
+        $this->get(URL::signedRoute('newsletter.unsubscribe', [
+            'user' => $user->id, 'list' => 'newsletter',
+        ]))->assertOk();
+
+        expect($user->fresh()->newsletter_opt_in)->toBeFalse();
+    });
+
+    it('falls back to the newsletter for a link that names no list', function () {
+        // Every footer link already sent points at the unnamed form.
+        $user = User::factory()->create([
+            'newsletter_opt_in' => true,
+            'pickem_notify_opt_in' => true,
+        ]);
+
+        $this->get(URL::signedRoute('newsletter.unsubscribe', ['user' => $user->id]))
+            ->assertOk();
+
+        expect($user->fresh()->newsletter_opt_in)->toBeFalse()
+            ->and($user->fresh()->pickem_notify_opt_in)->toBeTrue();
     });
 
     it('answers a one-click POST with a bare 200 and no CSRF token', function () {
