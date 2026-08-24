@@ -445,6 +445,21 @@ Schedule::command('model:prune', ['--model' => [ClientError::class, FeedRun::cla
     ->withoutOverlapping(60);
 
 /*
+ * The funnel counters, out of Redis and into `ux_events`.
+ *
+ * Rides the same 04:00-07:00 wake as the prunes above rather than earning one
+ * of its own — it spends no ESPN requests and writes at most eight rows, and a
+ * scheduled task holds a scale-to-zero cluster up for the whole sleep timeout.
+ * UNGATED by season: onboarding, invites and the tour happen year-round, and a
+ * counter that only persists in-season loses exactly the quiet months where a
+ * funnel problem is cheapest to find.
+ */
+Schedule::command('cfb:ux-rollup')
+    ->dailyAt('04:55')
+    ->timezone($tz)
+    ->withoutOverlapping(60);
+
+/*
  * The self-destruct warning, three days ahead of the prune above. Ungated
  * like the newsletter — signups are year-round, so the countdown has to be —
  * and at 07:00 it rides a wake the followed-news sync already pays for in

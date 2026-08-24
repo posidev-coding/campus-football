@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Enums\UxSignal;
 use App\Exceptions\HandleRequired;
 use App\Exceptions\NotGroupMember;
 use App\Exceptions\PickemParticipationGated;
@@ -78,7 +79,15 @@ class MakePick
             ['picked_team_id' => $teamId],
         );
 
-        SlateEntry::query()->firstOrCreate(['slate_id' => $slate->id, 'user_id' => $user->id]);
+        $entry = SlateEntry::query()->firstOrCreate(['slate_id' => $slate->id, 'user_id' => $user->id]);
+
+        // The moment somebody is really playing. Keyed on the entry being
+        // NEW, so changing picks all week counts once — the same fact the XP
+        // grant below rides, and the reason it is measured here rather than
+        // on the screen that shows the sheet.
+        if ($entry->wasRecentlyCreated) {
+            app(RecordUxEvent::class)->handle(UxSignal::FirstPickMade);
+        }
 
         $this->wallet->handle(
             $user,

@@ -1,6 +1,8 @@
 <?php
 
 use App\Actions\GrantWalletEntry;
+use App\Actions\RecordUxEvent;
+use App\Enums\UxSignal;
 use Livewire\Component;
 
 /**
@@ -69,6 +71,10 @@ new class extends Component
 
         if ($user !== null && $user->tour_completed_at === null) {
             $user->forceFill(['tour_completed_at' => now()])->save();
+
+            // Inside the first-stamp guard, so the counter measures readers
+            // and not round trips — every later relaunch calls this too.
+            app(RecordUxEvent::class)->handle(UxSignal::TourDismissed);
         }
     }
 }; ?>

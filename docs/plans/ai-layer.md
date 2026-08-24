@@ -424,14 +424,33 @@ ships silently, and it is currently invisible.
 but Cloud's managed queues hide the *failed job record* from the app entirely
 (`RecentSyncFailures` says so in its own description), so this stays hand-built.
 
-**1.4 UX funnel events.** `ux_events` with a **bounded, named** event vocabulary
-(~8: onboarding step reached, team picker completed, invite link opened,
-registration completed, slate entered, first pick made, slate abandoned with
-zero picks, tour dismissed). **Redis hash counters on the request path, nightly
-job persists the rollup** — no row per event, no MySQL write in the pick or
-onboarding flows. Aggregate only, no free-text. This is the "UX friction" signal,
-and no off-the-shelf APM can produce it because the events are specific to this
-product.
+**1.4 UX funnel events.** ✅ **Landed 2026-08-24.** `ux_events` with a
+**bounded, named** event vocabulary (~8: onboarding step reached, team picker
+completed, invite link opened, registration completed, slate entered, first pick
+made, slate abandoned with zero picks, tour dismissed). **Redis hash counters on
+the request path, nightly job persists the rollup** — no row per event, no MySQL
+write in the pick or onboarding flows. Aggregate only, no free-text. This is the
+"UX friction" signal, and no off-the-shelf APM can produce it because the events
+are specific to this product.
+
+> **As built.** Vocabulary is `App\Enums\UxSignal`, eight cases; counters ride
+> `App\Actions\RecordUxEvent` into Redis DB 2 (the telemetry database, beside
+> Pulse's stream, out of `cache:clear`'s reach), and `cfb:ux-rollup` persists
+> **finished days only** at 04:55 on the existing wake. **"Slate abandoned with
+> zero picks" is derived, not counted** — it is `slate_entered` minus
+> `first_pick_made`, and a third counter for a difference is a third counter
+> that can disagree with the other two. `slate_entered` is deduped per member
+> per slate per day, because it fires on MOUNT and a `wire:navigate` hop
+> re-mounts; that dedupe key is the only place a user id appears, it is TTL'd in
+> Redis and never persisted. Every failure is swallowed — a counter is never
+> worth a 500 on a pick. Tests speak to a real Redis on **DB 15**, pinned in
+> `phpunit.xml` so the suite cannot write into a developer's telemetry.
+>
+> ⚠️ **phpredis stringifies an array argument to the literal `"Array"`.**
+> `sadd($key, [$member])` silently adds one member named `Array` and still
+> returns 1 the first time, so every subject deduped to the same subject and the
+> rollup found no days to roll up. Pass set members as SCALARS. Caught by a
+> test, not by review.
 
 **1.5 `App\Support\OpsReport`.** A third report class in the established shape.
 `CoverageReport` and `PickemPreflight` already agree on

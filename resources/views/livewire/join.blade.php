@@ -1,6 +1,8 @@
 <?php
 
 use App\Actions\JoinGroup;
+use App\Actions\RecordUxEvent;
+use App\Enums\UxSignal;
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
 use App\Models\Contest;
@@ -45,6 +47,11 @@ new class extends Component
         }
 
         $this->code = strtoupper(trim($code));
+
+        // The top of the acquisition funnel — counted BEFORE the
+        // already-a-member redirect below, because a link that lands on
+        // somebody who is already in still measures the link.
+        app(RecordUxEvent::class)->handle(UxSignal::InviteOpened);
 
         // Hydrated from the querystring: keep it only when it LOOKS like
         // a handle; anything else is silently nothing, never an error.
