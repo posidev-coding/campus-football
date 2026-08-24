@@ -64,6 +64,7 @@ class GradeGamePicks implements ShouldBeUnique, ShouldQueue
         $slateGames = SlateGame::query()
             ->where('game_id', $game->id)
             ->whereHas('slate', fn ($q) => $q->whereIn('status', [Slate::PUBLISHED, Slate::PRELIM]))
+            ->with(['slate.contest', 'picks'])
             ->get();
 
         foreach ($slateGames as $slateGame) {
