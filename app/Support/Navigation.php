@@ -2,8 +2,6 @@
 
 namespace App\Support;
 
-use Laravel\Pennant\Feature;
-
 /**
  * The app's information architecture, in one place.
  *
@@ -33,6 +31,16 @@ use Laravel\Pennant\Feature;
 class Navigation
 {
     /**
+     * Memoized per request, keyed by who is looking. Navigation renders in
+     * four chrome components on every page, and the structure only varies
+     * by viewer. STATIC, so one Pest process leaks it between tests —
+     * tests/Pest.php flushes it in beforeEach, the TeamGlance precedent.
+     *
+     * @var array<string, list<array<string, mixed>>>
+     */
+    private static array $memo = [];
+
+    /**
      * @return list<array{
      *     key: string,
      *     label: string,
@@ -44,6 +52,17 @@ class Navigation
      * }>
      */
     public static function areas(): array
+    {
+        return self::$memo[(string) (auth()->id() ?? 'guest')] ??= self::build();
+    }
+
+    public static function flush(): void
+    {
+        self::$memo = [];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private static function build(): array
     {
         return [
             [
@@ -110,13 +129,21 @@ class Navigation
                  * because its prime moment — Sunday and Monday — is
                  * exactly when the lobby's inventory is emptiest.
                  *
+                 * THE CONFIG MIRROR, never Feature::active(). This renders
+                 * for every visitor in four chrome components, and Pennant's
+                 * database driver pays a SELECT — plus a first-resolve
+                 * INSERT — per resolve. The expression is byte-identical to
+                 * the flag closure in AppServiceProvider, the same mirror
+                 * PickReminders and pickem:preflight read; the flag itself
+                 * still gates the ROUTES via EnsureFeaturesAreActive.
+                 *
                  * A room or group visit lights MY PICKS, not the Lobby:
                  * a reader inside one is a seated member playing, and the
                  * Lobby chip is for the browse. The one exception a chip
                  * cannot show is walking from the Lobby into a room you
                  * just joined — which is the moment you stopped browsing.
                  */
-                'sections' => Feature::active('pickem') ? [
+                'sections' => (config('cfb.pickem_open') === true || (bool) auth()->user()?->isAdmin()) ? [
                     ['route' => 'pickem.home', 'label' => 'My Picks', 'routes' => ['pickem.home', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join']],
                     ['route' => 'pickem.lobby', 'label' => 'Lobby'],
                     ['route' => 'pickem.leaderboard', 'label' => 'Leaderboard'],

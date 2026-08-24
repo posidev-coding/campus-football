@@ -3,6 +3,7 @@
 use App\Support\Brand;
 use App\Support\Cadence;
 use App\Support\GameRanks;
+use App\Support\Navigation;
 use App\Support\TeamGlance;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -26,5 +27,6 @@ pest()->extend(TestCase::class)
         GameRanks::flush();
         Brand::flush();
         Cadence::flush();
+        Navigation::flush();
     })
     ->in('Feature');

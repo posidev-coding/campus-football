@@ -10,6 +10,7 @@ use App\Models\TeamSeason;
 use App\Models\User;
 use App\Models\Week;
 use App\Support\Navigation;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 beforeEach(function () {
@@ -113,6 +114,45 @@ describe('sections', function () {
             ->assertSee('Stats')
             ->assertDontSee('Team Stats')
             ->assertDontSee('Player Stats');
+    });
+
+    it('branches the Picks sections on the config mirror, with zero Pennant rows', function () {
+        /*
+         * Navigation renders for EVERY visitor in four chrome components,
+         * and Pennant's database driver persists a row per resolve — so the
+         * sections read the config mirror, byte-identical to the flag
+         * closure in AppServiceProvider. Break-back: put Feature::active()
+         * back and the zero-rows assertion fails on first render.
+         */
+        $civilian = User::factory()->create();
+        $this->actingAs($civilian);
+
+        config()->set('cfb.pickem_open', false);
+        Navigation::flush();
+        expect(collect(Navigation::areas())->firstWhere('key', 'picks')['sections'])->toBe([]);
+
+        config()->set('cfb.pickem_open', true);
+        Navigation::flush();
+        expect(collect(collect(Navigation::areas())->firstWhere('key', 'picks')['sections'])->pluck('label')->all())
+            ->toBe(['My Picks', 'Lobby', 'Leaderboard', 'History']);
+
+        // Closed flag, admin: the sections exist for them alone.
+        config()->set('cfb.pickem_open', false);
+        $this->actingAs(User::factory()->create(['admin' => true]));
+        Navigation::flush();
+        expect(collect(Navigation::areas())->firstWhere('key', 'picks')['sections'])->not->toBe([]);
+
+        expect(DB::table('features')->count())->toBe(0);
+    });
+
+    it('memoizes the structure per viewer within a request', function () {
+        $this->actingAs(User::factory()->create());
+
+        $first = Navigation::areas();
+
+        // Same process, same viewer: the same array back, no rebuild. The
+        // memo is keyed by auth id, so switching viewers rebuilds.
+        expect(Navigation::areas())->toBe($first);
     });
 
     it('lights the Teams section on an individual team page', function () {
