@@ -58,9 +58,42 @@
     ];
 
     $burden = $slateGame->spread === null ? null : abs($slateGame->spread);
+
+    /*
+     * Both sides of THIS card, as one wire:target list: a tap disables the
+     * whole pair for exactly this card's round trip — the follow-button
+     * shape, scoped so the rest of the slate stays tappable.
+     */
+    $sideTargets = collect([$game->away_team_id, $game->home_team_id])
+        ->filter()
+        ->map(fn (int $teamId) => "pick({$slateGame->id}, {$teamId})")
+        ->implode(', ');
 @endphp
 
-<div {{ $attributes->class(['flex min-w-0 flex-col rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900']) }}>
+{{--
+    `pending` is the optimistic fill: the tapped side wears the picked
+    classes IMMEDIATELY, and the server's morph stays authoritative —
+    optimistic() clears pending when the round trip settles, so a rejected
+    pick (a kickoff race, a removed membership) self-corrects to whatever
+    the server actually rendered. Multi-statement body lives in the x-data
+    METHOD, the Alpine house rule.
+--}}
+<div
+    {{-- Interactive only: a preview card carries no tap machinery at all,
+         which is also what GroupPageTest's read-only pin asserts. --}}
+    @if ($interactive)
+        x-data="{
+            pending: null,
+
+            optimistic(slateGameId, teamId) {
+                if (this.pending !== null) return;
+
+                this.pending = teamId;
+                $wire.pick(slateGameId, teamId).finally(() => this.pending = null);
+            },
+        }"
+    @endif
+    {{ $attributes->class(['flex min-w-0 flex-col rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900']) }}>
     <div class="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-1.5 text-micro dark:border-zinc-800/60">
         <span class="flex min-w-0 items-center gap-1.5">
             @if ($live)
@@ -127,7 +160,10 @@
             @php
                 $team = $side['team'];
                 $picked = $team !== null && $pick?->picked_team_id === $team->id;
-                $palette = $picked ? $team->palette() : null;
+                // Computed for BOTH sides now, picked or not: the optimistic
+                // fill needs the custom properties already on the button the
+                // instant it is tapped, before any server render.
+                $palette = $team?->palette();
                 $tappable = $interactive && ! $locked && $team !== null;
                 $sideBurden = $burden === null
                     ? null
@@ -137,7 +173,23 @@
             <button
                 type="button"
                 wire:key="pick-side-{{ $slateGame->id }}-{{ $team?->id ?? $loop->index }}"
-                @if ($tappable) wire:click="pick({{ $slateGame->id }}, {{ $team->id }})" @endif
+                @if ($tappable)
+                    x-on:click="optimistic({{ $slateGame->id }}, {{ $team->id }})"
+                    {{--
+                        `|| @js($picked)`: the binding must AGREE with the
+                        server's own classes after the morph. Alpine removes
+                        the class names it bound whenever the expression goes
+                        false — with pending cleared, a bare `pending === id`
+                        binding stripped the server's legitimate team-accent
+                        off the freshly confirmed pick (found over CDP). The
+                        picked half re-renders with the morph, so a REJECTED
+                        pick still self-corrects: server says unpicked,
+                        pending is null, the fill comes off.
+                    --}}
+                    x-bind:class="(pending === {{ $team->id }} || {{ $picked ? 'true' : 'false' }}) && 'team-accent team-keyline border-black/10 dark:border-zinc-100'"
+                    wire:loading.attr="disabled"
+                    wire:target="{{ $sideTargets }}"
+                @endif
                 @disabled(! $tappable)
                 @if ($picked) aria-pressed="true" @endif
                 @style([
@@ -225,6 +277,8 @@
                 <button
                     type="button"
                     wire:click="lockPick({{ $slateGame->id }}, {{ $staked ? 'false' : 'true' }})"
+                    wire:loading.attr="disabled"
+                    wire:target="lockPick({{ $slateGame->id }}, {{ $staked ? 'false' : 'true' }})"
                     @disabled($pick === null)
                     @if ($staked) aria-pressed="true" @endif
                     data-lock-toggle

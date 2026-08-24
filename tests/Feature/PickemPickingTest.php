@@ -177,6 +177,27 @@ it('renders the surface for a member: sides, frozen numbers, the question', func
         ->assertSee('Tiebreaker');
 });
 
+it('wires the tap for optimism and disables the pair in flight', function () {
+    /*
+     * The core tap's feedback: the tapped side wears the picked classes
+     * IMMEDIATELY (Alpine `pending`, cleared when the round trip settles
+     * so a rejected pick self-corrects to the server render), and both of
+     * a card's sides disable for exactly that card's request — the
+     * follow-button shape, per card.
+     */
+    [$member, $group, $slate] = pickemLiveSlate();
+    $slateGame = $slate->games()->with('game')->first();
+
+    $html = Livewire::actingAs($member)->test('group', ['group' => $group])->html();
+
+    expect($html)->toContain("optimistic({$slateGame->id}, {$slateGame->game->home_team_id})")
+        ->and($html)->toContain('wire:loading.attr="disabled"')
+        ->and($html)->toContain("pick({$slateGame->id}, {$slateGame->game->away_team_id}), pick({$slateGame->id}, {$slateGame->game->home_team_id})")
+        // The palette custom properties ride BOTH sides now, so the
+        // optimistic fill has its colors before any server render.
+        ->and(substr_count($html, '--team-accent:'))->toBeGreaterThanOrEqual(20);
+});
+
 it('picks from the surface and marks the row', function () {
     [$member, $group, $slate] = pickemLiveSlate();
     $slateGame = $slate->games()->with('game')->first();
