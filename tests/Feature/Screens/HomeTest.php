@@ -499,6 +499,12 @@ describe('the placeholder never leaks', function () {
 });
 
 describe('the pick'."'".'em teaser', function () {
+    /*
+     * The flag-flip matrix. The badge was UNGATED — "Coming soon" forever,
+     * pinned green by this very file — so the flip's first civilian read a
+     * promise about the thing they were standing in. The branch reads the
+     * commit-11 config mirror, so no Pennant purge is involved.
+     */
     it('renders as a designed card that opens My Picks', function () {
         // Inert until the Picks screen existed; now the whole card
         // navigates — to the reader's own week, not to the store.
@@ -515,6 +521,32 @@ describe('the pick'."'".'em teaser', function () {
         $this->get(route('home'))->assertOk()
             ->assertSee('Coming soon')
             ->assertSee(route('pickem.home'), escape: false);
+    });
+
+    it('goes live for everyone the moment the flag opens', function () {
+        config()->set('cfb.pickem_open', true);
+
+        $this->actingAs($this->user)->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('Coming soon')
+            ->assertSee(Voice::line('home.pickem.live', for: $this->user));
+
+        // The guest front door drops "on the way" the same morning — an
+        // invite link lands exactly this person here on day one.
+        auth()->logout();
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('Coming soon')
+            ->assertSee(Voice::line('onboarding.guest.body_live'));
+    });
+
+    it('reads live for an admin while the flag is still closed', function () {
+        $admin = User::factory()->create(['admin' => true]);
+
+        $this->actingAs($admin)->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('Coming soon')
+            ->assertSee(Voice::line('home.pickem.live', for: $admin));
     });
 });
 

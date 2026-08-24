@@ -375,6 +375,43 @@ describe('the voice', function () {
         }
     });
 
+    it('speaks the live picks stop in every register, escalating', function () {
+        foreach (['tour.picks_live.heading', 'tour.picks_live.body'] as $key) {
+            $pg = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::Pg]));
+            $r = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::R]));
+
+            expect($pg)->not->toBe('')
+                ->and($r)->not->toBe('')
+                ->and($r)->not->toBe($pg);
+        }
+    });
+
+    it('walks launch day to a picks stop that says it is live', function () {
+        /*
+         * "Picks are coming", walked to the center tab on launch day, was
+         * the tour lying about the product's whole point. The branch reads
+         * the commit-11 config mirror, so the flip reaches the very next
+         * tour with no Pennant purge in between.
+         */
+        config()->set('cfb.pickem_open', true);
+
+        $reader = freshlyOnboarded();
+        $this->actingAs($reader)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee(Voice::line('tour.picks_live.heading', for: $reader))
+            ->assertDontSee('holding the seat');
+
+        // Closed again: the promise copy still stands for a civilian.
+        config()->set('cfb.pickem_open', false);
+
+        $waiting = freshlyOnboarded();
+        $this->actingAs($waiting)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee(Voice::line('tour.picks.heading', for: $waiting));
+    });
+
     it('escalates the personalized lines too', function () {
         $replace = ['prefix' => 'Ten', 'team' => 'Tennessee', 'xp' => 25];
 

@@ -97,6 +97,14 @@ class Voice
             'r' => "Live scores, your teams up top, Pick'em on the way. One minute to sign up, a whole season to be wrong in public.",
         ],
 
+        // The front door once the flag is OPEN — "on the way" is wrong on
+        // day one, to exactly the person an invite link brought here.
+        'onboarding.guest.body_live' => [
+            'pg' => "Follow your teams, watch every score live, and play Pick'em with your friends. Signing up takes about a minute.",
+            'pg13' => "Live scores, your teams up top, and Pick'em open for business. A minute to sign up, a whole season to argue about it.",
+            'r' => "Live scores, your teams up top, Pick'em open now. One minute to sign up, a whole season to be wrong in public.",
+        ],
+
         'onboarding.member.heading' => [
             'pg' => 'Add your favorite team',
             'pg13' => 'Put your team up top',
@@ -309,6 +317,23 @@ class Voice
         ],
 
         /*
+         * The same stop once the flag is OPEN. "Picks are coming" walked to
+         * the center tab on launch day was the single worst copy defect the
+         * audit found — the tour must never promise what is already there.
+         */
+        'tour.picks_live.heading' => [
+            'pg' => 'Make your picks here',
+            'pg13' => 'Your picks live here now',
+            'r' => 'The tab your record will haunt',
+        ],
+
+        'tour.picks_live.body' => [
+            'pg' => 'Weekly picks against your friends, right here. Join a group or grab a seat in the lobby and get your first card in.',
+            'pg13' => "Weekly picks, groups, and a running record of who called it. It's live — grab a seat and get a card in.",
+            'r' => 'Weekly picks, groups, and a permanent record of every game you call wrong. Live now — pull up a seat.',
+        ],
+
+        /*
          * The currency stays out of drinking vocabulary on purpose — Beast
          * Lattes are the app's currency, full stop, and the copy never says
          * otherwise. See components/wallet-chips.blade.php for the strategy.
@@ -426,6 +451,14 @@ class Voice
             'pg' => "Groups, weekly picks and bragging rights with your friends. It's on the way.",
             'pg13' => "Groups, weekly slates, and a season-long paper trail of everyone's bad calls. It's coming.",
             'r' => "Groups, weekly slates, and receipts on every terrible pick your friends swear they never made. It's coming.",
+        ],
+
+        // The same card the moment the flag opens: the promise becomes the
+        // invitation, on the config mirror — never Feature::active().
+        'home.pickem.live' => [
+            'pg' => "Groups, weekly picks and bragging rights with your friends. It's live — get your picks in.",
+            'pg13' => "Groups, weekly slates, and a season-long paper trail of everyone's bad calls. Live now.",
+            'r' => 'Groups, weekly slates, and receipts on every terrible pick your friends swear they never made. Live now — no excuses.',
         ],
 
         /*

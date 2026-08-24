@@ -322,8 +322,23 @@ new class extends Component
         aria-label="App tour"
     >
         @foreach ($steps as $i => $key)
+            @php
+                /*
+                 * The picks stop must never promise what is already there:
+                 * once the flag opens, "Picks are coming" walked to the
+                 * center tab is the tour lying on launch day. The branch
+                 * reads the commit-11 CONFIG mirror, never
+                 * Feature::active() — Pennant persists resolved values, so
+                 * the flag flip would leave this stop stale per user until
+                 * a purge.
+                 */
+                $copyKey = $key === 'picks'
+                        && (config('cfb.pickem_open') === true || (bool) auth()->user()?->isAdmin())
+                    ? 'picks_live'
+                    : $key;
+            @endphp
             <div x-show="step === {{ $i }}" wire:key="tour-step-{{ $key }}" class="flex flex-col gap-1">
-                <flux:heading size="lg">{{ App\Support\Voice::line("tour.{$key}.heading") }}</flux:heading>
+                <flux:heading size="lg">{{ App\Support\Voice::line("tour.{$copyKey}.heading") }}</flux:heading>
 
                 <flux:subheading>
                     @if ($key === 'search' && $this->searchTeam !== null)
@@ -334,7 +349,7 @@ new class extends Component
                             'team' => $this->searchTeam,
                         ]) }}
                     @else
-                        {{ App\Support\Voice::line("tour.{$key}.body") }}
+                        {{ App\Support\Voice::line("tour.{$copyKey}.body") }}
                     @endif
 
                     @if ($key === 'wallet' && $this->seeded)

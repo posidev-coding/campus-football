@@ -94,6 +94,8 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'join.room.played',
     'mode.change.pick_one',
     'picks.publish.featured_metric',
+    'home.pickem.live',
+    'onboarding.guest.body_live',
     'picks.tiebreaker.invalid',
     'picks.locked.notice',
     'picks.claim.reason',
