@@ -46,7 +46,11 @@ new class extends Component
             <flux:callout icon="newspaper" class="sm:col-span-2 lg:col-span-3 2xl:col-span-4">
                 <flux:callout.heading>No news yet</flux:callout.heading>
                 <flux:callout.text>
-                    Nothing synced. Run <code>php artisan cfb:sync --only=news</code>.
+                    {{-- Factual, News is a PURE surface. The artisan hint is for the operator alone. --}}
+                    Nothing here yet — headlines land as they publish.
+                    @if (auth()->user()?->isAdmin())
+                        Run <code>php artisan cfb:sync --only=news</code>.
+                    @endif
                 </flux:callout.text>
             </flux:callout>
         @endforelse

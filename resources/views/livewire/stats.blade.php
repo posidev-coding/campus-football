@@ -348,7 +348,11 @@ new class extends Component
                 @if ($view === 'team')
                     Nothing published for {{ $year }} yet.
                 @else
-                    Nothing derived for {{ $year }} yet. Run <code>php artisan cfb:aggregate</code>.
+                    {{-- Factual, Stats is a PURE surface. The artisan hint is for the operator alone. --}}
+                    Nothing here for {{ $year }} yet.
+                    @if (auth()->user()?->isAdmin())
+                        Run <code>php artisan cfb:aggregate</code>.
+                    @endif
                 @endif
             </flux:callout.text>
         </flux:callout>
