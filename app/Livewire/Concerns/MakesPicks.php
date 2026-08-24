@@ -5,6 +5,8 @@ namespace App\Livewire\Concerns;
 use App\Actions\EnterTiebreaker;
 use App\Actions\LockPick;
 use App\Actions\MakePick;
+use App\Exceptions\HandleRequired;
+use App\Exceptions\NotGroupMember;
 use App\Exceptions\PickemParticipationGated;
 use App\Exceptions\PickLocked;
 use App\Models\Pick;
@@ -12,7 +14,9 @@ use App\Models\Slate;
 use App\Models\SlateEntry;
 use App\Models\SlateGame;
 use App\Support\Voice;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
+use InvalidArgumentException;
 use Livewire\Attributes\Computed;
 
 /**
@@ -77,17 +81,35 @@ trait MakesPicks
             ->keyBy('slate_id');
     }
 
+    /*
+     * The catch lists below are the surface's whole contract with the
+     * Actions: EVERYTHING MakePick and its siblings can throw is either a
+     * notice or a deliberate silent re-render, because anything uncaught
+     * is a raw 500 on a tap. Silent is chosen only where the refreshed
+     * render already explains itself — a locked row renders locked, a
+     * stale card (unpublished, rebuilt, re-slated) simply is not there
+     * anymore, and an implausible payload re-renders the current truth.
+     */
+
     public function pick(int $slateGameId, int $teamId, MakePick $action): void
     {
-        $slateGame = SlateGame::query()->findOrFail($slateGameId);
-
         try {
+            $slateGame = SlateGame::query()->findOrFail($slateGameId);
             $action->handle(auth()->user(), $slateGame, $teamId);
         } catch (PickLocked) {
             // The row already renders locked; a race at kickoff just
             // re-renders into that state.
         } catch (PickemParticipationGated) {
             $this->notice = Voice::line('groups.verify_first');
+        } catch (HandleRequired) {
+            $this->notice = Voice::line('picks.claim.body');
+        } catch (NotGroupMember) {
+            // A commissioner removed them mid-session; the next tap must
+            // say so, not 500.
+            $this->notice = Voice::line('talk.not_member');
+        } catch (ModelNotFoundException|InvalidArgumentException) {
+            // A stale card after an unpublish or rebuild — the refresh
+            // renders the current truth, which no longer has this control.
         }
 
         $this->refreshPicks();
@@ -95,14 +117,20 @@ trait MakesPicks
 
     public function lockPick(int $slateGameId, bool $locked, LockPick $action): void
     {
-        $slateGame = SlateGame::query()->findOrFail($slateGameId);
-
         try {
+            $slateGame = SlateGame::query()->findOrFail($slateGameId);
             $action->handle(auth()->user(), $slateGame, $locked);
         } catch (PickLocked) {
             // The wager froze with the game; the toggle renders spent.
         } catch (PickemParticipationGated) {
             $this->notice = Voice::line('groups.verify_first');
+        } catch (HandleRequired) {
+            $this->notice = Voice::line('picks.claim.body');
+        } catch (NotGroupMember) {
+            $this->notice = Voice::line('talk.not_member');
+        } catch (ModelNotFoundException|InvalidArgumentException) {
+            // Stale card, or a Lock aimed at a game that stopped being
+            // featured — the refresh renders what is actually stakeable.
         }
 
         $this->refreshPicks();
@@ -119,6 +147,13 @@ trait MakesPicks
             // Locked with the game; the input renders disabled already.
         } catch (PickemParticipationGated) {
             $this->notice = Voice::line('groups.verify_first');
+        } catch (HandleRequired) {
+            $this->notice = Voice::line('picks.claim.body');
+        } catch (NotGroupMember) {
+            $this->notice = Voice::line('talk.not_member');
+        } catch (ModelNotFoundException|InvalidArgumentException) {
+            // An unpublished slate or an implausible answer — the refresh
+            // shows the current card and the saved total, if any.
         }
 
         $this->refreshPicks();

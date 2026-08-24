@@ -12,6 +12,7 @@ use App\Models\Pick;
 use App\Models\SlateEntry;
 use App\Models\User;
 use App\Models\WalletEntry;
+use App\Support\Voice;
 use Livewire\Livewire;
 
 /*
@@ -213,6 +214,81 @@ it('locks a kicked-off row on the surface', function () {
     $slate->games()->with('game')->first()->game->update(['kickoff_at' => now()->subHour()]);
 
     Livewire::actingAs($member)->test('group', ['group' => $group])->assertSee('Locked');
+});
+
+describe('the surface absorbs every refusal', function () {
+    /*
+     * Everything MakePick and EnterTiebreaker can throw is either a notice
+     * or a deliberate silent re-render — anything uncaught is a raw 500 on
+     * a tap. Each case below merely COMPLETING the call is half the test.
+     */
+    it('tells a member the commissioner removed mid-session, instead of a 500', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+        $slateGame = $slate->games()->with('game')->first();
+
+        $surface = Livewire::actingAs($member)->test('group', ['group' => $group]);
+
+        GroupMember::query()->where(['group_id' => $group->id, 'user_id' => $member->id])->delete();
+
+        $surface->call('pick', $slateGame->id, $slateGame->game->home_team_id)
+            ->assertSet('notice', Voice::line('talk.not_member', for: $member));
+
+        expect(Pick::query()->where('user_id', $member->id)->exists())->toBeFalse();
+    });
+
+    it('points a handleless tap at the claim', function () {
+        [, $group, $slate] = pickemLiveSlate();
+        $handleless = User::factory()->handleless()->create(['admin' => true]);
+        GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $handleless->id]);
+        $slateGame = $slate->games()->with('game')->first();
+
+        Livewire::actingAs($handleless)->test('group', ['group' => $group])
+            ->call('pick', $slateGame->id, $slateGame->game->home_team_id)
+            ->assertSet('notice', Voice::line('picks.claim.body', for: $handleless));
+    });
+
+    it('shrugs off a stale slate-game id after an unpublish', function () {
+        [$member, $group] = pickemLiveSlate();
+
+        Livewire::actingAs($member)->test('group', ['group' => $group])
+            ->call('pick', 999999, 1)
+            ->assertSet('notice', null)
+            ->assertStatus(200);
+    });
+
+    it('shrugs off a team that is not in the game', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+        $slateGame = $slate->games()->with('game')->first();
+
+        Livewire::actingAs($member)->test('group', ['group' => $group])
+            ->call('pick', $slateGame->id, 424242)
+            ->assertSet('notice', null);
+
+        expect(Pick::query()->where('user_id', $member->id)->exists())->toBeFalse();
+    });
+
+    it('absorbs the same refusals on the tiebreaker call', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+
+        $surface = Livewire::actingAs($member)->test('group', ['group' => $group]);
+
+        // A stale slate id: silent, the refreshed card is the answer.
+        $surface->call('saveTotal', 999999)->assertSet('notice', null);
+
+        // An implausible answer: refused by the action, absorbed here.
+        $surface->set('totals.'.$slate->id, 99999)
+            ->call('saveTotal', $slate->id)
+            ->assertSet('notice', null);
+
+        expect(SlateEntry::query()->where('user_id', $member->id)->whereNotNull('tiebreaker_total')->exists())
+            ->toBeFalse();
+
+        // Removed mid-session: the tiebreaker says so too.
+        GroupMember::query()->where(['group_id' => $group->id, 'user_id' => $member->id])->delete();
+        $surface->set('totals.'.$slate->id, 38)
+            ->call('saveTotal', $slate->id)
+            ->assertSet('notice', Voice::line('talk.not_member', for: $member));
+    });
 });
 
 it('keeps the coming-soon promise for everyone outside the flag', function () {

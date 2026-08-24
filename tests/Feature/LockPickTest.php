@@ -13,6 +13,7 @@ use App\Models\GroupMember;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\User;
+use App\Support\Voice;
 
 /*
  * The Lock wager's one door. Every gate MakePick holds, plus the wager's
@@ -163,6 +164,54 @@ it('shows the founders\' stakes in the builder\'s tiers station', function () {
         ->assertSee('Tier 1 pays 8')
         ->assertSee('Tier 2 pays 6')
         ->assertSee('Tier 3 pays 4');
+});
+
+describe('the surface absorbs every refusal', function () {
+    // Everything LockPick can throw is a notice or a deliberate silent
+    // re-render in MakesPicks::lockPick — an uncaught throw is a raw 500
+    // on the toggle. Completing each call is half the test.
+    it('tells a removed member, instead of a 500', function () {
+        [$member, $featured, , $slate] = lockableWoodshed();
+        $group = Group::query()->findOrFail($slate->contest->group_id);
+        app(MakePick::class)->handle($member, $featured, $featured->game->home_team_id);
+
+        $surface = Livewire\Livewire::actingAs($member)->test('group', ['group' => $group]);
+
+        GroupMember::query()->where(['group_id' => $group->id, 'user_id' => $member->id])->delete();
+
+        $surface->call('lockPick', $featured->id, true)
+            ->assertSet('notice', Voice::line('talk.not_member', for: $member));
+
+        expect(Pick::query()->where('user_id', $member->id)->sole()->refresh()->locked)->toBeFalse();
+    });
+
+    it('points a handleless toggle at the claim', function () {
+        [, $featured, , $slate] = lockableWoodshed();
+        $group = Group::query()->findOrFail($slate->contest->group_id);
+        $handleless = User::factory()->create(['handle' => null]);
+        GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $handleless->id]);
+
+        Livewire\Livewire::actingAs($handleless)->test('group', ['group' => $group])
+            ->call('lockPick', $featured->id, true)
+            ->assertSet('notice', Voice::line('picks.claim.body', for: $handleless));
+    });
+
+    it('shrugs off a stale id and an unfeatured game silently', function () {
+        [$member, $featured, $plain, $slate] = lockableWoodshed();
+        $group = Group::query()->findOrFail($slate->contest->group_id);
+        app(MakePick::class)->handle($member, $featured, $featured->game->home_team_id);
+        app(MakePick::class)->handle($member, $plain, $plain->game->home_team_id);
+
+        $surface = Livewire\Livewire::actingAs($member)->test('group', ['group' => $group]);
+
+        // Stale slate-game id after a rebuild: ModelNotFoundException.
+        $surface->call('lockPick', 999999, true)->assertSet('notice', null);
+
+        // Only the featured game takes the Lock: InvalidArgumentException.
+        $surface->call('lockPick', $plain->id, true)->assertSet('notice', null);
+
+        expect(Pick::query()->where('user_id', $member->id)->where('locked', true)->exists())->toBeFalse();
+    });
 });
 
 it('refuses a draft slate', function () {
