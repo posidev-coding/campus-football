@@ -76,6 +76,19 @@ function pickemScore(Slate $slate, int $position, int $home, int $away, bool $fi
     (new GradeGamePicks($game->id))->handle(app(PickGrader::class));
 }
 
+// ---------------------------------------------------------- the job's shape
+
+it('carries the retry shape that keeps a killed worker from stranding a game', function () {
+    $job = new GradeGamePicks(1);
+
+    expect($job->uniqueFor)->toBe(120)
+        ->and($job->tries)->toBe(3)
+        ->and($job->timeout)->toBe(60)
+        // timeout < uniqueFor, deliberately: a timed-out run is already dead
+        // before its unique lock lapses, so the retry can take the lock.
+        ->and($job->timeout)->toBeLessThan($job->uniqueFor);
+});
+
 // ------------------------------------------------------------ live grading
 
 it('grades a pick the second its game kicks, and regrades on every swing', function () {
