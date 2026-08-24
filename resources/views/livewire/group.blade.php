@@ -764,7 +764,7 @@ new class extends Component
                             <flux:button
                                 wire:click="remove({{ $seat->user_id }})"
                                 wire:confirm="Remove {{ $seat->user->first_name }} from the group?"
-                                size="xs"
+                                size="sm"
                                 variant="ghost"
                             >
                                 Remove

@@ -53,6 +53,6 @@
         wire:target="{{ $action }}({{ $room->id }})"
         size="sm"
         variant="primary"
-        class="pointer-events-auto relative z-10 shrink-0"
+        class="pointer-events-auto relative z-10 -my-1 !h-9 shrink-0"
     >Join</flux:button>
 </div>

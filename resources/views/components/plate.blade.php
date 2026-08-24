@@ -56,7 +56,7 @@
                 wire:key="{{ $keyPrefix }}-{{ $value }}"
                 @if ($active) aria-current="page" @endif
                 @class([
-                    'border-b-2 pt-0.5 pb-2 text-sm font-medium transition-colors',
+                    '-mt-1.5 border-b-2 pt-2 pb-2 text-sm font-medium transition-colors',
                     'shrink-0 whitespace-nowrap px-3 first:pl-0 sm:px-4 sm:first:pl-4' => ! $bleed,
                     'flex-1 px-2 sm:flex-none sm:px-4' => $bleed,
                     'border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-100' => $active,

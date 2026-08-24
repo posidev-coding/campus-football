@@ -284,9 +284,10 @@ new class extends Component
                     <flux:button
                         wire:click="deletePost({{ $post->id }})"
                         wire:confirm="Delete this post? It does not come back."
-                        size="xs"
+                        size="sm"
+                        square
                         variant="ghost"
-                        class="shrink-0"
+                        class="-my-1 shrink-0"
                         aria-label="Delete post"
                     >
                         <flux:icon.trash variant="micro" />
