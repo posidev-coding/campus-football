@@ -11,8 +11,12 @@ use App\Filament\Pages\Workbook;
 use App\Filament\Resources\Teams\TeamResource;
 use App\Filament\Resources\Workbook\Pages\ManageWorkbook;
 use App\Filament\Resources\Workbook\WorkbookResource;
+use App\Filament\Widgets\RecentSyncFailures;
+use App\Filament\Widgets\SyncSpend;
+use App\Models\FeedRun;
 use App\Models\User;
 use App\Models\WorkbookItem;
+use App\Support\SyncSchedule;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
@@ -217,5 +221,65 @@ describe('the sidebar', function () {
             ->and(Branding::getNavigationGroup())->toBe('Configuration')
             ->and(PickemSettings::getNavigationGroup())->toBe('Configuration')
             ->and(TeamResource::getNavigationGroup())->toBe('Configuration');
+    });
+});
+
+describe('the advisor ledger', function () {
+    it('says so plainly before the advisor has ever run', function () {
+        Livewire::actingAs($this->admin)
+            ->test(SyncSpend::class)
+            ->assertOk()
+            ->assertSee('Advisor')
+            ->assertSee('Never run');
+    });
+
+    it('reads the advisor run out of the same ledger everything else writes to', function () {
+        // No second store and no second widget: the advisor is a Claude Code
+        // routine with no database access, so its runs arrive over the /ops
+        // surface — but they land in feed_runs under the same three statuses.
+        WorkbookItem::factory()->count(3)->create(['status' => WorkbookStatus::Inbox]);
+
+        $run = FeedRun::begin(FeedRun::ADVISOR, null);
+        $run->complete(records: 3, requests: 0, durationMs: 4_200);
+
+        Livewire::actingAs($this->admin)
+            ->test(SyncSpend::class)
+            ->assertOk()
+            ->assertSee('3 items open');
+    });
+
+    it('shows a failed advisor pass in the failures table for free', function () {
+        // The reason it reuses feed_runs rather than a table of its own.
+        FeedRun::begin(FeedRun::ADVISOR, null)->fail('the telemetry endpoint timed out', 0, 900);
+
+        Livewire::actingAs($this->admin)
+            ->test(RecentSyncFailures::class)
+            ->assertOk()
+            ->assertSee('advisor:review')
+            ->assertSee('the telemetry endpoint timed out');
+    });
+
+    it('stays off the schedule report, whose cron it cannot see', function () {
+        // SyncSchedule introspects OUR scheduler; the advisor's cron lives in
+        // Claude Code's cloud. A row there would report an overdue flag
+        // nothing can compute.
+        $names = collect(app(SyncSchedule::class)->tasks())->pluck('name');
+
+        expect($names)->not->toContain(FeedRun::ADVISOR);
+    });
+});
+
+describe('the schedule report', function () {
+    it('leaves no command that writes a feed run marked untracked', function () {
+        // A grey "untracked" row means "this writes no ledger entry", which is
+        // a real and useful state — model:prune and the news fan-out are
+        // genuinely untracked. A command that DOES write one and is missing a
+        // ledgerKey() case renders the same grey and the row simply lies.
+        $untracked = collect(app(SyncSchedule::class)->tasks())
+            ->where('tracked', null)
+            ->pluck('name')
+            ->all();
+
+        expect($untracked)->toBe(['cfb:news:followed', 'cfb:news:followed:offseason']);
     });
 });

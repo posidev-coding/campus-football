@@ -585,7 +585,7 @@ Two traps, both verified:
   movement stay recomputable later from `spread` / `market_spread` /
   `odds_provider` / `odds_captured_at`, which the row already stores.
 
-## Phase 2 — The workbook and the Kanban
+## Phase 2 — The workbook and the Kanban ✅ **Complete 2026-08-24**
 
 **2.1 `workbook_items`** — `key` (unique, stable slug), `title`, `body`,
 `category` (bug · feature · performance · ux · data · ops · tech-debt),
@@ -606,7 +606,7 @@ admin table to the phone-first no-horizontal-scroll rule would be enforcing the
 right rule on the wrong product."* A Kanban needs horizontal scroll, so putting
 it in the panel means **no test allowlist edit and no weakened sweep**.
 
-**The prerequisite: register a Filament theme.** The panel deliberately does not
+**The prerequisite: register a Filament theme.** ✅ **Done.** The panel deliberately does not
 load `resources/css/app.css` — a constraint documented in three places — so
 Tailwind utilities written in an admin view today have **no definitions behind
 them**, which is why Sync Health is built entirely from Filament's own widgets
@@ -646,9 +646,56 @@ While in here, give the panel **navigation groups** — there are none today, th
 sidebar is flat, and Workbook / Sync Health / Branding / Pick'em Settings should
 not compete at one level.
 
+> **As built (2.1 + 2.2).** `workbook_items` with three bounded enums
+> (`WorkbookCategory`, `WorkbookSeverity`, `WorkbookStatus`) and
+> `WorkbookItem::propose()` as the single doorway — the `GrantWalletEntry`
+> shape. `first_seen_at` is never refreshed by a re-propose, because "how long
+> has this been true" is the most useful number on the card. `Dismissed` is not
+> a board column: it is an answer, not a stage.
+>
+> Two surfaces: `WorkbookResource` at `admin/workbook/items` (search, three
+> multi-select filters, bulk moves, and a detail view with the evidence and a
+> copyable prompt) and the `Workbook` page at `admin/workbook`. Sidebar groups
+> are Work / Operations / Configuration.
+>
+> ⚠️ **The board's drag rests on three attributes, and two are traps.**
+> `wire:sort` takes a bare method name. `wire:sort:group-id` per column is what
+> makes it a Kanban — Livewire appends it to the handler's arguments and
+> Sortable fires on the DESTINATION list. And the Sortable group must be bound
+> with Alpine's **`x-sort:group`**, not `wire:sort:group`: Livewire's attribute
+> loop `return`s on the latter, so with it before `wire:sort` in the source,
+> `wire:sort` never binds and the drag silently does nothing. Read out of
+> `livewire.esm.js`. Sortable's index is ZERO-based; stored positions are
+> one-based; and the column an item LEAVES must be renumbered, because
+> positions are what the next drop's index is measured against.
+>
+> The table sorts worst-first through `FIELD()`. `severity` holds the enum's
+> string value, so alphabetical order is critical-high-low-medium, which puts
+> Low above Medium.
+
 **2.3 Advisor run ledger.** Reuse `feed_runs` with `command = 'advisor:review'`
 via `App\Console\Concerns\TracksFeedRun::trackRun()`, plus a `ledgerKey()` case
 in `app/Support/SyncSchedule.php:118` — that buys Sync Health visibility for free.
+
+> **As built.** `FeedRun::ADVISOR` plus `latestAdvisorRun()`, and an Advisor stat
+> on Sync Health showing the last pass and how much is open. A failed pass shows
+> in the Recent failures table for free, which is the whole reason it reuses
+> `feed_runs`. The advisor writes through `FeedRun::begin()`/`complete()`/`fail()`
+> — the existing public API — because it is a Claude Code routine with no
+> database access and reaches us over the Phase 3 `/ops` surface, not through
+> `TracksFeedRun`, which is a console concern.
+>
+> **No `ledgerKey()` case for it, deliberately.** `SyncSchedule` introspects OUR
+> scheduler to compute an overdue flag from each event's cron expression; the
+> advisor's cron lives in Claude Code's cloud. A row there would be a task whose
+> schedule we cannot see, reporting an overdue flag nothing can compute.
+>
+> ⚠️ **Two real gaps closed on the way past.** `cfb:kickoff-alerts` and
+> `cfb:ux-rollup` both write `feed_runs` rows and had no `ledgerKey()` case, so
+> Sync Health rendered them as permanently grey "untracked" — the state that
+> method exists to distinguish from "ran and found nothing". A test now asserts
+> that the only untracked scheduled tasks are the two news fan-outs, which
+> genuinely write no ledger row.
 
 ---
 

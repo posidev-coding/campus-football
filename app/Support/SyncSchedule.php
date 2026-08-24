@@ -129,6 +129,12 @@ class SyncSchedule
             str_starts_with($command, 'cfb:aggregate') => 'aggregate',
             str_starts_with($command, 'cfb:newsletter') => 'newsletter',
             str_starts_with($command, 'cfb:verification-reminders') => 'verification-reminders',
+            // Both of these DO write feed runs and were rendering as
+            // permanently grey "untracked" rows — the state this method exists
+            // to distinguish from "ran and found nothing". A command that
+            // gains a trackRun() key needs a line here or its row lies.
+            str_starts_with($command, 'cfb:kickoff-alerts') => 'kickoff-alerts',
+            str_starts_with($command, 'cfb:ux-rollup') => 'ux:rollup',
             default => null,
         };
     }
