@@ -6,6 +6,7 @@ use App\Models\Season;
 use App\Models\Team;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGames;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 
@@ -178,6 +179,30 @@ it('writes nothing on a re-sync when no game has changed', function () {
 
     expect($changed)->toBe(0)
         ->and(Game::whereKey(401)->value('updated_at')->eq($touchedAt))->toBeTrue();
+});
+
+it('reads the payload through per-payload maps, never a query per game', function () {
+    /*
+     * The live tier re-reads the whole day every minute; per-event
+     * firstOrNew/updateOrCreate was hundreds of mostly-no-op queries a
+     * minute all Saturday. A quiet pass costs the payload-level reads —
+     * seasons, weeks, games, venues, odds — and nothing per game.
+     * Break-back: reverting the preload maps pushes this past the bound.
+     */
+    fakeScoreboard([
+        scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17),
+        scoreboardEvent(402, '2025-09-27T23:00Z', 21, 20),
+        scoreboardEvent(403, '2025-09-28T00:00Z', 14, 10),
+    ]);
+
+    app(SyncGames::class)->week($this->week);
+
+    DB::enableQueryLog();
+    app(SyncGames::class)->week($this->week);
+    $queries = count(DB::getQueryLog());
+    DB::disableQueryLog();
+
+    expect($queries)->toBeLessThanOrEqual(5);
 });
 
 it('writes only the games that actually moved', function () {
