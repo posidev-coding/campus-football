@@ -483,30 +483,18 @@ new class extends Component
              The store lives at its own address now — this is the sign
              above it, not a shelf of it. --}}
         @php $teaser = Voice::line('lobby.teaser.zinger'); @endphp
-        <a
-            href="{{ route('pickem.lobby') }}"
-            wire:navigate
-            {{-- The tour's `room` key, on the screen its CTA lands on: the
-                 spotlight uses whichever anchor is visible, the multi-
-                 surface pattern the area tabs already ride. --}}
-            data-tour="room"
-            class="flex items-center justify-between gap-3 rounded-xl border border-dashed border-zinc-300 px-4 py-3 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
-        >
-            <span class="min-w-0">
-                <span class="block font-semibold leading-tight">The Lobby</span>
-                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-                    @if ($this->roomsOpen > 0)
-                        {{ $this->roomsOpen }} {{ Str::plural('room', $this->roomsOpen) }} open this Saturday
-                    @else
-                        {{ Voice::line('lobby.publics.empty') }}
-                    @endif
-                </span>
-                @if ($this->roomsOpen > 0 && $teaser !== '')
-                    <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">{{ $teaser }}</span>
+        <x-link-row :href="route('pickem.lobby')" title="The Lobby" data-tour="room">
+            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                @if ($this->roomsOpen > 0)
+                    {{ $this->roomsOpen }} {{ Str::plural('room', $this->roomsOpen) }} open this Saturday
+                @else
+                    {{ Voice::line('lobby.publics.empty') }}
                 @endif
             </span>
-            <flux:icon name="chevron-right" variant="micro" class="shrink-0 text-zinc-400" />
-        </a>
+            @if ($this->roomsOpen > 0 && $teaser !== '')
+                <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">{{ $teaser }}</span>
+            @endif
+        </x-link-row>
     @else
         @include('partials.pickem-promise')
     @endif

@@ -69,18 +69,7 @@
         class="sticky top-[var(--chrome-offset)] z-30 -mx-4 flex items-center justify-between gap-3 border-b border-zinc-100 bg-white px-4 py-2 dark:border-zinc-800/60 dark:bg-zinc-950"
     >
         <span class="shrink-0">
-            @if ($surfaceStatus === 'live')
-                <span class="flex items-center gap-1 text-sm font-semibold text-red-600 dark:text-red-400">
-                    <x-live-dot />
-                    Live
-                </span>
-            @elseif ($surfaceStatus === 'prelim')
-                <flux:badge size="sm" color="amber">Preliminary</flux:badge>
-            @elseif ($surfaceStatus === 'final')
-                <flux:badge size="sm" color="green">Final</flux:badge>
-            @else
-                <flux:badge size="sm" color="green">Slate's up</flux:badge>
-            @endif
+            <x-slate-status :status="$surfaceStatus" upcoming="Slate's up" class="text-sm" />
         </span>
 
         @if ($interactive && $this->needsHandle)
@@ -137,21 +126,8 @@
                 x-on:beforeunload.window="stop()"
                 class="flex shrink-0 items-center gap-1.5 text-micro font-medium text-zinc-500"
             >
-                <svg
-                    x-show="remaining > 0 && remaining < 3600"
-                    x-cloak
-                    viewBox="0 0 24 24"
-                    class="size-4 -rotate-90"
-                    aria-hidden="true"
-                >
-                    <circle cx="12" cy="12" r="9" fill="none" stroke-width="3"
-                            class="stroke-zinc-200 dark:stroke-zinc-700" />
-                    <circle cx="12" cy="12" r="9" fill="none" stroke-width="3" stroke-linecap="round"
-                            class="stroke-blue-500 transition-[stroke-dashoffset] duration-1000 ease-linear motion-reduce:transition-none"
-                            stroke-dasharray="56.55"
-                            :style="`stroke-dashoffset: ${56.55 * (1 - remaining / 3600)}`"
-                    />
-                </svg>
+                {{-- The final hour, emptying. --}}
+                <x-countdown-ring show="remaining > 0 && remaining < 3600" fraction="remaining / 3600" />
 
                 <span class="tabular" x-text="label()"></span>
                 <span>to kickoff</span>

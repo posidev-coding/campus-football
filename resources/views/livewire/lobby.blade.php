@@ -273,17 +273,9 @@ new class extends Component
 
         {{-- The other way to play, one line: rooms are the house's, a
              group is yours. --}}
-        <a
-            href="{{ route('pickem.create') }}"
-            wire:navigate
-            class="flex items-center justify-between gap-3 rounded-xl border border-dashed border-zinc-300 px-4 py-3 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
-        >
-            <span class="min-w-0">
-                <span class="block truncate font-semibold leading-tight">Rather run your own?</span>
-                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Start a group — name it, pick its mode, send one link.</span>
-            </span>
-            <flux:icon name="chevron-right" variant="micro" class="shrink-0 text-zinc-400" />
-        </a>
+        <x-link-row :href="route('pickem.create')" title="Rather run your own?">
+            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Start a group — name it, pick its mode, send one link.</span>
+        </x-link-row>
 
         {{-- The rules, one expandable card per mode — the same
              ruleLines() the docs and the mode doors read. --}}

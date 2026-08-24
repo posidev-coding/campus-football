@@ -23,22 +23,19 @@
     /** null hides the badge; 'live' | 'prelim' | 'final' shows the room's state. */
     'status' => null,
     'title' => 'Standings',
+    /**
+     * The viewer's own row when their seat is below the fold — the
+     * leaderboard's "You" line: ['rank' => int, 'label' => string,
+     * 'cells' => list]. Null renders nothing.
+     */
+    'pinned' => null,
 ])
 
 <div {{ $attributes->class(['overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900']) }}>
     <div class="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2 dark:border-zinc-800/60">
         <p class="text-sm font-semibold">{{ $title }}</p>
 
-        @if ($status === 'live')
-            <span class="flex shrink-0 items-center gap-1 text-micro font-semibold text-red-600 dark:text-red-400">
-                <x-live-dot />
-                Live
-            </span>
-        @elseif ($status === 'prelim')
-            <flux:badge size="sm" color="amber">Preliminary</flux:badge>
-        @elseif ($status === 'final')
-            <flux:badge size="sm" color="green">Final</flux:badge>
-        @endif
+        <x-slate-status :status="$status" class="text-micro" />
     </div>
 
     <table class="w-full text-sm">
@@ -53,7 +50,9 @@
         </thead>
         <tbody>
             @foreach ($rows as $row)
-                @php $viewer = $row['user'] !== null && $row['user']->id === auth()->id(); @endphp
+                {{-- A label row may still BE the viewer (the leaderboard
+                     precomputes labels): `viewer` overrides the User check. --}}
+                @php $viewer = ($row['viewer'] ?? false) || ($row['user'] !== null && $row['user']->id === auth()->id()); @endphp
 
                 <tr
                     wire:key="standing-{{ $row['user']?->id ?? $row['key'] ?? 'label-'.$loop->index }}"
@@ -83,6 +82,17 @@
                     @endforeach
                 </tr>
             @endforeach
+
+            {{-- The viewer, pinned when their seat is below the fold. --}}
+            @if ($pinned !== null)
+                <tr class="border-t-2 border-zinc-200 bg-blue-50/60 dark:border-zinc-700 dark:bg-blue-950/30">
+                    <td class="tabular whitespace-nowrap px-3 py-1.5 text-zinc-500">{{ $pinned['rank'] }}</td>
+                    <td class="w-full max-w-0 truncate py-1.5 pe-3 font-semibold">{{ $pinned['label'] }}</td>
+                    @foreach ($pinned['cells'] as $cell)
+                        <td class="tabular whitespace-nowrap py-1.5 pe-3 text-right font-semibold">{{ $cell }}</td>
+                    @endforeach
+                </tr>
+            @endif
         </tbody>
     </table>
 </div>

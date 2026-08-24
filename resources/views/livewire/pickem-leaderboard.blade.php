@@ -91,42 +91,31 @@ new class extends Component
     </div>
 
     @if ($this->rows !== [])
-        <div class="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="border-b border-zinc-100 text-micro text-zinc-500 dark:border-zinc-800/60">
-                        <th scope="col" class="w-8 px-3 py-1.5 text-left font-medium">#</th>
-                        <th scope="col" class="py-1.5 pe-3 text-left font-medium">Name</th>
-                        <th scope="col" class="whitespace-nowrap py-1.5 pe-3 text-right font-medium">XP</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach ($this->rows as $row)
-                        @php $viewer = $row['user_id'] === auth()->id(); @endphp
-                        <tr
-                            wire:key="lb-{{ $row['user_id'] }}"
-                            @class([
-                                'border-b border-zinc-50 last:border-0 dark:border-zinc-800/40',
-                                'bg-blue-50/60 dark:bg-blue-950/30' => $viewer,
-                            ])
-                        >
-                            <td class="tabular whitespace-nowrap px-3 py-1.5 text-zinc-500">{{ $row['rank'] }}</td>
-                            <td class="w-full max-w-0 truncate py-1.5 pe-3 {{ $viewer ? 'font-semibold' : 'font-medium' }}">{{ $row['label'] }}</td>
-                            <td class="tabular whitespace-nowrap py-1.5 pe-3 text-right font-semibold">{{ number_format($row['xp']) }}</td>
-                        </tr>
-                    @endforeach
+        {{-- The SAME table the clubhouse ranks a week with — one ranked-
+             rows vocabulary, so the leaderboard cannot drift from the room.
+             Labels are precomputed strings (rows come ranked from
+             Leaderboard), so `viewer` rides the row rather than a User. --}}
+        @php
+            $tableRows = collect($this->rows)->map(fn (array $row) => [
+                'rank' => $row['rank'],
+                'user' => null,
+                'label' => $row['label'],
+                'key' => 'lb-'.$row['user_id'],
+                'viewer' => $row['user_id'] === auth()->id(),
+                'cells' => [number_format($row['xp'])],
+            ])->all();
 
-                    {{-- The viewer, pinned when their seat is below the fold. --}}
-                    @if ($this->mine !== null && $this->mine['rank'] > count($this->rows))
-                        <tr class="border-t-2 border-zinc-200 bg-blue-50/60 dark:border-zinc-700 dark:bg-blue-950/30">
-                            <td class="tabular whitespace-nowrap px-3 py-1.5 text-zinc-500">{{ $this->mine['rank'] }}</td>
-                            <td class="w-full max-w-0 truncate py-1.5 pe-3 font-semibold">You</td>
-                            <td class="tabular whitespace-nowrap py-1.5 pe-3 text-right font-semibold">{{ number_format($this->mine['xp']) }}</td>
-                        </tr>
-                    @endif
-                </tbody>
-            </table>
-        </div>
+            $windowTitle = ['week' => 'This Week', 'season' => 'This Season', 'all' => 'All-Time'][$view] ?? 'Leaderboard';
+        @endphp
+
+        <x-standings-table
+            :rows="$tableRows"
+            :headings="['XP']"
+            :title="$windowTitle"
+            :pinned="$this->mine !== null && $this->mine['rank'] > count($this->rows)
+                ? ['rank' => $this->mine['rank'], 'label' => 'You', 'cells' => [number_format($this->mine['xp'])]]
+                : null"
+        />
     @else
         {{-- A door, not a dead end: the reader with no standings is
              exactly the reader a lobby seat would fix. --}}

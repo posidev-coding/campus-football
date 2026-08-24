@@ -886,21 +886,7 @@ new class extends Component
                     >
                         {{-- Emptying, not filling: the ring is time you still
                              have to wait, so it should be running out. --}}
-                        <svg
-                            x-show="remaining > 0"
-                            x-cloak
-                            viewBox="0 0 24 24"
-                            class="size-5 -rotate-90"
-                            aria-hidden="true"
-                        >
-                            <circle cx="12" cy="12" r="9" fill="none" stroke-width="2.5"
-                                    class="stroke-zinc-200 dark:stroke-zinc-700" />
-                            <circle cx="12" cy="12" r="9" fill="none" stroke-width="2.5" stroke-linecap="round"
-                                    class="stroke-blue-500 transition-[stroke-dashoffset] duration-1000 ease-linear motion-reduce:transition-none"
-                                    stroke-dasharray="56.55"
-                                    :style="`stroke-dashoffset: ${56.55 * (1 - remaining / total)}`"
-                            />
-                        </svg>
+                        <x-countdown-ring fraction="remaining / total" stroke-width="2.5" class="size-5" />
 
                         <button
                             type="button"

@@ -164,6 +164,14 @@ it('speaks the merged idioms through their components, never inlined', function 
             'components/notice.blade.php',
             '<x-notice tone="success">',
         ],
+        'stroke-dasharray="56.55"' => [
+            'components/countdown-ring.blade.php',
+            '<x-countdown-ring>',
+        ],
+        '>Preliminary</flux:badge>' => [
+            'components/slate-status.blade.php',
+            '<x-slate-status>',
+        ],
     ];
 
     $violations = [];
