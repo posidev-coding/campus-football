@@ -62,6 +62,18 @@ new class extends Component
         // picker. A guest carrying a stale hand-off flag still has to make
         // an account first, so auth decides which pane an open overlay shows.
         $this->step = auth()->check() ? 'team' : 'name';
+
+        /*
+         * The PARKED moment: an invite-path registration landed on the
+         * group first (intended URL), where the normal hand-off flash died
+         * unread. Promote it back to the one-render flash here, on their
+         * first Home visit — pull() consumes it, hasOnboarded() guards a
+         * stale key on an account that finished onboarding another way,
+         * and everything downstream (picker, then tour) runs unchanged.
+         */
+        if (auth()->check() && session()->pull('onboarding.pending', false) && ! auth()->user()->hasOnboarded()) {
+            session()->flash('onboarding.moment', true);
+        }
     }
 
     /**

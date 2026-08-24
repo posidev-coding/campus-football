@@ -545,12 +545,56 @@ describe('the device draft', function () {
         expect($credentials)->toContain('wire:click="register"');
     });
 
+    it('re-arms the picker for an invited registration that landed on the group', function () {
+        /*
+         * The invite path, end to end: the guest is routed to REGISTER,
+         * registers, and redirectIntended lands them on /join — where the
+         * onboarding.moment flash dies unread. The parked
+         * `onboarding.pending` key re-arms the picker on their first Home
+         * visit, and through the picker, the tour. Without it the PRIMARY
+         * acquisition path produced members with zero follows, no tour,
+         * and showTour suppressed forever.
+         */
+        session()->put('url.intended', '/join/ABCDEF');
+
+        Livewire::test('auth.register')
+            ->set('first_name', 'Invited')->set('last_name', 'Friend')
+            ->set('email', 'invited@example.com')
+            ->set('password', 'password123')->set('password_confirmation', 'password123')
+            ->call('register')
+            ->assertRedirect('/join/ABCDEF');
+
+        expect(session()->get('onboarding.pending'))->toBeTrue()
+            // The flash died on the intended landing; pending survives it.
+            ->and(auth()->user()->hasOnboarded())->toBeFalse();
+
+        // First Home visit: the wizard opens straight onto the picker...
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee('data-onboarding-overlay', escape: false)
+            ->assertSee('wire:key="step-team"', false);
+
+        // ...and the parked key is consumed — read once, ever.
+        expect(session()->has('onboarding.pending'))->toBeFalse();
+    });
+
+    it('never re-arms for an account that finished onboarding another way', function () {
+        $user = User::factory()->create(['onboarded_at' => now()]);
+        session()->put('onboarding.pending', true);
+
+        $this->actingAs($user)->get(route('home'))->assertOk();
+
+        // Pulled and discarded — a stale key cannot reopen the picker later.
+        expect(session()->has('onboarding.pending'))->toBeFalse();
+    });
+
     it('speaks the front door and picker in each register, escalating', function () {
         // LOUD chrome: all three registers side by side, R never just PG.
         foreach ([
             'onboarding.guest.heading', 'onboarding.guest.body',
             'onboarding.member.heading', 'onboarding.member.body',
             'onboarding.favorite', 'onboarding.picker', 'onboarding.name',
+            'onboarding.rating', 'onboarding.credentials',
             'splash.warmup.greet', 'splash.warmup.travel', 'splash.warmup.field',
             'splash.warmup.song', 'splash.warmup.latte',
         ] as $key) {

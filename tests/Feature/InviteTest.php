@@ -65,7 +65,13 @@ it('answers a dead code with words and a door, not a 404', function () {
         ->assertSee(route('pickem.lobby'), escape: false);
 });
 
-it('walks a guest joiner through auth and back — the intended URL is this page', function () {
+it('walks a guest joiner to REGISTER and back — the intended URL is this page', function () {
+    /*
+     * Register, not login: the invite link is the PRIMARY acquisition
+     * path and the guest holding one is almost always brand new — a
+     * login form is a door they cannot open. The register screen links
+     * to sign-in for the few who already have an account.
+     */
     Feature::define('pickem', true);
 
     [$commissioner, $group] = pickemContest();
@@ -74,7 +80,7 @@ it('walks a guest joiner through auth and back — the intended URL is this page
     Livewire::withQueryParams(['by' => 'marcus'])
         ->test('join', ['code' => $group->code])
         ->call('join')
-        ->assertRedirect(route('login'));
+        ->assertRedirect(route('register'));
 
     expect(session('url.intended'))
         ->toBe(route('pickem.join', ['code' => $group->code, 'by' => 'marcus'], absolute: false));

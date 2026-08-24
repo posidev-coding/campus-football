@@ -170,7 +170,11 @@ new class extends Component
                 'by' => $this->by,
             ]), absolute: false));
 
-            return $this->redirectRoute('login', navigate: true);
+            // REGISTER, not login: the invite link is the PRIMARY
+            // acquisition path, and the guest holding one is almost always
+            // brand new — a login form is a door they cannot open. The
+            // register screen links to sign-in for the few who can.
+            return $this->redirectRoute('register', navigate: true);
         }
 
         try {
