@@ -197,17 +197,45 @@ new class extends Component
             return collect();
         }
 
-        return Standing::query()
-            ->fromEspn()
-            // `location` because the table renders placeName(). Omit it from a
-            // constrained eager load and every team silently falls back to its
-            // display name, which reads as a design decision rather than a
-            // missing column.
-            ->with(['team:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark', 'conference:id,name,short_name,abbreviation,logo'])
-            ->where('season_year', $this->year)
-            ->whereIn('conference_id', $conferenceIds)
-            ->inStandingsOrder()
-            ->get()
+        /*
+         * Cached 900s as PLAIN ARRAYS (a cached model is an
+         * __PHP_Incomplete_Class on the second request), rehydrated into
+         * light stubs below for x-team-link's sake. VERSIONED key — the
+         * standings v2 convention: a day-class TTL outlives a deploy, so
+         * a shape change bumps the version and the old entries age out
+         * unread instead of fataling for the TTL. Remember::filled, so a
+         * request racing the standings backfill cannot pin empty.
+         */
+        $cached = Remember::filled(
+            "standings:screen:v1:{$this->year}:{$this->scope}",
+            900,
+            fn () => Standing::query()
+                ->fromEspn()
+                // `location` because the table renders placeName(). Omit it
+                // from a constrained eager load and every team silently
+                // falls back to its display name, which reads as a design
+                // decision rather than a missing column.
+                ->with(['team:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark', 'conference:id,name,short_name,abbreviation,logo'])
+                ->where('season_year', $this->year)
+                ->whereIn('conference_id', $conferenceIds)
+                ->inStandingsOrder()
+                ->get()
+                ->map(fn (Standing $s) => [
+                    'standing' => $s->getAttributes(),
+                    'team' => $s->team?->getAttributes(),
+                    'conference' => $s->conference?->getAttributes(),
+                ])
+                ->all(),
+        );
+
+        return collect($cached)
+            ->map(function (array $row) {
+                $standing = (new Standing)->newFromBuilder($row['standing']);
+                $standing->setRelation('team', $row['team'] === null ? null : (new App\Models\Team)->newFromBuilder($row['team']));
+                $standing->setRelation('conference', $row['conference'] === null ? null : (new Conference)->newFromBuilder($row['conference']));
+
+                return $standing;
+            })
             ->groupBy(fn (Standing $s) => $s->conference?->name ?? 'Independent');
     }
 }; ?>

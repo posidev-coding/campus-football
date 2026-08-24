@@ -5,6 +5,7 @@ use App\Models\Team;
 use App\Services\CfbCalendar;
 use App\Support\Scope;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -275,7 +276,13 @@ new class extends Component
     #[Computed]
     public function hasLiveGames(): bool
     {
-        return Game::query()->inProgress()->exists();
+        /*
+         * 15s: every scoreboard viewer's 30s poll asked this EXISTS
+         * fresh, and the answer flips a handful of times a Saturday. The
+         * sync's own guard stays uncached — a scheduler minute must read
+         * the real row.
+         */
+        return Cache::remember('scoreboard:has-live', 15, fn () => Game::query()->inProgress()->exists());
     }
 }; ?>
 
