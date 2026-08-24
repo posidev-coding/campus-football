@@ -54,7 +54,11 @@ class SyncRecruiting
 
         $synced = 0;
 
-        foreach ($this->espn->paginate("recruiting/{$class}/athletes", perPage: 1000, inline: true) as $recruit) {
+        // ttl: 0 — each 1,000-prospect page is a multi-MB one-shot payload.
+        // Caching it for 12 hours parks megabytes in the same Redis DB as
+        // the ESPN limiter and the mail/SMS budget counters, and eviction
+        // pressure there makes every throttle fail OPEN.
+        foreach ($this->espn->paginate("recruiting/{$class}/athletes", ttl: 0, perPage: 1000, inline: true) as $recruit) {
             if ($recruit === null) {
                 continue;
             }

@@ -192,7 +192,11 @@ class SyncAthleteStats
      */
     public function refreshCareer(int $athleteId): bool
     {
-        $body = $this->espn->core("athletes/{$athleteId}/statisticslog", ttl: config('espn.cache.reference'));
+        // ttl: 0 here and on the per-season refs — one-shot payloads over
+        // tens of thousands of athletes. Cached 12h they crowd the Redis DB
+        // holding the ESPN limiter and budget counters, whose eviction
+        // fails OPEN.
+        $body = $this->espn->core("athletes/{$athleteId}/statisticslog", ttl: 0);
 
         if ($body === null || empty($body['entries'])) {
             return false;
@@ -208,7 +212,7 @@ class SyncAthleteStats
             }
 
             foreach ($entry['statistics'] ?? [] as $statistic) {
-                $categories = $this->espn->ref($statistic['statistics']['$ref'] ?? '', ttl: config('espn.cache.reference'));
+                $categories = $this->espn->ref($statistic['statistics']['$ref'] ?? '', ttl: 0);
 
                 foreach ($categories['splits']['categories'] ?? [] as $category) {
                     $name = $category['name'] ?? null;
