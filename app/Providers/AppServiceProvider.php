@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Pennant\Feature;
 
@@ -79,6 +80,19 @@ class AppServiceProvider extends ServiceProvider
             'group' => Group::class,
             User::class => User::class,
         ]);
+
+        /*
+         * Pulse's dashboard, on the same key everything else admin-only uses.
+         *
+         * Pulse ships its own `viewPulse` gate answering `environment('local')`,
+         * which is open to every signed-in developer locally and CLOSED to
+         * everybody in production — so the dashboard would be unreachable
+         * exactly where the telemetry lives. This define runs after Pulse's
+         * (package providers boot before application ones) and replaces it in
+         * every environment, local included, so what is enforced under test is
+         * what is enforced in production.
+         */
+        Gate::define('viewPulse', fn (?User $user): bool => (bool) $user?->isAdmin());
 
         /*
          * Feature flags — the first Pennant use in the app, and the

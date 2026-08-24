@@ -382,7 +382,7 @@ constraint here.
 
 Every piece mirrors an existing shape in the codebase.
 
-**1.1 Install Laravel Pulse, ingesting through Redis.**
+**1.1 Install Laravel Pulse, ingesting through Redis.** ✅ **Landed 2026-08-24.**
 `composer require laravel/pulse`, publish, migrate, add the `pulse` Redis
 connection on DB 2, set `PULSE_INGEST_DRIVER=redis` **locally and in
 production**, and run `pulse:work` in both — full detail in the performance
@@ -398,6 +398,21 @@ shipped a 500 on `/rankings` through a fully green suite. Slow Queries in
 production is the only detector that class of bug has.
 
 Gate the `/pulse` dashboard behind the existing `User::isAdmin()`.
+
+> **As built.** `laravel/pulse` v1.8.0 (it pulls `laravel/sentinel` and
+> `doctrine/sql-formatter` with it). Ingest defaults to `redis` on connection
+> `pulse` (Redis DB 2) in `config/pulse.php` itself, not only in the
+> environment, so a machine with no `PULSE_*` vars still agrees with the
+> directive. `pulse:work` rides `composer dev` locally — **it is still owed a
+> Cloud daemon in production**, and until it has one nothing reaches MySQL
+> there. `CacheInteractions` and `Queues` are off by default (volume; reasoning
+> in `config/pulse.php` and `docs/operations.md`); `Servers` is registered but
+> silent without `pulse:check`. The `viewPulse` gate is defined in
+> `AppServiceProvider` — Pulse's own default answers `environment('local')`,
+> which is open to every developer locally and closed to everybody in
+> production. Verified end to end: a slow query reached Redis DB 2, `pulse:work
+> --stop-when-empty` drained it to `pulse_entries` and `pulse_aggregates`.
+> Tests: `tests/Feature/Admin/PulseTest.php`.
 
 **1.2 Client error capture.** `window.onerror` + `unhandledrejection` POST to a
 Redis-rate-limited endpoint that dedupes by fingerprint in Redis before writing

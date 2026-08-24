@@ -10,7 +10,9 @@ go out, and the commands that drive it all.
                     redis locally, connection `default`, DB 0
     batching        MYSQL      job_batches
     failed jobs     MYSQL      failed_jobs (locally; Cloud has its own view)
-    sessions        MYSQL      SESSION_DRIVER=database
+    sessions        redis      SESSION_DRIVER=redis, connection `default`, DB 0
+    pulse ingest    redis      connection `pulse`, DB 2 — drained to MySQL
+                               by `pulse:work`
 
 `cache`, `cache_locks` and `jobs` are gone from the migrations — Redis holds
 all three. **`job_batches` and `failed_jobs` are not**, and that is the part
@@ -40,6 +42,45 @@ Two shapes in that payload to respect:
 - Box scores contain pseudo-athletes with **negative ids** and the name "Team"
   (sack yardage charged to the team). `athletes.id` is unsigned, so inserting one
   fails outright. Skip `id <= 0`.
+
+## Pulse buffers in Redis DB 2 and lands in our own MySQL
+
+`laravel/pulse` is the application monitor — slow requests, slow queries, slow
+jobs, slow outgoing requests, exceptions, and usage by user. It was chosen over
+[Nightwatch](https://nightwatch.laravel.com/pricing) for one decisive reason
+beyond the bill: **its data lives in our own database**, so a report class or a
+command reads the aggregates with a query instead of an API. The dashboard is
+`/pulse`, gated by the `viewPulse` gate on `User::isAdmin()` — Pulse's own
+default answers `environment('local')`, which is open to every developer
+locally and closed to everyone in production, i.e. exactly backwards.
+
+**Ingest is `redis` in EVERY environment, local included.** A driver that
+differs only in production is a bug you cannot reproduce. Recorders push onto
+the `laravel:pulse:ingest` stream and `pulse:work` drains it to MySQL out of
+band, so nothing about telemetry rides the request path — which matters here
+more than on most apps, because live sync runs every minute from 11:00 to 03:00
+and Saturday traffic is `wire:poll.30s` on every live game.
+
+The stream is on its **own Redis database, DB 2** (connection `pulse`), not the
+cache's DB 1. `cache:clear` calls `flushdb()`, it is run deliberately, and
+buffered telemetry must never be collateral damage of a clear.
+
+**`pulse:work` must be running or nothing reaches MySQL, and a stalled drain
+looks exactly like "no traffic."** Locally it rides `composer dev` alongside
+server / queue / pail / vite. In production it is a Cloud daemon, beside the
+three managed queues.
+
+Two recorders are deliberately **off**: `CacheInteractions` (every cache read is
+an entry, and this app reads the cache hard on every page — TeamGlance, Brand,
+standings) and `Queues` (every job state transition, and the sync commands fan
+out per game, per team and per week; `feed_runs` already carries the run ledger
+the ops screen reads). Both are one env var from being back on when a question
+actually needs them. `Servers` stays registered but records nothing, since it
+only writes while `pulse:check` runs and we do not run it.
+
+Retention is seven days on both the ingest trim and storage trim. Measure
+`pulse_entries` growth after a real Saturday and tune `sample_rate` per recorder
+before trusting the defaults at traffic.
 
 ## The ops layer: feed_runs is the ledger, sync_runs is cfb:migrate's alone
 
