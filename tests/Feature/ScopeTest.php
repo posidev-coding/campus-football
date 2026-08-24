@@ -42,3 +42,14 @@ it('resolves an FCS conference id to its teams', function () {
     expect(Scope::teamIds('30', 2025))->toBe([2000])
         ->and(Scope::teamIds(Scope::FCS, 2025))->toBe([2000]);
 });
+
+it('keys the Top 25 cache by poll, so the November CFP switch lands instantly', function () {
+    // Source pin: with the poll outside the key, the calendar's AP → CFP
+    // flip served last week's AP list as "Top 25" for a full TTL.
+    $source = file_get_contents(app_path('Support/Scope.php'));
+
+    expect($source)->toContain('scope:top25:{$year}:{$poll}')
+        // And the options key folds hasRankings in — the Remember::filled
+        // class of guard, so the preseason poll un-greys Top 25 at once.
+        ->and($source)->toContain("(\$hasRankings ? 'r' : 'nr')");
+});
