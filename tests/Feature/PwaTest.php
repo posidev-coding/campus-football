@@ -139,6 +139,17 @@ describe('the service worker', function () {
             ->and($worker)->toContain('skipWaiting');
     });
 
+    it('survives an offline-page hiccup at install', function () {
+        /*
+         * An unguarded addAll rejection fails the whole install: no service
+         * worker and NO PUSH for that visitor until the next update check.
+         * The guard trades the offline fallback for the worker itself.
+         */
+        $worker = file_get_contents(public_path('sw.js'));
+
+        expect($worker)->toContain('cache.addAll([OFFLINE_URL]).catch(() => {})');
+    });
+
     it('never mediates Livewire or admin traffic', function () {
         $worker = file_get_contents(public_path('sw.js'));
 

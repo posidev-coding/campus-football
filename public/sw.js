@@ -19,7 +19,13 @@ const BYPASS = ['/livewire', '/admin', '/broadcasting', '/webhooks'];
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE).then((cache) => cache.addAll([OFFLINE_URL])).then(() => self.skipWaiting())
+        caches.open(CACHE)
+            /* Guarded: an unhandled rejection here fails the WHOLE install —
+             * no service worker and therefore NO PUSH for that visitor until
+             * the next update check. If /offline hiccups, the only thing
+             * worth losing is the offline fallback itself. */
+            .then((cache) => cache.addAll([OFFLINE_URL]).catch(() => {}))
+            .then(() => self.skipWaiting())
     );
 });
 
@@ -65,8 +71,10 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    /* Brand artefacts carry ?v= cache-busters, so serving a hit while
-     * revalidating behind it can only be stale for one load. */
+    /* Brand artefacts: the splash URLs carry ?v= cache-busters and the query
+     * is part of the cache KEY, so a rebrand misses the old entry outright
+     * and a hit is never stale. The background revalidate earns its keep on
+     * /favicon.ico — the one un-busted URL this branch serves. */
     if (url.pathname.startsWith('/brand/') || url.pathname === '/favicon.ico') {
         event.respondWith(
             caches.match(request).then((hit) => {
