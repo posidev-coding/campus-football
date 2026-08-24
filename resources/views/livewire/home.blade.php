@@ -432,7 +432,7 @@ new class extends Component
     {{-- The verify nudge leads the page for an unverified account: it pays
          (the first Beast Latte and XP), and the clock under it is real. The
          component renders nothing for guests and the verified. --}}
-    <x-verify-email-callout />
+    <livewire:verify-callout @email-verified="$refresh" />
 
     {{-- The nudge's send-off: a one-load emerald row in the same slot,
          behind the `verify.moment` flash the verify click set. The server

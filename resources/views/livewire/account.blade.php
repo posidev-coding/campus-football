@@ -579,7 +579,7 @@ new class extends Component
     {{-- The verify nudge, spanning both columns: Account is where the email
          lives, so its absence of a checkmark is most conspicuous here. The
          component renders nothing once verified. --}}
-    <x-verify-email-callout class="lg:col-span-2" />
+    <livewire:verify-callout class="lg:col-span-2" @email-verified="$refresh" />
 
     <flux:card class="flex flex-col gap-3">
         <div class="flex items-center gap-3">

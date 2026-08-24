@@ -257,7 +257,7 @@ new class extends Component
             <flux:subheading>{{ Voice::line('join.pitch', ['group' => $this->group->name]) }}</flux:subheading>
 
             @auth
-                <x-verify-email-callout :body-key="'verify.picks.body'" :dismissable="false" />
+                <livewire:verify-callout :body-key="'verify.picks.body'" :dismissable="false" @email-verified="$refresh" />
             @endauth
 
             @error('join')

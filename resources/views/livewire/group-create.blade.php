@@ -113,7 +113,7 @@ new class extends Component
         <div wire:key="create-step-name" class="flex flex-col gap-3">
             <flux:subheading>{{ Voice::line('create.subheading') }}</flux:subheading>
 
-            <x-verify-email-callout :body-key="'verify.picks.body'" :dismissable="false" />
+            <livewire:verify-callout :body-key="'verify.picks.body'" :dismissable="false" @email-verified="$refresh" />
 
             <form wire:submit="toGame" class="flex flex-col gap-3">
                 <flux:input

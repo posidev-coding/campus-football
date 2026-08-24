@@ -176,7 +176,7 @@ new class extends Component
             </div>
         @endif
 
-        <x-verify-email-callout :body-key="'verify.picks.body'" :dismissable="false" />
+        <livewire:verify-callout :body-key="'verify.picks.body'" :dismissable="false" @email-verified="$refresh" />
 
         @if (session('status'))
             <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
