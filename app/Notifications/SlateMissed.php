@@ -37,7 +37,9 @@ class SlateMissed extends Notification
     {
         $channels = ['database'];
 
-        if ($notifiable->pushSubscriptions()->exists()) {
+        // The sending job loadCounts this; the query is only the fallback
+        // for a caller that did not (0 is a real answer, never re-asked).
+        if ($notifiable->push_subscriptions_count ?? $notifiable->pushSubscriptions()->exists()) {
             $channels[] = WebPushChannel::class;
         }
 

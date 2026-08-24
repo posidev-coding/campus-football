@@ -357,6 +357,28 @@ it('carries mail and push, and holds SMS behind its switch', function () {
     expect($notification->via($member->fresh()))->toBe([WebPushChannel::class]);
 });
 
+it('scopes the job\'s re-ask to the one reader it is about', function () {
+    /*
+     * cardsFor runs once per recipient job; without the $only scope every
+     * recipient paid for the ENTIRE league audience to be rebuilt just to
+     * read their own row out of it. Break-back: drop the scoping in
+     * members() and the other members reappear in this array.
+     */
+    [$slate, $group] = reminderSlate(members: 3);
+    [$a] = reminderMembers($group)->all();
+
+    $slates = Slate::query()->whereKey($slate->id)->with([
+        'games.game:id,kickoff_at,status,completed',
+        'contest:id,group_id',
+        'contest.group:id,name,kind,week_id',
+    ])->get();
+
+    expect(array_keys(PickReminders::owedBy($slates, only: $a)))->toBe([$a->id])
+        // The sweep's everyone answer is untouched: all three members plus
+        // the commissioner still owe the card.
+        ->and(count(PickReminders::owedBy($slates)))->toBe(4);
+});
+
 it('drains behind the backfill worker, off the user-visible default queue', function () {
     Bus::fake();
     reminderSlate(members: 1);

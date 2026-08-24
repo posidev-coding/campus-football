@@ -74,6 +74,10 @@ class SendSlateResult implements ShouldQueue
 
         $result['slate_id'] = $slate->id;
 
+        // Counted ONCE here: via() is resolved repeatedly during a send, and
+        // each resolution re-ran pushSubscriptions()->exists() without this.
+        $user->loadCount('pushSubscriptions');
+
         $user->notify($result['entered']
             ? new SlateSettled($result)
             : new SlateMissed($result));
