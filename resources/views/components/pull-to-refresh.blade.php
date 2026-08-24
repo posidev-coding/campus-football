@@ -7,6 +7,9 @@
     hand does it anyway, and a gesture that does nothing reads as a frozen
     app. The payoff is a REAL reload: fresh HTML, fresh assets after a
     deploy, a fresh CSRF token for a session that sat on a home screen.
+    The puck IS the whole refresh experience — the head's boot-splash stamp
+    skips `reload` navigations, so the snap's accent spin hands over to the
+    fresh page with no launch curtain in between.
 
     Gated at runtime on BOTH standalone signals (the media query for
     manifest-driven installs, `navigator.standalone` for iOS meta-driven web

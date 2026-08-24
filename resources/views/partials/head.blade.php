@@ -36,12 +36,18 @@
      stamp. Pre-paint, because the curtain has to be up before Alpine exists
      (the install-banner lesson: first-paint chrome is never gated on JS).
      The splash's own end() removes the attribute; the stylesheet carries an
-     8s dead-man for a boot where JS never ran. Real loads = cold open,
-     re-open, pull-to-refresh's reload — exactly the set that should feel
-     like a launch. --}}
+     8s dead-man for a boot where JS never ran. Loads that stamp = cold
+     open, re-open, a notification deep-link, the post-onboarding redirect
+     (`navigate`/`back_forward`) — the set that should feel like a launch.
+     A RELOAD does not: in standalone there is no reload chrome, so
+     `type === 'reload'` is a near-exact proxy for "the user pulled", and
+     pull-to-refresh's spinner puck is that gesture's whole experience.
+     The `?.` fails OPEN — an engine without the entry behaves as a launch
+     and shows the splash. --}}
 <script>
     if (window.cfbAppDepth === undefined
-        && (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true)) {
+        && (window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true)
+        && performance.getEntriesByType('navigation')[0]?.type !== 'reload') {
         document.documentElement.setAttribute('data-boot', '');
     }
 </script>

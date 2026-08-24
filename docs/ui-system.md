@@ -684,7 +684,11 @@ anyway. An 8px axis lock leaves Home's swiper and the week scroller owning
 horizontal drags, and a pull that starts inside a `dialog`, an open popover
 or any inner scroller belongs to that surface, not the page. Release past
 the threshold hands over a REAL `location.reload()` — fresh HTML, fresh
-assets after a deploy, a fresh CSRF token — not a Livewire poke.
+assets after a deploy, a fresh CSRF token — not a Livewire poke. The puck is
+the WHOLE refresh experience: the boot-splash stamp skips `reload`
+navigations, so the snap's accent spin hands over to the fresh page with no
+launch curtain in between (user decision, 2026-08-23 — the curtain on every
+pull read as the app relaunching).
 
 **The zoom lock.** iOS auto-zooms any focused input under 16px, and in
 standalone there is no chrome to un-zoom with: after adding a team from
@@ -713,8 +717,14 @@ the install-banner lesson — displays `[data-boot-splash]` under that
 attribute, so the curtain is up before Alpine boots; the component's `end()`
 removes the attribute ~2.7s later, and an 8s CSS `cfb-boot-bail` animation is
 the dead-man for a boot where JS never ran (standalone has no reload chrome,
-so a curtain JS never clears must clear itself). Real loads = cold open,
-re-open, pull-to-refresh's reload — hops can neither stamp nor inherit.
+so a curtain JS never clears must clear itself). The stamp also consults
+`performance.getEntriesByType('navigation')[0]?.type`: a `reload` never
+stamps — in standalone there is no reload chrome, so `reload` is a
+near-exact proxy for pull-to-refresh, whose spinner puck is that gesture's
+whole experience (user decision, 2026-08-23). Cold open, re-open, a
+notification deep-link and the post-onboarding redirect all arrive as
+`navigate`/`back_forward` and still stamp; the `?.` fails OPEN, so an engine
+without the entry behaves as a launch. Hops can neither stamp nor inherit.
 Measured while verifying: `Livewire.navigate` refreshes the `<html>`
 element's attributes, so a mid-session stamp does not survive a hop — the
 real flow never hits this (the opaque curtain blocks navigation while it

@@ -1,8 +1,11 @@
 {{--
-    The cold-start splash: the branded beat every launch of the installed
-    app opens on — cold open, re-open, pull-to-refresh's reload — wearing
+    The cold-start splash: the branded beat every LAUNCH of the installed
+    app opens on — cold open, re-open, a notification deep-link — wearing
     three cards off the `splash.boot.*` deck while it holds the screen for
-    a couple of seconds. Pure theater over an already-delivered document,
+    a couple of seconds. A pull-to-refresh reload is deliberately not a
+    launch: the head's stamp skips `reload` navigations, so the pull's own
+    spinner puck is that gesture's whole experience.
+    Pure theater over an already-delivered document,
     and deliberately so: instantly is indistinguishable from abruptly, the
     same argument the signup splash makes at 12.5s. This one is a launch
     beat, not a milestone — it holds ~2.7s and never grows; if it ever

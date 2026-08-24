@@ -18,12 +18,31 @@ describe('the cold-start stamp', function () {
          * `cfbAppDepth === undefined` is the cold-load detector: the depth
          * counter defined LOWER in the head does not exist yet on a real
          * load, and already does on any navigate-hop re-evaluation — so a
-         * hop can never stamp, and pull-to-refresh's reload always does.
+         * hop can never stamp. A RELOAD is a real document load that
+         * deliberately does not stamp either — see the navigation-type pin
+         * below; pull-to-refresh's puck is that gesture's whole experience.
          */
         $this->get($path)
             ->assertOk()
             ->assertSee('window.cfbAppDepth === undefined', false)
             ->assertSee("setAttribute('data-boot', '')", false);
+    })->with([
+        'app layout' => '/',
+        'auth layout' => '/login',
+    ]);
+
+    it('consults the navigation type, so a pull-to-refresh reload never stamps', function (string $path) {
+        /*
+         * In standalone there is no reload chrome, so `type === 'reload'`
+         * is a near-exact proxy for "the user pulled" — and the pull's own
+         * spinner puck is the refresh experience, not a launch curtain.
+         * Cold open, re-open, notification deep-link and the
+         * post-onboarding redirect arrive as navigate/back_forward and
+         * still stamp. The `?.` fails OPEN on an engine without the entry.
+         */
+        $this->get($path)
+            ->assertOk()
+            ->assertSee("performance.getEntriesByType('navigation')[0]?.type !== 'reload'", false);
     })->with([
         'app layout' => '/',
         'auth layout' => '/login',
