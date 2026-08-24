@@ -191,8 +191,7 @@ describe('self-contained pages honor the appearance choice', function () {
          * load-bearing: localStorage throws in some embedded contexts,
          * and an error page must never error.
          */
-        foreach ([$this->get(route('offline')), $this->view('errors.404')] as $page) {
-            $html = (string) $page;
+        foreach ([$this->get(route('offline'))->content(), (string) $this->view('errors.404')->__toString()] as $html) {
 
             expect($html)->toContain("localStorage.getItem('flux.appearance')")
                 ->and($html)->toContain('try {')
