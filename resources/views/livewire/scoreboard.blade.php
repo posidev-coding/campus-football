@@ -5,6 +5,7 @@ use App\Models\Team;
 use App\Services\CfbCalendar;
 use App\Support\Scope;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -275,7 +276,13 @@ new class extends Component
     #[Computed]
     public function hasLiveGames(): bool
     {
-        return Game::query()->inProgress()->exists();
+        /*
+         * 15s: every scoreboard viewer's 30s poll asked this EXISTS
+         * fresh, and the answer flips a handful of times a Saturday. The
+         * sync's own guard stays uncached — a scheduler minute must read
+         * the real row.
+         */
+        return Cache::remember('scoreboard:has-live', 15, fn () => Game::query()->inProgress()->exists());
     }
 }; ?>
 
@@ -389,8 +396,14 @@ new class extends Component
     </div>
 
     {{-- Short-polls our own cache, never ESPN, and only while a game is
-         actually in progress. --}}
-    <div @if ($this->hasLiveGames) wire:poll.30s.visible @endif class="flex flex-col gap-5">
+         actually in progress. Dims while the chrome navigates — a week or
+         scope change was a dead interval with no acknowledgment at all. --}}
+    <div
+        @if ($this->hasLiveGames) wire:poll.30s.visible @endif
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="week, scope, bracket"
+        class="flex flex-col gap-5 motion-safe:transition-opacity"
+    >
         {{-- The viewer's teams first, in the order they set on Account. These
              games were lifted OUT of the day groups below, so they appear
              once, not twice — floating a game is moving it, not copying it.

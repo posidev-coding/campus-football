@@ -73,6 +73,48 @@ describe('who gets one', function () {
         Notification::assertNotSentTo($stranger, KickoffAlertNotification::class);
     });
 
+    it('alerts two games in one window about their own game, one users query for both', function () {
+        /*
+         * The noon slate is ~15 games in one sweep. Recipients are fetched
+         * once for the whole window and matched per game in PHP — the
+         * per-game users query was 15 scans with two EXISTS subqueries
+         * each, every five minutes. What must survive the collapse: each
+         * follower hears about THEIR game, named for THEIR team.
+         */
+        Notification::fake();
+
+        [$gameA] = kickoffFixture();
+
+        $bears = Team::factory()->create([
+            'location' => 'Baylor', 'display_name' => 'Baylor Bears',
+            'slug' => 'baylor-bears', 'abbreviation' => 'BAY', 'alt_color' => 'ffffff',
+        ]);
+        $gameB = Game::factory()->create([
+            'home_team_id' => $bears->id,
+            'kickoff_at' => now()->addMinutes(12),
+            'name' => 'Away Team at Baylor',
+            'completed' => false,
+        ]);
+        $bearsFan = User::factory()->create();
+        $bearsFan->followedTeams()->attach([$bears->id => ['position' => 1]]);
+        $bearsFan->updatePushSubscription('https://push.example.test/send/bears-fan', 'key', 'token');
+
+        $this->artisan('cfb:kickoff-alerts')->assertSuccessful();
+
+        Notification::assertSentToTimes($bearsFan, KickoffAlertNotification::class, 1);
+        Notification::assertSentTo($bearsFan, KickoffAlertNotification::class,
+            function (KickoffAlertNotification $notification) use ($bearsFan, $gameB) {
+                $push = $notification->toWebPush($bearsFan)->toArray();
+
+                return $push['title'] === 'Away Team at Baylor'
+                    && str_contains($push['body'], 'Baylor')
+                    && $push['tag'] === "kickoff-{$gameB->id}";
+            });
+
+        expect($gameA->fresh()->kickoff_alert_sent_at)->not->toBeNull()
+            ->and($gameB->fresh()->kickoff_alert_sent_at)->not->toBeNull();
+    });
+
     it('ignores games outside the window and games already played', function () {
         Notification::fake();
 

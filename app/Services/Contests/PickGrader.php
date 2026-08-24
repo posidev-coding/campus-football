@@ -30,7 +30,9 @@ class PickGrader
             return 0;
         }
 
-        $slateGame->loadMissing('slate.contest');
+        // Eager callers (GradeGamePicks) arrive loaded; the fallback is
+        // load-bearing — SettleSlate hands the grader its own slate games.
+        $slateGame->loadMissing('slate.contest', 'picks');
         $engine = $slateGame->slate->contest->mode->engine($slateGame->slate->contest->settings);
 
         // Pin the LIVE game onto the slate game before pricing: the engine's
@@ -40,7 +42,7 @@ class PickGrader
 
         $changed = 0;
 
-        foreach ($slateGame->picks()->get() as $pick) {
+        foreach ($slateGame->picks as $pick) {
             $result = $this->spreads->resultFor($slateGame, $game, $pick->picked_team_id);
 
             $pick->fill([

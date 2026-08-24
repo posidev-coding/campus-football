@@ -56,7 +56,11 @@ class SyncRosters
      */
     public function team(int $teamId, int $requestedYear): int
     {
-        $body = $this->espn->site("teams/{$teamId}/roster", ttl: config('espn.cache.reference'));
+        // ttl: 0 — a one-shot payload nothing re-reads inside a cadence.
+        // Caching it for 12 hours parks megabytes in the same Redis DB as
+        // the ESPN limiter and the mail/SMS budget counters, and eviction
+        // pressure there makes every throttle fail OPEN.
+        $body = $this->espn->site("teams/{$teamId}/roster", ttl: 0);
 
         if ($body === null || empty($body['athletes'])) {
             return 0;

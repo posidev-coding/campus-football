@@ -69,21 +69,17 @@
         class="sticky top-[var(--chrome-offset)] z-30 -mx-4 flex items-center justify-between gap-3 border-b border-zinc-100 bg-white px-4 py-2 dark:border-zinc-800/60 dark:bg-zinc-950"
     >
         <span class="shrink-0">
-            @if ($surfaceStatus === 'live')
-                <span class="flex items-center gap-1 text-sm font-semibold text-red-600 dark:text-red-400">
-                    <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
-                    Live
-                </span>
-            @elseif ($surfaceStatus === 'prelim')
-                <flux:badge size="sm" color="amber">Preliminary</flux:badge>
-            @elseif ($surfaceStatus === 'final')
-                <flux:badge size="sm" color="green">Final</flux:badge>
-            @else
-                <flux:badge size="sm" color="green">Slate's up</flux:badge>
-            @endif
+            <x-slate-status :status="$surfaceStatus" upcoming="Slate's up" class="text-sm" />
         </span>
 
-        @if ($interactive && in_array($surfaceStatus, ['upcoming', 'live'], true))
+        @if ($interactive && $this->needsHandle)
+            {{-- The REASON the cards render locked, in the band that stays
+                 on screen while they scroll — the claim box below is the
+                 action; this is the explanation that travels with them. --}}
+            <span class="min-w-0 truncate text-sm font-medium text-amber-600 dark:text-amber-500">
+                {{ App\Support\Voice::line('picks.claim.reason') }}
+            </span>
+        @elseif ($interactive && in_array($surfaceStatus, ['upcoming', 'live'], true))
             <x-slate-progress :made="$made" :total="$gameIds->count()" class="min-w-0" />
         @endif
 
@@ -104,7 +100,14 @@
                         if (this.remaining <= 0) return;
                         this.timer = setInterval(() => {
                             this.remaining = Math.max(0, this.remaining - 1);
-                            if (this.remaining === 0) this.stop();
+                            if (this.remaining === 0) {
+                                this.stop();
+                                // The ring knows the exact second the rows
+                                // lock; ONE refresh renders them locked, so
+                                // the racing tap mostly cannot happen —
+                                // MakesPicks' locked notice catches the rest.
+                                $wire.$refresh();
+                            }
                         }, 1000);
                     },
                     stop() {
@@ -123,21 +126,8 @@
                 x-on:beforeunload.window="stop()"
                 class="flex shrink-0 items-center gap-1.5 text-micro font-medium text-zinc-500"
             >
-                <svg
-                    x-show="remaining > 0 && remaining < 3600"
-                    x-cloak
-                    viewBox="0 0 24 24"
-                    class="size-4 -rotate-90"
-                    aria-hidden="true"
-                >
-                    <circle cx="12" cy="12" r="9" fill="none" stroke-width="3"
-                            class="stroke-zinc-200 dark:stroke-zinc-700" />
-                    <circle cx="12" cy="12" r="9" fill="none" stroke-width="3" stroke-linecap="round"
-                            class="stroke-blue-500 transition-[stroke-dashoffset] duration-1000 ease-linear motion-reduce:transition-none"
-                            stroke-dasharray="56.55"
-                            :style="`stroke-dashoffset: ${56.55 * (1 - remaining / 3600)}`"
-                    />
-                </svg>
+                {{-- The final hour, emptying. --}}
+                <x-countdown-ring show="remaining > 0 && remaining < 3600" fraction="remaining / 3600" />
 
                 <span class="tabular" x-text="label()"></span>
                 <span>to kickoff</span>
@@ -145,11 +135,13 @@
         @endif
     </div>
 
-    {{--
-        The Bear's table talk — Woodshed slates only. His theme is the
-        instruction (who he rides), said plainly; the tagline under it is
-        his voice, and his actual side sits pawed on every card below.
-    --}}
+    {{-- The answer to the reader's last tap, in the surface where they
+         tapped — never parked at the top of the page. Tone rides with the
+         line, so a refusal can no longer wear a success box. --}}
+    @if ($interactive && $this->notice)
+        <x-notice :tone="$this->noticeTone">{{ $this->notice }}</x-notice>
+    @endif
+
     {{-- A kicker room says its house rule out loud, over the slate. --}}
     @if (($kickerPoints = $engine->kickerPoints()) !== null && ($kickerNote = App\Support\Voice::line('picks.kicker.underdog_note', ['points' => $kickerPoints])) !== '')
         <div class="rounded-xl border border-zinc-200 px-4 py-3 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
@@ -157,6 +149,11 @@
         </div>
     @endif
 
+    {{--
+        The Bear's table talk — Woodshed slates only. His theme is the
+        instruction (who he rides), said plainly; the tagline under it is
+        his voice, and his actual side sits pawed on every card below.
+    --}}
     @if ($slate->bear_theme !== null)
         <div class="flex items-start gap-3 rounded-xl border border-red-900/40 bg-zinc-900 px-4 py-3 text-zinc-100 dark:border-red-950 dark:bg-black">
             <flux:icon.paw-print class="mt-0.5 size-5 shrink-0 text-red-500 dark:text-red-400" />
@@ -184,7 +181,7 @@
                     autocomplete="off"
                     x-mask:dynamic="$input.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20)"
                 />
-                <flux:button type="submit" variant="primary" class="self-start">Claim it</flux:button>
+                <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="claim" class="self-start">Claim it</flux:button>
             </form>
         </div>
     @endif
@@ -242,8 +239,12 @@
                         class="max-w-48"
                         :disabled="$tiebreakerLocked"
                     />
-                    <flux:button type="submit" size="sm" :disabled="$tiebreakerLocked">Save</flux:button>
+                    <flux:button type="submit" size="sm" wire:loading.attr="disabled" wire:target="saveTotal" :disabled="$tiebreakerLocked">Save</flux:button>
                 </form>
+
+                {{-- Server-side refusal: the input's min/max decorate the
+                     picker but do not block a wire:submit. --}}
+                <flux:error name="totals.{{ $slate->id }}" />
 
                 @if ($entry?->tiebreaker_total !== null)
                     <p class="text-xs text-zinc-500 dark:text-zinc-400">

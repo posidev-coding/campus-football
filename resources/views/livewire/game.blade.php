@@ -58,15 +58,32 @@ new class extends Component
 
     public string $leagueDate = '';
 
+    /** What every render needs loaded — mount() and hydrate() share it. */
+    private const GAME_RELATIONS = [
+        'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color',
+        'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color',
+        'venue',
+        'week:id,name',
+        'season:id,year',
+    ];
+
+    /**
+     * Livewire re-hydrates `$game` WITHOUT relations on every request —
+     * ModelSynth stores class + key — so each poll tick paid four SILENT
+     * lazy loads with unconstrained columns. Reloaded here explicitly:
+     * the same thin set mount() loads, once per request, where the cost
+     * is visible. (The group screen keeps relations in computeds; this
+     * template never reads a relation directly, so the shared-constant
+     * reload is that rule's lighter equivalent.)
+     */
+    public function hydrate(): void
+    {
+        $this->game->loadMissing(self::GAME_RELATIONS);
+    }
+
     public function mount(Game $game): void
     {
-        $this->game = $game->load([
-            'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color',
-            'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color',
-            'venue',
-            'week:id,name',
-            'season:id,year',
-        ]);
+        $this->game = $game->load(self::GAME_RELATIONS);
 
         $this->leagueDate = $this->game->kickoff_at
             ->setTimezone(config('cfb.timezone'))
@@ -886,21 +903,7 @@ new class extends Component
                     >
                         {{-- Emptying, not filling: the ring is time you still
                              have to wait, so it should be running out. --}}
-                        <svg
-                            x-show="remaining > 0"
-                            x-cloak
-                            viewBox="0 0 24 24"
-                            class="size-5 -rotate-90"
-                            aria-hidden="true"
-                        >
-                            <circle cx="12" cy="12" r="9" fill="none" stroke-width="2.5"
-                                    class="stroke-zinc-200 dark:stroke-zinc-700" />
-                            <circle cx="12" cy="12" r="9" fill="none" stroke-width="2.5" stroke-linecap="round"
-                                    class="stroke-blue-500 transition-[stroke-dashoffset] duration-1000 ease-linear motion-reduce:transition-none"
-                                    stroke-dasharray="56.55"
-                                    :style="`stroke-dashoffset: ${56.55 * (1 - remaining / total)}`"
-                            />
-                        </svg>
+                        <x-countdown-ring fraction="remaining / total" stroke-width="2.5" class="size-5" />
 
                         <button
                             type="button"
@@ -936,7 +939,7 @@ new class extends Component
                     <div class="flex w-20 shrink-0 flex-col items-center gap-0.5 text-center">
                         @if ($this->isLive)
                             <span class="flex items-center gap-1 text-micro font-semibold text-red-600 dark:text-red-400">
-                                <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
+                                <x-live-dot />
                                 {{ $game->status_detail ?? 'Live' }}
                             </span>
 
@@ -954,7 +957,7 @@ new class extends Component
                                 {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('D M j') }}
                             </span>
                             <span class="text-stat font-semibold">
-                                {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('g:ia') }}
+                                {{ $game->kickoffLabel('time') }}
                             </span>
                         @endif
                     </div>
@@ -982,7 +985,8 @@ new class extends Component
                         <div class="flex min-w-0 flex-col">
                             <span class="flex items-center gap-1 truncate text-sm font-semibold @if ($index === 1) justify-end @endif @if ($lost) text-zinc-400 @endif">
                                 @if ($possession)
-                                    <span class="size-1.5 shrink-0 rounded-full bg-amber-500" title="Possession"></span>
+                                    <span class="size-1.5 shrink-0 rounded-full bg-amber-500" title="Possession" aria-hidden="true"></span>
+                                    <span class="sr-only">has possession</span>
                                 @endif
                                 @if ($side['rank'])
                                     <span class="text-micro font-medium text-zinc-400">{{ $side['rank'] }}</span>
@@ -1070,7 +1074,11 @@ new class extends Component
          `minmax(0,1fr)` rather than `1fr`: a bare `1fr` track is
          `minmax(auto,1fr)` and keeps its min-content width, which is the same
          overflow trap `min-w-0` fixes on a flex item. --}}
-    <div class="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6">
+    <div
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="tab"
+        class="flex flex-col gap-4 motion-safe:transition-opacity lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6"
+    >
         <div class="flex min-w-0 flex-col gap-4">
             @if ($tab === 'preview')
                 @include('partials.game-preview')
@@ -1102,7 +1110,11 @@ new class extends Component
          the product rule: everything above this rule reports — the score,
          the box, the drives — and nothing above it jokes. This does. --}}
     <div class="border-t border-zinc-200 pt-6 dark:border-zinc-800">
-        <livewire:conversation :topic="$game" :key="'talk-game-'.$game->id" />
+        {{-- `lazy`: the thread is the foot of the page, and its queries
+             belonged to the scroll that reaches it, not to first paint.
+             No permalink anchors into a post (verified), so nothing
+             needs the thread hydrated before its skeleton scrolls in. --}}
+        <livewire:conversation :topic="$game" lazy :key="'talk-game-'.$game->id" />
     </div>
 
     @include('partials.game-league-sheet')

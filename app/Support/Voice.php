@@ -97,6 +97,14 @@ class Voice
             'r' => "Live scores, your teams up top, Pick'em on the way. One minute to sign up, a whole season to be wrong in public.",
         ],
 
+        // The front door once the flag is OPEN — "on the way" is wrong on
+        // day one, to exactly the person an invite link brought here.
+        'onboarding.guest.body_live' => [
+            'pg' => "Follow your teams, watch every score live, and play Pick'em with your friends. Signing up takes about a minute.",
+            'pg13' => "Live scores, your teams up top, and Pick'em open for business. A minute to sign up, a whole season to argue about it.",
+            'r' => "Live scores, your teams up top, Pick'em open now. One minute to sign up, a whole season to be wrong in public.",
+        ],
+
         'onboarding.member.heading' => [
             'pg' => 'Add your favorite team',
             'pg13' => 'Put your team up top',
@@ -309,6 +317,42 @@ class Voice
         ],
 
         /*
+         * The same stop once the flag is OPEN. "Picks are coming" walked to
+         * the center tab on launch day was the single worst copy defect the
+         * audit found — the tour must never promise what is already there.
+         */
+        'tour.picks_live.heading' => [
+            'pg' => 'Make your picks here',
+            'pg13' => 'Your picks live here now',
+            'r' => 'The tab your record will haunt',
+        ],
+
+        'tour.picks_live.body' => [
+            'pg' => 'Weekly picks against your friends, right here. Join a group or grab a seat in the lobby and get your first card in.',
+            'pg13' => "Weekly picks, groups, and a running record of who called it. It's live — grab a seat and get a card in.",
+            'r' => 'Weekly picks, groups, and a permanent record of every game you call wrong. Live now — pull up a seat.',
+        ],
+
+        /*
+         * The room beat — the stop that actually SEATS somebody. For an
+         * in-season pilot the first-week retention hinge is being in a
+         * contest, not having followed a team, and before this no stop,
+         * CTA or nudge produced a room join. The stop's anchor renders
+         * only while the flag is open, so pre-flip tours step over it.
+         */
+        'tour.room.heading' => [
+            'pg' => 'Get in a room',
+            'pg13' => 'Get yourself in a room',
+            'r' => 'You need a room',
+        ],
+
+        'tour.room.body' => [
+            'pg' => "Picks are better with company. This card is the door — join your group's room or grab an open seat in the lobby before Saturday.",
+            'pg13' => "Picks mean nothing without witnesses. This card is the door — your group's room, or an open lobby seat before Saturday.",
+            'r' => "Picks without witnesses are just opinions. Through this card: your group's room or an open lobby seat. Saturday won't wait.",
+        ],
+
+        /*
          * The currency stays out of drinking vocabulary on purpose — Beast
          * Lattes are the app's currency, full stop, and the copy never says
          * otherwise. See components/wallet-chips.blade.php for the strategy.
@@ -355,9 +399,9 @@ class Voice
         ],
 
         'tour.account.body' => [
-            'pg' => 'Account is where you manage your teams, toggle dark mode, and set how much personality the app brings.',
-            'pg13' => "Account is where you manage & reorder your teams, toggle dark mode, and set how much grief we're allowed to give.",
-            'r' => 'Account is where you manage and reorder your teams, toggle dark mode, and crank the grief dial as far as it goes.',
+            'pg' => 'Account is where you manage your teams, catch up on your notifications, toggle dark mode, and set how much personality the app brings.',
+            'pg13' => "Account is where you manage & reorder your teams, catch up on your inbox, toggle dark mode, and set how much grief we're allowed to give.",
+            'r' => 'Account is where you manage and reorder your teams, read what the inbox has on you, toggle dark mode, and crank the grief dial as far as it goes.',
         ],
 
         /*
@@ -426,6 +470,14 @@ class Voice
             'pg' => "Groups, weekly picks and bragging rights with your friends. It's on the way.",
             'pg13' => "Groups, weekly slates, and a season-long paper trail of everyone's bad calls. It's coming.",
             'r' => "Groups, weekly slates, and receipts on every terrible pick your friends swear they never made. It's coming.",
+        ],
+
+        // The same card the moment the flag opens: the promise becomes the
+        // invitation, on the config mirror — never Feature::active().
+        'home.pickem.live' => [
+            'pg' => "Groups, weekly picks and bragging rights with your friends. It's live — get your picks in.",
+            'pg13' => "Groups, weekly slates, and a season-long paper trail of everyone's bad calls. Live now.",
+            'r' => 'Groups, weekly slates, and receipts on every terrible pick your friends swear they never made. Live now — no excuses.',
         ],
 
         /*
@@ -577,10 +629,12 @@ class Voice
             'r' => 'Miss a kickoff once, never again',
         ],
 
+        // Sells BOTH jobs: kickoff alerts, and the Phase 6 retention
+        // feature — the nudge before a card locks with picks still owed.
         'push.banner.body' => [
-            'pg' => 'Turn on alerts and your teams will find you.',
-            'pg13' => 'Turn them on and your teams find you first.',
-            'r' => 'Turn them on. Your teams will come find you.',
+            'pg' => 'Turn on alerts: your teams find you at kickoff, and your picks get a nudge before they lock.',
+            'pg13' => 'Turn them on — your teams find you at kickoff, and your picks get a warning before they lock.',
+            'r' => 'Turn them on. Kickoffs find you, and your picks get exactly one warning before they lock without you.',
         ],
 
         'push.banner.confirmed' => [
@@ -998,6 +1052,17 @@ class Voice
             'r' => ':name ran this room. Everyone else, form an orderly line to complain.',
         ],
 
+        /*
+         * The collapsed closed-shelf line — one muted sentence where a
+         * gray wall of dashed rows used to stand. :list is the shapes the
+         * Saturday could not seat, already ·-joined.
+         */
+        'lobby.shelf.also' => [
+            'pg' => 'Also on this shelf when the schedule allows: :list.',
+            'pg13' => 'When the schedule allows, this shelf also stocks :list.',
+            'r' => 'This shelf also stocks :list — when the Saturday earns it.',
+        ],
+
         'lobby.publics.empty' => [
             'pg' => 'Public rooms open when the week\'s slate posts. Check back — there\'s always a seat.',
             'pg13' => 'Rooms open when the week\'s slate drops. Come back and grab a seat before they fill.',
@@ -1359,6 +1424,35 @@ class Voice
             'pg' => 'Tiebreaker saved: :total points.',
             'pg13' => ':total points, on the record.',
             'r' => ':total points. Bold. It\'s on the record.',
+        ],
+
+        // The refusal when an answer is outside what the question could
+        // produce. The bounds stay in the line — the instruction survives
+        // every register.
+        'picks.tiebreaker.invalid' => [
+            'pg' => 'Keep it between 0 and :max.',
+            'pg13' => 'Between 0 and :max — a number a football game could actually produce.',
+            'r' => 'Between 0 and :max. This is football, not pinball.',
+        ],
+
+        /*
+         * The race a countdown cannot hide: a reader sitting on the slate
+         * at kickoff taps a card the very second it locks. Silence there
+         * reads as a dead button; this is the honest answer. Roasts the
+         * pick that never happened, never the person.
+         */
+        'picks.locked.notice' => [
+            'pg' => 'That game just kicked off — picks lock at kickoff.',
+            'pg13' => 'That game kicked. Whatever you were about to pick stays unpicked.',
+            'r' => 'Kicked. The line closed while that pick was still a thought.',
+        ],
+
+        // The sticky chrome's reason line for the handleless — the claim
+        // box below is the action; this names why the cards render locked.
+        'picks.claim.reason' => [
+            'pg' => 'Claim a handle to make your picks.',
+            'pg13' => 'Claim a handle to pick — the group needs a name to argue with.',
+            'r' => 'No handle, no picks. Claim one below.',
         ],
 
         /*

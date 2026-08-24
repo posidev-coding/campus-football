@@ -85,14 +85,14 @@
 
         @if ($live)
             <span class="flex shrink-0 items-center gap-1 font-semibold text-red-600 dark:text-red-400">
-                <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
+                <x-live-dot />
                 {{ $game->status_detail ?? 'Live' }}
             </span>
         @elseif ($final)
             <span class="shrink-0 font-medium text-zinc-500">Final</span>
         @else
             <span class="shrink-0 text-right font-medium text-zinc-600 dark:text-zinc-400">
-                {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('g:ia') }}
+                {{ $game->kickoffLabel('time') }}
                 @if ($broadcast)
                     <span class="text-zinc-400">· {{ $broadcast }}</span>
                 @endif

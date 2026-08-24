@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Article;
+use App\Models\User;
 
 /**
  * The national news feed.
@@ -71,4 +72,18 @@ it('spans the empty state across the whole grid', function () {
         ->assertOk()
         ->assertSee('No news yet')
         ->assertSee('sm:col-span-2 lg:col-span-3 2xl:col-span-4', escape: false);
+});
+
+it('keeps the artisan hint for the operator alone', function () {
+    // A fan cannot run a console command; telling them to reads as the app
+    // being broken. Admins keep the remedy.
+    Article::query()->delete();
+
+    $this->get(route('news'))
+        ->assertOk()
+        ->assertDontSee('php artisan');
+
+    $this->actingAs(User::factory()->create(['admin' => true]))
+        ->get(route('news'))
+        ->assertSee('php artisan cfb:sync');
 });

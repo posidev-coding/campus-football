@@ -4,6 +4,7 @@ use App\Actions\EnterTiebreaker;
 use App\Actions\MakePick;
 use App\Actions\PublishSlate;
 use App\Jobs\GradeGamePicks;
+use App\Models\Game;
 use App\Models\GameTeamStat;
 use App\Models\Group;
 use App\Models\GroupMember;
@@ -15,6 +16,7 @@ use App\Services\Contests\PickGrader;
 use App\Services\Espn\Sync\SyncGames;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 
 /*
  * Settlement dispatches AnnounceSlateResults now, so this fake is not
@@ -75,6 +77,19 @@ function pickemScore(Slate $slate, int $position, int $home, int $away, bool $fi
 
     (new GradeGamePicks($game->id))->handle(app(PickGrader::class));
 }
+
+// ---------------------------------------------------------- the job's shape
+
+it('carries the retry shape that keeps a killed worker from stranding a game', function () {
+    $job = new GradeGamePicks(1);
+
+    expect($job->uniqueFor)->toBe(120)
+        ->and($job->tries)->toBe(3)
+        ->and($job->timeout)->toBe(60)
+        // timeout < uniqueFor, deliberately: a timed-out run is already dead
+        // before its unique lock lapses, so the retry can take the lock.
+        ->and($job->timeout)->toBeLessThan($job->uniqueFor);
+});
 
 // ------------------------------------------------------------ live grading
 
@@ -333,6 +348,33 @@ it('rescues a game that went final without its event', function () {
 
     expect(Pick::sole()->result)->toBe(Pick::WIN)
         ->and($slate->fresh()->status)->toBe(Slate::PRELIM);
+});
+
+it('rescues a game shared by two slates with one dispatch, not one per slate', function () {
+    Queue::fake();
+
+    [$slateA] = pickemContestants();
+    [$commissioner, , $contestB] = pickemContest();
+    $slateB = pickemDraftSlate($contestB);
+    app(PublishSlate::class)->handle($commissioner, $slateB);
+    $slateB = $slateB->fresh();
+
+    // Slate B's first row points at slate A's first game — the shape every
+    // public room + private group pairing produces on a real Saturday.
+    $shared = $slateA->games()->orderBy('position')->first()->game_id;
+    $slateB->games()->orderBy('position')->first()->update(['game_id' => $shared]);
+
+    // Final on the row, no event ever fired: the rescue pass's case.
+    Game::query()->whereKey($shared)
+        ->update(['home_score' => 28, 'away_score' => 7, 'status' => 'post', 'completed' => true]);
+
+    $this->travelTo('2026-09-05 23:00:00');
+
+    $this->artisan('pickem:settle')
+        ->expectsOutputToContain('1 final game(s)')
+        ->assertSuccessful();
+
+    Queue::assertPushed(GradeGamePicks::class, 1);
 });
 
 it('shows the room its standings: live, then final with the winner named', function () {

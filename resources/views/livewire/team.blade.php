@@ -299,6 +299,10 @@ new class extends Component
                 'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'venue:id,name',
+                // The odds-strip's fallback is a query-builder call that
+                // preventLazyLoading cannot see — without this it was a
+                // silent query per schedule card on the default tab.
+                'odds',
             ])
             ->whereIn('season_id', $seasonIds)
             ->where(fn ($q) => $q->where('home_team_id', $this->team->id)->orWhere('away_team_id', $this->team->id))
@@ -565,6 +569,11 @@ new class extends Component
         key-prefix="tab"
     />
 
+    <div
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="tab, year, statsView, rosterGroup"
+        class="flex flex-col gap-4 motion-safe:transition-opacity"
+    >
     @if ($tab === 'schedule')
         <div class="flex flex-col gap-2">
             @forelse ($this->schedule as $game)
@@ -902,6 +911,7 @@ new class extends Component
             </flux:callout>
         @endforelse
     @endif
+    </div>
 
     {{-- Below the facts here too, and NOT a sixth tab: the team nav is a
          measured 358px row with 54px spare that deliberately does not
@@ -909,6 +919,10 @@ new class extends Component
          belongs to the team rather than to Schedule or News, so it sits at
          the foot of every tab instead of inside one. --}}
     <div class="border-t border-zinc-200 pt-6 dark:border-zinc-800">
-        <livewire:conversation :topic="$team" :key="'talk-team-'.$team->id" />
+        {{-- `lazy`: the thread is the foot of the page, and its queries
+             belonged to the scroll that reaches it, not to first paint.
+             No permalink anchors into a post (verified), so nothing
+             needs the thread hydrated before its skeleton scrolls in. --}}
+        <livewire:conversation :topic="$team" lazy :key="'talk-team-'.$team->id" />
     </div>
 </div>

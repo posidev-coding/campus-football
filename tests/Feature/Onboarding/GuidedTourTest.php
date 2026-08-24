@@ -8,6 +8,7 @@ use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\User;
 use App\Support\Voice;
+use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
 use Livewire\Livewire;
 
@@ -270,29 +271,32 @@ describe('personalization', function () {
             ->assertDontSee('Picking your team paid it');
     });
 
-    it('never says Georgia — in any stop, at any register', function () {
+    it('never says Georgia — onboarding, splash and home copy included', function () {
         /*
          * Swept at the Voice map so no fixture can hide it: the pilot group
-         * wears orange, and the rival's name in tour copy reads as the app
-         * picking a side against its own readers. The only way Georgia
-         * appears in a tour is as the reader's OWN first team, via the
-         * personalized example above.
+         * wears orange, and the rival's name in canned copy reads as the
+         * app picking a side against its own readers. Extended past the
+         * tour to every family a NEW user meets — the whole onboarding
+         * funnel is the audience the sweep protects. Iterating the LINES
+         * constant means a key added tomorrow is swept tomorrow.
          */
-        $keys = ['tour.search.body_team', 'tour.wallet.seeded'];
+        $lines = (new ReflectionClass(Voice::class))->getConstant('LINES');
 
-        foreach (['glance', 'search', 'scores', 'picks', 'wallet', 'league', 'account', 'install'] as $step) {
-            foreach (['heading', 'body'] as $part) {
-                $keys[] = "tour.{$step}.{$part}";
+        $violations = [];
+
+        foreach ($lines as $key => $variants) {
+            if (! Str::startsWith($key, ['tour.', 'onboarding.', 'splash.', 'home.'])) {
+                continue;
+            }
+
+            foreach ($variants as $register => $line) {
+                if (stripos($line, 'georgia') !== false) {
+                    $violations[] = "{$key}.{$register}";
+                }
             }
         }
 
-        foreach ($keys as $key) {
-            foreach (ContentRating::cases() as $rating) {
-                $line = Voice::line($key, for: User::factory()->make(['content_rating' => $rating]));
-
-                expect(stripos($line, 'georgia'))->toBeFalse();
-            }
-        }
+        expect($violations)->toBe([], implode(' | ', $violations));
     });
 });
 
@@ -361,7 +365,7 @@ describe('the closing pitch', function () {
 
 describe('the voice', function () {
     it('speaks every step in every register, escalating rather than repeating', function () {
-        foreach (['glance', 'search', 'scores', 'picks', 'wallet', 'league', 'account', 'install'] as $step) {
+        foreach (['glance', 'search', 'scores', 'picks', 'room', 'wallet', 'league', 'account', 'install'] as $step) {
             foreach (['heading', 'body'] as $part) {
                 $key = "tour.{$step}.{$part}";
 
@@ -373,6 +377,71 @@ describe('the voice', function () {
                     ->and($r)->not->toBe($pg);
             }
         }
+    });
+
+    it('speaks the live picks stop in every register, escalating', function () {
+        foreach (['tour.picks_live.heading', 'tour.picks_live.body'] as $key) {
+            $pg = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::Pg]));
+            $r = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::R]));
+
+            expect($pg)->not->toBe('')
+                ->and($r)->not->toBe('')
+                ->and($r)->not->toBe($pg);
+        }
+    });
+
+    it('offers the room beat only when the flag is open, with a door in the card', function () {
+        /*
+         * The room stop's gate is its ANCHOR: 'room' rides both step lists
+         * unconditionally (the parity sweep holds), the teaser card wears
+         * data-tour="room" only while the flag is open, and a stop with no
+         * visible target steps over itself. Seating the reader in a
+         * contest is the first-week retention hinge — the card carries the
+         * walk, not just the words.
+         */
+        config()->set('cfb.pickem_open', true);
+
+        $reader = freshlyOnboarded();
+        $this->actingAs($reader)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee('data-tour="room"', escape: false)
+            ->assertSee(Voice::line('tour.room.heading', for: $reader))
+            ->assertSee('Take me there');
+
+        // Flag closed: no anchor on Home, so the beat self-skips.
+        config()->set('cfb.pickem_open', false);
+
+        $this->actingAs(freshlyOnboarded())
+            ->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('data-tour="room"', escape: false);
+    });
+
+    it('walks launch day to a picks stop that says it is live', function () {
+        /*
+         * "Picks are coming", walked to the center tab on launch day, was
+         * the tour lying about the product's whole point. The branch reads
+         * the commit-11 config mirror, so the flip reaches the very next
+         * tour with no Pennant purge in between.
+         */
+        config()->set('cfb.pickem_open', true);
+
+        $reader = freshlyOnboarded();
+        $this->actingAs($reader)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee(Voice::line('tour.picks_live.heading', for: $reader))
+            ->assertDontSee('holding the seat');
+
+        // Closed again: the promise copy still stands for a civilian.
+        config()->set('cfb.pickem_open', false);
+
+        $waiting = freshlyOnboarded();
+        $this->actingAs($waiting)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee(Voice::line('tour.picks.heading', for: $waiting));
     });
 
     it('escalates the personalized lines too', function () {

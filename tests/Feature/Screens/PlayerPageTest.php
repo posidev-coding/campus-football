@@ -68,6 +68,35 @@ it('dispatches a refresh rather than fetching on the render path', function () {
     Queue::assertPushed(FetchAthleteGameLog::class, fn ($job) => $job->athleteId === $this->athlete->id);
 });
 
+it('dates a night game in ET, not the next day in UTC', function () {
+    // 00:30 UTC on Oct 19 is 8:30pm ET on Oct 18 — the date every
+    // scoreboard and recap will use. This was the one unzoned kickoff
+    // format of nineteen call sites.
+    $season = Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
+    Game::factory()->finished()->create([
+        'id' => 401769074,
+        'season_id' => $season->id,
+        'kickoff_at' => '2025-10-19 00:30:00',
+        'short_name' => 'LATE @ UGA',
+    ]);
+
+    Http::fake(['*gamelog*' => Http::response([
+        'names' => ['passingYards'],
+        'labels' => ['YDS'],
+        'seasonTypes' => [[
+            'displayName' => '2025 Regular Season',
+            'categories' => [[
+                'type' => 'passing',
+                'events' => [['eventId' => '401769074', 'stats' => ['203']]],
+            ]],
+        ]],
+    ])]);
+
+    Livewire::test('player', ['athlete' => $this->athlete])
+        ->assertSee('Oct 18')
+        ->assertDontSee('Oct 19');
+});
+
 it('renders the game log the job fetched', function () {
     $season = Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
     Game::factory()->finished()->create([

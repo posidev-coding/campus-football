@@ -10,6 +10,7 @@ use App\Models\Week;
 use App\Services\CfbCalendar;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The pick'em area's XP leaderboard — windowed SUMs over wallet_entries,
@@ -98,10 +99,12 @@ class Leaderboard
             return null;
         }
 
-        $ahead = self::sums($start, $end, $circle, $viewer)
-            ->havingRaw('SUM(xp) > ?', [$mine])
-            ->get()
-            ->count();
+        // COUNT over the grouped subquery — this used to hydrate a row
+        // for every user ahead of the viewer just to count them.
+        $ahead = DB::query()->fromSub(
+            self::sums($start, $end, $circle, $viewer)->havingRaw('SUM(xp) > ?', [$mine]),
+            'ahead',
+        )->count();
 
         return ['rank' => $ahead + 1, 'xp' => $mine];
     }

@@ -14,7 +14,7 @@
         $game->isInProgress() => 'Live'.($game->status_detail ? ' · '.$game->status_detail : ''),
         (bool) $game->completed => 'Final · '.$game->away_score.'-'.$game->home_score,
         default => collect([
-            $game->kickoff_at?->setTimezone(config('cfb.timezone'))->format('D, M j · g:ia'),
+            $game->kickoffLabel('date'),
             collect($game->broadcasts ?? [])->flatten()->filter()->first(),
         ])->filter()->implode(' · '),
     };

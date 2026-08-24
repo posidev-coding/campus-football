@@ -256,7 +256,8 @@ new class extends Component
                         @foreach ($this->gameLog as $row)
                             <tr class="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
                                 <td class="whitespace-nowrap px-3 py-1.5">
-                                    <span class="tabular text-zinc-400">{{ $row->game?->kickoff_at?->format('M j') }}</span>
+                                    {{-- ET, not UTC: a night game's 00:30 UTC kickoff is still the previous day's date on every scoreboard. --}}
+                                    <span class="tabular text-zinc-400">{{ $row->game?->kickoff_at?->setTimezone(config('cfb.timezone'))->format('M j') }}</span>
                                     <span class="ml-1.5">{{ $row->game?->short_name }}</span>
                                 </td>
                                 @foreach ($this->logColumns as $column)

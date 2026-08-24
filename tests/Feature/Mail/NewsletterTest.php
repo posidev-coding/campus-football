@@ -1,12 +1,16 @@
 <?php
 
 use App\Enums\ContentRating;
+use App\Jobs\AnnounceSlateResults;
 use App\Jobs\Middleware\ThrottleMail;
+use App\Jobs\SendPickReminder;
+use App\Jobs\SendSlateResult;
 use App\Jobs\SendWeeklyNewsletter;
 use App\Models\User;
 use App\Notifications\WeeklyNewsletter;
 use App\Support\WeeklyDigest;
 use Illuminate\Mail\Message;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
@@ -255,6 +259,37 @@ describe('the daily budget', function () {
 
         expect($sent)->toBe(1)
             ->and($job->released)->toBe(1);
+    });
+
+    it('drains behind the backfill worker, off the user-visible default queue', function () {
+        // `default` carries FetchAthleteGameLog, which a reader is actively
+        // watching a spinner for — a 300-email drain must never sit ahead of it.
+        Bus::fake();
+        User::factory()->create(['newsletter_opt_in' => true, 'email_verified_at' => now()]);
+
+        $this->artisan('cfb:newsletter')->assertSuccessful();
+
+        Bus::assertBatched(fn ($batch) => $batch->queue() === 'backfill');
+    });
+
+    it('gives every sender the attempts a release needs to survive', function () {
+        /*
+         * A release still burns an attempt, so at the worker default
+         * (--tries=1) the throttled tail of any send bigger than the
+         * budget was deleted, not delayed. Pinned on all four senders so
+         * a new one copied from an old shape fails here, loudly.
+         */
+        $senders = [
+            new SendWeeklyNewsletter(1),
+            new SendSlateResult(1, 1),
+            new SendPickReminder(1, [1], 'due'),
+            new AnnounceSlateResults(1),
+        ];
+
+        foreach ($senders as $job) {
+            expect($job->tries)->toBe(5)
+                ->and($job->timeout)->toBe(60);
+        }
     });
 
     it('lets everything through when the budget is switched off', function () {

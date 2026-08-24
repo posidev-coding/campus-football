@@ -9,6 +9,7 @@ use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\TeamSeasonStat;
+use App\Models\User;
 use App\Models\Week;
 use App\Services\Stats\AggregateAthleteStats;
 use App\Support\Scope;
@@ -326,4 +327,16 @@ describe('screens', function () {
         expect($board['category'])->toBe('interceptions')
             ->and($board['category'])->not->toBe('passing');
     });
+});
+
+it('keeps the artisan hint for the operator alone', function () {
+    // A fan cannot run a console command; telling them to reads as the app
+    // being broken. Admins keep the remedy on the derived (players) view.
+    Livewire::test('stats')->set('view', 'players')
+        ->assertSee('No statistics')
+        ->assertDontSee('php artisan');
+
+    Livewire::actingAs(User::factory()->create(['admin' => true]))
+        ->test('stats')->set('view', 'players')
+        ->assertSee('php artisan cfb:aggregate');
 });

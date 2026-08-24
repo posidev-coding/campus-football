@@ -19,8 +19,15 @@
 ]) }}>
     <div class="flex items-start justify-between gap-3">
         <div class="flex min-w-0 flex-col gap-1">
+            @php
+                // Guests read the config alone (no user to be admin); the
+                // commit-11 mirror, never Feature::active().
+                $guestBody = config('cfb.pickem_open') === true || (bool) auth()->user()?->isAdmin()
+                    ? 'onboarding.guest.body_live'
+                    : 'onboarding.guest.body';
+            @endphp
             <flux:heading size="lg">{{ App\Support\Voice::line($guest ? 'onboarding.guest.heading' : 'onboarding.member.heading') }}</flux:heading>
-            <flux:subheading>{{ App\Support\Voice::line($guest ? 'onboarding.guest.body' : 'onboarding.member.body') }}</flux:subheading>
+            <flux:subheading>{{ App\Support\Voice::line($guest ? $guestBody : 'onboarding.member.body') }}</flux:subheading>
         </div>
 
         {{-- Dismissible, and deliberately understated: an X rather than a

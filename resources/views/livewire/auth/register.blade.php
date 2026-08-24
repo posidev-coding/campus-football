@@ -61,6 +61,18 @@ new #[Layout('components.layouts.auth')] class extends Component
          */
         session()->flash('onboarding.moment', true);
 
+        /*
+         * An intended URL — the /join invite path, the PRIMARY acquisition
+         * route — wins the redirect, and the flash above dies unread on
+         * that landing. Park the moment DURABLY too: the onboarding
+         * overlay promotes it back to a flash on the first Home visit
+         * after they are seated in their friend's group, so an invited
+         * user still gets the picker and, through it, the tour.
+         */
+        if (($intended = session('url.intended')) !== null && $intended !== route('home', absolute: false)) {
+            session()->put('onboarding.pending', true);
+        }
+
         $this->redirectIntended(default: route('home', absolute: false), navigate: true);
     }
 }; ?>
@@ -159,7 +171,7 @@ new #[Layout('components.layouts.auth')] class extends Component
             @endforeach
         </flux:radio.group>
 
-        <flux:button variant="primary" type="submit" class="w-full">
+        <flux:button variant="primary" type="submit" wire:loading.attr="disabled" wire:target="register" class="w-full">
             Create account
         </flux:button>
     </form>

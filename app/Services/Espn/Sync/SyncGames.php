@@ -6,6 +6,7 @@ use App\Events\GameScoreChanged;
 use App\Events\GameWentFinal;
 use App\Jobs\FetchGameSummary;
 use App\Models\Game;
+use App\Models\GameOdd;
 use App\Models\Season;
 use App\Models\Venue;
 use App\Models\Week;
@@ -160,6 +161,36 @@ class SyncGames
         $seasons = Season::whereIn('year', $years)->get()->keyBy(fn (Season $s) => $s->year.':'.$s->type);
         $weeks = $this->weeksFor($seasons);
 
+        /*
+         * Preloaded ONCE per payload: the live tier re-reads the whole day
+         * every minute, and a per-event firstOrNew/updateOrCreate was
+         * hundreds of mostly-no-op queries a minute all Saturday. Keyed
+         * maps here; store() falls back to a real query on any map miss,
+         * so a keying mistake costs a query — never a dropped update.
+         */
+        $eventIds = collect($body['events'])
+            ->map(fn (array $event) => (int) ($event['id'] ?? 0))
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+
+        $games = Game::query()->whereIn('id', $eventIds)->get()->keyBy('id');
+
+        $venues = Venue::query()
+            ->whereIn('id', collect($body['events'])
+                ->map(fn (array $event) => $event['competitions'][0]['venue']['id'] ?? null)
+                ->filter()
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values())
+            ->get()
+            ->keyBy('id');
+
+        $odds = GameOdd::query()
+            ->whereIn('game_id', $eventIds)
+            ->get()
+            ->keyBy(fn (GameOdd $odd) => "{$odd->game_id}:{$odd->provider_id}:{$odd->phase}");
+
         $changed = 0;
         $seen = [];
 
@@ -183,7 +214,7 @@ class SyncGames
              * between events in one payload.
              */
             try {
-                if ($this->store($event, $seasons, $weeks)) {
+                if ($this->store($event, $seasons, $weeks, $games, $venues, $odds)) {
                     $changed++;
                 }
             } catch (Throwable $e) {
@@ -280,7 +311,12 @@ class SyncGames
         return null;
     }
 
-    private function store(array $event, $seasons, array $weeks): bool
+    /**
+     * @param  Collection<int, Game>  $games  existing rows for the payload, by id
+     * @param  Collection<int, Venue>  $venues  existing venues for the payload, by id
+     * @param  Collection<string, GameOdd>  $odds  keyed game:provider:phase
+     */
+    private function store(array $event, $seasons, array $weeks, Collection $games, Collection $venues, Collection $odds): bool
     {
         $competition = $event['competitions'][0] ?? null;
 
@@ -313,12 +349,17 @@ class SyncGames
         $status = $event['status'] ?? [];
         $type = $status['type'] ?? [];
 
-        $game = Game::firstOrNew(['id' => (int) $event['id']]);
+        // The preloaded row, or — on any map miss — the query the old code
+        // ran per event. The fallback is the safety valve: broken keying
+        // degrades to the old cost, it can never invent a duplicate row or
+        // silently drop a score update.
+        $game = $games->get((int) $event['id'])
+            ?? Game::firstOrNew(['id' => (int) $event['id']]);
 
         $game->fill([
             'season_id' => $season->id,
             'week_id' => $week?->id,
-            'venue_id' => $this->venue($competition['venue'] ?? null),
+            'venue_id' => $this->venue($competition['venue'] ?? null, $venues),
             'kickoff_at' => $kickoff,
             /*
                  * Day of week in Eastern, computed here rather than derived in
@@ -444,6 +485,7 @@ class SyncGames
             (int) $event['id'],
             $competition,
             gameStarted: ($type['state'] ?? 'pre') !== 'pre',
+            existing: $odds,
         );
 
         return $changed;
@@ -606,23 +648,35 @@ class SyncGames
         return $names === [] ? null : array_values(array_unique($names));
     }
 
-    private function venue(?array $venue): ?int
+    /**
+     * @param  Collection<int, Venue>  $venues
+     */
+    private function venue(?array $venue, Collection $venues): ?int
     {
         if ($venue === null || ! isset($venue['id'])) {
             return null;
         }
 
-        Venue::updateOrCreate(
-            ['id' => (int) $venue['id']],
-            [
-                'name' => $venue['fullName'] ?? "Venue {$venue['id']}",
-                'city' => $venue['address']['city'] ?? null,
-                'state' => $venue['address']['state'] ?? null,
-                'capacity' => $venue['capacity'] ?? null,
-                'indoor' => (bool) ($venue['indoor'] ?? false),
-            ]
-        );
+        $id = (int) $venue['id'];
 
-        return (int) $venue['id'];
+        // The preloaded row or the old per-event query — same fallback rule
+        // as the game map.
+        $model = $venues->get($id) ?? Venue::firstOrNew(['id' => $id]);
+
+        $model->fill([
+            'name' => $venue['fullName'] ?? "Venue {$id}",
+            'city' => $venue['address']['city'] ?? null,
+            'state' => $venue['address']['state'] ?? null,
+            'capacity' => $venue['capacity'] ?? null,
+            'indoor' => (bool) ($venue['indoor'] ?? false),
+        ]);
+
+        if (! $model->exists || $model->isDirty()) {
+            $model->save();
+        }
+
+        $venues->put($id, $model);
+
+        return $id;
     }
 }

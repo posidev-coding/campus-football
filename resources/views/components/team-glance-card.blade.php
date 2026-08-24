@@ -75,7 +75,7 @@
                     {{ $next->home_team_id === $team->id ? 'vs' : 'at' }} {{ $opponent?->placeName() ?? 'TBD' }}
                 </span>
                 <span class="shrink-0 text-micro text-zinc-500">
-                    {{ $next->kickoff_at?->setTimezone($tz)->format('D, M j · g:ia') }}
+                    {{ $next->kickoffLabel('date') }}
                 </span>
             </a>
         @endif

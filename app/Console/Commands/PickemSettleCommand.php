@@ -34,16 +34,20 @@ class PickemSettleCommand extends Command
             ->with(['games.game', 'week'])
             ->get();
 
-        $rescued = 0;
+        // Unique game ids, not slate games: on a real Saturday the same game
+        // sits on a dozen slates, and the job grades every slate it touches.
+        $finalGameIds = $open
+            ->flatMap(fn ($slate) => $slate->games)
+            ->filter(fn ($slateGame) => $slateGame->game->completed)
+            ->pluck('game_id')
+            ->unique()
+            ->values();
 
-        foreach ($open as $slate) {
-            foreach ($slate->games as $slateGame) {
-                if ($slateGame->game->completed) {
-                    GradeGamePicks::dispatch($slateGame->game_id);
-                    $rescued++;
-                }
-            }
+        foreach ($finalGameIds as $gameId) {
+            GradeGamePicks::dispatch($gameId);
         }
+
+        $rescued = $finalGameIds->count();
 
         $settled = 0;
 

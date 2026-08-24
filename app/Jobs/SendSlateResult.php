@@ -28,6 +28,16 @@ class SendSlateResult implements ShouldQueue
 {
     use Batchable, Queueable;
 
+    /** Must stay below the queue's `retry_after` (90s). */
+    public int $timeout = 60;
+
+    /**
+     * ThrottleMail RELEASES an over-budget job, and a release still burns
+     * an attempt: at the worker default (--tries=1) the throttled tail of
+     * any send bigger than the daily budget was deleted, not delayed.
+     */
+    public int $tries = 5;
+
     public function __construct(public int $slateId, public int $userId) {}
 
     /** @return list<object> */
@@ -63,6 +73,10 @@ class SendSlateResult implements ShouldQueue
         }
 
         $result['slate_id'] = $slate->id;
+
+        // Counted ONCE here: via() is resolved repeatedly during a send, and
+        // each resolution re-ran pushSubscriptions()->exists() without this.
+        $user->loadCount('pushSubscriptions');
 
         $user->notify($result['entered']
             ? new SlateSettled($result)

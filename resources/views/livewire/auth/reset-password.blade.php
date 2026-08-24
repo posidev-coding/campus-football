@@ -95,7 +95,7 @@ new #[Layout('components.layouts.auth')] class extends Component
             viewable
         />
 
-        <flux:button variant="primary" type="submit" class="w-full">
+        <flux:button variant="primary" type="submit" wire:loading.attr="disabled" wire:target="resetPassword" class="w-full">
             Reset password
         </flux:button>
     </form>

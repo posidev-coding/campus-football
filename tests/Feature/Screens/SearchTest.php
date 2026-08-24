@@ -235,6 +235,18 @@ describe('the shared surfaces', function () {
         Livewire::test('search-panel')->set('q', 'G')->assertSee('Type at least two characters');
     });
 
+    it('announces changing results to a screen reader', function () {
+        // The results replace each other as the reader types; aria-live
+        // reads the change out without moving focus off the input. This
+        // was the app's first live region — keep it on the shared partial
+        // so all three search surfaces inherit it.
+        Livewire::test('search-panel')->set('q', 'Georgia')
+            ->assertSeeHtml('aria-live="polite"');
+
+        Livewire::test('search-page')->set('q', 'Georgia')
+            ->assertSeeHtml('aria-live="polite"');
+    });
+
     it('never calls ESPN', function () {
         Http::fake();
 
@@ -312,5 +324,39 @@ describe('the shared surfaces', function () {
         $this->get(route('coach', $coach))
             ->assertOk()
             ->assertSee('aria-current="page"', escape: false);
+    });
+});
+
+describe('the denormalized season year', function () {
+    it('stamps as season rows land, only ever forward', function () {
+        /*
+         * Search used to order 34,836 athletes by a correlated MAX()
+         * subquery per matching row, on every keystroke. The newest
+         * season is a write-time fact: the season models' saved hook is
+         * the ONE door, so no sync writer can forget the stamp.
+         */
+        $athlete = Athlete::create(['id' => 990001, 'display_name' => 'Stamp Check']);
+
+        AthleteTeamSeason::create(['athlete_id' => 990001, 'team_id' => 61, 'season_year' => 2024]);
+        expect($athlete->fresh()->latest_season_year)->toBe(2024);
+
+        AthleteTeamSeason::create(['athlete_id' => 990001, 'team_id' => 61, 'season_year' => 2025]);
+        expect($athlete->fresh()->latest_season_year)->toBe(2025);
+
+        // A historical backfill never regresses a current player.
+        AthleteTeamSeason::create(['athlete_id' => 990001, 'team_id' => 61, 'season_year' => 2021]);
+        expect($athlete->fresh()->latest_season_year)->toBe(2025);
+
+        $coach = Coach::create(['id' => 990002, 'display_name' => 'Coach Stamp']);
+        CoachTeamSeason::create(['coach_id' => 990002, 'team_id' => 61, 'season_year' => 2023]);
+        expect($coach->fresh()->latest_season_year)->toBe(2023);
+    });
+
+    it('orders search on the stamped column, no subquery in sight', function () {
+        // Source pin: the correlated subquery must not come back.
+        $source = file_get_contents(app_path('Support/Search.php'));
+
+        expect($source)->toContain("orderByDesc('latest_season_year')")
+            ->and($source)->not->toContain('select max(');
     });
 });

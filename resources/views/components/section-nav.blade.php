@@ -78,7 +78,7 @@
                         'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100' => ! $current,
                         'lg:border-transparent' => ! $current,
                     ])
-                >{{ $section['label'] }}</a>
+                >{{ $section['label'] }}@if ($section['route'] === 'notifications' && (auth()->user()?->unreadNoteCount() ?? 0) > 0)<span class="ms-1.5 inline-block size-2 rounded-full bg-red-500 align-middle" aria-hidden="true"></span><span class="sr-only">unread</span>@endif</a>
             @endforeach
         </div>
     </nav>

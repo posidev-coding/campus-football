@@ -62,6 +62,18 @@ new class extends Component
         // picker. A guest carrying a stale hand-off flag still has to make
         // an account first, so auth decides which pane an open overlay shows.
         $this->step = auth()->check() ? 'team' : 'name';
+
+        /*
+         * The PARKED moment: an invite-path registration landed on the
+         * group first (intended URL), where the normal hand-off flash died
+         * unread. Promote it back to the one-render flash here, on their
+         * first Home visit — pull() consumes it, hasOnboarded() guards a
+         * stale key on an account that finished onboarding another way,
+         * and everything downstream (picker, then tour) runs unchanged.
+         */
+        if (auth()->check() && session()->pull('onboarding.pending', false) && ! auth()->user()->hasOnboarded()) {
+            session()->flash('onboarding.moment', true);
+        }
     }
 
     /**
@@ -310,6 +322,29 @@ new class extends Component
             for (const field of this.fields) {
                 if (draft[field]) $wire.set(field, draft[field], false)
             }
+
+            /*
+             * The STEP survives too — mount() resets to 'name', so a
+             * returning visitor re-clicked through screens they had
+             * already answered. 'rating' is the only value worth
+             * restoring: 'name' is the default, and 'credentials'/'team'
+             * stay excluded BY CONSTRUCTION — a draft must never
+             * deep-link past the registration door.
+             */
+            if (draft.step === 'rating') $wire.set('step', 'rating', false)
+
+            $wire.$watch('step', (value) => this.saveStep(value))
+        },
+
+        saveStep(value) {
+            if (@js(auth()->check())) return
+            if (! ['name', 'rating'].includes(value)) return
+
+            let draft = {}
+            try { draft = JSON.parse(localStorage.getItem(this.key) || '{}') } catch (err) {}
+
+            draft.step = value
+            localStorage.setItem(this.key, JSON.stringify(draft))
         },
 
         /*
@@ -428,9 +463,14 @@ new class extends Component
                     <flux:heading size="xl">{{ Voice::line('onboarding.rating') }}</flux:heading>
 
                     <div class="flex flex-col gap-5" @change="save($event)" wire:key="step-rating">
+                        {{-- The register screen's framing, adopted verbatim:
+                             the label names the thing being tuned, the
+                             description says what it changes and the promise
+                             that keeps it safe. --}}
                         <flux:radio.group
                             wire:model="content_rating"
-                            description="We roast your picks, your team and your record — never you."
+                            label="Trash talk"
+                            description="We roast your picks, your team and your record — never you. This sets how hard."
                             variant="cards"
                             class="flex-col"
                         >
@@ -447,6 +487,10 @@ new class extends Component
                                 </flux:radio>
                             @endforeach
                         </flux:radio.group>
+
+                        {{-- Plain, not Voice: it lowers the stakes of the
+                             choice, and an instruction never jokes. --}}
+                        <p class="text-xs text-zinc-500 dark:text-zinc-400">You can change this any time on Account.</p>
 
                         <flux:button wire:click="next" variant="primary" class="w-full">Continue</flux:button>
                     </div>

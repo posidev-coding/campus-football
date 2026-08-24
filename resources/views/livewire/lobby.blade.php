@@ -163,7 +163,10 @@ new class extends Component
              container's padding is cancelled and the spacing moved
              inside, so the band does not slide under the header. --}}
         @if ($this->weekContext['label'] !== null)
-            <div class="sticky z-20 -mx-4 -mt-5 flex items-baseline justify-between gap-3 bg-white px-4 pt-3 pb-2 top-[var(--chrome-offset)] dark:bg-zinc-950">
+            {{-- z-30, the ladder's screen-chrome rung: at z-20 the day-
+                 heading tier underneath could win the tie and slide OVER
+                 the Saturday band. --}}
+            <div class="sticky z-30 -mx-4 -mt-5 flex items-baseline justify-between gap-3 bg-white px-4 pt-3 pb-2 top-[var(--chrome-offset)] dark:bg-zinc-950">
                 <p class="min-w-0 truncate text-sm font-semibold">
                     {{ $this->weekContext['label'] }}
                     @if ($this->weekContext['date'])
@@ -176,12 +179,10 @@ new class extends Component
             </div>
         @endif
 
-        <x-verify-email-callout :body-key="'verify.picks.body'" :dismissable="false" />
+        <livewire:verify-callout :body-key="'verify.picks.body'" :dismissable="false" @email-verified="$refresh" />
 
         @if (session('status'))
-            <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
-                {{ session('status') }}
-            </div>
+            <x-notice tone="success">{{ session('status') }}</x-notice>
         @endif
 
         @error('lobbies')
@@ -211,23 +212,38 @@ new class extends Component
                     />
                 @endforeach
 
-                {{-- What the Saturday could not seat, said plainly. This
-                     is an instruction, never Voice — and "games" here
-                     means real ones, on a field. --}}
-                @foreach ($shelf['closed'] as $closed)
-                    <div
-                        wire:key="closed-{{ $closed['mode']->value }}-{{ $closed['flavor']?->value ?? 'standard' }}"
-                        class="flex items-center gap-3 rounded-xl border border-dashed border-zinc-200 px-3 py-2.5 dark:border-zinc-800"
-                    >
-                        <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-200 dark:border-zinc-800">
-                            <flux:icon :name="$closed['mode']->icon()" variant="micro" class="size-4 text-zinc-300 dark:text-zinc-600" />
-                        </span>
-                        <span class="min-w-0 flex-1">
-                            <span class="block truncate font-medium leading-tight text-zinc-400 dark:text-zinc-500">{{ $closed['label'] }}</span>
-                            <span class="block truncate text-micro text-zinc-400 dark:text-zinc-500">Not enough games this Saturday</span>
-                        </span>
-                    </div>
-                @endforeach
+                {{-- What the Saturday could not seat. Collapsed to ONE
+                     muted line per shelf: thirteen catalog shapes with
+                     three stocked made a gray wall of dashed rows the
+                     first thing an invited user saw. The Conference shelf
+                     keeps named rows — its entries are identities a fan
+                     scans for, not variants. The $stocked guard upstream
+                     still means an empty lobby dashes nothing at all. --}}
+                @if ($shelf['closed'] !== [])
+                    @if ($shelf['shelf'] === App\Enums\LobbyShelf::Conference)
+                        @foreach ($shelf['closed'] as $closed)
+                            <div
+                                wire:key="closed-{{ $closed['mode']->value }}-{{ $closed['flavor']?->value ?? 'standard' }}"
+                                class="flex items-center gap-3 rounded-xl border border-dashed border-zinc-200 px-3 py-2.5 dark:border-zinc-800"
+                            >
+                                <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-200 dark:border-zinc-800">
+                                    <flux:icon :name="$closed['mode']->icon()" variant="micro" class="size-4 text-zinc-300 dark:text-zinc-600" />
+                                </span>
+                                <span class="min-w-0 flex-1">
+                                    <span class="block truncate font-medium leading-tight text-zinc-400 dark:text-zinc-500">{{ $closed['label'] }}</span>
+                                    <span class="block truncate text-micro text-zinc-400 dark:text-zinc-500">Not enough games this Saturday</span>
+                                </span>
+                            </div>
+                        @endforeach
+                    @else
+                        <p
+                            wire:key="closed-line-{{ $shelf['shelf']->value }}"
+                            class="text-micro text-zinc-400 dark:text-zinc-500"
+                        >
+                            {{ Voice::line('lobby.shelf.also', ['list' => collect($shelf['closed'])->pluck('label')->implode(' · ')]) }}
+                        </p>
+                    @endif
+                @endif
             </div>
         @endforeach
 
@@ -257,17 +273,9 @@ new class extends Component
 
         {{-- The other way to play, one line: rooms are the house's, a
              group is yours. --}}
-        <a
-            href="{{ route('pickem.create') }}"
-            wire:navigate
-            class="flex items-center justify-between gap-3 rounded-xl border border-dashed border-zinc-300 px-4 py-3 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
-        >
-            <span class="min-w-0">
-                <span class="block truncate font-semibold leading-tight">Rather run your own?</span>
-                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Start a group — name it, pick its mode, send one link.</span>
-            </span>
-            <flux:icon name="chevron-right" variant="micro" class="shrink-0 text-zinc-400" />
-        </a>
+        <x-link-row :href="route('pickem.create')" title="Rather run your own?">
+            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Start a group — name it, pick its mode, send one link.</span>
+        </x-link-row>
 
         {{-- The rules, one expandable card per mode — the same
              ruleLines() the docs and the mode doors read. --}}

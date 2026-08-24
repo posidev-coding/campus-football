@@ -12,7 +12,9 @@ use App\Models\User;
 use App\Models\WalletEntry;
 use App\Notifications\SlateMissed;
 use App\Notifications\SlateSettled;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Notification;
 
 /*
@@ -261,6 +263,31 @@ it('splits a tied week and says so', function () {
     Notification::assertSentTo($first, SlateSettled::class,
         fn (SlateSettled $n) => $n->result['won'] === true
             && $n->result['others'] === '@'.$second->handle);
+});
+
+it('fans the room out behind the backfill worker', function () {
+    [$slate] = resultsSlate();
+    settleResults($slate);
+
+    // Re-run the announcement alone with the bus faked to see the batch.
+    $slate->fresh()->forceFill(['results_announced_at' => null])->save();
+    Bus::fake();
+    (new AnnounceSlateResults($slate->id))->handle();
+
+    Bus::assertBatched(fn ($batch) => $batch->queue() === 'backfill');
+});
+
+it('sends the result in-job, never double-queued', function () {
+    /*
+     * Negative pin: SendSlateResult is already a queued job carrying the
+     * batch and ThrottleMail. A ShouldQueue notification inside it would
+     * double-queue the send and move the actual mail OUTSIDE the budget —
+     * counting intent, not sends. Re-adding the interface fails here.
+     */
+    $result = ['week' => 'W', 'group' => 'G', 'winner' => 'x', 'url' => '/'];
+
+    expect(new SlateSettled($result))->not->toBeInstanceOf(ShouldQueue::class)
+        ->and(new SlateMissed($result))->not->toBeInstanceOf(ShouldQueue::class);
 });
 
 it('carries the inbox row as structured data, never as frozen copy', function () {

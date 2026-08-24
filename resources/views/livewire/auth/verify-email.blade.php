@@ -55,10 +55,12 @@ new #[Layout('components.layouts.auth')] class extends Component
     }
 }; ?>
 
-{{-- 3s, hot like the player screen's in-flight poll: this is the active
-     waiting surface, it reads one row of our own database, and the
-     checkVerified redirect ends it. Livewire throttles background tabs. --}}
-<div class="flex flex-col gap-6 text-center" wire:poll.3s="checkVerified">
+{{-- 10s: this is the active waiting surface, but the wait it measures is
+     "open the mail app, find the message, tap the link" — a 3s cadence
+     spent twenty queries learning nothing while the reader read. It reads
+     one row of our own database and the checkVerified redirect ends it.
+     Livewire throttles background tabs. --}}
+<div class="flex flex-col gap-6 text-center" wire:poll.10s="checkVerified">
     <x-auth-header
         title="Check your email"
         description="We sent a verification link to the address you signed up with. Click it and you're in."

@@ -5,8 +5,6 @@ namespace App\Notifications;
 use App\Support\Brand;
 use App\Support\PickReminders;
 use App\Support\Voice;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Messages\VonageMessage;
 use Illuminate\Notifications\Notification;
@@ -35,11 +33,16 @@ use NotificationChannels\WebPush\WebPushMessage;
  * Deliberately NOT on the `database` channel. A reminder is only true until
  * kickoff; one sitting in an inbox afterwards is noise about a card that has
  * already locked.
+ *
+ * NOT `ShouldQueue`, and that is deliberate: it is sent from inside
+ * SendPickReminder, which is already a queued job carrying the batch and
+ * both budget middlewares. Making this queued too would put a second job
+ * behind the first, outside the batch — and the actual mail would send
+ * OUTSIDE ThrottleMail, so the budget would count intent, not sends. The
+ * staleness re-check in the job would also stop protecting the send.
  */
-class PickReminderNotification extends Notification implements ShouldQueue
+class PickReminderNotification extends Notification
 {
-    use Queueable;
-
     /**
      * @param  list<array{group: string, owed: int, total: int, when: string, url: string}>  $cards
      */

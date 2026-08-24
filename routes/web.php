@@ -9,8 +9,12 @@ use App\Models\Contest;
 use App\Models\Group;
 use App\Models\User;
 use App\Support\Brand;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 use Laravel\Pennant\Middleware\EnsureFeaturesAreActive;
 
 Route::livewire('/', 'home')->name('home');
@@ -59,10 +63,24 @@ Route::livewire('join/{code}', 'join')->name('pickem.join');
  * this route to be reachable at all: the web server's try_files serves a real
  * file before it ever reaches PHP, so an empty one shadows the route silently.
  */
+/*
+ * The five asset routes below skip the session stack. They set
+ * `Cache-Control: public`, and StartSession queues a Set-Cookie — a pair
+ * every CDN and edge refuses to cache, so each request also paid two
+ * session queries for an icon. No asset here reads auth.
+ */
 Route::get('site.webmanifest', fn () => response()
     ->json(Brand::manifest())
     ->header('Content-Type', 'application/manifest+json')
-)->name('manifest');
+    ->header('Cache-Control', 'public, max-age=86400')
+)->name('manifest')->withoutMiddleware([
+    StartSession::class,
+    ShareErrorsFromSession::class,
+    // The CSRF layer BOTH validates (moot on GET) and sets the XSRF
+    // cookie — the other half of the Set-Cookie these routes must not send.
+    PreventRequestForgery::class,
+    AddQueuedCookiesToResponse::class,
+]);
 
 Route::get('favicon.ico', function () {
     abort_if(($ico = Brand::ico()) === null, 404);
@@ -71,7 +89,14 @@ Route::get('favicon.ico', function () {
         'Content-Type' => 'image/x-icon',
         'Cache-Control' => 'public, max-age=86400',
     ]);
-})->name('favicon');
+})->name('favicon')->withoutMiddleware([
+    StartSession::class,
+    ShareErrorsFromSession::class,
+    // The CSRF layer BOTH validates (moot on GET) and sets the XSRF
+    // cookie — the other half of the Set-Cookie these routes must not send.
+    PreventRequestForgery::class,
+    AddQueuedCookiesToResponse::class,
+]);
 
 /*
  * The ROOT-path apple-touch-icon convention. The layout links the real icon,
@@ -92,8 +117,22 @@ $appleTouchIcon = function () {
     ]);
 };
 
-Route::get('apple-touch-icon.png', $appleTouchIcon)->name('apple-touch-icon');
-Route::get('apple-touch-icon-{variant}.png', $appleTouchIcon)->where('variant', '[a-z0-9x-]+');
+Route::get('apple-touch-icon.png', $appleTouchIcon)->name('apple-touch-icon')->withoutMiddleware([
+    StartSession::class,
+    ShareErrorsFromSession::class,
+    // The CSRF layer BOTH validates (moot on GET) and sets the XSRF
+    // cookie — the other half of the Set-Cookie these routes must not send.
+    PreventRequestForgery::class,
+    AddQueuedCookiesToResponse::class,
+]);
+Route::get('apple-touch-icon-{variant}.png', $appleTouchIcon)->where('variant', '[a-z0-9x-]+')->withoutMiddleware([
+    StartSession::class,
+    ShareErrorsFromSession::class,
+    // The CSRF layer BOTH validates (moot on GET) and sets the XSRF
+    // cookie — the other half of the Set-Cookie these routes must not send.
+    PreventRequestForgery::class,
+    AddQueuedCookiesToResponse::class,
+]);
 
 /*
  * iOS launch screens, one per declared device size — see Brand::SPLASH. The
@@ -112,7 +151,14 @@ Route::get('brand/splash/{spec}.png', function (string $spec) {
         'Content-Type' => 'image/png',
         'Cache-Control' => 'public, max-age=86400',
     ]);
-})->name('brand.splash');
+})->name('brand.splash')->withoutMiddleware([
+    StartSession::class,
+    ShareErrorsFromSession::class,
+    // The CSRF layer BOTH validates (moot on GET) and sets the XSRF
+    // cookie — the other half of the Set-Cookie these routes must not send.
+    PreventRequestForgery::class,
+    AddQueuedCookiesToResponse::class,
+]);
 
 /*
  * The service worker's offline fallback — precached by public/sw.js at

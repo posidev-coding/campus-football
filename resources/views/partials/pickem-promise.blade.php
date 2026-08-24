@@ -15,7 +15,7 @@
 
 <flux:subheading>{{ \App\Support\Voice::line('picks.screen.pitch') }}</flux:subheading>
 
-<x-verify-email-callout :body-key="'verify.picks.body'" :dismissable="false" />
+<livewire:verify-callout :body-key="'verify.picks.body'" :dismissable="false" @email-verified="$refresh" />
 
 <div class="flex flex-col gap-3">
     <div class="rounded-xl border border-dashed border-zinc-300 px-4 py-3 dark:border-zinc-700">

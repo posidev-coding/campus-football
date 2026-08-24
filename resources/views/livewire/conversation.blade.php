@@ -45,6 +45,23 @@ new class extends Component
 {
     use ClaimsHandle;
 
+    /**
+     * The skeleton the hosts' `lazy` embeds paint until the scroll gets
+     * here: the thread is the FOOT of Game, Team and Group, so its
+     * queries belong to the reader who reaches it, never to first paint.
+     * Same root tag as the real render, so the swap cannot jump layout.
+     */
+    public function placeholder(): string
+    {
+        return <<<'HTML'
+            <section class="flex flex-col gap-3" aria-hidden="true">
+                <div class="h-5 w-16 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800"></div>
+                <div class="h-4 w-2/3 animate-pulse rounded bg-zinc-100 dark:bg-zinc-800"></div>
+                <div class="h-16 animate-pulse rounded-xl bg-zinc-100 dark:bg-zinc-800"></div>
+            </section>
+            HTML;
+    }
+
     /** One of PostToConversation::SCOPES. */
     public string $topicType;
 
@@ -230,9 +247,9 @@ new class extends Component
     </div>
 
     @if ($notice)
-        <p class="rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
-            {{ $notice }}
-        </p>
+        {{-- Neutral on purpose: the room's refusals are house rules, not
+             alarms. The shared component brings the live region with it. --}}
+        <x-notice>{{ $notice }}</x-notice>
     @endif
 
     <div class="flex flex-col gap-3">
@@ -255,7 +272,7 @@ new class extends Component
                             {{ $post->user->handle ? '@'.$post->user->handle : $post->user->name }}
                         </span>
                         <span class="shrink-0 text-micro text-zinc-500 dark:text-zinc-400">
-                            {{ $post->created_at->diffForHumans(short: true) }}
+                            {{ $post->created_at->diffForHumans() }}
                         </span>
                     </p>
                     {{-- break-words, because one 500-character word is a legal
@@ -267,9 +284,10 @@ new class extends Component
                     <flux:button
                         wire:click="deletePost({{ $post->id }})"
                         wire:confirm="Delete this post? It does not come back."
-                        size="xs"
+                        size="sm"
+                        square
                         variant="ghost"
-                        class="shrink-0"
+                        class="-my-1 shrink-0"
                         aria-label="Delete post"
                     >
                         <flux:icon.trash variant="micro" />
@@ -306,7 +324,7 @@ new class extends Component
                         autocomplete="off"
                         x-mask:dynamic="$input.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20)"
                     />
-                    <flux:button type="submit" variant="primary" class="self-start">Claim it</flux:button>
+                    <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="claim" class="self-start">Claim it</flux:button>
                 </form>
             </div>
         @else
@@ -325,7 +343,7 @@ new class extends Component
                     <p class="min-w-0 text-micro text-zinc-500 dark:text-zinc-400">
                         {{ Voice::line('talk.house_rule') }}
                     </p>
-                    <flux:button type="submit" size="sm" variant="primary" class="shrink-0">
+                    <flux:button type="submit" size="sm" variant="primary" wire:loading.attr="disabled" wire:target="post" class="shrink-0">
                         Post
                     </flux:button>
                 </div>

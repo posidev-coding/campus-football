@@ -291,6 +291,25 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         ];
     }
 
+    /**
+     * Memoized like walletTotals: the dot renders in the tab bar, the
+     * section strip and the avatar wrapper, and those three sites must
+     * cost one indexed COUNT between them, per request.
+     */
+    protected ?int $unreadNoteCountMemo = null;
+
+    /**
+     * How many inbox rows are unread — the unread DOT's one question.
+     *
+     * A count, never durably cached and never polled: the dot needs to be
+     * right on the next navigation, not the next minute. Deliberately NOT
+     * folded into Navigation::areas(), whose memo stays pure structure.
+     */
+    public function unreadNoteCount(): int
+    {
+        return $this->unreadNoteCountMemo ??= $this->unreadNotifications()->count();
+    }
+
     public function isAdmin(): bool
     {
         return $this->admin === true;

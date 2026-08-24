@@ -30,6 +30,45 @@ it('schedules the kickoff sweep on the five-minute cadence the stamp assumes', f
         ->and($entry->expression)->toBe('*/5 * * * *');
 });
 
+it('caps every live-window mutex at minutes, not the day', function () {
+    /*
+     * The default overlap mutex expires in 24 HOURS, and it lives in Redis
+     * where a worker OOM'd mid-run cannot release it — one bad
+     * `--tier=live` minute would freeze scoreboard, grading and kickoff
+     * alerts for the rest of the Saturday. Expiry is a small multiple of
+     * cadence on everything; the default survives only on the teams sync,
+     * the longest inline run in the schedule.
+     */
+    $expiries = collect(app(Schedule::class)->events())
+        ->filter(fn (Event $event) => $event->command !== null)
+        ->mapWithKeys(fn (Event $event) => [$event->command => $event->expiresAt]);
+
+    $expect = [
+        'cfb:games --tier=live' => 5,
+        'cfb:summaries:live' => 10,
+        'cfb:kickoff-alerts' => 5,
+        'pickem:remind' => 30,
+        'pickem:settle' => 30,
+        'pickem:publish-slates' => 30,
+        'pickem:open-lobbies' => 30,
+    ];
+
+    foreach ($expect as $needle => $minutes) {
+        $match = $expiries->first(fn ($expiry, string $command) => str_contains($command, $needle));
+
+        expect($match)->toBe($minutes, "{$needle} should carry a {$minutes}-minute mutex expiry.");
+    }
+
+    // The one deliberate default: teams, ~165 seconds inline.
+    $teams = $expiries->filter(fn ($expiry, string $command) => str_contains($command, '--only=teams'));
+    expect($teams->unique()->values()->all())->toBe([1440]);
+
+    // And nothing else still carries the 24-hour default.
+    $defaulted = $expiries
+        ->filter(fn ($expiry, string $command) => $expiry === 1440 && ! str_contains($command, '--only=teams'));
+    expect($defaulted->keys()->all())->toBe([]);
+});
+
 it('keeps the two bulk mail sends on different days', function () {
     /*
      * The weekly digest and the pick'em results announcement are both BULK

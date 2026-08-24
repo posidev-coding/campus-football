@@ -14,6 +14,7 @@ use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\User;
 use App\Models\Week;
+use App\Services\CfbCalendar;
 use App\Support\Brand;
 use App\Support\TeamGlance;
 use App\Support\Voice;
@@ -400,6 +401,7 @@ describe('the team swiper', function () {
             // the lookup the first one paid for and read one query cheaper,
             // which looks exactly like the regression this test is for.
             Brand::flush();
+            CfbCalendar::flush();
             DB::enableQueryLog();
             DB::flushQueryLog();
 
@@ -499,6 +501,12 @@ describe('the placeholder never leaks', function () {
 });
 
 describe('the pick'."'".'em teaser', function () {
+    /*
+     * The flag-flip matrix. The badge was UNGATED — "Coming soon" forever,
+     * pinned green by this very file — so the flip's first civilian read a
+     * promise about the thing they were standing in. The branch reads the
+     * commit-11 config mirror, so no Pennant purge is involved.
+     */
     it('renders as a designed card that opens My Picks', function () {
         // Inert until the Picks screen existed; now the whole card
         // navigates — to the reader's own week, not to the store.
@@ -515,6 +523,32 @@ describe('the pick'."'".'em teaser', function () {
         $this->get(route('home'))->assertOk()
             ->assertSee('Coming soon')
             ->assertSee(route('pickem.home'), escape: false);
+    });
+
+    it('goes live for everyone the moment the flag opens', function () {
+        config()->set('cfb.pickem_open', true);
+
+        $this->actingAs($this->user)->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('Coming soon')
+            ->assertSee(Voice::line('home.pickem.live', for: $this->user));
+
+        // The guest front door drops "on the way" the same morning — an
+        // invite link lands exactly this person here on day one.
+        auth()->logout();
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('Coming soon')
+            ->assertSee(Voice::line('onboarding.guest.body_live'));
+    });
+
+    it('reads live for an admin while the flag is still closed', function () {
+        $admin = User::factory()->create(['admin' => true]);
+
+        $this->actingAs($admin)->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('Coming soon')
+            ->assertSee(Voice::line('home.pickem.live', for: $admin));
     });
 });
 
@@ -784,10 +818,10 @@ describe('the verify nudge', function () {
             ->assertSee('cfb.verify.dismissed')
             ->assertSee('sessionStorage')
             // The ambient poll: how the app flips when the mail link is
-            // clicked in another tab. Its guard is the callout's own @if —
-            // the row and its poll cease to exist once verified, which the
-            // renders-nothing test below is already pinning.
-            ->assertSee('wire:poll.15s', escape: false);
+            // clicked in another tab. It lives on the callout's OWN tiny
+            // component now, so a tick re-renders one row, not the whole
+            // screen — VerifyCalloutTest holds the island's contract.
+            ->assertSee('wire:poll.30s', escape: false);
     });
 
     it('renders nothing once verified, and nothing for a guest', function () {

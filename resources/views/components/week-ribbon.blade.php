@@ -29,13 +29,16 @@
         <p class="flex shrink-0 items-center gap-1.5 text-sm font-medium">
             @if ($clock['type'] === 'live')
                 <span class="flex items-center gap-1.5 font-semibold text-red-400">
-                    <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
+                    <x-live-dot />
                     Games live
                 </span>
             @elseif ($clock['type'] === 'kick' && $clock['at'] !== null)
                 <span class="text-zinc-300">First kick {{ $clock['at']->setTimezone(config('cfb.timezone'))->format('D g:ia') }}</span>
             @elseif ($clock['type'] === 'deadline' && $clock['at'] !== null)
-                <span class="text-zinc-300">Slates due {{ $clock['at']->format('D g:ia') }}</span>
+                {{-- Through ET explicitly, like the kick branch beside it — Cadence
+                     instants already carry the zone, so this is a no-op that
+                     keeps the two branches from drifting apart again. --}}
+                <span class="text-zinc-300">Slates due {{ $clock['at']->setTimezone(config('cfb.timezone'))->format('D g:ia') }}</span>
             @endif
         </p>
     @endif

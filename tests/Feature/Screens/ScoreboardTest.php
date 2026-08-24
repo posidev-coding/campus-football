@@ -198,6 +198,10 @@ it('only polls while a game is actually in progress', function () {
         'completed' => false,
     ]);
 
+    // The has-live answer is deliberately cached 15s (every viewer's 30s
+    // poll asked the EXISTS fresh); this render must see the new game.
+    Cache::forget('scoreboard:has-live');
+
     Livewire::test('scoreboard')->set('scope', Scope::FBS)->set('week', $this->week->id)
         ->assertSee('wire:poll', escape: false);
 });

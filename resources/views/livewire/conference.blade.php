@@ -60,7 +60,14 @@ new class extends Component
     }
 
     /** @return list<int> */
-    private function memberIds(): array
+    /**
+     * #[Computed] per the group screen's own rule: three sections read
+     * this per render, and each call was its own query.
+     *
+     * @return list<int>
+     */
+    #[Computed]
+    public function memberIds(): array
     {
         return TeamSeason::where('season_year', $this->year)
             ->where('conference_id', $this->conference->id)
@@ -74,7 +81,7 @@ new class extends Component
     #[Computed]
     public function games()
     {
-        $members = $this->memberIds();
+        $members = $this->memberIds;
 
         if ($members === []) {
             return collect();
@@ -103,7 +110,7 @@ new class extends Component
     #[Computed]
     public function leaders()
     {
-        $members = $this->memberIds();
+        $members = $this->memberIds;
 
         if ($members === []) {
             return collect();
@@ -127,7 +134,7 @@ new class extends Component
     #[Computed]
     public function news()
     {
-        $members = $this->memberIds();
+        $members = $this->memberIds;
 
         if ($members === []) {
             return collect();

@@ -16,6 +16,24 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class AthleteTeamSeason extends Model
 {
+    /**
+     * Every saved season row bumps the athlete's denormalized
+     * `latest_season_year` — the ONE door, so no sync writer (rosters,
+     * stats, seeds, factories) can forget it. Guarded to only move
+     * forward: a historical backfill never regresses a current player,
+     * and the usual no-op resync fires no save at all.
+     */
+    protected static function booted(): void
+    {
+        static::saved(function (self $row) {
+            Athlete::whereKey($row->athlete_id)
+                ->where(fn ($q) => $q
+                    ->whereNull('latest_season_year')
+                    ->orWhere('latest_season_year', '<', $row->season_year))
+                ->update(['latest_season_year' => $row->season_year]);
+        });
+    }
+
     public function athlete(): BelongsTo
     {
         return $this->belongsTo(Athlete::class);

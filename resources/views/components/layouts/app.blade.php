@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="scroll-smooth">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="motion-safe:scroll-smooth">
 <head>
     {{-- Shared with layouts/auth so the two cannot drift. They held byte-identical
          heads before, which is exactly how one layout ends up without a favicon. --}}
@@ -127,7 +127,9 @@
                     </div>
 
                     @auth
-                        <flux:dropdown position="bottom" align="end">
+                        {{-- `relative`: the unread dot below positions
+                             against the dropdown's own box. --}}
+                        <flux:dropdown position="bottom" align="end" class="relative">
                             {{-- `avatar` is null for most people and always will
                                  be; initials are the normal state, not the
                                  fallback state. --}}
@@ -137,6 +139,16 @@
                                 :chevron="false"
                                 data-tour="account"
                             />
+
+                            {{-- The unread dot, over the avatar's corner: the
+                                 bottom bar retires at `sm`, and additive means
+                                 the desktop header carries its own signal. A
+                                 sibling, not a wrapper — ui-dropdown finds its
+                                 trigger button, and this never eats a tap. --}}
+                            @if (auth()->user()->unreadNoteCount() > 0)
+                                <span class="pointer-events-none absolute top-0.5 right-0.5 size-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-zinc-950" aria-hidden="true"></span>
+                                <span class="sr-only">Unread notifications</span>
+                            @endif
 
                             <flux:menu>
                                 <flux:menu.item icon="user" :href="route('account')">{{ auth()->user()->name }}</flux:menu.item>

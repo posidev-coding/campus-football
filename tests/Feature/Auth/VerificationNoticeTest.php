@@ -13,11 +13,14 @@ use Livewire\Livewire;
  * both lands the celebration and ends the poll.
  */
 describe('the waiting surface', function () {
-    it('polls hot while unverified, and only exists while unverified', function () {
+    it('polls while unverified, and only exists while unverified', function () {
+        // 10s: the wait it measures is "open the mail app, find the
+        // message, tap the link" — a 3s cadence spent twenty queries
+        // learning nothing while the reader read their inbox.
         $this->actingAs(User::factory()->unverified()->create())
             ->get(route('verification.notice'))
             ->assertOk()
-            ->assertSee('wire:poll.3s="checkVerified"', escape: false);
+            ->assertSee('wire:poll.10s="checkVerified"', escape: false);
     });
 
     it('bounces an already-verified visitor straight home', function () {

@@ -43,10 +43,18 @@ class Scope
      */
     public static function options(int $year, bool $includeFcs = false, bool $top25 = true): array
     {
+        /*
+         * hasRankings is resolved OUTSIDE the cache and folded into the
+         * KEY — the Remember::filled class of guard: when the preseason
+         * poll lands mid-TTL, the flag change is a new key, so Top 25
+         * cannot stay greyed out for up to an hour after it became real.
+         */
+        $hasRankings = $top25 && self::hasRankings($year);
+
         return Cache::remember(
-            "scope:options:{$year}:".($includeFcs ? 'all' : 'fbs').':'.($top25 ? 't' : 'f'),
+            "scope:options:{$year}:".($includeFcs ? 'all' : 'fbs').':'.($top25 ? 't' : 'f').':'.($hasRankings ? 'r' : 'nr'),
             self::CACHE_TTL,
-            function () use ($year, $includeFcs, $top25) {
+            function () use ($year, $includeFcs, $top25, $hasRankings) {
                 /*
                  * Top 25 is a filter on TEAMS, so it is meaningful on a
                  * scoreboard — "show me the games that matter" — and meaningless
@@ -68,7 +76,7 @@ class Scope
                     $options[] = [
                         'value' => self::TOP_25,
                         'label' => 'Top 25',
-                        'disabled' => ! self::hasRankings($year),
+                        'disabled' => ! $hasRankings,
                     ];
                 }
 
@@ -182,18 +190,20 @@ class Scope
             return $ranked === [] ? self::teamIds(self::FBS, $year) : $ranked;
         }
 
+        // Cached like rankedTeamIds: membership moves weekly at most, and
+        // these lists back every scoped screen's WHERE IN.
         if ($scope === self::FBS || $scope === self::FCS) {
-            return TeamSeason::where('season_year', $year)
+            return Cache::remember("scope:teams:{$scope}:{$year}", self::CACHE_TTL, fn () => TeamSeason::where('season_year', $year)
                 ->where('classification', strtoupper($scope))
                 ->pluck('team_id')
-                ->all();
+                ->all());
         }
 
         if (ctype_digit($scope)) {
-            return TeamSeason::where('season_year', $year)
+            return Cache::remember("scope:teams:conf-{$scope}:{$year}", self::CACHE_TTL, fn () => TeamSeason::where('season_year', $year)
                 ->where('conference_id', (int) $scope)
                 ->pluck('team_id')
-                ->all();
+                ->all());
         }
 
         return null;
@@ -210,10 +220,13 @@ class Scope
      */
     public static function rankedTeamIds(int $year): array
     {
-        return Cache::remember("scope:top25:{$year}", self::CACHE_TTL, function () use ($year) {
-            $calendar = app(CfbCalendar::class);
-            $poll = $calendar->defaultPoll($year)->value;
+        // The POLL rides the key: when the calendar flips AP -> CFP in
+        // November, the new poll is a new key and the old list ages out
+        // unread — instead of Top 25 quietly meaning last week's AP for a
+        // TTL after the switch.
+        $poll = app(CfbCalendar::class)->defaultPoll($year)->value;
 
+        return Cache::remember("scope:top25:{$year}:{$poll}", self::CACHE_TTL, function () use ($year, $poll) {
             $seasonIds = Season::where('year', $year)->pluck('id');
 
             if ($seasonIds->isEmpty()) {

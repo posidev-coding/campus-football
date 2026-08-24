@@ -21,10 +21,13 @@ still writes them. `cfb:summaries` dispatches a real `Bus::batch`, so dropping
 
 **`cache:clear` calls `flushdb()`** — it wipes the whole Redis database for
 the cache connection, ignoring key prefixes. Cache sits on connection `cache`
-(`REDIS_CACHE_DB`, database 1) and everything else on `default` (database 0),
-so clearing the cache is safe today. If sessions ever move to Redis on a
-managed instance that exposes only database 0, `cache:clear` becomes a
-site-wide logout — check `SESSION_CONNECTION` before making that move.
+(`REDIS_CACHE_DB`, database 1) and everything else on `default` (database 0).
+Sessions ride Redis on `SESSION_CONNECTION=default` — DB 0, deliberately, so
+a cache clear cannot log everyone out; verify the connection before ever
+moving them. And a cache clear is still not free: the mail and SMS daily
+budgets and the ESPN limiter are RateLimiter counters in DB 1, so
+`cache:clear` RE-ARMS them — a clear right after a big send hands the day a
+fresh budget it already spent. Clear deliberately, not reflexively.
 
 It is also the **only source of historical players.** Rosters publish the
 current season only, so a 2021 player has no roster row to have come from; box
@@ -152,6 +155,13 @@ instead — `url()` is string building and touches no network.
 
 ## Mail: branded, queued, and budgeted
 
+**A local .env that copies production values can SEND REAL MAIL and write to
+the REAL R2 bucket.** The mailer credentials and bucket keys are live; a
+`pickem:remind` run against seeded dev data with `MAIL_MAILER=cloudflare`
+mails whatever addresses the fixtures hold. Local stays `MAIL_MAILER=log`
+and `UPLOAD_DISK=public` unless a test of the real transport is the explicit
+point.
+
 Cloudflare Email Service, through Laravel 13's first-party `cloudflare`
 transport — an API rather than SMTP, so a rejection comes back as a body naming
 the address and the reason instead of a numeric code, and a newsletter drain is
@@ -172,8 +182,11 @@ everything through except a small bypass list that does not include
 **The daily budget starts LOW (100) here, and that is the opposite of what it
 looks like.** Cloudflare gives a new account a deliberately conservative daily
 quota and raises it as sending reputation builds, so the first newsletter is the
-run most likely to meet a ceiling. `ThrottleMail` releases rather than fails, so
-anything over the budget arrives tomorrow instead of erroring.
+run most likely to meet a ceiling. `ThrottleMail` releases rather than fails —
+and a release still burns an attempt, so the sender jobs carry `$tries = 5`;
+that is what makes "anything over the budget arrives tomorrow instead of
+erroring" true. At a worker's default `--tries=1`, the first release would
+delete the job instead of delaying it.
 
 - **The mark in an email is a PNG, never the inline SVG.** Gmail strips `<svg>`
   entirely, so `x-brand.mark` cannot be reused; the header is
@@ -442,6 +455,12 @@ for i in $(seq 1 12); do
 done
 ```
 
+`--stop-when-empty` is for DRAINS only, never for a steady-state worker: a
+job ThrottleMail releases with a delay leaves the queue momentarily empty,
+the worker exits, and the released job is abandoned until something starts a
+worker again. The mail path's whole retry design assumes a worker that stays
+up.
+
 ## The Pick'em flip is a config change, and it needs a purge behind it
 
 `Feature::define('pickem', ...)` reads `config('cfb.pickem_open')`, which reads
@@ -457,6 +476,14 @@ php artisan pickem:preflight        # readiness; non-zero while anything blocks
 php artisan config:clear
 php artisan pennant:purge pickem    # REQUIRED — see below
 ```
+
+> Launch-hardening note (2026-08-24): the chrome and launch copy no
+> longer resolve Pennant at all — Navigation, the Home teaser, the guest
+> pitch and the tour all read the config mirror directly, so the flip
+> reaches them purge-free. The purge remains REQUIRED while the ROUTES
+> still ride `EnsureFeaturesAreActive`; once `PENNANT_STORE=array` lands
+> in production (runbook step 5 — both flags are config-derived), delete
+> the purge line from this checklist.
 
 **The purge is not optional.** Pennant's database driver PERSISTS every
 resolved value, so the closure runs once per user and the answer is read from

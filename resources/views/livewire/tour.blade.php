@@ -79,7 +79,13 @@ new class extends Component
      step's highlight without anything erroring. GuidedTourTest sweeps the
      source for parity. --}}
 @php
-    $steps = ['glance', 'search', 'scores', 'picks', 'wallet', 'league', 'account', 'install'];
+    /*
+     * 'room' rides in BOTH lists unconditionally so the parity sweep holds;
+     * its anchor (the pick'em teaser card) only renders `data-tour="room"`
+     * while the flag is open, and a stop with no visible target steps over
+     * itself — which is exactly how pre-flip tours skip the beat.
+     */
+    $steps = ['glance', 'search', 'scores', 'picks', 'room', 'wallet', 'league', 'account', 'install'];
 @endphp
 
 {{-- `contents`: a static wrapper would claim a slot in Home's gap-6 column.
@@ -90,7 +96,7 @@ new class extends Component
     x-data="{
         open: false,
         step: 0,
-        keys: ['glance', 'search', 'scores', 'picks', 'wallet', 'league', 'account', 'install'],
+        keys: ['glance', 'search', 'scores', 'picks', 'room', 'wallet', 'league', 'account', 'install'],
         box: null,
         centered: false,
         cardTop: 0,
@@ -322,8 +328,23 @@ new class extends Component
         aria-label="App tour"
     >
         @foreach ($steps as $i => $key)
+            @php
+                /*
+                 * The picks stop must never promise what is already there:
+                 * once the flag opens, "Picks are coming" walked to the
+                 * center tab is the tour lying on launch day. The branch
+                 * reads the commit-11 CONFIG mirror, never
+                 * Feature::active() — Pennant persists resolved values, so
+                 * the flag flip would leave this stop stale per user until
+                 * a purge.
+                 */
+                $copyKey = $key === 'picks'
+                        && (config('cfb.pickem_open') === true || (bool) auth()->user()?->isAdmin())
+                    ? 'picks_live'
+                    : $key;
+            @endphp
             <div x-show="step === {{ $i }}" wire:key="tour-step-{{ $key }}" class="flex flex-col gap-1">
-                <flux:heading size="lg">{{ App\Support\Voice::line("tour.{$key}.heading") }}</flux:heading>
+                <flux:heading size="lg">{{ App\Support\Voice::line("tour.{$copyKey}.heading") }}</flux:heading>
 
                 <flux:subheading>
                     @if ($key === 'search' && $this->searchTeam !== null)
@@ -334,13 +355,31 @@ new class extends Component
                             'team' => $this->searchTeam,
                         ]) }}
                     @else
-                        {{ App\Support\Voice::line("tour.{$key}.body") }}
+                        {{ App\Support\Voice::line("tour.{$copyKey}.body") }}
                     @endif
 
                     @if ($key === 'wallet' && $this->seeded)
                         {{ App\Support\Voice::line('tour.wallet.seeded', ['xp' => App\Actions\GrantWalletEntry::FIRST_TEAM_XP]) }}
                     @endif
                 </flux:subheading>
+
+                @if ($key === 'room')
+                    {{-- The one stop with a DOOR: seating the reader in a
+                         contest is the first-week retention hinge, so the
+                         card offers the walk, not just the words. Stamp
+                         complete on the way out — a reader this button
+                         convinces leaves the tour through it. --}}
+                    <flux:button
+                        :href="route('pickem.home')"
+                        wire:navigate
+                        x-on:click="$wire.complete()"
+                        variant="primary"
+                        size="sm"
+                        class="mt-1 self-start"
+                    >
+                        Take me there
+                    </flux:button>
+                @endif
 
                 @if ($key === 'install')
                     {{-- The detected browser's steps land right in the card:

@@ -66,14 +66,21 @@ new class extends Component
 
     {{-- Autofocused so the keyboard is up the moment the screen opens: a
          search screen that needs a second tap to start typing wastes the trip. --}}
-    <flux:input
-        wire:model.live.debounce.200ms="q"
-        icon="magnifying-glass"
-        placeholder="Teams, players, coaches, games…"
-        autofocus
-        clearable
-    />
+    <div class="flex items-center gap-2">
+        <flux:input
+            wire:model.live.debounce.300ms="q"
+            icon="magnifying-glass"
+            placeholder="Teams, players, coaches, games…"
+            autofocus
+            clearable
+            class="flex-1"
+        />
 
+        {{-- The in-flight tell, in the input row where the eye already is. --}}
+        <flux:icon.loading wire:loading wire:target="q" class="size-4 shrink-0 text-zinc-400" />
+    </div>
+
+    <div wire:loading.class="opacity-60" wire:target="q" class="motion-safe:transition-opacity">
     @include('partials.search-results', [
         'q' => $q,
         'teams' => $this->teams,
@@ -83,4 +90,5 @@ new class extends Component
         'games' => $this->games,
         'recruits' => $this->recruits,
     ])
+    </div>
 </div>

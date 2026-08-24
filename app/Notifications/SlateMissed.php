@@ -4,8 +4,6 @@ namespace App\Notifications;
 
 use App\Support\Brand;
 use App\Support\Voice;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 use NotificationChannels\WebPush\WebPushChannel;
 use NotificationChannels\WebPush\WebPushMessage;
@@ -23,11 +21,14 @@ use NotificationChannels\WebPush\WebPushMessage;
  * The audience is gated upstream in SlateResults: only members who were in
  * the group BEFORE the card went up, so nobody is told they missed a week
  * they could not have played.
+ *
+ * NOT `ShouldQueue`, and that is deliberate: it is sent from inside
+ * SendSlateResult, which is already a queued job carrying the batch and the
+ * daily-budget middleware. Making this queued too would put a second job
+ * behind the first, outside the batch and outside the throttle.
  */
-class SlateMissed extends Notification implements ShouldQueue
+class SlateMissed extends Notification
 {
-    use Queueable;
-
     /** @param  array<string, mixed>  $result */
     public function __construct(public readonly array $result) {}
 
@@ -36,7 +37,9 @@ class SlateMissed extends Notification implements ShouldQueue
     {
         $channels = ['database'];
 
-        if ($notifiable->pushSubscriptions()->exists()) {
+        // The sending job loadCounts this; the query is only the fallback
+        // for a caller that did not (0 is a real answer, never re-asked).
+        if ($notifiable->push_subscriptions_count ?? $notifiable->pushSubscriptions()->exists()) {
             $channels[] = WebPushChannel::class;
         }
 

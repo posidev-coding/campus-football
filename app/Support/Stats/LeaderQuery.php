@@ -31,7 +31,13 @@ class LeaderQuery
     {
         $key = "leaders:{$year}:{$scope}:{$board['category']}:{$board['stat']}:{$limit}";
 
-        return Cache::remember($key, self::CACHE_TTL, function () use ($board, $year, $scope, $limit) {
+        /*
+         * A DAY, not the 900s the team boards keep: athlete_season_stats
+         * only changes when cfb:aggregate runs (nightly), which also warms
+         * the default combo right after writing — so the first Sunday
+         * reader lands on a hot board instead of paying ~20 cold queries.
+         */
+        return Cache::remember($key, 86400, function () use ($board, $year, $scope, $limit) {
             $teamIds = Scope::teamIds($scope, $year);
 
             $rows = AthleteSeasonStat::query()

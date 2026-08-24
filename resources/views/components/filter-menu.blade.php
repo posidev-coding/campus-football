@@ -58,8 +58,8 @@
             @if ($label) aria-label="{{ $label }}" @endif
             @class([
                 'group flex w-fit items-center gap-1 text-sm font-medium transition-colors',
-                'py-0.5 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100' => $variant === 'default',
-                'h-7 shrink-0 rounded-md px-2.5 ring-1 ring-current/50 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current' => $variant === 'accent',
+                '-mx-1 -my-1.5 px-1 py-2 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100' => $variant === 'default',
+                '-my-1 h-9 shrink-0 rounded-md px-2.5 ring-1 ring-current/50 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current' => $variant === 'accent',
             ])
         >
             {{ $current['label'] ?? '' }}

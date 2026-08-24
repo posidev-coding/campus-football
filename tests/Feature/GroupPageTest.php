@@ -172,7 +172,7 @@ it('previews the surface read-only for a lobby outsider', function () {
 
     Livewire::actingAs($outsider)->test('group', ['group' => $group])
         ->assertSee('Join this lobby')
-        ->assertDontSee('wire:click="pick(', escape: false)
+        ->assertDontSee('optimistic(', escape: false)
         ->assertDontSee('No pick');
 });
 

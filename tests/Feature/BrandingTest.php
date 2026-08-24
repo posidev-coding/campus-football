@@ -353,3 +353,30 @@ describe('the admin panel', function () {
             ->toContain("font-family: 'Archivo Variable'");
     });
 });
+
+describe('the asset routes stay edge-cacheable', function () {
+    it('sets no cookie beside its public Cache-Control', function (string $path) {
+        /*
+         * These respond `Cache-Control: public` — but StartSession queued a
+         * Set-Cookie on every one, a pair every CDN and edge refuses to
+         * cache, and each request paid two session queries for an icon.
+         * The five asset routes skip the session stack entirely.
+         */
+        $response = $this->get($path);
+
+        expect($response->headers->get('Set-Cookie'))->toBeNull()
+            ->and($response->headers->get('Cache-Control'))->toContain('public');
+    })->with([
+        'manifest' => '/site.webmanifest',
+        'favicon' => '/favicon.ico',
+        'apple touch icon' => '/apple-touch-icon.png',
+        'apple touch variant' => '/apple-touch-icon-120x120.png',
+    ]);
+
+    it('prunes stale build entries at activate, keyed to the real manifest', function () {
+        $worker = file_get_contents(public_path('sw.js'));
+
+        expect($worker)->toContain("fetch('/build/manifest.json')")
+            ->and($worker)->toContain("path.startsWith('/build/')");
+    });
+});

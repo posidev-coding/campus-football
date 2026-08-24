@@ -56,9 +56,12 @@ class SyncTeamStats
 
     private function statistics(int $teamId, int $year, int $seasonType): int
     {
+        // ttl: 0 here and below — one-shot weekly payloads nothing re-reads
+        // inside a cadence. Cached 12h they crowd the same Redis DB as the
+        // ESPN limiter and budget counters, whose eviction fails OPEN.
         $body = $this->espn->core(
             "seasons/{$year}/types/{$seasonType}/teams/{$teamId}/statistics",
-            ttl: config('espn.cache.reference')
+            ttl: 0
         );
 
         $categories = $body['splits']['categories'] ?? null;
@@ -155,7 +158,7 @@ class SyncTeamStats
             return true;
         }
 
-        $body = $this->espn->core("seasons/{$year}/athletes/{$athleteId}", ttl: config('espn.cache.reference'));
+        $body = $this->espn->core("seasons/{$year}/athletes/{$athleteId}", ttl: 0);
 
         if ($body === null) {
             return false;
@@ -206,7 +209,7 @@ class SyncTeamStats
     {
         $body = $this->espn->core(
             "seasons/{$year}/types/{$seasonType}/teams/{$teamId}/leaders",
-            ttl: config('espn.cache.reference')
+            ttl: 0
         );
 
         if (empty($body['categories'])) {

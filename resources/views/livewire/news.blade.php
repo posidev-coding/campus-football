@@ -39,14 +39,18 @@ new class extends Component
          job — 322px cells at `lg`, 343px at four across the widest shell.
          Cards stretch to their row: `article-card` already pushes its meta
          line down with `mt-auto`, so an equal-height row fills correctly. --}}
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+    <div wire:loading.class="opacity-60 pointer-events-none" wire:target="gotoPage, nextPage, previousPage" class="motion-safe:transition-opacity grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         @forelse ($this->articles as $article)
             <x-article-card :article="$article" wire:key="article-{{ $article->id }}" />
         @empty
             <flux:callout icon="newspaper" class="sm:col-span-2 lg:col-span-3 2xl:col-span-4">
                 <flux:callout.heading>No news yet</flux:callout.heading>
                 <flux:callout.text>
-                    Nothing synced. Run <code>php artisan cfb:sync --only=news</code>.
+                    {{-- Factual, News is a PURE surface. The artisan hint is for the operator alone. --}}
+                    Nothing here yet — headlines land as they publish.
+                    @if (auth()->user()?->isAdmin())
+                        Run <code>php artisan cfb:sync --only=news</code>.
+                    @endif
                 </flux:callout.text>
             </flux:callout>
         @endforelse

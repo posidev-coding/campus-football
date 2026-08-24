@@ -398,7 +398,7 @@ new class extends Component
                  half-column at `xl` clears and a `lg` one would not — and the
                  sentinel arithmetic is the same as Players': halving a chunk's
                  ~3,200px push still clears the viewport plus its margin. --}}
-            <div class="-mt-1 grid gap-1.5 xl:grid-cols-2">
+            <div wire:loading.class="opacity-60 pointer-events-none" wire:target="view, year, scope, position, sort, q" class="motion-safe:transition-opacity -mt-1 grid gap-1.5 xl:grid-cols-2">
                 @foreach ($this->prospects as $recruit)
                     {{-- `min-w-0` because this is a flex item, whose automatic
                          minimum size is its MIN-CONTENT width: the inner column

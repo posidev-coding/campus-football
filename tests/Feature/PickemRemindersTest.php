@@ -15,6 +15,8 @@ use App\Models\User;
 use App\Notifications\PickReminderNotification;
 use App\Support\PickReminders;
 use App\Support\Voice;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Notification;
 use NotificationChannels\WebPush\WebPushChannel;
 
@@ -353,6 +355,49 @@ it('carries mail and push, and holds SMS behind its switch', function () {
     // Opting out of the pick'em list drops mail and nothing else.
     $member->forceFill(['pickem_notify_opt_in' => false])->save();
     expect($notification->via($member->fresh()))->toBe([WebPushChannel::class]);
+});
+
+it('scopes the job\'s re-ask to the one reader it is about', function () {
+    /*
+     * cardsFor runs once per recipient job; without the $only scope every
+     * recipient paid for the ENTIRE league audience to be rebuilt just to
+     * read their own row out of it. Break-back: drop the scoping in
+     * members() and the other members reappear in this array.
+     */
+    [$slate, $group] = reminderSlate(members: 3);
+    [$a] = reminderMembers($group)->all();
+
+    $slates = Slate::query()->whereKey($slate->id)->with([
+        'games.game:id,kickoff_at,status,completed',
+        'contest:id,group_id',
+        'contest.group:id,name,kind,week_id',
+    ])->get();
+
+    expect(array_keys(PickReminders::owedBy($slates, only: $a)))->toBe([$a->id])
+        // The sweep's everyone answer is untouched: all three members plus
+        // the commissioner still owe the card.
+        ->and(count(PickReminders::owedBy($slates)))->toBe(4);
+});
+
+it('drains behind the backfill worker, off the user-visible default queue', function () {
+    Bus::fake();
+    reminderSlate(members: 1);
+
+    $this->artisan('pickem:remind', ['--wave' => PickReminders::WAVE_REMIND])->assertSuccessful();
+
+    Bus::assertBatched(fn ($batch) => $batch->queue() === 'backfill');
+});
+
+it('sends the reminder in-job, never double-queued', function () {
+    /*
+     * Negative pin: SendPickReminder is already a queued job carrying the
+     * batch and both budget middlewares. A ShouldQueue notification inside
+     * it would double-queue the send, move the actual mail OUTSIDE
+     * ThrottleMail, and outlive the staleness re-check the job exists for.
+     * Re-adding the interface fails here.
+     */
+    expect(new PickReminderNotification([], PickReminders::WAVE_REMIND))
+        ->not->toBeInstanceOf(ShouldQueue::class);
 });
 
 it('speaks the reader\'s register, with no authenticated user to fall back on', function () {

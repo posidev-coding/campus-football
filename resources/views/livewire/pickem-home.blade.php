@@ -319,12 +319,10 @@ new class extends Component
              readers only, the house rule. --}}
         <h1 class="sr-only">My Picks</h1>
 
-        <x-verify-email-callout :body-key="'verify.picks.body'" :dismissable="false" />
+        <livewire:verify-callout :body-key="'verify.picks.body'" :dismissable="false" @email-verified="$refresh" />
 
         @if (session('status'))
-            <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
-                {{ session('status') }}
-            </div>
+            <x-notice tone="success">{{ session('status') }}</x-notice>
         @endif
 
         {{-- The week's dateline. No calendar entry, no ribbon — never a
@@ -476,7 +474,7 @@ new class extends Component
                 <form wire:submit="join" class="flex flex-col gap-3">
                     {{-- The format rule stays plain: 8 characters, told straight. --}}
                     <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />
-                    <flux:button type="submit" variant="primary" class="self-start">Join the group</flux:button>
+                    <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="join" class="self-start">Join the group</flux:button>
                 </form>
             </div>
         </div>
@@ -485,26 +483,18 @@ new class extends Component
              The store lives at its own address now — this is the sign
              above it, not a shelf of it. --}}
         @php $teaser = Voice::line('lobby.teaser.zinger'); @endphp
-        <a
-            href="{{ route('pickem.lobby') }}"
-            wire:navigate
-            class="flex items-center justify-between gap-3 rounded-xl border border-dashed border-zinc-300 px-4 py-3 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
-        >
-            <span class="min-w-0">
-                <span class="block font-semibold leading-tight">The Lobby</span>
-                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-                    @if ($this->roomsOpen > 0)
-                        {{ $this->roomsOpen }} {{ Str::plural('room', $this->roomsOpen) }} open this Saturday
-                    @else
-                        {{ Voice::line('lobby.publics.empty') }}
-                    @endif
-                </span>
-                @if ($this->roomsOpen > 0 && $teaser !== '')
-                    <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">{{ $teaser }}</span>
+        <x-link-row :href="route('pickem.lobby')" title="The Lobby" data-tour="room">
+            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                @if ($this->roomsOpen > 0)
+                    {{ $this->roomsOpen }} {{ Str::plural('room', $this->roomsOpen) }} open this Saturday
+                @else
+                    {{ Voice::line('lobby.publics.empty') }}
                 @endif
             </span>
-            <flux:icon name="chevron-right" variant="micro" class="shrink-0 text-zinc-400" />
-        </a>
+            @if ($this->roomsOpen > 0 && $teaser !== '')
+                <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">{{ $teaser }}</span>
+            @endif
+        </x-link-row>
     @else
         @include('partials.pickem-promise')
     @endif

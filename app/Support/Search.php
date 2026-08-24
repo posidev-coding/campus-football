@@ -102,7 +102,11 @@ class Search
                     'latestSeason.position:id,abbreviation',
                 ])
                 ->orderByDesc('is_active')
-                ->orderByRaw('(select max(ats.season_year) from athlete_team_seasons ats where ats.athlete_id = athletes.id) desc')
+                // The denormalized column the season rows stamp on save —
+                // this was a correlated MAX() subquery per matching row,
+                // re-derived on every keystroke. NULLs (no season at all)
+                // sort last under DESC, the same place MAX() put them.
+                ->orderByDesc('latest_season_year')
                 ->orderBy('display_name'))
             ->take($limit)
             ->get();
@@ -122,7 +126,7 @@ class Search
         return Coach::search(self::term($query))
             ->query(fn ($q) => $q
                 ->with('latestSeason.team:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark')
-                ->orderByRaw('(select max(cts.season_year) from coach_team_seasons cts where cts.coach_id = coaches.id) desc')
+                ->orderByDesc('latest_season_year')
                 ->orderBy('display_name'))
             ->take($limit)
             ->get();

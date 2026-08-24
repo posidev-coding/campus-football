@@ -139,6 +139,17 @@ describe('the service worker', function () {
             ->and($worker)->toContain('skipWaiting');
     });
 
+    it('survives an offline-page hiccup at install', function () {
+        /*
+         * An unguarded addAll rejection fails the whole install: no service
+         * worker and NO PUSH for that visitor until the next update check.
+         * The guard trades the offline fallback for the worker itself.
+         */
+        $worker = file_get_contents(public_path('sw.js'));
+
+        expect($worker)->toContain('cache.addAll([OFFLINE_URL]).catch(() => {})');
+    });
+
     it('never mediates Livewire or admin traffic', function () {
         $worker = file_get_contents(public_path('sw.js'));
 
@@ -157,16 +168,35 @@ describe('the service worker', function () {
     it('carries the push handlers that make a tapped notification the deep link', function () {
         /*
          * notificationclick focusing/opening the installed app is the ONLY
-         * real deep link an iOS home-screen web app has — and VERSION stays
-         * v1 on purpose: the bump contract is scoped to caching strategy
-         * and the offline page, which these handlers do not touch. A bump
-         * appearing here should have to mean it.
+         * real deep link an iOS home-screen web app has. VERSION is v2 —
+         * bumped when activate() learned to prune stale /build/ entries,
+         * which IS a caching-strategy change; the bump contract stands,
+         * and a bump appearing here should still have to mean it.
          */
         $worker = file_get_contents(public_path('sw.js'));
 
         expect($worker)->toContain("addEventListener('push'")
             ->and($worker)->toContain("addEventListener('notificationclick'")
             ->and($worker)->toContain('openWindow')
-            ->and($worker)->toContain("VERSION = 'v1'");
+            ->and($worker)->toContain("VERSION = 'v2'");
+    });
+});
+
+describe('self-contained pages honor the appearance choice', function () {
+    it('reads flux.appearance pre-paint on the offline floor and every status page', function () {
+        /*
+         * These pages themed by the OS media query alone, so a reader who
+         * chose Light inside the app hit a DARK error page — and the
+         * theme-color meta was pinned dark either way. The try/catch is
+         * load-bearing: localStorage throws in some embedded contexts,
+         * and an error page must never error.
+         */
+        foreach ([$this->get(route('offline'))->content(), (string) $this->view('errors.404')->__toString()] as $html) {
+
+            expect($html)->toContain("localStorage.getItem('flux.appearance')")
+                ->and($html)->toContain('try {')
+                ->and($html)->toContain(':root[data-theme="dark"]')
+                ->and($html)->toContain('media="(prefers-color-scheme: light)" content="#ffffff"');
+        }
     });
 });

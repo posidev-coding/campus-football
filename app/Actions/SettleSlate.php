@@ -43,7 +43,7 @@ class SettleSlate
             return false;
         }
 
-        $slate->loadMissing(['games.game', 'entries.user', 'contest', 'tiebreakerGame.game']);
+        $slate->loadMissing(['games.game', 'games.picks', 'entries.user', 'contest', 'tiebreakerGame.game']);
 
         // A slate with an unfinished game cannot settle, whatever the clock
         // says — the rescue sweep will have regraded it by the next pass.
@@ -58,8 +58,10 @@ class SettleSlate
 
         $actual = $slate->tiebreaker_metric?->resolveActual($slate);
 
+        // The loaded relation, not a re-query: the official regrade above
+        // saved its corrections onto these same instances.
         $totals = $slate->games
-            ->flatMap(fn ($slateGame) => $slateGame->picks()->get())
+            ->flatMap(fn ($slateGame) => $slateGame->picks)
             ->groupBy('user_id')
             ->map(fn ($picks) => (int) $picks->sum('points'));
 

@@ -16,7 +16,9 @@
         || $conferences->isNotEmpty() || $games->isNotEmpty() || $recruits->isNotEmpty();
 @endphp
 
-<div class="flex flex-col gap-4">
+{{-- A live region: results replace each other as the reader types, and a
+     screen reader hears the change without losing the input's focus. --}}
+<div class="flex flex-col gap-4" role="status" aria-live="polite">
     @if (App\Support\Search::tooShort($q))
         <flux:callout icon="magnifying-glass">
             <flux:callout.heading>Search Campus Football</flux:callout.heading>

@@ -132,5 +132,5 @@ it('previews the slate as a participant would see it, read-only', function () {
         // question — and not one tappable side.
         ->assertSee('Tier 1')
         ->assertSee('-6.5')
-        ->assertDontSee('wire:click="pick(', escape: false);
+        ->assertDontSee('optimistic(', escape: false);
 });

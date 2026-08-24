@@ -95,10 +95,15 @@ class PickReminders
      * memberships, the users, the open slate games, and the picks against
      * them. Never one per row.
      *
+     * `$only` narrows the whole computation to one reader — the job's
+     * re-ask runs once per recipient, and without it every recipient paid
+     * for the entire league's audience to be rebuilt. Null (the sweep)
+     * keeps the everyone answer; the gates are identical either way.
+     *
      * @param  Collection<int, Slate>  $slates
      * @return array<int, list<array<string, mixed>>>
      */
-    public static function owedBy(Collection $slates): array
+    public static function owedBy(Collection $slates, ?User $only = null): array
     {
         if ($slates->isEmpty()) {
             return [];
@@ -121,7 +126,7 @@ class PickReminders
             return [];
         }
 
-        $members = self::members($slates->pluck('id')->all());
+        $members = self::members($slates->pluck('id')->all(), $only);
 
         if ($members === []) {
             return [];
@@ -191,7 +196,7 @@ class PickReminders
             ])
             ->get();
 
-        return self::owedBy($slates)[$user->id] ?? [];
+        return self::owedBy($slates, only: $user)[$user->id] ?? [];
     }
 
     /**
@@ -200,9 +205,10 @@ class PickReminders
      * @param  list<int>  $slateIds
      * @return array<int, list<int>> user id => slate ids
      */
-    private static function members(array $slateIds): array
+    private static function members(array $slateIds, ?User $only = null): array
     {
         return GroupMember::query()
+            ->when($only !== null, fn ($query) => $query->where('group_members.user_id', $only->id))
             ->join('contests', 'contests.group_id', '=', 'group_members.group_id')
             ->join('slates', 'slates.contest_id', '=', 'contests.id')
             ->join('users', 'users.id', '=', 'group_members.user_id')

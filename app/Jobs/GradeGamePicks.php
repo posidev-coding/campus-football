@@ -29,6 +29,20 @@ class GradeGamePicks implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
+    /** Must stay below the queue's `retry_after` (90s) — the ESPN sibling invariant. */
+    public int $timeout = 60;
+
+    public int $tries = 3;
+
+    /**
+     * Without this, the unique lock has NO expiry: a worker killed mid-job
+     * strands this game's grading for the rest of the season, because the
+     * SETNX key lives on Redis DB 0 where cache:clear cannot reach it.
+     * Deliberately above $timeout, so a timed-out run has already died
+     * before its lock lapses and the retry can take it.
+     */
+    public int $uniqueFor = 120;
+
     public function __construct(public int $gameId)
     {
         $this->onQueue('live');
@@ -50,6 +64,7 @@ class GradeGamePicks implements ShouldBeUnique, ShouldQueue
         $slateGames = SlateGame::query()
             ->where('game_id', $game->id)
             ->whereHas('slate', fn ($q) => $q->whereIn('status', [Slate::PUBLISHED, Slate::PRELIM]))
+            ->with(['slate.contest', 'picks'])
             ->get();
 
         foreach ($slateGames as $slateGame) {

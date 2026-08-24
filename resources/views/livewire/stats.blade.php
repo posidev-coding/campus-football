@@ -272,6 +272,11 @@ new class extends Component
         class="-mt-1"
     />
 
+    <div
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="view, side, scope, year"
+        class="flex flex-col gap-4 motion-safe:transition-opacity"
+    >
     @forelse ($this->groups as $group)
         {{-- `$view` in the key as well as `$side`: without it Livewire morphs a
              team board into the player board at the same index, and the row
@@ -348,9 +353,14 @@ new class extends Component
                 @if ($view === 'team')
                     Nothing published for {{ $year }} yet.
                 @else
-                    Nothing derived for {{ $year }} yet. Run <code>php artisan cfb:aggregate</code>.
+                    {{-- Factual, Stats is a PURE surface. The artisan hint is for the operator alone. --}}
+                    Nothing here for {{ $year }} yet.
+                    @if (auth()->user()?->isAdmin())
+                        Run <code>php artisan cfb:aggregate</code>.
+                    @endif
                 @endif
             </flux:callout.text>
         </flux:callout>
     @endforelse
+    </div>
 </div>

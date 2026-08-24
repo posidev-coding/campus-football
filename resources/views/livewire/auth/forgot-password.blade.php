@@ -44,7 +44,7 @@ new #[Layout('components.layouts.auth')] class extends Component
             placeholder="you@example.com"
         />
 
-        <flux:button variant="primary" type="submit" class="w-full">
+        <flux:button variant="primary" type="submit" wire:loading.attr="disabled" wire:target="sendPasswordResetLink" class="w-full">
             Email password reset link
         </flux:button>
     </form>

@@ -370,6 +370,32 @@ describe('the device draft', function () {
         expect($html)->toContain('save($event)');
     });
 
+    it('remembers which step a returning visitor was on — never past the door', function () {
+        /*
+         * mount() resets to 'name', so a returning visitor re-clicked
+         * through screens they had already answered. Only 'rating' is ever
+         * restored: 'name' is the default, and 'credentials'/'team' stay
+         * excluded by construction — a device draft must never deep-link
+         * past registration.
+         */
+        $html = Livewire::test('onboarding')->html();
+
+        expect($html)
+            ->toContain("draft.step === 'rating'")
+            ->toContain("['name', 'rating'].includes(value)")
+            ->toContain('saveStep');
+    });
+
+    it('frames the rating step the way the register screen does', function () {
+        // Same words on both doors: the label names the dial, the
+        // description carries the promise, and the plain hint lowers the
+        // stakes of choosing.
+        Livewire::test('onboarding')->set('step', 'rating')
+            ->assertSee('Trash talk')
+            ->assertSee('This sets how hard.')
+            ->assertSee('You can change this any time on Account.');
+    });
+
     it('gives every step its own key so one step cannot morph into another', function () {
         /*
          * Without these, Livewire reuses step one's input for step two — same
@@ -519,12 +545,56 @@ describe('the device draft', function () {
         expect($credentials)->toContain('wire:click="register"');
     });
 
+    it('re-arms the picker for an invited registration that landed on the group', function () {
+        /*
+         * The invite path, end to end: the guest is routed to REGISTER,
+         * registers, and redirectIntended lands them on /join — where the
+         * onboarding.moment flash dies unread. The parked
+         * `onboarding.pending` key re-arms the picker on their first Home
+         * visit, and through the picker, the tour. Without it the PRIMARY
+         * acquisition path produced members with zero follows, no tour,
+         * and showTour suppressed forever.
+         */
+        session()->put('url.intended', '/join/ABCDEF');
+
+        Livewire::test('auth.register')
+            ->set('first_name', 'Invited')->set('last_name', 'Friend')
+            ->set('email', 'invited@example.com')
+            ->set('password', 'password123')->set('password_confirmation', 'password123')
+            ->call('register')
+            ->assertRedirect('/join/ABCDEF');
+
+        expect(session()->get('onboarding.pending'))->toBeTrue()
+            // The flash died on the intended landing; pending survives it.
+            ->and(auth()->user()->hasOnboarded())->toBeFalse();
+
+        // First Home visit: the wizard opens straight onto the picker...
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee('data-onboarding-overlay', escape: false)
+            ->assertSee('wire:key="step-team"', false);
+
+        // ...and the parked key is consumed — read once, ever.
+        expect(session()->has('onboarding.pending'))->toBeFalse();
+    });
+
+    it('never re-arms for an account that finished onboarding another way', function () {
+        $user = User::factory()->create(['onboarded_at' => now()]);
+        session()->put('onboarding.pending', true);
+
+        $this->actingAs($user)->get(route('home'))->assertOk();
+
+        // Pulled and discarded — a stale key cannot reopen the picker later.
+        expect(session()->has('onboarding.pending'))->toBeFalse();
+    });
+
     it('speaks the front door and picker in each register, escalating', function () {
         // LOUD chrome: all three registers side by side, R never just PG.
         foreach ([
             'onboarding.guest.heading', 'onboarding.guest.body',
             'onboarding.member.heading', 'onboarding.member.body',
             'onboarding.favorite', 'onboarding.picker', 'onboarding.name',
+            'onboarding.rating', 'onboarding.credentials',
             'splash.warmup.greet', 'splash.warmup.travel', 'splash.warmup.field',
             'splash.warmup.song', 'splash.warmup.latte',
         ] as $key) {

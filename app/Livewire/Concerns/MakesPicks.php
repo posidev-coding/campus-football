@@ -5,6 +5,8 @@ namespace App\Livewire\Concerns;
 use App\Actions\EnterTiebreaker;
 use App\Actions\LockPick;
 use App\Actions\MakePick;
+use App\Exceptions\HandleRequired;
+use App\Exceptions\NotGroupMember;
 use App\Exceptions\PickemParticipationGated;
 use App\Exceptions\PickLocked;
 use App\Models\Pick;
@@ -12,7 +14,9 @@ use App\Models\Slate;
 use App\Models\SlateEntry;
 use App\Models\SlateGame;
 use App\Support\Voice;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
+use InvalidArgumentException;
 use Livewire\Attributes\Computed;
 
 /**
@@ -35,6 +39,9 @@ trait MakesPicks
     public array $totals = [];
 
     public ?string $notice = null;
+
+    /** What kind of answer the notice is — x-notice's tone prop. */
+    public string $noticeTone = 'neutral';
 
     /**
      * The published slates whose games this screen lets the viewer pick.
@@ -77,17 +84,37 @@ trait MakesPicks
             ->keyBy('slate_id');
     }
 
+    /*
+     * The catch lists below are the surface's whole contract with the
+     * Actions: EVERYTHING MakePick and its siblings can throw is either a
+     * notice or a deliberate silent re-render, because anything uncaught
+     * is a raw 500 on a tap. Silent is chosen only where the refreshed
+     * render already explains itself — a locked row renders locked, a
+     * stale card (unpublished, rebuilt, re-slated) simply is not there
+     * anymore, and an implausible payload re-renders the current truth.
+     */
+
     public function pick(int $slateGameId, int $teamId, MakePick $action): void
     {
-        $slateGame = SlateGame::query()->findOrFail($slateGameId);
-
         try {
+            $slateGame = SlateGame::query()->findOrFail($slateGameId);
             $action->handle(auth()->user(), $slateGame, $teamId);
         } catch (PickLocked) {
-            // The row already renders locked; a race at kickoff just
-            // re-renders into that state.
+            // A race at kickoff: the row rendered OPEN when they tapped,
+            // so silence reads as a dead button. Say it, then the refresh
+            // below renders the row locked.
+            $this->say('picks.locked.notice', tone: 'error');
         } catch (PickemParticipationGated) {
-            $this->notice = Voice::line('groups.verify_first');
+            $this->say('groups.verify_first', tone: 'error');
+        } catch (HandleRequired) {
+            $this->say('picks.claim.body', tone: 'error');
+        } catch (NotGroupMember) {
+            // A commissioner removed them mid-session; the next tap must
+            // say so, not 500.
+            $this->say('talk.not_member', tone: 'error');
+        } catch (ModelNotFoundException|InvalidArgumentException) {
+            // A stale card after an unpublish or rebuild — the refresh
+            // renders the current truth, which no longer has this control.
         }
 
         $this->refreshPicks();
@@ -95,14 +122,21 @@ trait MakesPicks
 
     public function lockPick(int $slateGameId, bool $locked, LockPick $action): void
     {
-        $slateGame = SlateGame::query()->findOrFail($slateGameId);
-
         try {
+            $slateGame = SlateGame::query()->findOrFail($slateGameId);
             $action->handle(auth()->user(), $slateGame, $locked);
         } catch (PickLocked) {
-            // The wager froze with the game; the toggle renders spent.
+            // Same race as pick(): the toggle rendered live when tapped.
+            $this->say('picks.locked.notice', tone: 'error');
         } catch (PickemParticipationGated) {
-            $this->notice = Voice::line('groups.verify_first');
+            $this->say('groups.verify_first', tone: 'error');
+        } catch (HandleRequired) {
+            $this->say('picks.claim.body', tone: 'error');
+        } catch (NotGroupMember) {
+            $this->say('talk.not_member', tone: 'error');
+        } catch (ModelNotFoundException|InvalidArgumentException) {
+            // Stale card, or a Lock aimed at a game that stopped being
+            // featured — the refresh renders what is actually stakeable.
         }
 
         $this->refreshPicks();
@@ -113,12 +147,39 @@ trait MakesPicks
         $total = (int) ($this->totals[$slateId] ?? 0);
 
         try {
-            $entry = $action->handle(auth()->user(), Slate::query()->findOrFail($slateId), $total);
-            $this->notice = Voice::line('picks.tiebreaker.saved', ['total' => $entry->tiebreaker_total]);
+            $slate = Slate::query()->findOrFail($slateId);
+
+            /*
+             * Validated HERE, not only client-side: min/max on a number
+             * input decorate the picker but do not block a wire:submit,
+             * so 9999 sailed straight into the action. The action's own
+             * plausibility throw stays underneath as the defense against
+             * a caller that skips this.
+             */
+            $max = $slate->tiebreaker_metric?->maxPrediction() ?? 200;
+
+            if ($total < 0 || $total > $max) {
+                $this->addError("totals.{$slateId}", Voice::line('picks.tiebreaker.invalid', ['max' => $max]));
+
+                return;
+            }
+
+            $this->resetErrorBag("totals.{$slateId}");
+
+            $entry = $action->handle(auth()->user(), $slate, $total);
+            $this->say('picks.tiebreaker.saved', ['total' => $entry->tiebreaker_total], tone: 'success');
         } catch (PickLocked) {
-            // Locked with the game; the input renders disabled already.
+            // The same kickoff race as pick() — the input rendered enabled.
+            $this->say('picks.locked.notice', tone: 'error');
         } catch (PickemParticipationGated) {
-            $this->notice = Voice::line('groups.verify_first');
+            $this->say('groups.verify_first', tone: 'error');
+        } catch (HandleRequired) {
+            $this->say('picks.claim.body', tone: 'error');
+        } catch (NotGroupMember) {
+            $this->say('talk.not_member', tone: 'error');
+        } catch (ModelNotFoundException|InvalidArgumentException) {
+            // An unpublished slate or an implausible answer — the refresh
+            // shows the current card and the saved total, if any.
         }
 
         $this->refreshPicks();
@@ -126,7 +187,14 @@ trait MakesPicks
 
     public function claim(): void
     {
-        $this->notice = Voice::line('picks.claim.done', ['handle' => $this->claimHandle()]);
+        $this->say('picks.claim.done', ['handle' => $this->claimHandle()], tone: 'success');
+    }
+
+    /** One door for the notice, so the tone can never drift from the line. */
+    protected function say(string $key, array $replace = [], string $tone = 'neutral'): void
+    {
+        $this->notice = Voice::line($key, $replace);
+        $this->noticeTone = $tone;
     }
 
     /**

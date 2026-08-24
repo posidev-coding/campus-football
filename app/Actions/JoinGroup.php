@@ -4,11 +4,11 @@ namespace App\Actions;
 
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
+use App\Jobs\SpawnSuccessorRoom;
 use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Slate;
 use App\Models\User;
-use Carbon\CarbonImmutable;
 
 /**
  * Take a seat in a group — reached by invite code for private groups and
@@ -28,7 +28,6 @@ class JoinGroup
 {
     public function __construct(
         private GrantWalletEntry $wallet,
-        private SpawnPublicContest $spawn,
     ) {}
 
     /**
@@ -94,7 +93,10 @@ class JoinGroup
     /**
      * The join that fills the room provisions the next one — ONCE, however
      * many joiners land at the cap together: `filled_at` is the claim, and
-     * only the update that stamps it (one row affected) spawns.
+     * only the update that stamps it (one row affected) DISPATCHES. The
+     * spawning itself is SpawnSuccessorRoom's queued work now — it is
+     * multi-hundred-ms of writes, and it used to run inline in the join
+     * request; the hourly pickem:open-lobbies sweep is the belt.
      */
     private function spawnIfFilled(Group $room): void
     {
@@ -111,31 +113,6 @@ class JoinGroup
             return;
         }
 
-        $contest = $room->contests()->first();
-        // By query, not relation access — the room often arrives as a
-        // Livewire prop with no relations loaded.
-        $week = $room->week()->first();
-
-        if ($contest !== null && $week !== null) {
-            /*
-             * The successor inherits the filled room's WHOLE identity:
-             * flavor (and with it the cap and settings) and the CARD — a
-             * filled Week 0 room must respawn on Week 0, not on the split
-             * week's main Saturday.
-             */
-            // value() hydrates through the date cast — take the plain
-            // calendar date and re-pin it in ET, never through a timezone.
-            $saturday = Slate::query()
-                ->where('contest_id', $contest->id)
-                ->where('week_id', $week->id)
-                ->value('saturday')?->format('Y-m-d');
-
-            $this->spawn->handle(
-                $contest->mode,
-                $week,
-                $saturday === null ? null : CarbonImmutable::parse($saturday, config('cfb.timezone'))->startOfDay(),
-                $room->flavorEnum(),
-            );
-        }
+        SpawnSuccessorRoom::dispatch($room->id);
     }
 }

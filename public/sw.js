@@ -8,7 +8,7 @@
  * activate() drops every cache that does not carry the current name.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `cfb-${VERSION}`;
 const OFFLINE_URL = '/offline';
 
@@ -19,7 +19,13 @@ const BYPASS = ['/livewire', '/admin', '/broadcasting', '/webhooks'];
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
-        caches.open(CACHE).then((cache) => cache.addAll([OFFLINE_URL])).then(() => self.skipWaiting())
+        caches.open(CACHE)
+            /* Guarded: an unhandled rejection here fails the WHOLE install —
+             * no service worker and therefore NO PUSH for that visitor until
+             * the next update check. If /offline hiccups, the only thing
+             * worth losing is the offline fallback itself. */
+            .then((cache) => cache.addAll([OFFLINE_URL]).catch(() => {}))
+            .then(() => self.skipWaiting())
     );
 });
 
@@ -27,6 +33,38 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys()
             .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+            /* Stale deploys inside the SAME cache: /build/ files are content-
+             * hashed so an old entry is never re-served by URL, but nothing
+             * ever evicted them — they accumulated across deploys until
+             * quota pressure threatened the whole cache, offline page
+             * included. The manifest names the current build; every /build/
+             * entry it does not name goes. Failing to fetch the manifest
+             * prunes nothing rather than everything. */
+            .then(() => Promise.all([
+                caches.open(CACHE),
+                fetch('/build/manifest.json').then((response) => (response.ok ? response.json() : null)).catch(() => null),
+            ]))
+            .then(([cache, manifest]) => {
+                if (!manifest) return;
+
+                const current = new Set();
+
+                Object.values(manifest).forEach((entry) => {
+                    if (entry.file) current.add('/build/' + entry.file);
+                    (entry.css || []).forEach((file) => current.add('/build/' + file));
+                    (entry.assets || []).forEach((file) => current.add('/build/' + file));
+                });
+
+                return cache.keys().then((requests) => Promise.all(
+                    requests
+                        .filter((request) => {
+                            const path = new URL(request.url).pathname;
+
+                            return path.startsWith('/build/') && !current.has(path);
+                        })
+                        .map((request) => cache.delete(request))
+                ));
+            })
             .then(() => self.clients.claim())
     );
 });
@@ -65,8 +103,10 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    /* Brand artefacts carry ?v= cache-busters, so serving a hit while
-     * revalidating behind it can only be stale for one load. */
+    /* Brand artefacts: the splash URLs carry ?v= cache-busters and the query
+     * is part of the cache KEY, so a rebrand misses the old entry outright
+     * and a hit is never stale. The background revalidate earns its keep on
+     * /favicon.ico — the one un-busted URL this branch serves. */
     if (url.pathname.startsWith('/brand/') || url.pathname === '/favicon.ico') {
         event.respondWith(
             caches.match(request).then((hit) => {

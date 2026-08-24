@@ -4,6 +4,7 @@ namespace App\Services\Espn\Sync;
 
 use App\Models\GameOdd;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 
 /**
  * Betting lines, taken from the scoreboard payload we already fetch.
@@ -32,10 +33,22 @@ class SyncOdds
     /**
      * Store the lines carried on one competition payload.
      *
-     * @return int number of odds rows written or updated
+     * `$existing` is the caller's preloaded row map for a whole scoreboard
+     * payload, keyed `game:provider:phase` — the live tier passes it so a
+     * minute's sync reads odds once instead of three times per provider
+     * block. A caller without one gets this game's own rows loaded here,
+     * one query, same semantics.
+     *
+     * @param  Collection<string, GameOdd>|null  $existing
+     * @return int number of provider blocks written or updated
      */
-    public function fromCompetition(int $gameId, array $competition, bool $gameStarted = false): int
+    public function fromCompetition(int $gameId, array $competition, bool $gameStarted = false, ?Collection $existing = null): int
     {
+        $existing ??= GameOdd::query()
+            ->where('game_id', $gameId)
+            ->get()
+            ->keyBy(fn (GameOdd $odd) => "{$odd->game_id}:{$odd->provider_id}:{$odd->phase}");
+
         $written = 0;
 
         foreach ($competition['odds'] ?? [] as $odds) {
@@ -58,28 +71,55 @@ class SyncOdds
             }
 
             // The first line we ever see is the open, and it is never rewritten.
-            GameOdd::firstOrCreate(
-                ['game_id' => $gameId, 'provider_id' => $providerId, 'phase' => GameOdd::OPEN],
-                $values
-            );
+            $this->put($existing, $gameId, $providerId, GameOdd::OPEN, $values, rewrite: false);
 
-            GameOdd::updateOrCreate(
-                ['game_id' => $gameId, 'provider_id' => $providerId, 'phase' => GameOdd::CURRENT],
-                $values
-            );
+            $this->put($existing, $gameId, $providerId, GameOdd::CURRENT, $values, rewrite: true);
 
             // Once the game is under way the line stops moving; freeze it.
             if ($gameStarted) {
-                GameOdd::updateOrCreate(
-                    ['game_id' => $gameId, 'provider_id' => $providerId, 'phase' => GameOdd::CLOSE],
-                    $values
-                );
+                $this->put($existing, $gameId, $providerId, GameOdd::CLOSE, $values, rewrite: true);
             }
 
             $written++;
         }
 
         return $written;
+    }
+
+    /**
+     * One phase row against the preloaded map — firstOrCreate when
+     * `$rewrite` is false, updateOrCreate when true, without the per-row
+     * SELECT either used to pay. New rows join the map so the rest of the
+     * payload sees them.
+     *
+     * @param  Collection<string, GameOdd>  $existing
+     * @param  array<string, mixed>  $values
+     */
+    private function put(Collection $existing, int $gameId, ?int $providerId, string $phase, array $values, bool $rewrite): void
+    {
+        $key = "{$gameId}:{$providerId}:{$phase}";
+        $row = $existing->get($key);
+
+        if ($row === null) {
+            $existing->put($key, GameOdd::create([
+                'game_id' => $gameId,
+                'provider_id' => $providerId,
+                'phase' => $phase,
+                ...$values,
+            ]));
+
+            return;
+        }
+
+        if (! $rewrite) {
+            return;
+        }
+
+        $row->fill($values);
+
+        if ($row->isDirty()) {
+            $row->save();
+        }
     }
 
     private function moneyline(array $odds, string $side): ?int

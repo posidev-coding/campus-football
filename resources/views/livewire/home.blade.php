@@ -432,7 +432,7 @@ new class extends Component
     {{-- The verify nudge leads the page for an unverified account: it pays
          (the first Beast Latte and XP), and the clock under it is real. The
          component renders nothing for guests and the verified. --}}
-    <x-verify-email-callout />
+    <livewire:verify-callout @email-verified="$refresh" />
 
     {{-- The nudge's send-off: a one-load emerald row in the same slot,
          behind the `verify.moment` flash the verify click set. The server
@@ -734,14 +734,21 @@ new class extends Component
                             {{-- scrollIntoView with no behavior option defers
                                  to the track's CSS scroll-behavior, which is
                                  what motion-safe gates. --}}
+                            {{-- The tap target grew, the ink did not: a 6px
+                                 dot was the smallest control in the app, so
+                                 the BUTTON is 22px of padding around it. --}}
                             <button
                                 type="button"
                                 @click="$refs.track.children[{{ $i }}].scrollIntoView({ inline: 'center', block: 'nearest' })"
-                                :class="active === {{ $i }} ? 'bg-zinc-600 dark:bg-zinc-300' : 'bg-zinc-300 dark:bg-zinc-700'"
-                                class="size-1.5 rounded-full transition-colors"
+                                class="-m-1 p-2"
                                 aria-label="{{ isset($this->glances[$i]) ? 'Show '.$this->glances[$i]['team']->placeName() : 'Add a team' }}"
                                 wire:key="dot-{{ $i }}"
-                            ></button>
+                            >
+                                <span
+                                    :class="active === {{ $i }} ? 'bg-zinc-600 dark:bg-zinc-300' : 'bg-zinc-300 dark:bg-zinc-700'"
+                                    class="block size-1.5 rounded-full transition-colors"
+                                ></span>
+                            </button>
                         @endfor
                     </div>
                 @endif

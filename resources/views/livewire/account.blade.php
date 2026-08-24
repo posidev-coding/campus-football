@@ -579,7 +579,7 @@ new class extends Component
     {{-- The verify nudge, spanning both columns: Account is where the email
          lives, so its absence of a checkmark is most conspicuous here. The
          component renders nothing once verified. --}}
-    <x-verify-email-callout class="lg:col-span-2" />
+    <livewire:verify-callout class="lg:col-span-2" @email-verified="$refresh" />
 
     <flux:card class="flex flex-col gap-3">
         <div class="flex items-center gap-3">
@@ -816,7 +816,7 @@ new class extends Component
                     />
 
                     <div class="flex gap-2">
-                        <flux:button type="submit" size="sm" variant="primary">Confirm</flux:button>
+                        <flux:button type="submit" wire:loading.attr="disabled" wire:target="confirmPhoneCode" size="sm" variant="primary">Confirm</flux:button>
                         <flux:button wire:click="removePhone" size="sm" variant="ghost">Cancel</flux:button>
                     </div>
                 </form>
@@ -834,7 +834,7 @@ new class extends Component
                         autocomplete="tel"
                     />
 
-                    <flux:button type="submit" size="sm" variant="ghost" class="self-start">
+                    <flux:button type="submit" wire:loading.attr="disabled" wire:target="sendPhoneCode" size="sm" variant="ghost" class="self-start">
                         Send me a code
                     </flux:button>
                 </form>
@@ -898,7 +898,7 @@ new class extends Component
                     <flux:button variant="ghost">Cancel</flux:button>
                 </flux:modal.close>
 
-                <flux:button type="submit" variant="primary">Save</flux:button>
+                <flux:button type="submit" wire:loading.attr="disabled" wire:target="saveProfile" variant="primary">Save</flux:button>
             </div>
         </form>
     </flux:modal>
@@ -1013,10 +1013,10 @@ new class extends Component
                      would be worse, not better: they are small and quiet. --}}
                 <flux:button
                     wire:click="move({{ $team->id }}, -1)"
-                    size="xs"
+                    size="sm"
                     square
                     variant="ghost"
-                    class="shrink-0"
+                    class="-my-1 shrink-0"
                     :disabled="$loop->first"
                     aria-label="Move {{ $team->display_name }} up"
                     icon="chevron-up"
@@ -1024,10 +1024,10 @@ new class extends Component
 
                 <flux:button
                     wire:click="move({{ $team->id }}, 1)"
-                    size="xs"
+                    size="sm"
                     square
                     variant="ghost"
-                    class="shrink-0"
+                    class="-my-1 shrink-0"
                     :disabled="$loop->last"
                     aria-label="Move {{ $team->display_name }} down"
                     icon="chevron-down"
@@ -1035,10 +1035,10 @@ new class extends Component
 
                 <flux:button
                     wire:click="unfollow({{ $team->id }})"
-                    size="xs"
+                    size="sm"
                     variant="ghost"
                     icon="x-mark"
-                    class="shrink-0"
+                    class="-my-1 shrink-0"
                     aria-label="Unfollow {{ $team->display_name }}"
                 />
             </div>

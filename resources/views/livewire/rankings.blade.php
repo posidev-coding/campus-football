@@ -318,6 +318,11 @@ new class extends Component
     --}}
     <x-week-scroller :weeks="$this->releaseStrip" :selected="$release" class="-mt-1" />
 
+    <div
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="poll, year, release, division"
+        class="flex flex-col gap-4 motion-safe:transition-opacity"
+    >
     @if ($this->rankings->isNotEmpty())
         {{--
             A table, not twenty-five cards. This is the one League screen whose
@@ -446,4 +451,5 @@ new class extends Component
             <flux:callout.text>Nothing for this poll, season and week.</flux:callout.text>
         </flux:callout>
     @endif
+    </div>
 </div>

@@ -139,8 +139,13 @@ new class extends Component
             </div>
         @endforeach
     @else
-        <p class="rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-            {{ Voice::line('history.empty') }}
-        </p>
+        {{-- A door, not a dead end — history's prime moment (Sunday and
+             Monday) is exactly when the lobby's inventory is emptiest, so
+             the reader with nothing settled gets the walk. --}}
+        <x-empty-state icon="clock" heading="No settled weeks yet" :body="Voice::line('history.empty')">
+            <flux:button :href="route('pickem.lobby')" wire:navigate size="sm" variant="primary">
+                Find a room
+            </flux:button>
+        </x-empty-state>
     @endif
 </div>

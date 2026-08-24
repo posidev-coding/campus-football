@@ -6,18 +6,32 @@
     a card with one destination and a separate "go" affordance is two taps
     drawn as one.
 --}}
+@php
+    // The commit-11 config mirror, never Feature::active() — this renders
+    // on every Home, and the tour walks past it on launch day.
+    $pickemOpen = config('cfb.pickem_open') === true || (bool) auth()->user()?->isAdmin();
+@endphp
+
 <a
     href="{{ route('pickem.home') }}"
     wire:navigate
+    {{-- The tour's room beat spotlights this card — the visible door into
+         a contest. The anchor exists only while the flag is open, which is
+         what makes pre-flip tours step over that stop entirely. --}}
+    @if ($pickemOpen) data-tour="room" @endif
     {{ $attributes->class(['block rounded-xl border border-dashed border-zinc-300 px-4 py-3 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-900']) }}
 >
     <div class="flex items-center gap-2">
         <flux:icon name="check-badge" variant="mini" class="text-zinc-400" />
         <span class="font-semibold">Pick'em</span>
-        <flux:badge size="sm" color="zinc">Coming soon</flux:badge>
+        @if ($pickemOpen)
+            <flux:badge size="sm" color="green">Live</flux:badge>
+        @else
+            <flux:badge size="sm" color="zinc">Coming soon</flux:badge>
+        @endif
     </div>
 
     <p class="pt-1 text-sm text-zinc-500 dark:text-zinc-400">
-        {{ App\Support\Voice::line('home.pickem') }}
+        {{ App\Support\Voice::line($pickemOpen ? 'home.pickem.live' : 'home.pickem') }}
     </p>
 </a>

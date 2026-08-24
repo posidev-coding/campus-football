@@ -70,6 +70,18 @@ new class extends Component
 
     public function create(CreateGroup $action)
     {
+        /*
+         * The idempotency guard: a double-fired Create (the second click
+         * queued before the first response re-rendered) minted TWO groups,
+         * each with its own code. The first fire stamps $groupId; any
+         * repeat just re-shows the code it already made.
+         */
+        if ($this->groupId !== null) {
+            $this->step = 3;
+
+            return;
+        }
+
         $chosen = ContestMode::tryFrom($this->mode);
 
         if ($this->step !== 2 || $chosen === null) {
@@ -113,7 +125,7 @@ new class extends Component
         <div wire:key="create-step-name" class="flex flex-col gap-3">
             <flux:subheading>{{ Voice::line('create.subheading') }}</flux:subheading>
 
-            <x-verify-email-callout :body-key="'verify.picks.body'" :dismissable="false" />
+            <livewire:verify-callout :body-key="'verify.picks.body'" :dismissable="false" @email-verified="$refresh" />
 
             <form wire:submit="toGame" class="flex flex-col gap-3">
                 <flux:input
@@ -122,7 +134,7 @@ new class extends Component
                     maxlength="40"
                     autofocus
                 />
-                <flux:button type="submit" variant="primary" class="self-start">Next</flux:button>
+                <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="toGame" class="self-start">Next</flux:button>
             </form>
         </div>
     @elseif ($step === 2)
@@ -150,7 +162,13 @@ new class extends Component
 
             <div class="flex items-center gap-2">
                 <flux:button wire:click="back" variant="ghost">Back</flux:button>
-                <flux:button wire:click="create" variant="primary" :disabled="$mode === ''">
+                <flux:button
+                    wire:click="create"
+                    wire:loading.attr="disabled"
+                    wire:target="create"
+                    variant="primary"
+                    :disabled="$mode === ''"
+                >
                     Create the group
                 </flux:button>
             </div>
@@ -163,9 +181,12 @@ new class extends Component
                 copied: false,
                 canShare: typeof navigator.share === 'function',
                 copy() {
-                    navigator.clipboard.writeText(@js($this->joinUrl));
-                    this.copied = true;
-                    setTimeout(() => this.copied = false, 2000);
+                    window.cfbClipboard.copy(@js($this->joinUrl)).then((ok) => {
+                        if (! ok) return;
+
+                        this.copied = true;
+                        setTimeout(() => this.copied = false, 2000);
+                    });
                 },
                 share() {
                     navigator.share({

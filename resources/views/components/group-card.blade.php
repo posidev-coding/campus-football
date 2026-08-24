@@ -70,17 +70,14 @@
                 </span>
             @endif
         @elseif ($card['state'] === 'live')
-            <span class="flex items-center gap-1.5 font-semibold text-red-600 dark:text-red-400">
-                <span class="size-1.5 animate-pulse rounded-full bg-current"></span>
-                Live
-            </span>
+            <x-slate-status status="live" />
             <span class="tabular shrink-0 font-semibold">{{ $card['points'] }} pts</span>
         @elseif ($card['state'] === 'prelim')
-            <flux:badge size="sm" color="amber">Preliminary</flux:badge>
+            <x-slate-status status="prelim" />
             <span class="tabular shrink-0 font-semibold">{{ $card['points'] }} pts</span>
         @else
             <span class="flex items-center gap-1.5">
-                <flux:badge size="sm" color="green">Final</flux:badge>
+                <x-slate-status status="final" />
                 @if ($card['won'])
                     <flux:badge size="sm" color="green">Winner</flux:badge>
                 @endif

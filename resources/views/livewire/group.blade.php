@@ -520,9 +520,12 @@ new class extends Component
                     x-data="{
                         copied: false,
                         copy() {
-                            navigator.clipboard.writeText(@js($this->joinUrl));
-                            this.copied = true;
-                            setTimeout(() => this.copied = false, 2000);
+                            window.cfbClipboard.copy(@js($this->joinUrl)).then((ok) => {
+                                if (! ok) return;
+
+                                this.copied = true;
+                                setTimeout(() => this.copied = false, 2000);
+                            });
                         },
                     }"
                 >
@@ -583,26 +586,29 @@ new class extends Component
     @endif
 
     @if (session('status'))
-        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
-            {{ session('status') }}
-        </div>
+        <x-notice tone="success">{{ session('status') }}</x-notice>
     @endif
 
-    @if ($this->notice)
-        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
-            {{ $this->notice }}
-        </div>
-    @endif
+    {{-- The pick notice renders INSIDE the pick surface, beside the tap
+         that produced it — a refusal parked up here was off-screen from
+         the card it was answering, dressed in a green success box. --}}
 
     @error('group')
         <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
     @enderror
 
-    {{-- Only a lobby is readable from outside, so this door is theirs. --}}
+    {{-- Only a lobby is readable from outside, so this door is theirs.
+         The notice renders here too: a member the commissioner removes
+         mid-session loses the pick surface — and with it the surface's
+         own notice slot — on the very render that answers their tap. --}}
     @if (! $this->isMember)
+        @if ($this->notice)
+            <x-notice :tone="$this->noticeTone">{{ $this->notice }}</x-notice>
+        @endif
+
         <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
             <flux:subheading class="min-w-0">{{ Voice::line('groups.lobbies.subheading') }}</flux:subheading>
-            <flux:button wire:click="join" variant="primary" class="shrink-0">Join this lobby</flux:button>
+            <flux:button wire:click="join" wire:loading.attr="disabled" wire:target="join" variant="primary" class="shrink-0">Join this lobby</flux:button>
         </div>
     @endif
 
@@ -613,6 +619,11 @@ new class extends Component
         key-prefix="group-tab"
     />
 
+    <div
+        wire:loading.class="opacity-60 pointer-events-none"
+        wire:target="view"
+        class="flex flex-col gap-5 motion-safe:transition-opacity"
+    >
     @if ($view === 'slate')
         @if ($this->slate?->isPublished())
             {{-- A room's week has a winner, and the room says so out loud. --}}
@@ -681,14 +692,20 @@ new class extends Component
                     copiedCode: false,
                     canShare: typeof navigator.share === 'function',
                     copyLink() {
-                        navigator.clipboard.writeText(@js($this->joinUrl));
-                        this.copiedLink = true;
-                        setTimeout(() => this.copiedLink = false, 2000);
+                        window.cfbClipboard.copy(@js($this->joinUrl)).then((ok) => {
+                            if (! ok) return;
+
+                            this.copiedLink = true;
+                            setTimeout(() => this.copiedLink = false, 2000);
+                        });
                     },
                     copyCode() {
-                        navigator.clipboard.writeText(@js($group->code));
-                        this.copiedCode = true;
-                        setTimeout(() => this.copiedCode = false, 2000);
+                        window.cfbClipboard.copy(@js($group->code)).then((ok) => {
+                            if (! ok) return;
+
+                            this.copiedCode = true;
+                            setTimeout(() => this.copiedCode = false, 2000);
+                        });
                     },
                     share() {
                         navigator.share({
@@ -747,7 +764,7 @@ new class extends Component
                             <flux:button
                                 wire:click="remove({{ $seat->user_id }})"
                                 wire:confirm="Remove {{ $seat->user->first_name }} from the group?"
-                                size="xs"
+                                size="sm"
                                 variant="ghost"
                             >
                                 Remove
@@ -770,12 +787,18 @@ new class extends Component
         @endif
     @endif
 
+    </div>
+
     {{-- The room's talk, at the foot of the room and under every tab — it
          belongs to the GROUP, not to whichever tab you happen to be on. Not
          a fourth tab: x-plate holds three, and a slate's chatter following
          you from Slate to Members is the point rather than a side effect. --}}
     <div class="border-t border-zinc-200 pt-6 dark:border-zinc-800">
-        <livewire:conversation :topic="$group" :key="'talk-group-'.$group->id" />
+        {{-- `lazy`: the thread is the foot of the page, and its queries
+             belonged to the scroll that reaches it, not to first paint.
+             No permalink anchors into a post (verified), so nothing
+             needs the thread hydrated before its skeleton scrolls in. --}}
+        <livewire:conversation :topic="$group" lazy :key="'talk-group-'.$group->id" />
     </div>
 
     {{-- THE PIVOT: one deliberate act per season, consequences said

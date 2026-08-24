@@ -321,7 +321,17 @@ new class extends Component
     #[Computed]
     public function total(): int
     {
-        return $this->filtered()->count();
+        /*
+         * Cached per FILTER TUPLE: the count cannot change between two
+         * loadMore taps on the same filters, but the COUNT over 34,836
+         * athletes re-ran on every one. The tuple key means a filter
+         * change is simply a different key — no invalidation to forget.
+         */
+        return Cache::remember(
+            'players:total:'.md5(implode('|', [$this->q, $this->scope, $this->position, $this->year])),
+            300,
+            fn () => $this->filtered()->count(),
+        );
     }
 
     #[Computed]
@@ -440,7 +450,7 @@ new class extends Component
              margin. Two columns halve that to ~1,600px, which still clears.
              Three would leave ~1,067px and let the observer re-enter before
              the guard settles. --}}
-        <div class="-mt-1 grid gap-1.5 xl:grid-cols-2">
+        <div wire:loading.class="opacity-60 pointer-events-none" wire:target="q, scope, position, sort" class="motion-safe:transition-opacity -mt-1 grid gap-1.5 xl:grid-cols-2">
             @foreach ($this->players as $row)
                 {{-- The season is passed explicitly rather than left to default
                      to `latestSeason`: that would lazy-load a relation per row,
