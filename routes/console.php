@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\FeedRun;
+use App\Models\StoredNotification;
 use App\Models\User;
 use App\Services\Espn\Sync\SyncNews;
 use Illuminate\Console\Scheduling\Schedule as ScheduleClass;
@@ -416,7 +417,9 @@ Schedule::command('cfb:aggregate --year=results')
     ->withoutOverlapping(60);
 
 /*
- * Two prunables ride the same wake. The feed-run ledger keeps a fortnight —
+ * Three prunables ride the same wake. Read inbox rows retire at ninety
+ * days (StoredNotification — unread ones never age out). The feed-run
+ * ledger keeps a fortnight —
  * the live tier writes a row a minute all Saturday, so in season this trims
  * daily; off season the writers are monthly and the trim rides an hour the
  * news sync is already keeping the cluster awake for.
@@ -427,13 +430,13 @@ Schedule::command('cfb:aggregate --year=results')
  * three-day-old `verification_reminded_at`, so the weekly off-season cadence
  * can only ever delay past the promise, never beat it.
  */
-Schedule::command('model:prune', ['--model' => [FeedRun::class, User::class]])
+Schedule::command('model:prune', ['--model' => [FeedRun::class, User::class, StoredNotification::class]])
     ->dailyAt('04:50')
     ->timezone($tz)
     ->when($inSeason)
     ->withoutOverlapping(60);
 
-Schedule::command('model:prune', ['--model' => [FeedRun::class, User::class]])
+Schedule::command('model:prune', ['--model' => [FeedRun::class, User::class, StoredNotification::class]])
     ->weeklyOn(ScheduleClass::SUNDAY, '07:10')
     ->timezone($tz)
     ->when($offSeason)

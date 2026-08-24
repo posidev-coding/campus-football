@@ -6,7 +6,11 @@ use App\Console\Concerns\TracksFeedRun;
 use App\Models\Season;
 use App\Services\CfbCalendar;
 use App\Services\Stats\AggregateAthleteStats;
+use App\Support\Scope;
+use App\Support\Stats\LeaderQuery;
+use App\Support\Stats\StatCatalog;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Roll box scores up into season totals.
@@ -71,6 +75,24 @@ class AggregateStatsCommand extends Command
 
             return $total;
         });
+
+        /*
+         * Warm the combo the Stats screen opens on — every derived board,
+         * both sides, FBS, at the screen's own limit. The aggregate just
+         * invalidated reality, and its cache entries live a day precisely
+         * because THIS is the only writer; forgetting then re-asking here
+         * is what hands the first morning reader a hot screen.
+         */
+        foreach ($years as $year) {
+            foreach (array_keys(StatCatalog::sideLabels()) as $side) {
+                foreach (StatCatalog::groups($side, team: false) as $group) {
+                    foreach (StatCatalog::boardsFor($side, $group, team: false) as $board) {
+                        Cache::forget("leaders:{$year}:fbs:{$board['category']}:{$board['stat']}:5");
+                        LeaderQuery::players($board, $year, Scope::FBS, limit: 5);
+                    }
+                }
+            }
+        }
 
         $this->newLine();
         $this->line(sprintf(

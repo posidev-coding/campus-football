@@ -321,7 +321,17 @@ new class extends Component
     #[Computed]
     public function total(): int
     {
-        return $this->filtered()->count();
+        /*
+         * Cached per FILTER TUPLE: the count cannot change between two
+         * loadMore taps on the same filters, but the COUNT over 34,836
+         * athletes re-ran on every one. The tuple key means a filter
+         * change is simply a different key — no invalidation to forget.
+         */
+        return Cache::remember(
+            'players:total:'.md5(implode('|', [$this->q, $this->scope, $this->position, $this->year])),
+            300,
+            fn () => $this->filtered()->count(),
+        );
     }
 
     #[Computed]

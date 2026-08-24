@@ -58,15 +58,32 @@ new class extends Component
 
     public string $leagueDate = '';
 
+    /** What every render needs loaded — mount() and hydrate() share it. */
+    private const GAME_RELATIONS = [
+        'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color',
+        'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color',
+        'venue',
+        'week:id,name',
+        'season:id,year',
+    ];
+
+    /**
+     * Livewire re-hydrates `$game` WITHOUT relations on every request —
+     * ModelSynth stores class + key — so each poll tick paid four SILENT
+     * lazy loads with unconstrained columns. Reloaded here explicitly:
+     * the same thin set mount() loads, once per request, where the cost
+     * is visible. (The group screen keeps relations in computeds; this
+     * template never reads a relation directly, so the shared-constant
+     * reload is that rule's lighter equivalent.)
+     */
+    public function hydrate(): void
+    {
+        $this->game->loadMissing(self::GAME_RELATIONS);
+    }
+
     public function mount(Game $game): void
     {
-        $this->game = $game->load([
-            'homeTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color',
-            'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color',
-            'venue',
-            'week:id,name',
-            'season:id,year',
-        ]);
+        $this->game = $game->load(self::GAME_RELATIONS);
 
         $this->leagueDate = $this->game->kickoff_at
             ->setTimezone(config('cfb.timezone'))

@@ -5,6 +5,7 @@ use App\Jobs\SendSlateResult;
 use App\Models\GroupMember;
 use App\Models\Slate;
 use App\Models\SlateEntry;
+use App\Models\StoredNotification;
 use App\Models\User;
 use App\Notifications\SlateSettled;
 use App\Support\Navigation;
@@ -222,5 +223,23 @@ describe('the unread dot', function () {
         $indexes = collect(Schema::getIndexes('notifications'))->pluck('name');
 
         expect($indexes)->toContain('notifications_reader_unread_index');
+    });
+});
+
+describe('retirement', function () {
+    it('prunes READ rows after ninety days, and never the unread', function () {
+        // "You won Week 3" matters in October, not next August — but an
+        // UNREAD result is still news to its reader, whatever its age.
+        $user = User::factory()->create();
+
+        inboxRow($user, ['read_at' => now()->subDays(91), 'created_at' => now()->subDays(120)]);
+        inboxRow($user, ['created_at' => now()->subDays(120)]);
+        inboxRow($user, ['read_at' => now()]);
+
+        $this->artisan('model:prune', ['--model' => [StoredNotification::class]])
+            ->assertSuccessful();
+
+        expect($user->notifications()->count())->toBe(2)
+            ->and($user->unreadNotifications()->count())->toBe(1);
     });
 });
