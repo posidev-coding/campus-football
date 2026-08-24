@@ -16,6 +16,7 @@ use App\Notifications\PickReminderNotification;
 use App\Support\PickReminders;
 use App\Support\Voice;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Notification;
 use NotificationChannels\WebPush\WebPushChannel;
 
@@ -354,6 +355,15 @@ it('carries mail and push, and holds SMS behind its switch', function () {
     // Opting out of the pick'em list drops mail and nothing else.
     $member->forceFill(['pickem_notify_opt_in' => false])->save();
     expect($notification->via($member->fresh()))->toBe([WebPushChannel::class]);
+});
+
+it('drains behind the backfill worker, off the user-visible default queue', function () {
+    Bus::fake();
+    reminderSlate(members: 1);
+
+    $this->artisan('pickem:remind', ['--wave' => PickReminders::WAVE_REMIND])->assertSuccessful();
+
+    Bus::assertBatched(fn ($batch) => $batch->queue() === 'backfill');
 });
 
 it('sends the reminder in-job, never double-queued', function () {

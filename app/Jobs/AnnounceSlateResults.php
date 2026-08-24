@@ -72,6 +72,9 @@ class AnnounceSlateResults implements ShouldQueue
         // One bad address must not cancel the rest of the room's results.
         Bus::batch($jobs)
             ->name("Slate results ({$this->slateId})")
+            // Bulk mail drains behind the backfill worker, never on
+            // `default` where FetchAthleteGameLog holds a visible spinner.
+            ->onQueue('backfill')
             ->allowFailures()
             ->dispatch();
     }

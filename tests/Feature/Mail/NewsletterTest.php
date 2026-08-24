@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Notifications\WeeklyNewsletter;
 use App\Support\WeeklyDigest;
 use Illuminate\Mail\Message;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
@@ -258,6 +259,17 @@ describe('the daily budget', function () {
 
         expect($sent)->toBe(1)
             ->and($job->released)->toBe(1);
+    });
+
+    it('drains behind the backfill worker, off the user-visible default queue', function () {
+        // `default` carries FetchAthleteGameLog, which a reader is actively
+        // watching a spinner for — a 300-email drain must never sit ahead of it.
+        Bus::fake();
+        User::factory()->create(['newsletter_opt_in' => true, 'email_verified_at' => now()]);
+
+        $this->artisan('cfb:newsletter')->assertSuccessful();
+
+        Bus::assertBatched(fn ($batch) => $batch->queue() === 'backfill');
     });
 
     it('gives every sender the attempts a release needs to survive', function () {

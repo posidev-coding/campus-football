@@ -54,6 +54,9 @@ class SendNewsletterCommand extends Command
                 $recipients->map(fn (int $id) => new SendWeeklyNewsletter($id))->all()
             )
                 ->name('Weekly newsletter')
+                // Bulk mail drains behind the backfill worker, never on
+                // `default` where FetchAthleteGameLog holds a visible spinner.
+                ->onQueue('backfill')
                 // One bad address must not cancel the other 299.
                 ->allowFailures()
                 ->dispatch();

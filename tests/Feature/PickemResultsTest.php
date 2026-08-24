@@ -14,6 +14,7 @@ use App\Notifications\SlateMissed;
 use App\Notifications\SlateSettled;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Notification;
 
 /*
@@ -262,6 +263,18 @@ it('splits a tied week and says so', function () {
     Notification::assertSentTo($first, SlateSettled::class,
         fn (SlateSettled $n) => $n->result['won'] === true
             && $n->result['others'] === '@'.$second->handle);
+});
+
+it('fans the room out behind the backfill worker', function () {
+    [$slate] = resultsSlate();
+    settleResults($slate);
+
+    // Re-run the announcement alone with the bus faked to see the batch.
+    $slate->fresh()->forceFill(['results_announced_at' => null])->save();
+    Bus::fake();
+    (new AnnounceSlateResults($slate->id))->handle();
+
+    Bus::assertBatched(fn ($batch) => $batch->queue() === 'backfill');
 });
 
 it('sends the result in-job, never double-queued', function () {
