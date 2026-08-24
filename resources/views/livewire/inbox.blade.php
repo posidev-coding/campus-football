@@ -94,7 +94,9 @@ new class extends Component
                 <button
                     type="button"
                     wire:click="markAllRead"
-                    class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400"
+                    wire:loading.attr="disabled"
+                    wire:target="markAllRead"
+                    class="text-micro shrink-0 font-medium text-blue-600 hover:underline disabled:opacity-50 dark:text-blue-400"
                 >
                     Mark all read
                 </button>

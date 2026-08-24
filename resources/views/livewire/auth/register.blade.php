@@ -171,7 +171,7 @@ new #[Layout('components.layouts.auth')] class extends Component
             @endforeach
         </flux:radio.group>
 
-        <flux:button variant="primary" type="submit" class="w-full">
+        <flux:button variant="primary" type="submit" wire:loading.attr="disabled" wire:target="register" class="w-full">
             Create account
         </flux:button>
     </form>

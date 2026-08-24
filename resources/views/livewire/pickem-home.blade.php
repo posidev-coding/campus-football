@@ -476,7 +476,7 @@ new class extends Component
                 <form wire:submit="join" class="flex flex-col gap-3">
                     {{-- The format rule stays plain: 8 characters, told straight. --}}
                     <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />
-                    <flux:button type="submit" variant="primary" class="self-start">Join the group</flux:button>
+                    <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="join" class="self-start">Join the group</flux:button>
                 </form>
             </div>
         </div>

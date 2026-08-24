@@ -48,7 +48,7 @@ new #[Layout('components.layouts.auth')] class extends Component
             viewable
         />
 
-        <flux:button variant="primary" type="submit" class="w-full">
+        <flux:button variant="primary" type="submit" wire:loading.attr="disabled" wire:target="confirmPassword" class="w-full">
             Confirm
         </flux:button>
     </form>

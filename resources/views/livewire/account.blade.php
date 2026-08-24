@@ -816,7 +816,7 @@ new class extends Component
                     />
 
                     <div class="flex gap-2">
-                        <flux:button type="submit" size="sm" variant="primary">Confirm</flux:button>
+                        <flux:button type="submit" wire:loading.attr="disabled" wire:target="confirmPhoneCode" size="sm" variant="primary">Confirm</flux:button>
                         <flux:button wire:click="removePhone" size="sm" variant="ghost">Cancel</flux:button>
                     </div>
                 </form>
@@ -834,7 +834,7 @@ new class extends Component
                         autocomplete="tel"
                     />
 
-                    <flux:button type="submit" size="sm" variant="ghost" class="self-start">
+                    <flux:button type="submit" wire:loading.attr="disabled" wire:target="sendPhoneCode" size="sm" variant="ghost" class="self-start">
                         Send me a code
                     </flux:button>
                 </form>
@@ -898,7 +898,7 @@ new class extends Component
                     <flux:button variant="ghost">Cancel</flux:button>
                 </flux:modal.close>
 
-                <flux:button type="submit" variant="primary">Save</flux:button>
+                <flux:button type="submit" wire:loading.attr="disabled" wire:target="saveProfile" variant="primary">Save</flux:button>
             </div>
         </form>
     </flux:modal>

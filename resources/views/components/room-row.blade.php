@@ -49,6 +49,8 @@
 
     <flux:button
         wire:click="{{ $action }}({{ $room->id }})"
+        wire:loading.attr="disabled"
+        wire:target="{{ $action }}({{ $room->id }})"
         size="sm"
         variant="primary"
         class="pointer-events-auto relative z-10 shrink-0"

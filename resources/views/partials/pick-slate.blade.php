@@ -205,7 +205,7 @@
                     autocomplete="off"
                     x-mask:dynamic="$input.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20)"
                 />
-                <flux:button type="submit" variant="primary" class="self-start">Claim it</flux:button>
+                <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="claim" class="self-start">Claim it</flux:button>
             </form>
         </div>
     @endif
@@ -263,7 +263,7 @@
                         class="max-w-48"
                         :disabled="$tiebreakerLocked"
                     />
-                    <flux:button type="submit" size="sm" :disabled="$tiebreakerLocked">Save</flux:button>
+                    <flux:button type="submit" size="sm" wire:loading.attr="disabled" wire:target="saveTotal" :disabled="$tiebreakerLocked">Save</flux:button>
                 </form>
 
                 {{-- Server-side refusal: the input's min/max decorate the

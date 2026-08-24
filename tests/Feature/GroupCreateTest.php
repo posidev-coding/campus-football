@@ -42,6 +42,26 @@ it('walks name, game, invite — and creates exactly one contest', function () {
         ->and($group->memberships()->where('user_id', $admin->id)->exists())->toBeTrue();
 });
 
+it('mints ONE group however many times Create fires', function () {
+    /*
+     * The double-submit case: a second click queued before the first
+     * response re-rendered used to mint a second group with its own code.
+     * The disabled-while-loading button covers the common case; this
+     * server-side guard covers the rest — the repeat just re-shows the
+     * code the first fire made.
+     */
+    $wizard = Livewire::actingAs(pickemAdmin())->test('group-create')
+        ->set('name', 'Double Tap')
+        ->call('toGame')
+        ->call('choose', 'tiered')
+        ->call('create')
+        ->call('create')
+        ->assertSet('step', 3);
+
+    expect(Group::where('name', 'Double Tap')->count())->toBe(1)
+        ->and($wizard->get('code'))->toBe(Group::where('name', 'Double Tap')->sole()->code);
+});
+
 it('shows the code huge at the invite moment, with the road to the clubhouse', function () {
     $admin = pickemAdmin();
 

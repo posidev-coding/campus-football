@@ -306,7 +306,7 @@ new class extends Component
                         autocomplete="off"
                         x-mask:dynamic="$input.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20)"
                     />
-                    <flux:button type="submit" variant="primary" class="self-start">Claim it</flux:button>
+                    <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="claim" class="self-start">Claim it</flux:button>
                 </form>
             </div>
         @else
@@ -325,7 +325,7 @@ new class extends Component
                     <p class="min-w-0 text-micro text-zinc-500 dark:text-zinc-400">
                         {{ Voice::line('talk.house_rule') }}
                     </p>
-                    <flux:button type="submit" size="sm" variant="primary" class="shrink-0">
+                    <flux:button type="submit" size="sm" variant="primary" wire:loading.attr="disabled" wire:target="post" class="shrink-0">
                         Post
                     </flux:button>
                 </div>

@@ -605,7 +605,7 @@ new class extends Component
 
         <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
             <flux:subheading class="min-w-0">{{ Voice::line('groups.lobbies.subheading') }}</flux:subheading>
-            <flux:button wire:click="join" variant="primary" class="shrink-0">Join this lobby</flux:button>
+            <flux:button wire:click="join" wire:loading.attr="disabled" wire:target="join" variant="primary" class="shrink-0">Join this lobby</flux:button>
         </div>
     @endif
 

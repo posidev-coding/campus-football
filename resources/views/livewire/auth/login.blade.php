@@ -108,7 +108,7 @@ new #[Layout('components.layouts.auth')] class extends Component
 
         <flux:checkbox wire:model="remember" label="Keep me logged in" />
 
-        <flux:button variant="primary" type="submit" class="w-full">
+        <flux:button variant="primary" type="submit" wire:loading.attr="disabled" wire:target="login" class="w-full">
             Log in
         </flux:button>
     </form>
