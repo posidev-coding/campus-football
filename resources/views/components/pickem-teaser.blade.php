@@ -15,6 +15,10 @@
 <a
     href="{{ route('pickem.home') }}"
     wire:navigate
+    {{-- The tour's room beat spotlights this card — the visible door into
+         a contest. The anchor exists only while the flag is open, which is
+         what makes pre-flip tours step over that stop entirely. --}}
+    @if ($pickemOpen) data-tour="room" @endif
     {{ $attributes->class(['block rounded-xl border border-dashed border-zinc-300 px-4 py-3 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-900']) }}
 >
     <div class="flex items-center gap-2">

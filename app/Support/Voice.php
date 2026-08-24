@@ -334,6 +334,25 @@ class Voice
         ],
 
         /*
+         * The room beat — the stop that actually SEATS somebody. For an
+         * in-season pilot the first-week retention hinge is being in a
+         * contest, not having followed a team, and before this no stop,
+         * CTA or nudge produced a room join. The stop's anchor renders
+         * only while the flag is open, so pre-flip tours step over it.
+         */
+        'tour.room.heading' => [
+            'pg' => 'Get in a room',
+            'pg13' => 'Get yourself in a room',
+            'r' => 'You need a room',
+        ],
+
+        'tour.room.body' => [
+            'pg' => "Picks are better with company. This card is the door — join your group's room or grab an open seat in the lobby before Saturday.",
+            'pg13' => "Picks mean nothing without witnesses. This card is the door — your group's room, or an open lobby seat before Saturday.",
+            'r' => "Picks without witnesses are just opinions. Through this card: your group's room or an open lobby seat. Saturday won't wait.",
+        ],
+
+        /*
          * The currency stays out of drinking vocabulary on purpose — Beast
          * Lattes are the app's currency, full stop, and the copy never says
          * otherwise. See components/wallet-chips.blade.php for the strategy.
@@ -380,9 +399,9 @@ class Voice
         ],
 
         'tour.account.body' => [
-            'pg' => 'Account is where you manage your teams, toggle dark mode, and set how much personality the app brings.',
-            'pg13' => "Account is where you manage & reorder your teams, toggle dark mode, and set how much grief we're allowed to give.",
-            'r' => 'Account is where you manage and reorder your teams, toggle dark mode, and crank the grief dial as far as it goes.',
+            'pg' => 'Account is where you manage your teams, catch up on your notifications, toggle dark mode, and set how much personality the app brings.',
+            'pg13' => "Account is where you manage & reorder your teams, catch up on your inbox, toggle dark mode, and set how much grief we're allowed to give.",
+            'r' => 'Account is where you manage and reorder your teams, read what the inbox has on you, toggle dark mode, and crank the grief dial as far as it goes.',
         ],
 
         /*
@@ -610,10 +629,12 @@ class Voice
             'r' => 'Miss a kickoff once, never again',
         ],
 
+        // Sells BOTH jobs: kickoff alerts, and the Phase 6 retention
+        // feature — the nudge before a card locks with picks still owed.
         'push.banner.body' => [
-            'pg' => 'Turn on alerts and your teams will find you.',
-            'pg13' => 'Turn them on and your teams find you first.',
-            'r' => 'Turn them on. Your teams will come find you.',
+            'pg' => 'Turn on alerts: your teams find you at kickoff, and your picks get a nudge before they lock.',
+            'pg13' => 'Turn them on — your teams find you at kickoff, and your picks get a warning before they lock.',
+            'r' => 'Turn them on. Kickoffs find you, and your picks get exactly one warning before they lock without you.',
         ],
 
         'push.banner.confirmed' => [

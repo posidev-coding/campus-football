@@ -79,7 +79,13 @@ new class extends Component
      step's highlight without anything erroring. GuidedTourTest sweeps the
      source for parity. --}}
 @php
-    $steps = ['glance', 'search', 'scores', 'picks', 'wallet', 'league', 'account', 'install'];
+    /*
+     * 'room' rides in BOTH lists unconditionally so the parity sweep holds;
+     * its anchor (the pick'em teaser card) only renders `data-tour="room"`
+     * while the flag is open, and a stop with no visible target steps over
+     * itself — which is exactly how pre-flip tours skip the beat.
+     */
+    $steps = ['glance', 'search', 'scores', 'picks', 'room', 'wallet', 'league', 'account', 'install'];
 @endphp
 
 {{-- `contents`: a static wrapper would claim a slot in Home's gap-6 column.
@@ -90,7 +96,7 @@ new class extends Component
     x-data="{
         open: false,
         step: 0,
-        keys: ['glance', 'search', 'scores', 'picks', 'wallet', 'league', 'account', 'install'],
+        keys: ['glance', 'search', 'scores', 'picks', 'room', 'wallet', 'league', 'account', 'install'],
         box: null,
         centered: false,
         cardTop: 0,
@@ -356,6 +362,24 @@ new class extends Component
                         {{ App\Support\Voice::line('tour.wallet.seeded', ['xp' => App\Actions\GrantWalletEntry::FIRST_TEAM_XP]) }}
                     @endif
                 </flux:subheading>
+
+                @if ($key === 'room')
+                    {{-- The one stop with a DOOR: seating the reader in a
+                         contest is the first-week retention hinge, so the
+                         card offers the walk, not just the words. Stamp
+                         complete on the way out — a reader this button
+                         convinces leaves the tour through it. --}}
+                    <flux:button
+                        :href="route('pickem.home')"
+                        wire:navigate
+                        x-on:click="$wire.complete()"
+                        variant="primary"
+                        size="sm"
+                        class="mt-1 self-start"
+                    >
+                        Take me there
+                    </flux:button>
+                @endif
 
                 @if ($key === 'install')
                     {{-- The detected browser's steps land right in the card:

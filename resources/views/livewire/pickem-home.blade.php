@@ -488,6 +488,10 @@ new class extends Component
         <a
             href="{{ route('pickem.lobby') }}"
             wire:navigate
+            {{-- The tour's `room` key, on the screen its CTA lands on: the
+                 spotlight uses whichever anchor is visible, the multi-
+                 surface pattern the area tabs already ride. --}}
+            data-tour="room"
             class="flex items-center justify-between gap-3 rounded-xl border border-dashed border-zinc-300 px-4 py-3 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-900"
         >
             <span class="min-w-0">

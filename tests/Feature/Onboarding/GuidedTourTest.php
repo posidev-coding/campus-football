@@ -361,7 +361,7 @@ describe('the closing pitch', function () {
 
 describe('the voice', function () {
     it('speaks every step in every register, escalating rather than repeating', function () {
-        foreach (['glance', 'search', 'scores', 'picks', 'wallet', 'league', 'account', 'install'] as $step) {
+        foreach (['glance', 'search', 'scores', 'picks', 'room', 'wallet', 'league', 'account', 'install'] as $step) {
             foreach (['heading', 'body'] as $part) {
                 $key = "tour.{$step}.{$part}";
 
@@ -384,6 +384,34 @@ describe('the voice', function () {
                 ->and($r)->not->toBe('')
                 ->and($r)->not->toBe($pg);
         }
+    });
+
+    it('offers the room beat only when the flag is open, with a door in the card', function () {
+        /*
+         * The room stop's gate is its ANCHOR: 'room' rides both step lists
+         * unconditionally (the parity sweep holds), the teaser card wears
+         * data-tour="room" only while the flag is open, and a stop with no
+         * visible target steps over itself. Seating the reader in a
+         * contest is the first-week retention hinge — the card carries the
+         * walk, not just the words.
+         */
+        config()->set('cfb.pickem_open', true);
+
+        $reader = freshlyOnboarded();
+        $this->actingAs($reader)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee('data-tour="room"', escape: false)
+            ->assertSee(Voice::line('tour.room.heading', for: $reader))
+            ->assertSee('Take me there');
+
+        // Flag closed: no anchor on Home, so the beat self-skips.
+        config()->set('cfb.pickem_open', false);
+
+        $this->actingAs(freshlyOnboarded())
+            ->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('data-tour="room"', escape: false);
     });
 
     it('walks launch day to a picks stop that says it is live', function () {

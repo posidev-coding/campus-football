@@ -370,6 +370,32 @@ describe('the device draft', function () {
         expect($html)->toContain('save($event)');
     });
 
+    it('remembers which step a returning visitor was on — never past the door', function () {
+        /*
+         * mount() resets to 'name', so a returning visitor re-clicked
+         * through screens they had already answered. Only 'rating' is ever
+         * restored: 'name' is the default, and 'credentials'/'team' stay
+         * excluded by construction — a device draft must never deep-link
+         * past registration.
+         */
+        $html = Livewire::test('onboarding')->html();
+
+        expect($html)
+            ->toContain("draft.step === 'rating'")
+            ->toContain("['name', 'rating'].includes(value)")
+            ->toContain('saveStep');
+    });
+
+    it('frames the rating step the way the register screen does', function () {
+        // Same words on both doors: the label names the dial, the
+        // description carries the promise, and the plain hint lowers the
+        // stakes of choosing.
+        Livewire::test('onboarding')->set('step', 'rating')
+            ->assertSee('Trash talk')
+            ->assertSee('This sets how hard.')
+            ->assertSee('You can change this any time on Account.');
+    });
+
     it('gives every step its own key so one step cannot morph into another', function () {
         /*
          * Without these, Livewire reuses step one's input for step two — same
