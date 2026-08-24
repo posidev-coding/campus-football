@@ -101,15 +101,59 @@ class CfbCalendar
     }
 
     /**
+     * Per-request memo for the null-$at hot paths — season() and week()
+     * were the only uncached methods in a cached class, and the Lobby
+     * paid ~10-12 identical queries per render for it. STATIC, so one
+     * Pest process leaks it between tests; tests/Pest.php flushes it in
+     * beforeEach (the TeamGlance precedent), which is also what keeps
+     * travelTo() honest inside a single test.
+     *
+     * @var array<string, mixed>
+     */
+    private static array $memo = [];
+
+    public static function flush(): void
+    {
+        self::$memo = [];
+    }
+
+    /**
      * The season we are inside, or the one we are heading into.
      *
      * Falls back to the most recent season on record so this never returns null
      * for a database that has any seasons at all.
+     *
+     * The null-$at answer is memoized per request and cached 900s keyed by
+     * the DAY — as ATTRIBUTES, never a model (the Redis round-trip rule).
+     * An explicit $at stays uncached: callers asking about arbitrary
+     * instants are backfills, not renders.
      */
     public function season(?CarbonImmutable $at = null): ?Season
     {
-        $at ??= $this->now();
+        if ($at !== null) {
+            return $this->uncachedSeason($at);
+        }
 
+        $at = $this->now();
+        $key = 'season:'.$at->format('Y-m-d');
+
+        if (array_key_exists($key, self::$memo)) {
+            return self::$memo[$key];
+        }
+
+        $attributes = Cache::remember(
+            'calendar:season:'.$at->format('Y-m-d'),
+            self::CACHE_TTL,
+            fn () => $this->uncachedSeason($at)?->getAttributes(),
+        );
+
+        return self::$memo[$key] = $attributes === null
+            ? null
+            : (new Season)->newFromBuilder($attributes);
+    }
+
+    private function uncachedSeason(CarbonImmutable $at): ?Season
+    {
         return $this->seasonContaining($at)
             ?? $this->nextSeason($at)
             ?? Season::orderByDesc('year')->orderByDesc('type')->first();
@@ -157,7 +201,30 @@ class CfbCalendar
      */
     public function week(?CarbonImmutable $at = null): ?Week
     {
-        $at ??= $this->now();
+        if ($at !== null) {
+            return $this->uncachedWeek($at);
+        }
+
+        $at = $this->now();
+        $key = 'week:'.$at->format('Y-m-d');
+
+        if (array_key_exists($key, self::$memo)) {
+            return self::$memo[$key];
+        }
+
+        $attributes = Cache::remember(
+            'calendar:week:'.$at->format('Y-m-d'),
+            self::CACHE_TTL,
+            fn () => $this->uncachedWeek($at)?->getAttributes(),
+        );
+
+        return self::$memo[$key] = $attributes === null
+            ? null
+            : (new Week)->newFromBuilder($attributes);
+    }
+
+    private function uncachedWeek(CarbonImmutable $at): ?Week
+    {
         $season = $this->seasonContaining($at);
 
         if ($season === null) {

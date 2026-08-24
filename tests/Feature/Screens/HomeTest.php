@@ -14,6 +14,7 @@ use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\User;
 use App\Models\Week;
+use App\Services\CfbCalendar;
 use App\Support\Brand;
 use App\Support\TeamGlance;
 use App\Support\Voice;
@@ -400,6 +401,7 @@ describe('the team swiper', function () {
             // the lookup the first one paid for and read one query cheaper,
             // which looks exactly like the regression this test is for.
             Brand::flush();
+            CfbCalendar::flush();
             DB::enableQueryLog();
             DB::flushQueryLog();
 
