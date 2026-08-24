@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ClientErrorController;
 use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\SmsStatusWebhookController;
 use App\Http\Controllers\SmsWebhookController;
@@ -310,6 +311,20 @@ Route::middleware(['auth'])->group(function () {
     Route::post('push-subscriptions', [PushSubscriptionController::class, 'store'])->name('push.store');
     Route::delete('push-subscriptions', [PushSubscriptionController::class, 'destroy'])->name('push.destroy');
 });
+
+/*
+ * Where the browser reports its own JavaScript errors.
+ *
+ * Open to guests, because a broken PUBLIC page is the report worth having
+ * most — Home, a game, the lobby and the invite landing all render without a
+ * session, and no server-side monitor sees any of it. Bounded three ways: this
+ * throttle, the Redis dedupe behind the controller, and a declared width on
+ * every column it writes. Thirty a minute is far above a real page and far
+ * below a loop worth worrying about.
+ */
+Route::post('client-errors', ClientErrorController::class)
+    ->middleware('throttle:30,1')
+    ->name('client-errors.store');
 
 /*
  * One-click unsubscribe, and deliberately OUTSIDE the auth group.

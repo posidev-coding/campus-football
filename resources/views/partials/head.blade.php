@@ -11,6 +11,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
+{{-- Where app.js posts a JavaScript error. A meta rather than a hardcoded path
+     in the bundle, so `route()` stays the one place the URL is written — and
+     so removing this line is a kill switch that needs no deploy of the JS. --}}
+<meta name="cfb-error-endpoint" content="{{ route('client-errors.store') }}">
+
 {{-- Kept in step with the chosen appearance by the sync element at the top of
      <body>. Hardcoded dark, a phone's address bar stayed black after switching
      to Light — which the appearance control made visible.
