@@ -20,6 +20,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Actions/PostToConversation.php,app/Actions/DeleteConversationPost.php,resources/views/livewire/conversation.blade.php | .ai/rules/livewire.md |
 | app/Models/**, database/migrations/**, resources/views/** | .ai/rules/migrations-views.md |
 | app/Providers/** | .ai/rules/providers.md |
+| app/Support/**, app/Services/** | .ai/rules/services.md |
 | app/Actions/GrantWalletEntry.php,app/Actions/EnterFilmRoom.php,app/Support/RankLadder.php,app/Support/PickemPreflight.php | .ai/rules/support-support.md |
 | app/Support/**, app/Actions/**, app/Services/CfbCalendar.php | .ai/rules/support.md |
 | tests/** | .ai/rules/tests.md |
