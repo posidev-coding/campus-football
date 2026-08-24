@@ -24,6 +24,13 @@ use Illuminate\Support\Facades\Schedule;
 | every job timeout, so long syncs were released and re-run while still
 | executing — duplicate concurrent runs hammering the same endpoints.
 |
+| Every mutex carries an EXPIRY sized as a small multiple of its cadence —
+| 5 for the minute/five-minute tasks, 10 for the live summary sweep, 30 for
+| hourlies, 60 for the daily-and-slower block. The 24-hour default survives
+| only on `cfb:sync --only=teams` (~165s, the longest inline run): anywhere
+| else, a worker OOM'd mid-run would leave an unexpired mutex that froze
+| scoreboard, grading and alerts for the rest of the day.
+|
 */
 
 $tz = config('cfb.timezone');
@@ -66,7 +73,7 @@ Schedule::command('cfb:games --tier=live')
     ->timezone($tz)
     ->between('11:00', '03:00')
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(5);
 
 /*
  * Live box scores ride the same window as the live tier. The command's first
@@ -79,7 +86,7 @@ Schedule::command('cfb:summaries:live')
     ->timezone($tz)
     ->between('11:00', '03:00')
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(10);
 
 // Tier 2 — the current week on game days, catching finals and late corrections
 // once the live window closes.
@@ -88,7 +95,7 @@ Schedule::command('cfb:games --tier=current')
     ->timezone($tz)
     ->when($inSeason)
     ->days([ScheduleClass::THURSDAY, ScheduleClass::FRIDAY, ScheduleClass::SATURDAY, ScheduleClass::SUNDAY])
-    ->withoutOverlapping();
+    ->withoutOverlapping(30);
 
 // Tier 3 — last week plus this week. Two requests, nightly. Picks up stat
 // corrections and rescheduled games without touching the rest of the season.
@@ -96,7 +103,7 @@ Schedule::command('cfb:games --tier=recent')
     ->dailyAt('04:00')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * Rankings. Polls drop Sunday afternoon and Tuesday evening.
@@ -112,7 +119,7 @@ Schedule::command('cfb:sync --only=rankings-current --year=current')
     ->at('19:00')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * Predictors cost one request per game, so they are scoped to upcoming
@@ -128,7 +135,7 @@ foreach ([[ScheduleClass::WEDNESDAY, '06:00'], [ScheduleClass::THURSDAY, '06:00'
         ->weeklyOn($day, $at)
         ->timezone($tz)
         ->when($inSeason)
-        ->withoutOverlapping();
+        ->withoutOverlapping(60);
 }
 
 // Standings follow the games, so they run after the nightly game pass. The
@@ -137,19 +144,19 @@ Schedule::command('cfb:sync --only=standings --year=results')
     ->dailyAt('04:30')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 Schedule::command('cfb:sync --only=compute --year=results')
     ->dailyAt('04:40')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 Schedule::command('cfb:sync --only=reconcile --year=results')
     ->dailyAt('04:45')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 // Reference data barely moves. Conference membership can still change mid-year
 // when ESPN corrects its tree, so this is weekly rather than annual — but never
@@ -158,13 +165,13 @@ Schedule::command('cfb:sync --only=conferences --year=current')
     ->weeklyOn(ScheduleClass::TUESDAY, '03:00')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 Schedule::command('cfb:sync --only=conferences --year=current')
     ->monthlyOn(1, '03:00')
     ->timezone($tz)
     ->when($offSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * Teams is the longest inline command in the schedule — 800 requests and
@@ -189,13 +196,13 @@ Schedule::command('cfb:games --tier=season --year=current')
     ->weeklyOn(ScheduleClass::TUESDAY, '05:00')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 Schedule::command('cfb:games --tier=season --year=current')
     ->monthlyOn(1, '05:00')
     ->timezone($tz)
     ->when($offSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * The player layer. Rosters change slowly and cost one request per team, so
@@ -206,7 +213,7 @@ Schedule::command('cfb:players --only=rosters --year=current')
     ->weeklyOn(ScheduleClass::TUESDAY, '06:00')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 // The portal and signing classes still move rosters in the spring, just not
 // weekly. This command only QUEUES a job per team, so it is cheap either way.
@@ -214,13 +221,13 @@ Schedule::command('cfb:players --only=rosters --year=current')
     ->monthlyOn(1, '06:00')
     ->timezone($tz)
     ->when($offSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 Schedule::command('cfb:players --only=stats --year=results')
     ->weeklyOn(ScheduleClass::TUESDAY, '06:40')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * Coach records. `--current` touches only each coach's LATEST season — career
@@ -234,14 +241,14 @@ Schedule::command('cfb:coaches --current')
     ->weeklyOn(ScheduleClass::TUESDAY, '07:00')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 Schedule::command('cfb:sync --only=injuries --year=current')
     ->days([ScheduleClass::THURSDAY, ScheduleClass::FRIDAY])
     ->at('12:00')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * Recruiting. A whole class is SIX requests now — the collection serves 1,000
@@ -263,7 +270,7 @@ foreach (['current', 'next'] as $class) {
     Schedule::command("cfb:sync --only=recruiting --year={$class}")
         ->weeklyOn(ScheduleClass::WEDNESDAY, '03:00')
         ->timezone($tz)
-        ->withoutOverlapping();
+        ->withoutOverlapping(60);
 }
 
 /*
@@ -284,13 +291,13 @@ Schedule::command('cfb:sync --only=news')
     ->hourly()
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(30);
 
 Schedule::command('cfb:sync --only=news')
     ->everySixHours()
     ->timezone($tz)
     ->when($offSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(30);
 
 /*
  * Per-team news, but only for teams somebody actually follows. 136 teams is too
@@ -302,14 +309,14 @@ Schedule::call(fn () => app(SyncNews::class)->followed())
     ->timezone($tz)
     ->name('cfb:news:followed')
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 Schedule::call(fn () => app(SyncNews::class)->followed())
     ->dailyAt('07:00')
     ->timezone($tz)
     ->name('cfb:news:followed:offseason')
     ->when($offSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * The weekly email.
@@ -335,7 +342,7 @@ Schedule::call(fn () => app(SyncNews::class)->followed())
 Schedule::command('cfb:newsletter')
     ->weeklyOn(ScheduleClass::TUESDAY, '08:00')
     ->timezone($tz)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * Box scores for games that have finished.
@@ -360,7 +367,7 @@ Schedule::command('cfb:summaries --missing --limit=150')
     ->dailyAt('05:00')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * National leaders: one request for 1,300 leaderboard rows, the cheapest feed
@@ -371,13 +378,13 @@ Schedule::command('cfb:sync --only=leaders --year=results')
     ->dailyAt('05:30')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 Schedule::command('cfb:sync --only=athletes')
     ->dailyAt('05:40')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * Season totals, derived from box scores we already hold.
@@ -406,7 +413,7 @@ Schedule::command('cfb:aggregate --year=results')
     ->dailyAt('05:15')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * Two prunables ride the same wake. The feed-run ledger keeps a fortnight —
@@ -424,13 +431,13 @@ Schedule::command('model:prune', ['--model' => [FeedRun::class, User::class]])
     ->dailyAt('04:50')
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 Schedule::command('model:prune', ['--model' => [FeedRun::class, User::class]])
     ->weeklyOn(ScheduleClass::SUNDAY, '07:10')
     ->timezone($tz)
     ->when($offSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * The self-destruct warning, three days ahead of the prune above. Ungated
@@ -442,7 +449,7 @@ Schedule::command('model:prune', ['--model' => [FeedRun::class, User::class]])
 Schedule::command('cfb:verification-reminders')
     ->dailyAt('07:00')
     ->timezone($tz)
-    ->withoutOverlapping();
+    ->withoutOverlapping(60);
 
 /*
  * Kickoff alerts, swept every five minutes across a fifteen-minute
@@ -457,7 +464,7 @@ Schedule::command('cfb:kickoff-alerts')
     ->timezone($tz)
     ->between('11:00', '03:00')
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(5);
 
 /*
  * The pick'em deadline sweep: past the week's slate deadline, any contest
@@ -471,7 +478,7 @@ Schedule::command('pickem:publish-slates')
     ->hourly()
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(30);
 
 /*
  * "Your picks are due" — a day out from first kickoff, then ninety minutes
@@ -492,7 +499,7 @@ Schedule::command('pickem:remind')
     ->timezone($tz)
     ->between('08:00', '23:45')
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(30);
 
 /*
  * The settle sweep: rescue grading for games that went final without their
@@ -504,7 +511,7 @@ Schedule::command('pickem:settle')
     ->hourly()
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(30);
 
 /*
  * The lobby's shelf: at least one open public room per available mode for
@@ -515,4 +522,4 @@ Schedule::command('pickem:open-lobbies')
     ->hourly()
     ->timezone($tz)
     ->when($inSeason)
-    ->withoutOverlapping();
+    ->withoutOverlapping(30);
