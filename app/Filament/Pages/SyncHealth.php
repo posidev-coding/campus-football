@@ -19,6 +19,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\Artisan;
+use UnitEnum;
 
 /**
  * The operational front door: is the schedule healthy, is the data whole, and
@@ -40,6 +41,8 @@ class SyncHealth extends Page
     protected string $view = 'filament.pages.sync-health';
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedHeart;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
 
     protected static ?string $navigationLabel = 'Sync Health';
 

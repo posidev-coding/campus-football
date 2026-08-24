@@ -19,6 +19,7 @@ use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Concerns\RestrictsFileUploadsToSchemaComponents;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use UnitEnum;
 
 /**
  * The app's own brand, editable without a deploy.
@@ -47,6 +48,10 @@ class Branding extends Page
     protected string $view = 'filament.pages.branding';
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedSwatch;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Configuration';
+
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $navigationLabel = 'App Branding';
 
