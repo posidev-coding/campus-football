@@ -77,6 +77,31 @@ class FeedRun extends Model
         ]);
     }
 
+    /**
+     * A failed QUEUE JOB, recorded in the same ledger the scheduled commands
+     * write to.
+     *
+     * It lands here rather than in a table of its own because on Laravel Cloud
+     * the managed queues keep `failed_jobs` to themselves — the app cannot read
+     * its own failures at all, so a job that dies is invisible to every screen
+     * we own. Pulse's Exceptions recorder sees the throw, but not the job
+     * record, the attempt count or the queue it died on.
+     *
+     * Shaped like a run that started and failed in the same instant: a job has
+     * no records, spends no ESPN requests of its own, and the duration is the
+     * worker's business, not the ledger's.
+     */
+    public static function jobFailed(string $job, string $error): self
+    {
+        return static::create([
+            'command' => mb_substr('job:'.class_basename($job), 0, 60),
+            'status' => self::FAILED,
+            'error' => mb_substr($error, 0, 2000),
+            'started_at' => now(),
+            'finished_at' => now(),
+        ]);
+    }
+
     /** The most recent run of one command, whatever its outcome. */
     public static function latestFor(string $command): ?self
     {

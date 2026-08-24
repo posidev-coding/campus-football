@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Events\GameScoreChanged;
 use App\Events\GameWentFinal;
 use App\Jobs\GradeGamePicks;
+use App\Models\FeedRun;
 use App\Models\Game;
 use App\Models\Group;
 use App\Models\Team;
@@ -15,11 +16,15 @@ use App\Services\Nil\NilNewsProvider;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Pennant\Feature;
+use Throwable;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -80,6 +85,34 @@ class AppServiceProvider extends ServiceProvider
             'group' => Group::class,
             User::class => User::class,
         ]);
+
+        /*
+         * A failed queue job, into the same ledger the scheduled commands
+         * write to.
+         *
+         * Hand-built even though Pulse is now installed, because Pulse's
+         * Exceptions recorder sees the THROW and Laravel Cloud's managed
+         * queues keep the failed JOB record entirely to themselves — the app
+         * cannot read `failed_jobs` there at all. Without this row, a job that
+         * dies in production is invisible to every screen we own; with it, the
+         * Sync Health failures table shows it beside the commands.
+         *
+         * A closure rather than an app/Listeners class, following the
+         * event-driven scoring above: no new base folder, and the write itself
+         * is FeedRun's, where the rest of the ledger's API lives.
+         *
+         * Swallowing is deliberate and the ONLY place in the app it is. This
+         * runs inside the handler for something that already failed; a throw
+         * here would replace the real exception with a bookkeeping one and
+         * lose the actual cause.
+         */
+        Queue::failing(function (JobFailed $event): void {
+            try {
+                FeedRun::jobFailed($event->job->resolveName(), $event->exception->getMessage());
+            } catch (Throwable $e) {
+                Log::warning('Could not record a queue failure.', ['exception' => $e->getMessage()]);
+            }
+        });
 
         /*
          * Pulse's dashboard, on the same key everything else admin-only uses.

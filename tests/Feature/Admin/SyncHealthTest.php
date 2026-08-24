@@ -163,13 +163,20 @@ describe('the Sync Health page', function () {
             ->assertSee('budget 240/min');
     });
 
-    it('says plainly that failed QUEUE jobs live in the Cloud dashboard', function () {
-        // The ledger covers scheduled COMMANDS; managed queues keep their own
-        // failures, and a panel implying otherwise sends you looking in the
-        // wrong place during an incident.
+    it('lists a failed queue job beside the failed commands', function () {
+        // The ledger used to cover scheduled COMMANDS only, and said so —
+        // Cloud's managed queues keep `failed_jobs` to themselves, so a job
+        // that died was invisible to every screen we own. AppServiceProvider's
+        // Queue::failing hook writes the row now; the widget must show it, or
+        // the sensor exists and nobody can see it.
+        FeedRun::jobFailed(FetchGameSummary::class, 'ESPN returned 403 for game 401628515');
+
         Livewire::actingAs($this->admin)
             ->test(RecentSyncFailures::class)
             ->assertOk()
+            ->assertSee('job:FetchGameSummary')
+            ->assertSee('ESPN returned 403')
+            // ...and still points at the dashboard that holds the payload.
             ->assertSee('Laravel Cloud');
     });
 
