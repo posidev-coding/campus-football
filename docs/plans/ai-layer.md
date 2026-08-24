@@ -453,6 +453,64 @@ cluster up for the whole sleep timeout).
 
 ---
 
+## Phase 1b — The Game Quality snapshot ✅ **Landed 2026-08-24**
+
+**The one piece of this plan that had a real deadline**, and it was never
+"future work" — rehearsal is Aug 29 and the first public Saturday is Sep 5.
+Every slate published before this existed is gone as calibration data
+permanently, because the data it captures cannot be reconstructed afterwards.
+See the Future-work section below for the measurement: **4,847 completed games
+across 2021–2025 carry zero `matchup_quality` and zero odds of any kind**, so
+three of the score's five components — 85 of its 100 points — have no history
+to be tuned against and never will.
+
+**It was not "a few lines in `PublishSlate`."** It is four pieces, because the
+extraction has to come first:
+
+**1. `slate_games.quality` + `slate_games.quality_parts`.** `decimal(5,2)`
+nullable and `json` nullable, both after `tier`; cast `float` and `array`.
+Nullable means "could not be scored" and never 0.
+
+**2. `GameQualityScore::components()` and `::total()`.** `for()` becomes the two
+composed, so both `SuggestSlate` callers are untouched. `components()` returns
+the RAW inputs (`matchup_quality`, `spread`, `open_spread`, `home_rank`,
+`away_rank`, `conference_game`) beside the weighted parts, under a `'v' => 1`
+token — a re-fit is solving for the weights, so it needs the feature, not the
+product.
+
+> ⚠️ **The bug this fixed on the way past.** The original had no `else` branch,
+> so a missing `matchup_quality` silently contributed 0 and a missing open
+> silently contributed 0. Persisting that would teach a future re-fit that
+> unrated games are *bad* games. They are **unmeasured**, which is not the same
+> thing. A part is now `null` when its signal is ABSENT and `0.0` only when it
+> is present-and-zero — `total()` skips the nulls, so the live score is
+> unchanged.
+
+**3. The write in `PublishSlate::force()`** — inside the existing transaction,
+after validation passes and before the status flip, with
+`games.game.odds` + `games.game.predictor` eager-loaded first. **Not**
+`SuggestSlate::AFFINITY_BONUS`: the base score is a per-game fact, affinity is a
+per-group opinion, and folding it in would make one matchup score differently on
+two rooms' slates.
+
+**4. Tests, broken back.** No predictor yields `weighted.matchup === null` (not
+`0.0`) with the score still summing the rest; no usable current odd yields BOTH
+columns null; re-publishing never rewrites the snapshot.
+
+Two traps, both verified:
+
+- **`PublishSlate` only did `loadMissing('contest')`.** Measured without the
+  eager load, a 6-game slate costs **25 queries against 13 for 2** — three extra
+  reads per row, inside a transaction holding a write lock; a 15-game slate would
+  be ~45. **No feature test can see this**: `preventLazyLoading`'s per-instance
+  flag is false under test, so it resolves silently and N+1s only in production.
+  Guarded by a query-count comparison plus a source sweep.
+- **`components()` can legitimately return null at publish.** It reads the LIVE
+  current-phase odd, while the slate's line was frozen into `slate_games.spread`
+  earlier — possibly days earlier. The null is recorded honestly. Tightness and
+  movement stay recomputable later from `spread` / `market_spread` /
+  `odds_provider` / `odds_captured_at`, which the row already stores.
+
 ## Phase 2 — The workbook and the Kanban
 
 **2.1 `workbook_items`** — `key` (unique, stable slug), `title`, `body`,
@@ -892,10 +950,11 @@ expensive kind of error.
 
 ---
 
-## Future work — calibrating the Game Quality Score
+## Future work — re-fitting the Game Quality Score
 
-Not a phase. Recorded because the investigation that produced it should not have
-to be repeated, and because **one piece of it expires**.
+Not a phase, and no longer urgent: the piece that expired is **Phase 1b**, which
+has landed. Recorded because the investigation that produced it should not have
+to be repeated.
 
 ### The finding
 
@@ -927,14 +986,9 @@ identical inputs, cannot be audited when someone asks why a game was a Dive, and
 not `0.0`, for a game that cannot be scored. It would be a differently-shaped
 guess over the same sparse inputs, with strictly worse properties.
 
-### ⏰ The part that expires — do this before the first public Saturday
-
-**Snapshot the score and all five of its components onto `slate_games` at
-publish time.** Every published slate then becomes a labeled row. It costs
-nothing, needs no AI, and is a few lines in `PublishSlate`.
-
-**Slates published before this exists are gone as calibration data forever.**
-Same argument as Phase 1's telemetry, same deadline.
+The finding above is long-term work with no deadline, with ONE exception, and
+that exception is no longer filed here: it is **Phase 1b**, above. Everything
+that remains in this section is the part that can wait.
 
 ### Then, once a season of labels exists
 
@@ -1011,7 +1065,7 @@ worktree is committed and merged**; nothing here waits for Sep 1 or Sep 5.
 | --- | --- | --- |
 | 0 | Phase 0 — Console setup | None — no code at all |
 | 1 | **Phase 1 — sensors** | None — net-new files |
-| 1b | **⏰ Game Quality snapshot** (Future-work section) | `PublishSlate` — a few lines, **expires Sep 5** |
+| 1b | **Phase 1b — Game Quality snapshot** ✅ landed | `PublishSlate` + a `GameQualityScore` extraction — four pieces, not a few lines |
 | 2 | **Phase 2 — Filament theme + workbook** | None — panel only, excluded from sweeps |
 | 3 | **Phase 3 — advisor routine** | None — new routes only |
 | 4 | Phase 6 — budget guard | None |
@@ -1026,9 +1080,11 @@ sensors are already recording. Phase 2's Filament theme also unblocks the admin
 UI requests that poking will generate, and the workbook is the right intake for
 them.
 
-**Item 1b is the one thing here with a real deadline.** It is a few lines in
-`PublishSlate` and needs no AI, but slates published before it exists are gone as
-calibration data permanently. Do it alongside Phase 1.
+**Item 1b was the one thing here with a real deadline** — rehearsal Aug 29,
+first public Saturday Sep 5 — and it has landed. It needed no AI, but it was
+four pieces rather than a few lines: the components/total extraction had to come
+first, and it turned up a live null-handling bug on the way. Slates published
+before it existed are gone as calibration data permanently.
 
 **Phase 7 (GameDay) is ordered ahead of recaps and Search answers** because it is
 the highest visible payoff per line of code, it touches only a new Home card

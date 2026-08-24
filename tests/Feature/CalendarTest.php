@@ -475,10 +475,19 @@ it('speaks kickoff in exactly three named styles, ET, null for TBD', function ()
     // The consolidation of five drifted hand-rolled formats — "7:30 PM"
     // sat beside "7:30pm" on sibling screens. Null means TBD and the
     // caller says so; a substituted time is the v3 default-writing sin.
-    $game = Game::factory()->make(['kickoff_at' => '2026-09-05 23:30:00']);
+    // The season is PINNED, though nothing here reads it: make() still
+    // resolves the BelongsTo factory, and SeasonFactory draws a year from a
+    // twelve-wide range that the beforeEach above has already spent 2025 and
+    // 2026 of. Left unpinned, this collided on the (year, type) unique about
+    // one run in six — the data-model rule's "pin or share a season", and the
+    // one-in-twelve failure it names.
+    $game = Game::factory()->make([
+        'kickoff_at' => '2026-09-05 23:30:00',
+        'season_id' => $this->regular->id,
+    ]);
 
     expect($game->kickoffLabel('time'))->toBe('7:30pm')
         ->and($game->kickoffLabel('day'))->toBe('Sat 7:30pm')
         ->and($game->kickoffLabel('date'))->toBe('Sat, Sep 5 · 7:30pm')
-        ->and(Game::factory()->make(['kickoff_at' => null])->kickoffLabel('day'))->toBeNull();
+        ->and(Game::factory()->make(['kickoff_at' => null, 'season_id' => $this->regular->id])->kickoffLabel('day'))->toBeNull();
 });

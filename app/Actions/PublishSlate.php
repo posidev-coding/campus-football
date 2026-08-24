@@ -6,6 +6,7 @@ use App\Exceptions\PickemParticipationGated;
 use App\Models\Slate;
 use App\Models\User;
 use App\Services\Contests\BearPicks;
+use App\Services\Contests\GameQualityScore;
 use App\Support\SlateAuthority;
 use Illuminate\Support\Facades\DB;
 
@@ -22,7 +23,9 @@ use Illuminate\Support\Facades\DB;
  *
  * Returns the violation keys, [] meaning "published". Re-publishing a
  * published slate is a quiet no-op: the button pressed twice must not
- * scold, and a committed slate never changes.
+ * scold, and a committed slate never changes — which is also what keeps the
+ * quality snapshot below a record of the moment of publish rather than of
+ * the last time somebody pressed the button.
  */
 class PublishSlate
 {
@@ -72,9 +75,52 @@ class PublishSlate
                 $this->bear->seed($slate);
             }
 
+            $this->snapshotQuality($slate);
+
             $slate->update(['status' => Slate::PUBLISHED, 'published_at' => now()]);
 
             return [];
         });
+    }
+
+    /**
+     * Freeze the quality score and its inputs onto every row.
+     *
+     * The only reason this happens at publish rather than in a later batch:
+     * three of the five components ride ESPN feeds that are current-window
+     * only, so a slate published without this is gone as calibration data
+     * permanently. Nothing reads these columns — they are the labeled rows a
+     * future re-fit of the weights will need, and there is no other way to get
+     * them. See the migration for the measurement behind that.
+     *
+     * NOT SuggestSlate::AFFINITY_BONUS. The base score is a per-game fact and
+     * affinity is a per-group opinion; folding the opinion in would make the
+     * same game score differently on two rooms' slates and poison the feature.
+     *
+     * Null is recorded honestly and is a legitimate outcome here, not a
+     * failure: components() reads the LIVE current-phase odd, while this
+     * slate's line was frozen into `spread` when the game was added — possibly
+     * days earlier, and by a book that has since moved on. Tightness and
+     * movement stay recomputable from the frozen columns either way.
+     */
+    private function snapshotQuality(Slate $slate): void
+    {
+        /*
+         * The eager load is load-bearing, and no feature test can prove it:
+         * Model::preventLazyLoading()'s per-instance flag is false under test,
+         * so a missing one resolves silently here and N+1s only in production
+         * — inside a transaction, once per published slate. Fifteen games
+         * would be ~45 extra queries holding a write lock.
+         */
+        $slate->loadMissing(['games.game.odds', 'games.game.predictor']);
+
+        foreach ($slate->games as $slateGame) {
+            $components = GameQualityScore::components($slateGame->game);
+
+            $slateGame->update([
+                'quality' => $components === null ? null : GameQualityScore::total($components),
+                'quality_parts' => $components,
+            ]);
+        }
     }
 }
