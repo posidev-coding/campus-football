@@ -9,6 +9,18 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['coach_id', 'team_id', 'season_year', 'experience', 'wins', 'losses', 'ties'])]
 class CoachTeamSeason extends Model
 {
+    /** Same one-door denormalization as AthleteTeamSeason::booted(). */
+    protected static function booted(): void
+    {
+        static::saved(function (self $row) {
+            Coach::whereKey($row->coach_id)
+                ->where(fn ($q) => $q
+                    ->whereNull('latest_season_year')
+                    ->orWhere('latest_season_year', '<', $row->season_year))
+                ->update(['latest_season_year' => $row->season_year]);
+        });
+    }
+
     public function coach(): BelongsTo
     {
         return $this->belongsTo(Coach::class);
