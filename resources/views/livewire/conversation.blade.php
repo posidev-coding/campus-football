@@ -230,9 +230,9 @@ new class extends Component
     </div>
 
     @if ($notice)
-        <p class="rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
-            {{ $notice }}
-        </p>
+        {{-- Neutral on purpose: the room's refusals are house rules, not
+             alarms. The shared component brings the live region with it. --}}
+        <x-notice>{{ $notice }}</x-notice>
     @endif
 
     <div class="flex flex-col gap-3">

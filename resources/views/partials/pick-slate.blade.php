@@ -159,6 +159,13 @@
         @endif
     </div>
 
+    {{-- The answer to the reader's last tap, in the surface where they
+         tapped — never parked at the top of the page. Tone rides with the
+         line, so a refusal can no longer wear a success box. --}}
+    @if ($interactive && $this->notice)
+        <x-notice :tone="$this->noticeTone">{{ $this->notice }}</x-notice>
+    @endif
+
     {{--
         The Bear's table talk — Woodshed slates only. His theme is the
         instruction (who he rides), said plainly; the tagline under it is

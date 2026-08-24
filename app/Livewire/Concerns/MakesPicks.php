@@ -40,6 +40,9 @@ trait MakesPicks
 
     public ?string $notice = null;
 
+    /** What kind of answer the notice is — x-notice's tone prop. */
+    public string $noticeTone = 'neutral';
+
     /**
      * The published slates whose games this screen lets the viewer pick.
      *
@@ -100,15 +103,15 @@ trait MakesPicks
             // A race at kickoff: the row rendered OPEN when they tapped,
             // so silence reads as a dead button. Say it, then the refresh
             // below renders the row locked.
-            $this->notice = Voice::line('picks.locked.notice');
+            $this->say('picks.locked.notice', tone: 'error');
         } catch (PickemParticipationGated) {
-            $this->notice = Voice::line('groups.verify_first');
+            $this->say('groups.verify_first', tone: 'error');
         } catch (HandleRequired) {
-            $this->notice = Voice::line('picks.claim.body');
+            $this->say('picks.claim.body', tone: 'error');
         } catch (NotGroupMember) {
             // A commissioner removed them mid-session; the next tap must
             // say so, not 500.
-            $this->notice = Voice::line('talk.not_member');
+            $this->say('talk.not_member', tone: 'error');
         } catch (ModelNotFoundException|InvalidArgumentException) {
             // A stale card after an unpublish or rebuild — the refresh
             // renders the current truth, which no longer has this control.
@@ -124,13 +127,13 @@ trait MakesPicks
             $action->handle(auth()->user(), $slateGame, $locked);
         } catch (PickLocked) {
             // Same race as pick(): the toggle rendered live when tapped.
-            $this->notice = Voice::line('picks.locked.notice');
+            $this->say('picks.locked.notice', tone: 'error');
         } catch (PickemParticipationGated) {
-            $this->notice = Voice::line('groups.verify_first');
+            $this->say('groups.verify_first', tone: 'error');
         } catch (HandleRequired) {
-            $this->notice = Voice::line('picks.claim.body');
+            $this->say('picks.claim.body', tone: 'error');
         } catch (NotGroupMember) {
-            $this->notice = Voice::line('talk.not_member');
+            $this->say('talk.not_member', tone: 'error');
         } catch (ModelNotFoundException|InvalidArgumentException) {
             // Stale card, or a Lock aimed at a game that stopped being
             // featured — the refresh renders what is actually stakeable.
@@ -164,16 +167,16 @@ trait MakesPicks
             $this->resetErrorBag("totals.{$slateId}");
 
             $entry = $action->handle(auth()->user(), $slate, $total);
-            $this->notice = Voice::line('picks.tiebreaker.saved', ['total' => $entry->tiebreaker_total]);
+            $this->say('picks.tiebreaker.saved', ['total' => $entry->tiebreaker_total], tone: 'success');
         } catch (PickLocked) {
             // The same kickoff race as pick() — the input rendered enabled.
-            $this->notice = Voice::line('picks.locked.notice');
+            $this->say('picks.locked.notice', tone: 'error');
         } catch (PickemParticipationGated) {
-            $this->notice = Voice::line('groups.verify_first');
+            $this->say('groups.verify_first', tone: 'error');
         } catch (HandleRequired) {
-            $this->notice = Voice::line('picks.claim.body');
+            $this->say('picks.claim.body', tone: 'error');
         } catch (NotGroupMember) {
-            $this->notice = Voice::line('talk.not_member');
+            $this->say('talk.not_member', tone: 'error');
         } catch (ModelNotFoundException|InvalidArgumentException) {
             // An unpublished slate or an implausible answer — the refresh
             // shows the current card and the saved total, if any.
@@ -184,7 +187,14 @@ trait MakesPicks
 
     public function claim(): void
     {
-        $this->notice = Voice::line('picks.claim.done', ['handle' => $this->claimHandle()]);
+        $this->say('picks.claim.done', ['handle' => $this->claimHandle()], tone: 'success');
+    }
+
+    /** One door for the notice, so the tone can never drift from the line. */
+    protected function say(string $key, array $replace = [], string $tone = 'neutral'): void
+    {
+        $this->notice = Voice::line($key, $replace);
+        $this->noticeTone = $tone;
     }
 
     /**

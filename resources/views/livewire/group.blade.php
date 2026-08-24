@@ -583,23 +583,26 @@ new class extends Component
     @endif
 
     @if (session('status'))
-        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
-            {{ session('status') }}
-        </div>
+        <x-notice tone="success">{{ session('status') }}</x-notice>
     @endif
 
-    @if ($this->notice)
-        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
-            {{ $this->notice }}
-        </div>
-    @endif
+    {{-- The pick notice renders INSIDE the pick surface, beside the tap
+         that produced it — a refusal parked up here was off-screen from
+         the card it was answering, dressed in a green success box. --}}
 
     @error('group')
         <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
     @enderror
 
-    {{-- Only a lobby is readable from outside, so this door is theirs. --}}
+    {{-- Only a lobby is readable from outside, so this door is theirs.
+         The notice renders here too: a member the commissioner removes
+         mid-session loses the pick surface — and with it the surface's
+         own notice slot — on the very render that answers their tap. --}}
     @if (! $this->isMember)
+        @if ($this->notice)
+            <x-notice :tone="$this->noticeTone">{{ $this->notice }}</x-notice>
+        @endif
+
         <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
             <flux:subheading class="min-w-0">{{ Voice::line('groups.lobbies.subheading') }}</flux:subheading>
             <flux:button wire:click="join" variant="primary" class="shrink-0">Join this lobby</flux:button>

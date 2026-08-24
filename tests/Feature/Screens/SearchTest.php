@@ -235,6 +235,18 @@ describe('the shared surfaces', function () {
         Livewire::test('search-panel')->set('q', 'G')->assertSee('Type at least two characters');
     });
 
+    it('announces changing results to a screen reader', function () {
+        // The results replace each other as the reader types; aria-live
+        // reads the change out without moving focus off the input. This
+        // was the app's first live region — keep it on the shared partial
+        // so all three search surfaces inherit it.
+        Livewire::test('search-panel')->set('q', 'Georgia')
+            ->assertSeeHtml('aria-live="polite"');
+
+        Livewire::test('search-page')->set('q', 'Georgia')
+            ->assertSeeHtml('aria-live="polite"');
+    });
+
     it('never calls ESPN', function () {
         Http::fake();
 

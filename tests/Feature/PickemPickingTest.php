@@ -286,6 +286,34 @@ describe('the tiebreaker validates', function () {
     });
 });
 
+describe('the notice speaks where the tap happened', function () {
+    it('wears the error tone for a refusal, in a live region inside the surface', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+        $slateGame = $slate->games()->with('game')->first();
+
+        $surface = Livewire::actingAs($member)->test('group', ['group' => $group]);
+
+        GroupMember::query()->where(['group_id' => $group->id, 'user_id' => $member->id])->delete();
+
+        // The refusal renders in x-notice: aria-live for the reader who
+        // cannot see the row change, red because it is a refusal — the
+        // retired bug dressed refusals in a green success box.
+        $surface->call('pick', $slateGame->id, $slateGame->game->home_team_id)
+            ->assertSeeHtml('aria-live="polite"')
+            ->assertSeeHtml('border-red-200');
+    });
+
+    it('wears the success tone for a landed tiebreaker', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+
+        Livewire::actingAs($member)->test('group', ['group' => $group])
+            ->set('totals.'.$slate->id, 45)
+            ->call('saveTotal', $slate->id)
+            ->assertSeeHtml('border-green-200')
+            ->assertSee(Voice::line('picks.tiebreaker.saved', ['total' => 45], for: $member));
+    });
+});
+
 describe('the surface absorbs every refusal', function () {
     /*
      * Everything MakePick and EnterTiebreaker can throw is either a notice
