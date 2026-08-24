@@ -1128,16 +1128,23 @@ Per `CLAUDE.md`, in order:
 ## Where this plan lives
 
 This file — `docs/plans/ai-layer.md` — **is** the durable copy, written
-2026-08-24. It was intended to stay uncommitted until launch hardening merged,
-but the concurrent hardening session swept it into commits `ac2c194` and
-`3d18153` on the `launch-hardening` branch — presumably via `git add -A`. No
-harm done: it is a documentation file with no runtime effect, and it now rides
-in with that branch. Worth knowing only if those commits are being reviewed
-individually.
+2026-08-24 and living on the **`ai-layer`** branch, cut from the tip of
+`launch-hardening` so the implementation starts against current code rather than
+a stale `main`. Once hardening merges, this branch's diff against `main` collapses
+to this one file.
+
+It briefly rode on `launch-hardening` by accident: a concurrent session's
+`git add -A` swept it into commits `ac2c194` and `3d18153`. It was removed there
+in `6086242`, so it will not reach `main` under the hardening heading. It remains
+in that branch's *history* — rewriting commits already pushed to origin was not
+worth the tidiness.
 
 `docs/` is the established home for long-form project knowledge; the `plans/`
 subdirectory keeps a working plan distinct from the reference documents around
 it, which describe what is already true rather than what is intended.
+
+**Build the work on this branch**, phase by phase, and keep this file updated as
+decisions land — it is a working document, not a record.
 
 **To resume in a fresh session:** read this file top to bottom, then start at
 **Phase 0**. Nothing in it needs re-deciding.
