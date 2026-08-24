@@ -162,9 +162,15 @@ describe('the store (inside the flag)', function () {
             ->assertDontSee('The flash card: 5 games, in and out.');
     });
 
-    it('dashes out what this Saturday could not seat, in the preflight\'s words', function () {
-        // Eight lined games: Shotgun downsizes and sells, the fifteen-game
-        // modes cannot publish at all.
+    it('folds what this Saturday could not seat into one line — Conference keeps its names', function () {
+        /*
+         * Eight lined games: Shotgun downsizes and sells, the fifteen-game
+         * modes cannot publish at all. Thirteen catalog shapes with three
+         * stocked used to render TEN dashed rows — a gray wall, and the
+         * first thing an invited user saw. The unstocked shapes now fold
+         * into one muted line per shelf; the Conference shelf keeps named
+         * rows because its entries are identities a fan scans for.
+         */
         [$season, $week] = pickemSeasonWeek();
 
         foreach (range(1, 8) as $i) {
@@ -175,9 +181,17 @@ describe('the store (inside the flag)', function () {
 
         app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
 
-        Livewire::actingAs(pickemAdmin())->test('lobby')
+        $admin = pickemAdmin();
+
+        Livewire::actingAs($admin)->test('lobby')
             ->assertSee('Hail Mary')
-            ->assertSee('Triple Option')
+            // The House shelf's closed shapes, as one sentence...
+            ->assertSee(Voice::line('lobby.shelf.also', ['list' => 'Triple Option · The Woodshed'], for: $admin))
+            // ...never as their own dashed rows.
+            ->assertDontSeeHtml('closed-tiered-standard')
+            // The Conference shelf keeps the named rows, in the
+            // preflight's words.
+            ->assertSee('SEC Showdown')
             ->assertSee('Not enough games this Saturday');
     });
 

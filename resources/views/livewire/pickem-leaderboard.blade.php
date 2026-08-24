@@ -128,8 +128,12 @@ new class extends Component
             </table>
         </div>
     @else
-        <p class="rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-            {{ Voice::line('leaderboard.empty') }}
-        </p>
+        {{-- A door, not a dead end: the reader with no standings is
+             exactly the reader a lobby seat would fix. --}}
+        <x-empty-state icon="trophy" heading="No standings yet" :body="Voice::line('leaderboard.empty')">
+            <flux:button :href="route('pickem.lobby')" wire:navigate size="sm" variant="primary">
+                Find a room
+            </flux:button>
+        </x-empty-state>
     @endif
 </div>

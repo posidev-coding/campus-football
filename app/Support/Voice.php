@@ -1052,6 +1052,17 @@ class Voice
             'r' => ':name ran this room. Everyone else, form an orderly line to complain.',
         ],
 
+        /*
+         * The collapsed closed-shelf line — one muted sentence where a
+         * gray wall of dashed rows used to stand. :list is the shapes the
+         * Saturday could not seat, already ·-joined.
+         */
+        'lobby.shelf.also' => [
+            'pg' => 'Also on this shelf when the schedule allows: :list.',
+            'pg13' => 'When the schedule allows, this shelf also stocks :list.',
+            'r' => 'This shelf also stocks :list — when the Saturday earns it.',
+        ],
+
         'lobby.publics.empty' => [
             'pg' => 'Public rooms open when the week\'s slate posts. Check back — there\'s always a seat.',
             'pg13' => 'Rooms open when the week\'s slate drops. Come back and grab a seat before they fill.',
