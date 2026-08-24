@@ -1,7 +1,10 @@
 <?php
 
 use App\Enums\ContentRating;
+use App\Jobs\AnnounceSlateResults;
 use App\Jobs\Middleware\ThrottleMail;
+use App\Jobs\SendPickReminder;
+use App\Jobs\SendSlateResult;
 use App\Jobs\SendWeeklyNewsletter;
 use App\Models\User;
 use App\Notifications\WeeklyNewsletter;
@@ -255,6 +258,26 @@ describe('the daily budget', function () {
 
         expect($sent)->toBe(1)
             ->and($job->released)->toBe(1);
+    });
+
+    it('gives every sender the attempts a release needs to survive', function () {
+        /*
+         * A release still burns an attempt, so at the worker default
+         * (--tries=1) the throttled tail of any send bigger than the
+         * budget was deleted, not delayed. Pinned on all four senders so
+         * a new one copied from an old shape fails here, loudly.
+         */
+        $senders = [
+            new SendWeeklyNewsletter(1),
+            new SendSlateResult(1, 1),
+            new SendPickReminder(1, [1], 'due'),
+            new AnnounceSlateResults(1),
+        ];
+
+        foreach ($senders as $job) {
+            expect($job->tries)->toBe(5)
+                ->and($job->timeout)->toBe(60);
+        }
     });
 
     it('lets everything through when the budget is switched off', function () {

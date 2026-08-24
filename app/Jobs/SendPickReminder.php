@@ -25,6 +25,18 @@ class SendPickReminder implements ShouldQueue
 {
     use Batchable, Queueable;
 
+    /** Must stay below the queue's `retry_after` (90s). */
+    public int $timeout = 60;
+
+    /**
+     * ThrottleMail RELEASES an over-budget job, and a release still burns
+     * an attempt: at the worker default (--tries=1) the throttled tail of
+     * any send bigger than the daily budget was deleted, not delayed. The
+     * stale-reminder guard stays in handle() — a retry that outlives its
+     * cards sends nothing.
+     */
+    public int $tries = 5;
+
     /**
      * @param  list<int>  $slateIds  the cards this reader owed when the sweep ran
      */

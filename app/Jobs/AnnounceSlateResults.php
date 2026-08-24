@@ -28,6 +28,17 @@ class AnnounceSlateResults implements ShouldQueue
 {
     use Queueable;
 
+    /** Must stay below the queue's `retry_after` (90s). */
+    public int $timeout = 60;
+
+    /**
+     * Worth retrying precisely because the claim in handle() makes a re-run
+     * safe: a worker restart mid-fan-out re-enters, reads the claim as
+     * already taken, and exits — while a transient failure BEFORE the
+     * claim gets its announcement instead of losing it at --tries=1.
+     */
+    public int $tries = 5;
+
     public function __construct(public int $slateId) {}
 
     public function handle(): void

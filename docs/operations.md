@@ -172,8 +172,11 @@ everything through except a small bypass list that does not include
 **The daily budget starts LOW (100) here, and that is the opposite of what it
 looks like.** Cloudflare gives a new account a deliberately conservative daily
 quota and raises it as sending reputation builds, so the first newsletter is the
-run most likely to meet a ceiling. `ThrottleMail` releases rather than fails, so
-anything over the budget arrives tomorrow instead of erroring.
+run most likely to meet a ceiling. `ThrottleMail` releases rather than fails —
+and a release still burns an attempt, so the sender jobs carry `$tries = 5`;
+that is what makes "anything over the budget arrives tomorrow instead of
+erroring" true. At a worker's default `--tries=1`, the first release would
+delete the job instead of delaying it.
 
 - **The mark in an email is a PNG, never the inline SVG.** Gmail strips `<svg>`
   entirely, so `x-brand.mark` cannot be reused; the header is
