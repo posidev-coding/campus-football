@@ -110,6 +110,68 @@ Retention is seven days on both the ingest trim and storage trim. Measure
 `pulse_entries` growth after a real Saturday and tune `sample_rate` per recorder
 before trusting the defaults at traffic.
 
+## The two `/ops` doors, and why they are the only ones
+
+The maintenance advisor is a Claude Code routine running in Claude's cloud. It
+can read this repository and it can make HTTP calls; it has **no database**. So
+it reads a telemetry snapshot through `GET /ops/telemetry` and files workbook
+items through `POST /ops/workbook`. These are the only externally-reachable
+surfaces the AI layer adds, and nothing else should join them without the same
+scrutiny.
+
+`php artisan cfb:advisor-setup` prints everything the routine needs. It exists
+because **the telemetry URL cannot be typed**: it carries an `APP_KEY`-derived
+signature and differs per environment. The command prints, never writes —
+`.env` holds real secrets and a command that rewrites it will eventually mangle
+one.
+
+The guards, in the order a request meets them:
+
+    throttle:ops     30/min by IP, BEFORE the token check, so a brute force
+                     meets the limiter rather than luck
+    EnsureOpsToken   X-Ops-Token, hash_equals, 401 on a mismatch
+    signed           on the READ only
+
+**Unset means the surface does not exist.** With no `OPS_TOKEN` configured both
+routes answer **404, not 403** — a 403 tells an unauthenticated stranger there
+is something here worth guessing at. It is also the fail-closed case: the naive
+middleware compares a null header against a null config and admits everybody. A
+token under 32 characters counts as unset, because `OPS_TOKEN=test` is how a
+secret stops being one.
+
+**The read is signed as well as tokened.** The token authenticates; the
+signature is about the URL, which is the artifact that ends up in a routine's
+configuration, a shell history and a log line. It binds the URL to that exact
+path, so a leaked one cannot be edited into something else, and the token means
+a leaked URL on its own is not enough. The write is deliberately unsigned —
+nothing hands the routine that URL to follow, and `signed` does not cover a
+request body.
+
+**Both live outside the `web` middleware group**, registered from
+`bootstrap/app.php` rather than `routes/web.php`. No user, no session, no form:
+cookies and session start would be cost with no benefit, and keeping the POST
+out of the group means it needs no CSRF exemption — an exemption is a thing
+somebody widens later. `ops/*` does render JSON on error, because a 302 to a
+login page tells a machine nothing about a malformed payload and it would retry
+the same one every week.
+
+**The write reaches nothing but the workbook.** An item is addressed only by its
+`key`; `status`, `position` and `source` in a payload are ignored, because where
+work sits on the board is a human's answer. Category and severity validate
+against the enums, so the vocabulary cannot grow over HTTP. A dismissed item is
+never reopened — that guard lives in `WorkbookItem::propose()`, so it holds for
+every caller — and the response tells the advisor which keys were already
+answered, which is how the next pass stops re-proposing them.
+
+One request per pass, which is what lets a single `advisor:review` row in
+`feed_runs` describe the run, and bounds a runaway loop at the throttle rather
+than at fifty times it. An `error` instead of `items` records a failed pass:
+without it a routine that died is indistinguishable from one that never ran.
+
+The routine's own instructions are committed at
+`.claude/skills/maintenance-advisor/SKILL.md`, so what it is told to do is
+reviewable in git rather than living only in a cloud console.
+
 ## The ops layer: feed_runs is the ledger, sync_runs is cfb:migrate's alone
 
 Every recurring `cfb:*` command wraps its work in `TracksFeedRun::trackRun()`,

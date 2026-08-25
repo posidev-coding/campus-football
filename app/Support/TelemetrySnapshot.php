@@ -4,9 +4,11 @@ namespace App\Support;
 
 use App\Actions\RecordUxEvent;
 use App\Enums\UxSignal;
+use App\Enums\WorkbookStatus;
 use App\Models\ClientError;
 use App\Models\FeedRun;
 use App\Models\UxEvent;
+use App\Models\WorkbookItem;
 use App\Services\CfbCalendar;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -65,7 +67,55 @@ class TelemetrySnapshot
             ],
             'performance' => $this->performance(),
             'funnel' => $this->funnel(),
+            'workbook' => $this->workbook(),
         ];
+    }
+
+    /**
+     * The board as it stands — and this is what closes the advisor's loop.
+     *
+     * Without it the routine reads telemetry, finds the same slow query it
+     * found last week, and files it again under a new key or re-argues one a
+     * human already answered. With it, `open` says what to UPDATE rather than
+     * duplicate and `answered` says what to leave alone.
+     *
+     * `dismissed` is the important half. `WorkbookItem::propose()` refuses to
+     * reopen those whatever the routine sends, but a guard that silently
+     * discards work is a routine that wastes its whole run rediscovering it.
+     * Telling it up front is cheaper than refusing it afterwards.
+     *
+     * No identity here either: a workbook item has no user on it by design.
+     *
+     * @return array{open: list<array<string, mixed>>, answered: array<string, string>}
+     */
+    private function workbook(): array
+    {
+        $open = WorkbookItem::query()
+            ->open()
+            ->orderByRaw("field(severity, 'critical', 'high', 'medium', 'low')")
+            ->orderByDesc('last_seen_at')
+            ->limit(100)
+            ->get()
+            ->map(fn (WorkbookItem $item): array => [
+                'key' => $item->key,
+                'title' => $item->title,
+                'category' => $item->category->value,
+                'severity' => $item->severity->value,
+                'status' => $item->status->value,
+                'first_seen_at' => $item->first_seen_at?->toIso8601String(),
+                'last_seen_at' => $item->last_seen_at?->toIso8601String(),
+            ])
+            ->all();
+
+        $answered = WorkbookItem::query()
+            ->whereIn('status', [WorkbookStatus::Done->value, WorkbookStatus::Dismissed->value])
+            ->orderByDesc('last_seen_at')
+            ->limit(200)
+            ->pluck('status', 'key')
+            ->map(fn (WorkbookStatus $status): string => $status->value)
+            ->all();
+
+        return ['open' => $open, 'answered' => $answered];
     }
 
     /**

@@ -699,7 +699,7 @@ in `app/Support/SyncSchedule.php:118` — that buys Sync Health visibility for f
 
 ---
 
-## Phase 3 — The maintenance advisor
+## Phase 3 — The maintenance advisor ✅ **Complete 2026-08-24**
 
 A scheduled Claude Code cloud routine, weekly (Monday, so the board is fresh
 before the week's work) plus a light daily pass during the season.
@@ -720,6 +720,33 @@ access:
 > the plan. Both need tests covering rejection of unsigned/untokened requests,
 > and the telemetry payload needs an explicit assertion that it carries no user
 > identifiers.
+>
+> **As built.** `OpsEndpointTest` covers all of it: no token, wrong token, empty
+> token, unconfigured token, weak token, unsigned URL, tampered URL, throttle
+> exhaustion, and an explicit assertion that the payload carries no email, no
+> handle, no id and no `user_id`.
+>
+> - **Unset means 404, not 403** — and that is the fail-closed case, since the
+>   naive middleware compares a null header against a null config and admits
+>   everybody. A token under 32 chars counts as unset.
+> - **Registered outside the `web` group** from `bootstrap/app.php`: no session,
+>   no cookies, and no CSRF exemption to be widened later. `ops/*` renders JSON
+>   on error, because a 302 tells a machine nothing.
+> - **The write reaches only `workbook_items` and one `feed_runs` row.**
+>   `status`, `position` and `source` in a payload are ignored; the enums bound
+>   the vocabulary; `propose()` refuses to reopen a dismissal and the response
+>   reports which keys were already answered.
+> - **One request per pass**, which is what lets one `advisor:review` row
+>   describe the run. An `error` instead of `items` records a failed pass.
+> - The snapshot gained a **`workbook` section** — open items and answered keys
+>   — which is what closes the loop the plan describes.
+> - `cfb:advisor-setup` prints the signed URL, which cannot be typed.
+> - The routine's own instructions are committed at
+>   `.claude/skills/maintenance-advisor/SKILL.md`, so what it is told to do is
+>   reviewable in git rather than living only in a cloud console.
+>
+> **Still owed by a human: scheduling the routine.** The app half is done; the
+> cloud routine that calls it is configured outside this repository.
 
 An alternative that avoids the write endpoint entirely: the routine commits
 `.workbook/proposals.json` and opens a PR, and a `workbook:sync` command imports

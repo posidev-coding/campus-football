@@ -2,11 +2,13 @@
 
 use App\Actions\RecordUxEvent;
 use App\Enums\UxSignal;
+use App\Enums\WorkbookStatus;
 use App\Jobs\FetchGameSummary;
 use App\Models\ClientError;
 use App\Models\FeedRun;
 use App\Models\User;
 use App\Models\UxEvent;
+use App\Models\WorkbookItem;
 use App\Support\OpsReport;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -38,7 +40,7 @@ describe('the payload', function () {
     it('carries every section the advisor needs', function () {
         expect(array_keys(telemetry()))->toBe([
             'generated_at', 'window_hours', 'season', 'ops', 'coverage',
-            'pickem', 'schedule', 'errors', 'performance', 'funnel',
+            'pickem', 'schedule', 'errors', 'performance', 'funnel', 'workbook',
         ]);
     });
 
@@ -186,5 +188,44 @@ describe('it reports and never gates', function () {
             ->expectsOutputToContain('Data coverage')
             ->expectsOutputToContain('Funnel')
             ->assertSuccessful();
+    });
+});
+
+describe('the board it feeds back', function () {
+    it('names what is open, so the advisor updates rather than duplicates', function () {
+        $open = WorkbookItem::factory()->create([
+            'key' => 'picks-n-plus-one',
+            'status' => WorkbookStatus::InProgress,
+        ]);
+
+        $workbook = telemetry()['workbook'];
+
+        expect($workbook['open'])->toHaveCount(1)
+            ->and($workbook['open'][0]['key'])->toBe('picks-n-plus-one')
+            ->and($workbook['open'][0]['status'])->toBe('in_progress')
+            // first_seen_at is the "how long has this been true" the advisor
+            // should be raising severity on, not resetting.
+            ->and($workbook['open'][0])->toHaveKey('first_seen_at');
+    });
+
+    it('names what a human already answered', function () {
+        // This is what closes the loop. propose() refuses to reopen a
+        // dismissed item whatever the routine sends, but a guard that
+        // silently discards work is a routine that wastes its run
+        // rediscovering it. Telling it up front is cheaper than refusing it.
+        WorkbookItem::factory()->dismissed()->create(['key' => 'wont-fix']);
+        WorkbookItem::factory()->create([
+            'key' => 'already-fixed',
+            'status' => WorkbookStatus::Done,
+        ]);
+
+        expect(telemetry()['workbook']['answered'])
+            ->toBe(['already-fixed' => 'done', 'wont-fix' => 'dismissed']);
+    });
+
+    it('keeps the answered out of the open list', function () {
+        WorkbookItem::factory()->dismissed()->create(['key' => 'wont-fix']);
+
+        expect(telemetry()['workbook']['open'])->toBe([]);
     });
 });
