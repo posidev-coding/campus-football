@@ -5,6 +5,7 @@ use App\Models\Season;
 use App\Models\Team;
 use App\Models\Venue;
 use App\Support\GamedayResolver;
+use Carbon\CarbonImmutable;
 
 /*
  * The resolver is the guard, so these are the guard's tests.
@@ -134,4 +135,20 @@ it('returns null for a location it cannot read rather than half of one', functio
         ->and($resolver->parseLocation('Baton Rouge, Louisiana'))->toBeNull()
         ->and($resolver->parseLocation(''))->toBeNull()
         ->and($resolver->parseLocation('Somewhere, TX, USA'))->toBeNull();
+});
+
+it('reads a date-cast Saturday as a calendar date, not as midnight UTC', function () {
+    /*
+     * `gameday_weeks.saturday` has a `date` cast, so it arrives as midnight
+     * UTC — and converting that instant into Eastern lands at 20:00 the
+     * evening BEFORE, resolving the wrong Saturday. Nothing throws: the admin
+     * override just quietly finds no game, and reads as our schedule
+     * disagreeing with a city the human can plainly see is right.
+     */
+    $batonRouge = venue(99001, 'Tiger Stadium', 'Baton Rouge', 'LA');
+    $game = gameAt($batonRouge, '2026-09-05 19:30:00', $this->season);
+
+    $asStored = CarbonImmutable::parse('2026-09-05', 'UTC');
+
+    expect($this->resolver->resolve('Baton Rouge', 'LA', $asStored)?->id)->toBe($game->id);
 });

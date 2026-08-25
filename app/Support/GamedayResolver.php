@@ -105,12 +105,23 @@ class GamedayResolver
         return ['city' => mb_convert_case(mb_strtolower($city), MB_CASE_TITLE), 'state' => $state];
     }
 
-    /** @return array{0: CarbonImmutable, 1: CarbonImmutable} */
+    /**
+     * A CALENDAR DATE re-pinned to Eastern midnight, never an instant
+     * converted into Eastern — the same distinction Cadence draws.
+     *
+     * `gameday_weeks.saturday` has a `date` cast, so it arrives as midnight
+     * UTC. Converting that instant lands at 20:00 the PREVIOUS evening in
+     * Eastern, and startOfDay() then hands back the wrong Saturday entirely.
+     * Nothing throws; the admin override simply resolves to no game and looks
+     * like our own schedule disagreeing with a city the human can see is
+     * right.
+     *
+     * @return array{0: CarbonImmutable, 1: CarbonImmutable}
+     */
     private function easternDay(CarbonInterface|string $saturday): array
     {
-        $start = $saturday instanceof CarbonInterface
-            ? CarbonImmutable::parse($saturday)->setTimezone(config('cfb.timezone'))->startOfDay()
-            : CarbonImmutable::parse($saturday, config('cfb.timezone'))->startOfDay();
+        $date = $saturday instanceof CarbonInterface ? $saturday->toDateString() : $saturday;
+        $start = CarbonImmutable::parse($date, config('cfb.timezone'))->startOfDay();
 
         return [$start->utc(), $start->endOfDay()->utc()];
     }
