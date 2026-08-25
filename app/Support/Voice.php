@@ -554,6 +554,29 @@ class Voice
             'r' => '":query"? Never heard of them. Try the start of a name — "Ten" finds Tennessee.',
         ],
 
+        /*
+         * Search is a PURE surface and the ANSWER is a fact, printed plainly.
+         * What speaks is the chrome around it — the offer, the shrug and the
+         * cap — which is the same licence the empty state above already has.
+         */
+        'search.ask' => [
+            'pg' => 'That reads like a question. We can look the number up.',
+            'pg13' => 'That reads like a question. Nothing matched the words — but we can go find the number.',
+            'r' => 'Nothing matched those words. Ask properly and we will go dig the number out.',
+        ],
+
+        'search.ask.none' => [
+            'pg' => 'We could not answer that one. The results below might still help.',
+            'pg13' => "Couldn't answer that one. Try naming the player and the stat.",
+            'r' => "No idea. Name the player and the stat and we'll try again.",
+        ],
+
+        'search.ask.capped' => [
+            'pg' => "That's all the questions for today. They reset tomorrow.",
+            'pg13' => "You're out of questions for today. They come back tomorrow.",
+            'r' => "You've asked enough for one day. Come back tomorrow.",
+        ],
+
         'profile.subheading' => [
             'pg' => 'Your handle is how everyone else sees you.',
             'pg13' => 'Your handle is what everyone else will be yelling.',

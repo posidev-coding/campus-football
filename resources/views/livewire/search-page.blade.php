@@ -1,5 +1,6 @@
 <?php
 
+use App\Livewire\Concerns\AsksQuestions;
 use App\Support\Search;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -15,6 +16,8 @@ use Livewire\Component;
  */
 new class extends Component
 {
+    use AsksQuestions;
+
     #[Url(as: 'q')]
     public string $q = '';
 
@@ -59,6 +62,17 @@ new class extends Component
     {
         return Search::recruits($this->q, limit: 6);
     }
+
+    /** Every group the answer layer has to come back empty against. */
+    protected function searchFoundSomething(): bool
+    {
+        return $this->teams->isNotEmpty()
+            || $this->players->isNotEmpty()
+            || $this->coaches->isNotEmpty()
+            || $this->conferences->isNotEmpty()
+            || $this->games->isNotEmpty()
+            || $this->recruits->isNotEmpty();
+    }
 }; ?>
 
 <div class="flex flex-col gap-4">
@@ -79,6 +93,11 @@ new class extends Component
         {{-- The in-flight tell, in the input row where the eye already is. --}}
         <flux:icon.loading wire:loading wire:target="q" class="size-4 shrink-0 text-zinc-400" />
     </div>
+
+    {{-- Above the results, which still render whatever happens here. --}}
+    @php($askState = $this->askState())
+
+    <x-stat-answer :state="$askState" :answer="$this->resolvedAnswer()" />
 
     <div wire:loading.class="opacity-60" wire:target="q" class="motion-safe:transition-opacity">
     @include('partials.search-results', [

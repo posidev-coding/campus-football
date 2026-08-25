@@ -843,7 +843,7 @@ later changes.
 
 ---
 
-## Phase 5 — Stat answers in Search
+## Phase 5 — Stat answers in Search ✅ **Complete 2026-08-25**
 
 `App\Support\Search` is Scout on the **database** driver with domain-relevance
 ordering baked into each callback — `Search::players()` is exactly the right
@@ -897,6 +897,78 @@ for 24h using `App\Support\Remember::filled()` (never `Cache::remember` an empty
 result — production once served an empty season menu for an hour that way). A
 75-person pilot all asking about the same Saturday collapses to one API call.
 Plus a per-user daily cap via `RateLimiter`.
+
+> **As built.** Four pieces, and one property that turned out to carry the
+> whole design.
+>
+> **THE OFFER ONLY APPEARS WHERE ORDINARY SEARCH FOUND NOTHING.** That is what
+> makes the feature strictly additive: it can never stand in front of a result
+> somebody was about to tap, it turns the one dead end this app has into an
+> answer, and when it declines the reader is exactly where they were. It also
+> makes declining cheap enough to be the default — which is why every guard
+> below returns null without apologizing for it.
+>
+> `App\Support\Stats\StatCatalog::answerable()` is the vocabulary, generated
+> from the leaderboards the stats screens already render. Two consequences worth
+> keeping: every answerable stat is one the reader can go and verify on a
+> screen, and adding a leaderboard makes its stat askable in the same commit,
+> with its label and decimals already decided. `vocabulary()` renders the same
+> list into the prompt, so what the model is offered and what the resolver
+> accepts cannot drift.
+>
+> ⚠️ **The metric is ONE enumerated field, `category.stat`.** The interceptions
+> trap expressed where it cannot be forgotten: there is no way to emit a valid
+> category with a stat that does not belong to it, because the pair is a single
+> value. Thrown interceptions are not in any board, so a question about them has
+> nowhere to resolve to and is declined rather than answered from the caught
+> ones.
+>
+> `App\Ai\Agents\StatQuestion` (Haiku 4.5, no tools) returns an INTENT and
+> never a fact — it is told explicitly not to correct a name, because the app
+> resolves names against its own records and a name the model improved is a name
+> we cannot match.
+>
+> `App\Support\StatAnswer` holds the gates and the query layer. Gates run
+> cheapest-first: signed in → flag → the text looks like a question → under the
+> daily cap → budget. The INTENT is cached for 24h behind a normalized hash, so
+> a re-ask is free and the cap counts CALLS rather than taps.
+>
+> `App\Livewire\Concerns\AsksQuestions` is shared by /search and Home's panel
+> — the phone surface matters more, since below `sm` it is the only search there
+> is. **The answer is pinned to the question that produced it** (`asked`), so a
+> keystroke, a `clear()`, a back button or a URL change all retire it. An
+> `updated` hook would have covered only the first, and the failure mode is an
+> old number under a new question, which is indistinguishable from a wrong one.
+
+### The two decisions, resolved
+
+> **Guests — implemented as recommended.** Signed-in readers get the answer
+> path; guests get today's Search unchanged. Reading is never gated in this app,
+> but an answer is a COMPUTATION rather than a reading, and it carries a bill
+> that an anonymous session cannot be capped against.
+
+> **Game quality — deferred, and deliberately not answerable.** The
+> recommendation was to name the three metrics distinctly in the schema. What
+> shipped goes further: the vocabulary is a closed list generated from the
+> leaderboards, `game_quality` is not on it, and the classifier is told by name
+> that game quality is three different numbers in this app and must be declined.
+> Naming them apart would have made them askable; leaving them out means the
+> question cannot be answered wrongly. **Revisit by deciding which of the three
+> a reader means and giving it a per-team season aggregate — no such aggregate
+> exists for any of them today**, which is the real reason this is not shipping,
+> not the naming.
+
+### Where the ask lives — a deliberate deviation
+
+The plan said the classifier fires when the query looks like a question and
+search found no strong match. It fires on those conditions **behind an explicit
+tap** rather than automatically, and that is a cost decision rather than a
+design preference: both search surfaces are `wire:model.live.debounce.300ms`, so
+an automatic ask would classify `how many passing`, then `how many passing
+yards`, then `how many passing yards did` — three calls to reach one question,
+and a bill that scales with how slowly somebody types. The button appears only
+in the state where the reader is already stuck, which is also the only state
+where the offer reads as help rather than as an upsell.
 
 ---
 
@@ -1338,7 +1410,7 @@ worktree is committed and merged**; nothing here waits for Sep 1 or Sep 5.
 | 4 | Phase 6 — budget guard | None |
 | 5 | Phase 7 — College GameDay | Home — new card, **ships flag-closed** |
 | 6 | Phase 4 — recaps ✅ landed | Newsletter — **ships flag-closed** |
-| 7 | Phase 5 — Search answers | Search — **ships flag-closed** |
+| 7 | Phase 5 — Search answers ✅ landed | Search — **ships flag-closed** |
 
 **Items 0–3 are the priority and should land within days.** They touch no product
 surface at all, so they carry no launch risk — and they are the ones that pay
