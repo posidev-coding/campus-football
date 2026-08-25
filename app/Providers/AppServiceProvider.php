@@ -171,5 +171,26 @@ class AppServiceProvider extends ServiceProvider
          */
         Feature::define('pickem', fn (?User $user): bool => config('cfb.pickem_open') === true
             || (bool) $user?->isAdmin());
+
+        /*
+         * The two AI surfaces, the same shape as `pickem`: a closure over
+         * config, so each flip is an environment change with an instant
+         * rollback — and `php artisan pennant:purge <flag>` afterwards, because
+         * the database driver persists a resolved value and anybody who has
+         * already loaded a page keeps their old answer until those rows go.
+         *
+         * BOTH READ THE MASTER SWITCH, so `AI_ENABLED=false` closes everything
+         * at once without having to remember the list.
+         *
+         * They do NOT read the budget. That is a runtime question asked at the
+         * call site through `App\Support\AiBudget::allows()` — resolving
+         * Pennant against a number that moves would persist a row the moment
+         * spend crossed the line and then answer from it afterwards.
+         */
+        Feature::define('ai-answers', fn (): bool => config('cfb.ai_enabled') === true
+            && config('cfb.ai_answers') === true);
+
+        Feature::define('ai-recaps', fn (): bool => config('cfb.ai_enabled') === true
+            && config('cfb.ai_recaps') === true);
     }
 }

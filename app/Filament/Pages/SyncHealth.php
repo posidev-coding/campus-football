@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Widgets\AiSpendWidget;
 use App\Filament\Widgets\DataCoverage;
 use App\Filament\Widgets\RecentSyncFailures;
 use App\Filament\Widgets\ScheduledSyncTasks;
@@ -88,6 +89,7 @@ class SyncHealth extends Page
     {
         return [
             SyncSpend::class,
+            AiSpendWidget::class,
             DataCoverage::class,
             ScheduledSyncTasks::class,
             RecentSyncFailures::class,

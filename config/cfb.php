@@ -83,6 +83,53 @@ return [
     'sms_daily_budget' => (int) env('SMS_DAILY_BUDGET', 200),
 
     /*
+     * THE AI LAYER'S MASTER SWITCH.
+     *
+     * OFF, and shipped that way. Every AI surface — the stat answers in
+     * Search, the written recaps, the College GameDay fallback — asks
+     * `App\Support\AiBudget::allows()` before spending anything, and this is
+     * the first half of that answer. False means no call is made anywhere,
+     * whatever the individual feature flags say.
+     *
+     * Config rather than `env()` at the call site so the flip is an
+     * environment change with an instant rollback, not a deploy.
+     */
+    'ai_enabled' => (bool) env('AI_ENABLED', false),
+
+    /*
+     * What the AI layer may spend in a calendar month, in US dollars.
+     *
+     * The house pattern for the third time, after mail and SMS: THE BUDGET IS
+     * OURS, NOT THEIRS. The Console's own spend limit is the outer wall and it
+     * arrives as an HTTP error mid-request; this one declines a call before it
+     * is made, while there is still deterministic content to serve instead.
+     *
+     * 25 against a projected ~$9 at pilot scale, so steady state has 2-3x of
+     * headroom. That is not what this is for. The real risk is a retry storm
+     * or a runaway loop, neither of which announces itself until the bill
+     * arrives — a 5x spike on the projection lands almost exactly here.
+     *
+     * ZERO OR LESS MEANS UNCAPPED, the same convention as the mail budget. A
+     * real setting, not an oversight: the Console limit still applies.
+     */
+    'ai_monthly_budget' => (float) env('AI_MONTHLY_BUDGET', 25),
+
+    /*
+     * The two user-facing AI surfaces, each behind its own Pennant flag whose
+     * closure reads the value here — the `pickem` pattern, so flipping one is
+     * an environment change and `pennant:purge <flag>` afterwards.
+     *
+     * Separate from the budget on purpose. These say whether a FEATURE exists;
+     * the budget says whether there is money. Folding them together would mean
+     * resolving Pennant against a number that moves, and the database driver
+     * persists a row per resolve — so the board would answer from stale rows
+     * the moment spend crossed the line.
+     */
+    'ai_answers' => (bool) env('AI_ANSWERS', false),
+
+    'ai_recaps' => (bool) env('AI_RECAPS', false),
+
+    /*
      * THE OPS TOKEN — the shared secret behind /ops/telemetry and
      * /ops/workbook, the only externally-reachable surfaces the AI layer adds.
      *

@@ -852,7 +852,7 @@ Plus a per-user daily cap via `RateLimiter`.
 
 ---
 
-## Phase 6 — The enforced budget
+## Phase 6 — The enforced budget ✅ **Complete 2026-08-24**
 
 - `config/cfb.php`: `ai_monthly_budget` (USD), `ai_enabled`. Config, not `env()`
   directly, so it is an environment change with instant rollback.
@@ -867,6 +867,43 @@ Plus a per-user daily cap via `RateLimiter`.
   config** the way `pickem` does. Never resolve Pennant inside a sweep — the
   database driver persists a row per resolve; mirror the config value instead.
   Flipping a flag requires `pennant:purge <flag>`.
+
+> **As built.** `App\Enums\AiModel` is the rate card AND the bounded list of
+> models we may call — a model with no case cannot be costed, and what cannot be
+> costed cannot be capped. `App\Support\AiBudget` is the single authority,
+> asked from both the request path and the queue; `App\Actions\RecordAiSpend`
+> is the single doorway for the write, with `handle()` (queued callers) and
+> `later()` (request path, deferred) so the choice is visible at the call site.
+>
+> The middleware is `App\Jobs\Middleware\ThrottleAi`, named for the three
+> siblings it mirrors — and it **fails rather than releasing**, which is the one
+> place it departs from them. Their window is a day and tomorrow is a fine time
+> to send a newsletter; this window is a MONTH, so a released job would park
+> past any sane `retry_until` and the "recovery" would be a job that silently
+> expired. It is only for jobs that are nothing but a model call — where AI is
+> one optional step of something else, the caller asks `AiBudget::allows()` and
+> falls back to deterministic content.
+>
+> The flags read config and the master switch, and deliberately **not** the
+> budget: they say whether a FEATURE exists, the budget says whether there is
+> money. Resolving Pennant against a number that moves would persist a row the
+> moment spend crossed the line and answer from it afterwards.
+>
+> ⚠️ **Pricing was re-verified against the live pricing page, not taken from
+> this plan.** The plan is right and a widely-cached secondary table is stale:
+> Sonnet 5's $2/$10 launched as introductory "through August 31, 2026" and **is
+> now the standard price** — the scheduled rise to $3/$15 on September 1 was
+> cancelled. A stale rate would under-report every recap by a third.
+>
+> ⚠️ **`->utc()` on the month boundary is load-bearing.** `created_at` is UTC
+> and a Carbon carrying the league timezone binds as its local wall time, so
+> without the conversion every call made in the last four hours of a month is
+> charged to the next month's ceiling — silently, with no exception.
+>
+> **`laravel/ai` is still not installed.** Nothing here needs it: the ledger
+> takes plain token counts, so the SDK's usage event is a listener that maps
+> `usage` onto `RecordAiSpend` when Phase 4/5/7 lands. A ledger coupled to one
+> pre-1.0 client is a ledger that breaks on its next minor.
 
 ---
 
