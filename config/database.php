@@ -153,6 +153,29 @@ return [
             'persistent' => env('REDIS_PERSISTENT', false),
         ],
 
+        /*
+         * FINITE TIMEOUTS ON EVERY CONNECTION, and this is not tuning.
+         *
+         * Unset, phpredis falls back to PHP's `default_socket_timeout` — SIXTY
+         * SECONDS — for both the connect and the read. Production hit it three
+         * times in two nights: `/games/{game}` at 60,123ms, 60,143ms and
+         * 60,123ms, each followed by a RedisException from
+         * PhpRedisConnector::establishConnection(). Values that tight are a
+         * timeout, never slowness, and the page had spent a full minute of a
+         * PHP worker before failing.
+         *
+         * A managed cache restarts for updates and a Flex cache sleeps when
+         * idle, so a connect that stalls is NORMAL and expected. The retry and
+         * backoff settings below exist to ride exactly that out — but they
+         * cannot help while the first attempt is still hanging, so the whole
+         * budget is spent before the first retry is even reached.
+         *
+         * Nothing here issues a blocking Redis command: `queue.redis.block_for`
+         * is null, no BLPOP/BRPOP anywhere, and Pulse's drain is xrange in a
+         * loop. So a read taking longer than a few seconds is a stall rather
+         * than work, and failing fast into the retry is strictly better than
+         * holding a request worker for a minute.
+         */
         'default' => [
             'url' => env('REDIS_URL'),
             'host' => env('REDIS_HOST', '127.0.0.1'),
@@ -160,6 +183,8 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
+            'timeout' => (float) env('REDIS_TIMEOUT', 3),
+            'read_timeout' => (float) env('REDIS_READ_TIMEOUT', 5),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
@@ -173,6 +198,8 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
+            'timeout' => (float) env('REDIS_TIMEOUT', 3),
+            'read_timeout' => (float) env('REDIS_READ_TIMEOUT', 5),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
@@ -195,6 +222,8 @@ return [
             'password' => env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_PULSE_DB', '2'),
+            'timeout' => (float) env('REDIS_TIMEOUT', 3),
+            'read_timeout' => (float) env('REDIS_READ_TIMEOUT', 5),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
