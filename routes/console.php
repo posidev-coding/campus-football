@@ -454,6 +454,26 @@ Schedule::command('model:prune', ['--model' => [ClientError::class, FeedRun::cla
  * counter that only persists in-season loses exactly the quiet months where a
  * funnel problem is cheapest to find.
  */
+/*
+ * Where College GameDay is broadcasting from this Saturday.
+ *
+ * SUNDAY THROUGH THURSDAY, and the days are the whole design. ESPN announces
+ * the site about a week ahead, usually Sunday or Monday, so the window opens
+ * on Sunday; Friday and Saturday are pointless because by then the answer is
+ * either known or it is not coming. The command stops for the week the moment
+ * a Saturday resolves, so a normal week is one or two runs of the five.
+ *
+ * ONE request, not through EspnClient, so it spends nothing from the ESPN
+ * budget. 09:07 rather than 09:00 keeps it off the hour everything else
+ * reaches for, and it rides a wake the morning block already needs.
+ */
+Schedule::command('cfb:gameday')
+    ->days([ScheduleClass::SUNDAY, ScheduleClass::MONDAY, ScheduleClass::TUESDAY, ScheduleClass::WEDNESDAY, ScheduleClass::THURSDAY])
+    ->at('09:07')
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping(60);
+
 Schedule::command('cfb:ux-rollup')
     ->dailyAt('04:55')
     ->timezone($tz)

@@ -481,6 +481,40 @@ class Voice
         ],
 
         /*
+         * COLLEGE GAMEDAY, and the split the plan calls for: the LOCATION is
+         * a fact and stays factual in the markup above these lines, while the
+         * framing around it is loud — and louder still when the bus is
+         * parked on a campus the reader follows, because that stops being a
+         * league headline and becomes a personal event.
+         *
+         * The roast is aimed at the ritual and at the signs, never at the
+         * people holding them. Nobody is the butt of a 6am camera.
+         */
+        'home.gameday' => [
+            'pg' => 'The set, the signs and the headgear pick — all from :city this week.',
+            'pg13' => 'Signs, sleeping bags and one very loud headgear pick. :city has it this week.',
+            'r' => ':city spends Saturday morning on national television holding cardboard. Worth it.',
+        ],
+
+        'home.gameday.yours' => [
+            'pg' => 'GameDay is coming to :team. Set an early alarm.',
+            'pg13' => 'GameDay is at :team this week. Your people are getting up at 5am to hold a bedsheet on TV.',
+            'r' => 'GameDay is at :team. Somebody you went to school with will be on television at 6am with a bedsheet and a grudge.',
+        ],
+
+        /*
+         * The honest empty state. ESPN announces the next site about a week
+         * ahead, usually Sunday or Monday, so an empty Monday is the system
+         * working — which is exactly why it gets said out loud rather than
+         * hidden behind a card that does not render.
+         */
+        'home.gameday.unknown' => [
+            'pg' => 'ESPN has not announced this week\'s location yet. It usually lands Sunday.',
+            'pg13' => 'No location yet. ESPN usually gives it up Sunday, once they know which game got good.',
+            'r' => 'ESPN has not picked one yet. They are waiting to see which game stops being a blowout.',
+        ],
+
+        /*
          * The Bandwagon State card and its news panel — the placeholder that
          * fills a zero-team Home. The joke roasts the act of following
          * nobody, never the person, and the card's "Pick your real team"
