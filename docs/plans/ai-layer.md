@@ -907,7 +907,7 @@ Plus a per-user daily cap via `RateLimiter`.
 
 ---
 
-## Phase 7 — College GameDay
+## Phase 7 — College GameDay ✅ **Complete 2026-08-25**
 
 **The premise is correct: ESPN's four synced hosts do not carry this.** Nothing
 in the JSON feeds exposes where GameDay is broadcasting from — which is why this
@@ -1057,6 +1057,38 @@ Two paths, in order:
 
    Its output goes through the *same* resolver and the *same* guards as the feed.
    Expect this to fire a handful of times a season, not weekly.
+
+> **As built.** Seven commits, and the feed validated end to end against live
+> data on 2026-08-25: `Baton Rouge, LA` → Clemson at LSU @ Tiger Stadium,
+> `AUSTIN, TX` → Ohio State at Texas @ DKR, and 2026-09-19 → no answer. The
+> live payload still carries every trap this section documents.
+>
+> - **The URL is pinned as the config default**, not left to an env var — it is
+>   public, not a secret, so production needs no variable. `GAMEDAY_FEED_URL`
+>   is the override for the day ESPN moves it. The `/2025/` in the path means
+>   nothing and is never computed.
+> - **`kickoff_day` is a WEEKDAY NAME**, not a date, so the resolver reads the
+>   day off `kickoff_at` in Eastern. 20:00 ET Saturday is 00:00 UTC Sunday, and
+>   matching the UTC date drops exactly the night window a broadcast leads into.
+> - **`foreignId()` cannot be used** for `team_id`/`game_id`: both parents carry
+>   ESPN ids and are right-sized (mediumint, int) while foreignId emits bigint.
+>   It fails on the ALTER after the table exists, so the migration leaves a
+>   table behind and still reports itself pending.
+> - **`Cadence::currentSaturday()` was the wrong clock two mornings in five.**
+>   It runs a Tuesday-through-Monday week and looks BACK on Sunday and Monday —
+>   exactly when ESPN announces the next stop. `App\Support\Gameday::saturday()`
+>   is the shared clock the command and the card both read, because a card
+>   looking at a different Saturday would read as permanently empty rather than
+>   broken.
+> - **A failed re-check never downgrades a resolved week**, and a confirmed row
+>   is never overwritten at all.
+> - **The admin override asks for a CITY, not a game**, and resolves it. Found
+>   while testing that modal: `saturday` has a `date` cast, so it arrives as
+>   midnight UTC and converting that instant into Eastern lands the evening
+>   BEFORE — the resolver silently read the wrong Saturday.
+> - **`laravel/ai` 0.11 is installed** (approved 2026-08-25). The fallback is
+>   `App\Ai\Agents\GamedaySite` behind `App\Support\GamedayFallback`, and
+>   every guard below has a test that fails when the guard is removed.
 
 ### The guards, which are the actual feature
 
