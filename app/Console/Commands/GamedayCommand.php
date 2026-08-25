@@ -7,7 +7,7 @@ use App\Enums\GamedayStatus;
 use App\Models\GamedayWeek;
 use App\Services\CfbCalendar;
 use App\Services\GamedayFeed;
-use App\Support\Cadence;
+use App\Support\Gameday;
 use App\Support\GamedayResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -145,13 +145,11 @@ class GamedayCommand extends Command
     }
 
     /**
-     * The Saturday the NEXT broadcast belongs to.
+     * The Saturday to resolve — {@see Gameday::saturday()} unless pinned.
      *
-     * `Cadence::currentSaturday()` runs a Tuesday-through-Monday week, so on
-     * Sunday and Monday it deliberately looks BACK at the Saturday just
-     * played — correct for pick'em, where Sunday's results and Monday's
-     * arguing still belong to it, and wrong here on exactly the two mornings
-     * ESPN usually announces the next stop. Step forward when it has passed.
+     * Deliberately not computed here: the card reads the same clock, and a
+     * card looking at a different Saturday than the command wrote would not
+     * look broken, only permanently empty.
      */
     private function targetSaturday(): CarbonImmutable
     {
@@ -159,9 +157,6 @@ class GamedayCommand extends Command
             return CarbonImmutable::parse($pinned, config('cfb.timezone'))->startOfDay();
         }
 
-        $saturday = Cadence::currentSaturday();
-        $today = CarbonImmutable::now(config('cfb.timezone'))->startOfDay();
-
-        return $saturday->lt($today) ? $saturday->addWeek() : $saturday;
+        return Gameday::saturday();
     }
 }

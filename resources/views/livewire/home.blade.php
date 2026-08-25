@@ -846,6 +846,10 @@ new class extends Component
         </div>
     @endauth
 
+    {{-- The league's Saturday, in one fixed slot: "your teams" above it and
+         the week's headline below. Renders nothing at all out of season. --}}
+    <x-gameday-card />
+
     <x-pickem-teaser />
 
     @if ($this->games->isNotEmpty())
