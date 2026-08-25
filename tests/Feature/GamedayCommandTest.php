@@ -1,5 +1,6 @@
 <?php
 
+use App\Ai\Agents\GamedaySite;
 use App\Enums\GamedayStatus;
 use App\Models\FeedRun;
 use App\Models\Game;
@@ -159,4 +160,44 @@ it('stays off the air out of season', function () {
 
     expect(GamedayWeek::count())->toBe(0);
     Http::assertNothingSent();
+});
+
+it('falls through to the model when the feed has no answer', function () {
+    /*
+     * The whole point of the second path: the feed is hand-maintained and
+     * will lag, and a week where nobody remembered to update a promo page is
+     * still a week with a GameDay broadcast on it.
+     */
+    config()->set('cfb.ai_enabled', true);
+
+    Http::fake(['*' => Http::response(gamedayFeedPayload('2026-08-29T09:00:00'))]);
+
+    GamedaySite::fake([[
+        'announced' => true,
+        'city' => 'Baton Rouge',
+        'state' => 'LA',
+        'host_team_name' => 'LSU',
+        'confidence' => 0.8,
+        'source_url' => 'https://www.espn.com/college-football/story/_/id/1',
+    ]]);
+
+    $this->artisan('cfb:gameday')->assertSuccessful();
+
+    $week = GamedayWeek::sole();
+
+    expect($week->status)->toBe(GamedayStatus::Proposed)
+        ->and($week->game_id)->toBe($this->game->id)
+        ->and($week->confidence)->toBe(0.8)
+        ->and($week->source_url)->toContain('espn.com');
+});
+
+it('records unknown when neither path can answer', function () {
+    config()->set('cfb.ai_enabled', true);
+
+    Http::fake(['*' => Http::response('', 503)]);
+    GamedaySite::fake([['announced' => false, 'confidence' => 0.0]]);
+
+    $this->artisan('cfb:gameday')->assertSuccessful();
+
+    expect(GamedayWeek::sole()->status)->toBe(GamedayStatus::Unknown);
 });

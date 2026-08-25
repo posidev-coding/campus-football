@@ -8,6 +8,7 @@ use App\Models\GamedayWeek;
 use App\Services\CfbCalendar;
 use App\Services\GamedayFeed;
 use App\Support\Gameday;
+use App\Support\GamedayFallback;
 use App\Support\GamedayResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -96,11 +97,51 @@ class GamedayCommand extends Command
     }
 
     /**
-     * Read the feed, then let our own data decide.
+     * The feed first, the model only if it fails.
+     *
+     * Both paths land in the same place — a proposal our own venues and games
+     * have already agreed with — so the row cannot tell you which one produced
+     * it except by `confidence` and `source_url`. That is deliberate: the feed
+     * is hand-maintained and demonstrably dirty, and being first-party is not
+     * evidence.
      *
      * @return array{0: array<string, mixed>|null, 1: string}
      */
     private function resolveWeek(
+        GamedayFeed $feed,
+        GamedayResolver $resolver,
+        CarbonImmutable $saturday,
+        ?GamedayWeek $existing,
+    ): array {
+        [$attributes, $reason] = $this->fromFeed($feed, $resolver, $saturday, $existing);
+
+        if ($attributes !== null) {
+            return [$attributes, $reason];
+        }
+
+        $this->line("  Feed: {$reason}.");
+
+        [$proposal, $modelReason] = app(GamedayFallback::class)->attempt($saturday);
+
+        if ($proposal === null) {
+            return [null, $reason.'; model: '.mb_lcfirst($modelReason)];
+        }
+
+        $this->line('  Model resolved it instead.');
+
+        return [[
+            ...$proposal,
+            'status' => GamedayStatus::Proposed,
+            'announced_at' => $existing?->announced_at ?? now(),
+        ], 'resolved by the model'];
+    }
+
+    /**
+     * The primary path: four trusted fields, then our own data decides.
+     *
+     * @return array{0: array<string, mixed>|null, 1: string}
+     */
+    private function fromFeed(
         GamedayFeed $feed,
         GamedayResolver $resolver,
         CarbonImmutable $saturday,
