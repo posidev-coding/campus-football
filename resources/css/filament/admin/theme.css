@@ -1,0 +1,24 @@
+/*
+ * The admin panel's stylesheet, compiled separately from the app's.
+ *
+ * The panel does NOT load `resources/css/app.css` and never should — Flux's
+ * bundle, the app's brand variables and the phone-first chrome all belong to
+ * the product, not to an admin table. But Filament's own shipped stylesheet
+ * carries only the utilities its components use, so before this file existed a
+ * Tailwind class written in an admin view compiled to nothing at all.
+ *
+ * The `@source` lines are the whole point: they tell Tailwind where to look for
+ * classes to compile. Anything under `app/Filament` or
+ * `resources/views/filament` is scanned. A custom admin view written OUTSIDE
+ * those two trees will silently render unstyled again, so put it in one of them
+ * or add a line here.
+ *
+ * Brand color and font are NOT set here — the panel provider drives both from
+ * `App\Support\Brand` at request time, so an edit on the App Branding page
+ * reaches the panel without a rebuild. Hardcoding either here would make this
+ * file a fourth place the brand has to be kept in step.
+ */
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+@source '../../../../app/Filament/**/*';
+@source '../../../../resources/views/filament/**/*';

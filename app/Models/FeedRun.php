@@ -27,6 +27,24 @@ class FeedRun extends Model
     public const FAILED = 'failed';
 
     /**
+     * The maintenance advisor's own runs, in the same ledger.
+     *
+     * The advisor is a Claude Code routine with no database access — it reads
+     * a telemetry snapshot over HTTP and files workbook items back. So its
+     * runs are recorded through the `/ops` surface rather than by a scheduled
+     * command, but they land HERE, in the same table, under the same three
+     * statuses. Sync Health's failures table therefore shows an advisor run
+     * that died with no extra wiring, and "when did it last run" is one query
+     * against a column that already exists.
+     *
+     * It is deliberately NOT on `SyncSchedule`: that report introspects OUR
+     * scheduler, and the advisor's cron lives in Claude Code's cloud. A row
+     * there would be a task we cannot see the schedule of, reporting an
+     * overdue flag we cannot compute.
+     */
+    public const ADVISOR = 'advisor:review';
+
+    /**
      * A fortnight of history. The live tier writes a row a minute all
      * Saturday, and the value here is operational — "is the schedule
      * healthy" — not archival.
@@ -100,6 +118,12 @@ class FeedRun extends Model
             'started_at' => now(),
             'finished_at' => now(),
         ]);
+    }
+
+    /** The advisor's last pass, or null if it has never run here. */
+    public static function latestAdvisorRun(): ?self
+    {
+        return static::latestFor(self::ADVISOR);
     }
 
     /** The most recent run of one command, whatever its outcome. */

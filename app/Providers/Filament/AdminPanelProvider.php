@@ -29,6 +29,26 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
+            /*
+             * THE PANEL'S OWN COMPILED TAILWIND, and the reason it exists.
+             *
+             * Filament's shipped stylesheet contains only the utilities its own
+             * components use, so a Tailwind class written in an admin view has
+             * no definition behind it and silently does nothing. The first Sync
+             * Health page laid itself out with `grid grid-cols-2 gap-4` and
+             * rendered as one unaligned column — which reads as bad design
+             * rather than a missing stylesheet, and is why everything in the
+             * panel until now was built from Filament's own widgets and tables.
+             *
+             * `resources/css/filament/admin/theme.css` scans `app/Filament` and
+             * `resources/views/filament`, so classes written there are compiled.
+             * This unblocks the Workbook board and any custom admin UI after it.
+             *
+             * Flux is still NOT available in here — its components need Flux's
+             * own CSS and JS bundles, which the panel does not load. Plain
+             * Tailwind and Filament's components are the vocabulary.
+             */
+            ->viteTheme('resources/css/filament/admin/theme.css')
             ->login()
             /*
              * Every brand value is a CLOSURE, resolved per request, so an edit

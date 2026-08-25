@@ -14,6 +14,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use UnitEnum;
 
 /**
  * Team branding curation — nothing else.
@@ -29,6 +30,10 @@ class TeamResource extends Resource
     protected static ?string $model = Team::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedPaintBrush;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Configuration';
+
+    protected static ?int $navigationSort = 2;
 
     protected static ?string $navigationLabel = 'Team Branding';
 

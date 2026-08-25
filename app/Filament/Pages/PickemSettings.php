@@ -17,6 +17,7 @@ use Filament\Schemas\Components\Form;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
+use UnitEnum;
 
 /**
  * The league's clock, editable without a deploy — the App Branding
@@ -37,6 +38,10 @@ class PickemSettings extends Page
     protected string $view = 'filament.pages.pickem-settings';
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedClock;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Configuration';
+
+    protected static ?int $navigationSort = 3;
 
     protected static ?string $navigationLabel = "Pick'em Settings";
 

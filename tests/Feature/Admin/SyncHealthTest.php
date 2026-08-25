@@ -135,9 +135,14 @@ describe('the Sync Health page', function () {
     /*
      * Each section is its own Filament widget — a separate Livewire component,
      * so its content is NOT in the page's own HTML and has to be tested where
-     * it lives. That is deliberate: the panel ships its own stylesheet and
-     * does not load app.css, so a hand-rolled Blade view here renders with no
-     * grid, flex or spacing whatsoever.
+     * it lives.
+     *
+     * It was originally built this way because the panel loads no Tailwind of
+     * its own, so a hand-rolled Blade view rendered with no grid, flex or
+     * spacing whatsoever. A custom theme is registered now (see
+     * PanelThemeTest), so that constraint is lifted — but the widgets stay,
+     * because native components carrying their own CSS is still the cheaper
+     * way to build an admin table, and the testing rule is unchanged.
      */
     it('renders coverage through a Filament table widget', function () {
         Livewire::actingAs($this->admin)

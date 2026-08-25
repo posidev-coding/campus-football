@@ -4,6 +4,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -11,6 +12,16 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         channels: __DIR__.'/../routes/channels.php',
         health: '/up',
+        /*
+         * The two `/ops` surfaces, registered OUTSIDE the `web` group on
+         * purpose. They are machine-to-machine — no user, no session, no form
+         * — so cookies, session start and CSRF would all be cost with no
+         * benefit, and keeping the POST out of the group means it needs no
+         * CSRF exemption. An exemption is a thing somebody widens later.
+         */
+        then: function (): void {
+            Route::group([], __DIR__.'/../routes/ops.php');
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         /*
@@ -29,7 +40,13 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        /*
+         * `ops/*` renders JSON as well, and it is not a nicety: the callers
+         * there are machines. A validation failure that comes back as a 302 to
+         * a login page tells a Claude Code routine nothing about what it got
+         * wrong, and it would retry the same malformed payload every week.
+         */
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*'),
+            fn (Request $request) => $request->is('api/*') || $request->is('ops/*'),
         );
     })->create();

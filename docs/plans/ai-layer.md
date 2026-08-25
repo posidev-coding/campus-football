@@ -413,6 +413,23 @@ Gate the `/pulse` dashboard behind the existing `User::isAdmin()`.
 > production. Verified end to end: a slow query reached Redis DB 2, `pulse:work
 > --stop-when-empty` drained it to `pulse_entries` and `pulse_aggregates`.
 > Tests: `tests/Feature/Admin/PulseTest.php`.
+>
+> ⚠️ **`PULSE_CACHE_DRIVER=array` is required, and the dashboard is unusable
+> without it.** Pulse caches each card's result as an object; Laravel 13's
+> `cache.serializable_classes => false` (the gadget-chain default, and the
+> mechanism behind our own "never cache a non-scalar" rule) returns every object
+> from a serializing store as `__PHP_Incomplete_Class`. The setting is GLOBAL,
+> not per-store, so a dedicated Redis store does not escape it. Cost: card
+> queries re-run on each 5s poll, and `pulse:restart` stops reaching a running
+> `pulse:work` (restart the daemon directly). Found in a browser, not by the
+> suite — see the testing note below.
+>
+> ⚠️ **A test that renders `/pulse` proves nothing about the cards.** They are
+> all `#[Lazy]`, so the page returns 200 with skeletons and the cards run on a
+> later round trip. `Livewire::withoutLazyLoading()` fixes that — but it applies
+> to the NEXT component only, so calling it once in a `beforeEach` leaves the
+> second render returning the placeholder again, which is exactly the render
+> that would have caught this. Call it before EVERY render, and render twice.
 
 **1.2 Client error capture.** ✅ **Landed 2026-08-24.** `window.onerror` + `unhandledrejection` POST to a
 Redis-rate-limited endpoint that dedupes by fingerprint in Redis before writing
@@ -568,7 +585,7 @@ Two traps, both verified:
   movement stay recomputable later from `spread` / `market_spread` /
   `odds_provider` / `odds_captured_at`, which the row already stores.
 
-## Phase 2 — The workbook and the Kanban
+## Phase 2 — The workbook and the Kanban ✅ **Complete 2026-08-24**
 
 **2.1 `workbook_items`** — `key` (unique, stable slug), `title`, `body`,
 `category` (bug · feature · performance · ux · data · ops · tech-debt),
@@ -589,7 +606,7 @@ admin table to the phone-first no-horizontal-scroll rule would be enforcing the
 right rule on the wrong product."* A Kanban needs horizontal scroll, so putting
 it in the panel means **no test allowlist edit and no weakened sweep**.
 
-**The prerequisite: register a Filament theme.** The panel deliberately does not
+**The prerequisite: register a Filament theme.** ✅ **Done.** The panel deliberately does not
 load `resources/css/app.css` — a constraint documented in three places — so
 Tailwind utilities written in an admin view today have **no definitions behind
 them**, which is why Sync Health is built entirely from Filament's own widgets
@@ -629,13 +646,60 @@ While in here, give the panel **navigation groups** — there are none today, th
 sidebar is flat, and Workbook / Sync Health / Branding / Pick'em Settings should
 not compete at one level.
 
+> **As built (2.1 + 2.2).** `workbook_items` with three bounded enums
+> (`WorkbookCategory`, `WorkbookSeverity`, `WorkbookStatus`) and
+> `WorkbookItem::propose()` as the single doorway — the `GrantWalletEntry`
+> shape. `first_seen_at` is never refreshed by a re-propose, because "how long
+> has this been true" is the most useful number on the card. `Dismissed` is not
+> a board column: it is an answer, not a stage.
+>
+> Two surfaces: `WorkbookResource` at `admin/workbook/items` (search, three
+> multi-select filters, bulk moves, and a detail view with the evidence and a
+> copyable prompt) and the `Workbook` page at `admin/workbook`. Sidebar groups
+> are Work / Operations / Configuration.
+>
+> ⚠️ **The board's drag rests on three attributes, and two are traps.**
+> `wire:sort` takes a bare method name. `wire:sort:group-id` per column is what
+> makes it a Kanban — Livewire appends it to the handler's arguments and
+> Sortable fires on the DESTINATION list. And the Sortable group must be bound
+> with Alpine's **`x-sort:group`**, not `wire:sort:group`: Livewire's attribute
+> loop `return`s on the latter, so with it before `wire:sort` in the source,
+> `wire:sort` never binds and the drag silently does nothing. Read out of
+> `livewire.esm.js`. Sortable's index is ZERO-based; stored positions are
+> one-based; and the column an item LEAVES must be renumbered, because
+> positions are what the next drop's index is measured against.
+>
+> The table sorts worst-first through `FIELD()`. `severity` holds the enum's
+> string value, so alphabetical order is critical-high-low-medium, which puts
+> Low above Medium.
+
 **2.3 Advisor run ledger.** Reuse `feed_runs` with `command = 'advisor:review'`
 via `App\Console\Concerns\TracksFeedRun::trackRun()`, plus a `ledgerKey()` case
 in `app/Support/SyncSchedule.php:118` — that buys Sync Health visibility for free.
 
+> **As built.** `FeedRun::ADVISOR` plus `latestAdvisorRun()`, and an Advisor stat
+> on Sync Health showing the last pass and how much is open. A failed pass shows
+> in the Recent failures table for free, which is the whole reason it reuses
+> `feed_runs`. The advisor writes through `FeedRun::begin()`/`complete()`/`fail()`
+> — the existing public API — because it is a Claude Code routine with no
+> database access and reaches us over the Phase 3 `/ops` surface, not through
+> `TracksFeedRun`, which is a console concern.
+>
+> **No `ledgerKey()` case for it, deliberately.** `SyncSchedule` introspects OUR
+> scheduler to compute an overdue flag from each event's cron expression; the
+> advisor's cron lives in Claude Code's cloud. A row there would be a task whose
+> schedule we cannot see, reporting an overdue flag nothing can compute.
+>
+> ⚠️ **Two real gaps closed on the way past.** `cfb:kickoff-alerts` and
+> `cfb:ux-rollup` both write `feed_runs` rows and had no `ledgerKey()` case, so
+> Sync Health rendered them as permanently grey "untracked" — the state that
+> method exists to distinguish from "ran and found nothing". A test now asserts
+> that the only untracked scheduled tasks are the two news fan-outs, which
+> genuinely write no ledger row.
+
 ---
 
-## Phase 3 — The maintenance advisor
+## Phase 3 — The maintenance advisor ✅ **Complete 2026-08-24**
 
 A scheduled Claude Code cloud routine, weekly (Monday, so the board is fresh
 before the week's work) plus a light daily pass during the season.
@@ -656,6 +720,33 @@ access:
 > the plan. Both need tests covering rejection of unsigned/untokened requests,
 > and the telemetry payload needs an explicit assertion that it carries no user
 > identifiers.
+>
+> **As built.** `OpsEndpointTest` covers all of it: no token, wrong token, empty
+> token, unconfigured token, weak token, unsigned URL, tampered URL, throttle
+> exhaustion, and an explicit assertion that the payload carries no email, no
+> handle, no id and no `user_id`.
+>
+> - **Unset means 404, not 403** — and that is the fail-closed case, since the
+>   naive middleware compares a null header against a null config and admits
+>   everybody. A token under 32 chars counts as unset.
+> - **Registered outside the `web` group** from `bootstrap/app.php`: no session,
+>   no cookies, and no CSRF exemption to be widened later. `ops/*` renders JSON
+>   on error, because a 302 tells a machine nothing.
+> - **The write reaches only `workbook_items` and one `feed_runs` row.**
+>   `status`, `position` and `source` in a payload are ignored; the enums bound
+>   the vocabulary; `propose()` refuses to reopen a dismissal and the response
+>   reports which keys were already answered.
+> - **One request per pass**, which is what lets one `advisor:review` row
+>   describe the run. An `error` instead of `items` records a failed pass.
+> - The snapshot gained a **`workbook` section** — open items and answered keys
+>   — which is what closes the loop the plan describes.
+> - `cfb:advisor-setup` prints the signed URL, which cannot be typed.
+> - The routine's own instructions are committed at
+>   `.claude/skills/maintenance-advisor/SKILL.md`, so what it is told to do is
+>   reviewable in git rather than living only in a cloud console.
+>
+> **Still owed by a human: scheduling the routine.** The app half is done; the
+> cloud routine that calls it is configured outside this repository.
 
 An alternative that avoids the write endpoint entirely: the routine commits
 `.workbook/proposals.json` and opens a PR, and a `workbook:sync` command imports
@@ -761,7 +852,7 @@ Plus a per-user daily cap via `RateLimiter`.
 
 ---
 
-## Phase 6 — The enforced budget
+## Phase 6 — The enforced budget ✅ **Complete 2026-08-24**
 
 - `config/cfb.php`: `ai_monthly_budget` (USD), `ai_enabled`. Config, not `env()`
   directly, so it is an environment change with instant rollback.
@@ -776,6 +867,43 @@ Plus a per-user daily cap via `RateLimiter`.
   config** the way `pickem` does. Never resolve Pennant inside a sweep — the
   database driver persists a row per resolve; mirror the config value instead.
   Flipping a flag requires `pennant:purge <flag>`.
+
+> **As built.** `App\Enums\AiModel` is the rate card AND the bounded list of
+> models we may call — a model with no case cannot be costed, and what cannot be
+> costed cannot be capped. `App\Support\AiBudget` is the single authority,
+> asked from both the request path and the queue; `App\Actions\RecordAiSpend`
+> is the single doorway for the write, with `handle()` (queued callers) and
+> `later()` (request path, deferred) so the choice is visible at the call site.
+>
+> The middleware is `App\Jobs\Middleware\ThrottleAi`, named for the three
+> siblings it mirrors — and it **fails rather than releasing**, which is the one
+> place it departs from them. Their window is a day and tomorrow is a fine time
+> to send a newsletter; this window is a MONTH, so a released job would park
+> past any sane `retry_until` and the "recovery" would be a job that silently
+> expired. It is only for jobs that are nothing but a model call — where AI is
+> one optional step of something else, the caller asks `AiBudget::allows()` and
+> falls back to deterministic content.
+>
+> The flags read config and the master switch, and deliberately **not** the
+> budget: they say whether a FEATURE exists, the budget says whether there is
+> money. Resolving Pennant against a number that moves would persist a row the
+> moment spend crossed the line and answer from it afterwards.
+>
+> ⚠️ **Pricing was re-verified against the live pricing page, not taken from
+> this plan.** The plan is right and a widely-cached secondary table is stale:
+> Sonnet 5's $2/$10 launched as introductory "through August 31, 2026" and **is
+> now the standard price** — the scheduled rise to $3/$15 on September 1 was
+> cancelled. A stale rate would under-report every recap by a third.
+>
+> ⚠️ **`->utc()` on the month boundary is load-bearing.** `created_at` is UTC
+> and a Carbon carrying the league timezone binds as its local wall time, so
+> without the conversion every call made in the last four hours of a month is
+> charged to the next month's ceiling — silently, with no exception.
+>
+> **`laravel/ai` is still not installed.** Nothing here needs it: the ledger
+> takes plain token counts, so the SDK's usage event is a listener that maps
+> `usage` onto `RecordAiSpend` when Phase 4/5/7 lands. A ledger coupled to one
+> pre-1.0 client is a ledger that breaks on its next minor.
 
 ---
 

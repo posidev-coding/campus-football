@@ -4,6 +4,8 @@ use App\Models\User;
 use Laravel\Pulse\Contracts\Ingest;
 use Laravel\Pulse\Ingests\RedisIngest;
 use Laravel\Pulse\Recorders;
+use Laravel\Pulse\Support\CacheStoreResolver;
+use Livewire\Livewire;
 
 describe('the dashboard gate', function () {
     it('refuses a guest', function () {
@@ -22,6 +24,74 @@ describe('the dashboard gate', function () {
         $admin->forceFill(['admin' => true])->save();
 
         $this->actingAs($admin)->get('/pulse')->assertOk();
+    });
+});
+
+describe('the cards themselves', function () {
+    /*
+     * Rendering `/pulse` proves NOTHING about these. Every card is `#[Lazy]`,
+     * so the page returns 200 with placeholders and the cards run on a later
+     * Livewire round trip — the same trap as a Filament widget, whose content
+     * is not in its page's HTML. The first version of this file asserted the
+     * 200 and shipped a dashboard that fataled on the second request.
+     *
+     * What it fataled on: Pulse caches each card's result as an OBJECT, and
+     * Laravel 13's `cache.serializable_classes => false` hands every object
+     * back from a serializing store as `__PHP_Incomplete_Class`. `->hits` on
+     * that is an ErrorException. The Cache card is simply the one that
+     * dereferences unconditionally, so it broke first and the rest were queued
+     * up behind it.
+     */
+    beforeEach(function () {
+        $this->admin = User::factory()->create();
+        $this->admin->forceFill(['admin' => true])->save();
+
+    });
+
+    it('renders every card we enabled, twice', function (string $component) {
+        /*
+         * TWICE, and `withoutLazyLoading()` before EACH — both halves are
+         * load-bearing, and this test was green and worthless without them.
+         *
+         * Twice, because the first call POPULATES the result cache and returns
+         * the closure's own value; the round trip through the store only
+         * happens on the second. It is the same "call it twice" rule
+         * support.md states for anything cached.
+         *
+         * Before each, because `withoutLazyLoading()` applies to the NEXT
+         * component only. Called once in a beforeEach, the second render
+         * quietly returns the `animate-pulse` skeleton instead of running
+         * render() — so the test passes by never executing the code.
+         */
+        Livewire::withoutLazyLoading();
+        Livewire::actingAs($this->admin)->test($component)->assertOk();
+
+        Livewire::withoutLazyLoading();
+        Livewire::actingAs($this->admin)->test($component)->assertOk();
+    })->with([
+        'pulse.cache',
+        'pulse.exceptions',
+        'pulse.slow-queries',
+        'pulse.slow-requests',
+        'pulse.slow-jobs',
+        'pulse.slow-outgoing-requests',
+        'pulse.usage',
+        'pulse.queues',
+        'pulse.servers',
+    ]);
+
+    it('caches card results somewhere objects survive', function () {
+        // `serializable_classes` is GLOBAL, not per-store — CacheManager
+        // ignores a store's own config — so no Redis store escapes it and
+        // relaxing it app-wide would trade the whole app's protection for one
+        // admin page. The array store does not serialize at all.
+        expect(config('pulse.cache'))->toBe('array')
+            ->and(config('cache.serializable_classes'))->toBeFalse();
+
+        $store = app(CacheStoreResolver::class)->store();
+        $store->put('probe', [(object) ['hits' => 1]], 30);
+
+        expect($store->get('probe')[0])->toBeInstanceOf(stdClass::class);
     });
 });
 

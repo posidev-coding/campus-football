@@ -14,14 +14,17 @@ use App\Services\Espn\EspnClient;
 use App\Services\Nil\KeywordNilNewsProvider;
 use App\Services\Nil\NilNewsProvider;
 use Carbon\CarbonImmutable;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Request;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Pennant\Feature;
 use Throwable;
@@ -115,6 +118,17 @@ class AppServiceProvider extends ServiceProvider
         });
 
         /*
+         * The `/ops` surfaces' rate limit, keyed by IP.
+         *
+         * Named rather than inline because both routes share it and the number
+         * is a decision: a weekly routine making two calls has all the headroom
+         * it will ever need at thirty a minute, and a loop is stopped an order
+         * of magnitude before it costs anything. The limiter rides Redis
+         * through the cache store, like the mail and SMS budgets.
+         */
+        RateLimiter::for('ops', fn (Request $request): Limit => Limit::perMinute(30)->by($request->ip()));
+
+        /*
          * Pulse's dashboard, on the same key everything else admin-only uses.
          *
          * Pulse ships its own `viewPulse` gate answering `environment('local')`,
@@ -157,5 +171,26 @@ class AppServiceProvider extends ServiceProvider
          */
         Feature::define('pickem', fn (?User $user): bool => config('cfb.pickem_open') === true
             || (bool) $user?->isAdmin());
+
+        /*
+         * The two AI surfaces, the same shape as `pickem`: a closure over
+         * config, so each flip is an environment change with an instant
+         * rollback — and `php artisan pennant:purge <flag>` afterwards, because
+         * the database driver persists a resolved value and anybody who has
+         * already loaded a page keeps their old answer until those rows go.
+         *
+         * BOTH READ THE MASTER SWITCH, so `AI_ENABLED=false` closes everything
+         * at once without having to remember the list.
+         *
+         * They do NOT read the budget. That is a runtime question asked at the
+         * call site through `App\Support\AiBudget::allows()` — resolving
+         * Pennant against a number that moves would persist a row the moment
+         * spend crossed the line and then answer from it afterwards.
+         */
+        Feature::define('ai-answers', fn (): bool => config('cfb.ai_enabled') === true
+            && config('cfb.ai_answers') === true);
+
+        Feature::define('ai-recaps', fn (): bool => config('cfb.ai_enabled') === true
+            && config('cfb.ai_recaps') === true);
     }
 }
