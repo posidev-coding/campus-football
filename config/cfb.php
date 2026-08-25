@@ -82,4 +82,26 @@ return [
      */
     'sms_daily_budget' => (int) env('SMS_DAILY_BUDGET', 200),
 
+    /*
+     * THE OPS TOKEN — the shared secret behind /ops/telemetry and
+     * /ops/workbook, the only externally-reachable surfaces the AI layer adds.
+     *
+     * They exist because the maintenance advisor is a Claude Code routine
+     * running in somebody else's cloud with no database access: it reads a
+     * telemetry snapshot over HTTP and files workbook items back. There is no
+     * user and no session on either call, so a bearer secret is the whole
+     * authentication.
+     *
+     * UNSET MEANS OFF, and off means 404 rather than 403 — an ops surface
+     * nobody has configured should not exist, and should not announce that it
+     * would exist if you guessed the token. A token below
+     * `EnsureOpsToken::MINIMUM_LENGTH` counts as unset for the same reason:
+     * `OPS_TOKEN=test` in an environment file is how a secret stops being one.
+     *
+     * Config rather than `env()` at the call site, the house pattern, so
+     * rotating it is an environment change with an instant rollback and a test
+     * can set it without touching the environment.
+     */
+    'ops_token' => env('OPS_TOKEN'),
+
 ];
