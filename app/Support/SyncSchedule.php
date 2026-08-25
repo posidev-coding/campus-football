@@ -150,6 +150,7 @@ class SyncSchedule
             // gains a trackRun() key needs a line here or its row lies.
             str_starts_with($command, 'cfb:kickoff-alerts') => 'kickoff-alerts',
             str_starts_with($command, 'cfb:ux-rollup') => 'ux:rollup',
+            str_starts_with($command, 'cfb:gameday') => 'gameday',
             default => null,
         };
     }
