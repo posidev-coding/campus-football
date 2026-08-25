@@ -19,7 +19,7 @@ function gamedayPayload(): array
                 'id' => 'Clemson-vs-LSU',
                 'cutoffTime' => '2026-09-05T09:00:00',
                 'location' => 'Baton Rouge, LA',
-                'date' => 'Saturday, September 5',
+                'date' => 'Saturday, September 5th',
                 'prefix' => 'Week 1 Live from',
                 'homeTeamLogoSrc' => '/2025/lsu.png',
                 'homeTeamLogoAlt' => 'Ohio State logo',
@@ -29,7 +29,7 @@ function gamedayPayload(): array
                 'id' => 'Ohio State vs Texas',
                 'cutoffTime' => '2026-09-12T09:00:00',
                 'location' => 'AUSTIN, TX',
-                'date' => 'Saturday, September 12',
+                'date' => 'Saturday, September 12th',
                 'prefix' => 'Week 2 Live from',
                 'map' => ['locationName' => 'Aggie Park', 'address' => 'College Station', 'imageSrc' => 'tam-map.png'],
             ],
@@ -137,4 +137,16 @@ it('fingerprints what it read, so a changed location is noticeable', function ()
 
     expect($feed->fingerprint($matchup))->toHaveLength(64)
         ->and($feed->fingerprint($moved))->not->toBe($feed->fingerprint($matchup));
+});
+
+it('ships the captured feed URL rather than depending on an env var nobody set', function () {
+    /*
+     * The path is public, not a secret, so it is pinned as the config default
+     * and production needs no variable to work. GAMEDAY_FEED_URL stays as the
+     * override for the day ESPN moves it — which will present as a 404 the
+     * command reports, never as a silently empty card.
+     */
+    expect(config('gameday.feed_url'))->toBeString()
+        ->toStartWith('https://')
+        ->toEndWith('index.json');
 });

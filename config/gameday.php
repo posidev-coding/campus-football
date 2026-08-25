@@ -15,13 +15,22 @@ return [
      * path is unconfigured, and `cfb:gameday` says so and stops — it does not
      * try a plausible URL and interpret the 404.
      *
+     * NOTE THE `/2025/` IN THE PATH. The scaffold is reused season to season
+     * and 2026 content is served from it, so the year there means nothing and
+     * must not be computed. If ESPN ever does roll the path this 404s and
+     * `cfb:gameday` reports it — at which point the fix is GAMEDAY_FEED_URL,
+     * captured the same way this was, not a guess at the new year.
+     *
      * Deliberately NOT in config/espn.php and deliberately NOT fetched through
      * EspnClient. That client exists for ESPN's JSON APIs and their cost
      * tiers; a promo page has no business inside its rate limiter or its
      * User-Agent allowlist, and one request a week has no business being
      * counted against a budget sized for live scoring.
      */
-    'feed_url' => env('GAMEDAY_FEED_URL'),
+    'feed_url' => env(
+        'GAMEDAY_FEED_URL',
+        'https://a.espncdn.com/prod/styles/pagetype/otl/2025/college-gameday/json/index.json',
+    ),
 
     /*
      * Short, because this call is on a scheduled command and never on a
