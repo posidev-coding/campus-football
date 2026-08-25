@@ -147,6 +147,13 @@ a leaked URL on its own is not enough. The write is deliberately unsigned —
 nothing hands the routine that URL to follow, and `signed` does not cover a
 request body.
 
+**Rotating `OPS_TOKEN` is how access is revoked**, and it is the only lever that
+is safe to pull: the signature has no expiry (the routine needs a stable URL)
+and invalidating it would mean rotating `APP_KEY`, which logs out every session
+and breaks every other signed URL in the app. Change the token, run
+`cfb:advisor-setup` again, update the routine. The old URL keeps its valid
+signature and stops working anyway, because the token no longer matches.
+
 **Both live outside the `web` middleware group**, registered from
 `bootstrap/app.php` rather than `routes/web.php`. No user, no session, no form:
 cookies and session start would be cost with no benefit, and keeping the POST
