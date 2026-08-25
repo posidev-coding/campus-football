@@ -8,7 +8,6 @@ use App\Models\Group;
 use App\Models\Slate;
 use App\Models\Week;
 use App\Services\CfbCalendar;
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -287,7 +286,13 @@ class PickemPreflight
          */
         $wanted = ['pickem:publish-slates', 'pickem:settle', 'pickem:open-lobbies', 'pickem:remind'];
 
-        $scheduled = collect(app(Schedule::class)->events())
+        /*
+         * Through SyncSchedule, never by resolving the Schedule out of the
+         * container here: the raw Schedule is empty in an HTTP request, and
+         * this check runs on every admin page load. See SyncSchedule::events()
+         * — and ScheduleReadersTest, which is what keeps it the only reader.
+         */
+        $scheduled = collect(app(SyncSchedule::class)->events())
             ->map(fn ($event) => $event->command ?? '')
             ->implode(' ');
 

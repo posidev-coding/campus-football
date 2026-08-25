@@ -42,8 +42,23 @@ class SyncSchedule
             ->all();
     }
 
-    /** @return list<Event> */
-    private function events(): array
+    /**
+     * THE ONLY PLACE `Schedule::events()` IS READ, and it has to stay that way.
+     *
+     * A raw read returns an EMPTY list over HTTP, because routes/console.php
+     * loads only when the console kernel bootstraps. That is not an error and
+     * nothing throws — the caller simply concludes that nothing is scheduled.
+     * `PickemPreflight` read it raw and reported all four Pick'em sweeps
+     * missing on every admin page load, a red launch gate over a schedule that
+     * was entirely correct.
+     *
+     * Under `php artisan` the kernel has already bootstrapped, so a test can
+     * never see the empty case: `ScheduleReadersTest` guards the call site
+     * instead of the behavior.
+     *
+     * @return list<Event>
+     */
+    public function events(): array
     {
         $schedule = app(Schedule::class);
 
