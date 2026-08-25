@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Jobs\Middleware\ThrottleMail;
 use App\Models\User;
 use App\Notifications\WeeklyNewsletter;
+use App\Support\RecapWriter;
 use App\Support\WeeklyDigest;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -73,6 +74,21 @@ class SendWeeklyNewsletter implements ShouldQueue
             return;
         }
 
-        $user->notify(new WeeklyNewsletter(WeeklyDigest::for($user)));
+        $digest = WeeklyDigest::for($user);
+
+        /*
+         * The model call belongs HERE, one reader at a time, rather than
+         * anywhere that would write once and send to everybody: a recap in
+         * somebody's own register is the entire feature, and the register is a
+         * property of the reader.
+         *
+         * It returns null on every failure it can have — flag closed, budget
+         * spent, API down, copy that failed the sweep — and the template
+         * answers null with the deterministic copy. Nothing here can cost this
+         * reader their email.
+         */
+        $recap = app(RecapWriter::class)->for($user, $digest);
+
+        $user->notify(new WeeklyNewsletter($digest, $recap));
     }
 }

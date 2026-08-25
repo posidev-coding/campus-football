@@ -756,7 +756,7 @@ write surface is unwanted.
 
 ---
 
-## Phase 4 — Weekly recaps
+## Phase 4 — Weekly recaps ✅ **Complete 2026-08-25**
 
 Host: the existing Tuesday newsletter. `App\Support\WeeklyDigest::for(User, ?Carbon)`
 already returns `{teams, since, has_results}` and is built **per user, not per
@@ -790,6 +790,56 @@ Timing is already correct: Tuesday 08:00 is after `Cadence::officialFinal()`
 (Sunday noon ET), the stat-settling window that exists because ESPN corrects
 totals hours after a game. A recap generated before that can state a number that
 later changes.
+
+> **As built.** Four pieces and one rule.
+>
+> `App\Ai\Agents\WeeklyRecap` writes a `{headline, body[]}` and nothing else —
+> **no tools, deliberately**. Everything it may say arrives in the prompt,
+> because a recap that could search the web could contradict our own scoreboard
+> three paragraphs below itself and the reader would have no way to tell which
+> half was ours. Register and few-shot lines are CONSTRUCTOR state rather than
+> prompt text: what the app sounds like is true of every reader at that level,
+> while the prompt carries only this reader's week.
+>
+> `Voice::exemplars()` reads the same map the screens read, so a line reworded
+> on a screen reworks the model's example with it and the two cannot drift into
+> two voices. It is ORDERED, never sampled — a prompt that changes shape between
+> two readers is a prompt nobody can debug — and it skips any line carrying a
+> `:placeholder`, which would otherwise teach the model that emitting `:points`
+> is a thing this app does. The extraction that made it possible (`variant()`)
+> is now what `line()` resolves through too.
+>
+> `App\Support\RecapSweep` is the deterministic read-through, and it **errs
+> toward rejection on purpose**: a false positive costs one reader one week of
+> generated copy and nobody notices; a false negative is a joke about somebody
+> in their inbox with our name on it. Shape, length, markup, attacks on the
+> reader, register, American spelling, Georgia-outside-live-data.
+>
+> ⚠️ **Profanity is banned at EVERY register, R included.** Not an oversight — a
+> product line. Every `r` line in `Voice` is clean, so generated copy that swore
+> would be louder than anything a human wrote here, and the App Store age rating
+> is decided by the loudest thing in the build rather than the average one. The
+> registers differ in ATTITUDE, not in vocabulary.
+>
+> `App\Support\RecapWriter` is the guarded caller, and **null is the whole
+> design**: flag closed, budget spent, nothing played, API down, copy that
+> failed the sweep — every branch returns null, and the template answers null
+> with the deterministic `mail.newsletter` copy that shipped months earlier.
+> Real content a human wrote, never an invented substitute and never an error in
+> an inbox. It mirrors `config('cfb.ai_recaps')` rather than resolving Pennant,
+> because this runs once per reader inside a fan-out.
+>
+> `App\Support\AiFailure` tells the two spend walls apart, which is the Phase 0
+> note finally implemented. Our own Console limit is a **400** that falls
+> through every handler in `laravel/ai` and arrives as a bare `RequestException`;
+> the tier cap is a **429** whose `enforced_spend_limit_reached` sits one link
+> down the chain because the SDK rewraps it as `RateLimitedException` — so it
+> reads as ordinary rate limiting, which is a thing you wait out. It is not.
+> `GamedayFallback` reports through it now too.
+>
+> **The agent's timeout is 25 seconds against the job's 60.** `SendWeeklyNewsletter`
+> must stay below the queue's 90-second `retry_after`, and the mail send happens
+> after the model answers.
 
 ---
 
@@ -1287,7 +1337,7 @@ worktree is committed and merged**; nothing here waits for Sep 1 or Sep 5.
 | 3 | **Phase 3 — advisor routine** | None — new routes only |
 | 4 | Phase 6 — budget guard | None |
 | 5 | Phase 7 — College GameDay | Home — new card, **ships flag-closed** |
-| 6 | Phase 4 — recaps | Newsletter — **ships flag-closed** |
+| 6 | Phase 4 — recaps ✅ landed | Newsletter — **ships flag-closed** |
 | 7 | Phase 5 — Search answers | Search — **ships flag-closed** |
 
 **Items 0–3 are the priority and should land within days.** They touch no product

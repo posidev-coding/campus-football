@@ -6,9 +6,22 @@
 <x-mail::message :unsubscribeUrl="$unsubscribeUrl" unsubscribeLabel="Stop the weekly email">
 # {{ $user->first_name }},
 
+{{-- The reader's own week, written in their own register — or the copy that
+     has always been here. `$recap` is null on every failure the model call can
+     have, and null is the DEFAULT rather than the error: this half of the
+     email must read as finished whether or not anything generated it. --}}
+@if ($recap ?? null)
+## {{ $recap['headline'] }}
+
+@foreach ($recap['body'] as $paragraph)
+{{ $paragraph }}
+
+@endforeach
+@else
 {{ $digest['has_results']
     ? Voice::line('mail.newsletter.intro', for: $user)
     : Voice::line('mail.newsletter.empty', for: $user) }}
+@endif
 
 @foreach ($digest['teams'] as $row)
 @php($team = $row['team'])

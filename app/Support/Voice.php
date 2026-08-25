@@ -1601,11 +1601,90 @@ class Voice
     ];
 
     /**
+     * The lines a model is shown so a generated recap sounds like the app
+     * rather than like a model being funny.
+     *
+     * Curated by hand and ORDERED, never sampled. A prompt that changes shape
+     * between two readers is a prompt nobody can debug, and one reader's email
+     * should not swing register week to week because a shuffle came up
+     * differently.
+     *
+     * Every key is a LOUD surface. Nothing from Scores or League is here —
+     * those report facts and have no voice to imitate.
+     *
+     * @var list<string>
+     */
+    private const EXEMPLARS = [
+        'mail.newsletter.intro',
+        'mail.newsletter.empty',
+        'teams.subheading',
+        'home.first_team',
+        'home.pickem',
+        'picks.screen.pitch',
+        'leaderboard.empty',
+        'history.empty',
+        'talk.empty.team',
+        'groups.mine.empty',
+    ];
+
+    /**
      * A line at the reader's level, or the closest one below it.
      *
      * @param  array<string, string|int>  $replace
      */
     public static function line(string $key, array $replace = [], ?User $for = null): string
+    {
+        $rating = ($for ?? auth()->user())?->content_rating ?? ContentRating::Pg13;
+
+        $line = self::variant($key, $rating);
+
+        return $line === '' ? '' : self::fill($line, $replace);
+    }
+
+    /**
+     * Six to ten lines already written in this register, as few-shot examples.
+     *
+     * Reads the SAME map the screens read, deliberately: the register is
+     * defined in exactly one place, so a line reworded on a screen reworks the
+     * model's example with it and the two can never drift into two voices.
+     *
+     * A line carrying a `:placeholder` is SKIPPED rather than filled. Filling
+     * it would need values that do not exist here, and showing it raw teaches
+     * the model that emitting `:points` is a thing this app does.
+     *
+     * @return list<string>
+     */
+    public static function exemplars(ContentRating $rating, int $limit = 8): array
+    {
+        $lines = [];
+
+        foreach (self::EXEMPLARS as $key) {
+            if (count($lines) >= $limit) {
+                break;
+            }
+
+            $line = self::variant($key, $rating);
+
+            if ($line === '' || preg_match('/(?<!\\w):[a-z_]{2,}/', $line) === 1) {
+                continue;
+            }
+
+            $lines[] = $line;
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The raw line for a rating, unfilled — the resolution both readers share.
+     *
+     * `includes()` runs mildest-first, so the reader's own level is last: walk
+     * back from there and take the first line that exists. That is the ladder
+     * falling DOWN and never up, which is why a key defining only `pg` is safe
+     * to add while one defining only `r` never reaches anybody who did not ask
+     * for it.
+     */
+    private static function variant(string $key, ContentRating $rating): string
     {
         $variants = self::LINES[$key] ?? [];
 
@@ -1613,13 +1692,9 @@ class Voice
             return '';
         }
 
-        $rating = ($for ?? auth()->user())?->content_rating ?? ContentRating::Pg13;
-
-        // `includes()` runs mildest-first, so the reader's own level is last —
-        // walk back from there and take the first line that exists.
         foreach (array_reverse($rating->includes()) as $level) {
             if (isset($variants[$level->value])) {
-                return self::fill($variants[$level->value], $replace);
+                return $variants[$level->value];
             }
         }
 

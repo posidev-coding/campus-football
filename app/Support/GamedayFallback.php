@@ -49,7 +49,10 @@ class GamedayFallback
                 .$saturday->format('F j, Y').'?'
             );
         } catch (Throwable $e) {
-            return [null, 'The model call failed: '.mb_substr($e->getMessage(), 0, 120)];
+            // Both spend-limit shapes land here, and AiFailure is what makes
+            // the recorded reason say WHICH wall we hit — the tier cap in
+            // particular arrives dressed as ordinary rate limiting.
+            return [null, AiFailure::describe($e)];
         }
 
         $this->recordSpend($response);
