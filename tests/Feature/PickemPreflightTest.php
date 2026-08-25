@@ -5,6 +5,8 @@ use App\Enums\ContestMode;
 use App\Models\Group;
 use App\Models\User;
 use App\Support\PickemPreflight;
+use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\DB;
 use Laravel\Pennant\Feature;
 
@@ -182,6 +184,38 @@ it('does NOT reach somebody whose value was already persisted — the flip landm
 it('holds the three sweeps that keep a live league honest', function () {
     // A flag flipped without these looks fine for a day and then quietly
     // stops publishing slates on the Tuesday nobody was watching.
+    //
+    // NOTE this only proves the CONSOLE path. Pest boots the console kernel
+    // before the first test, so the schedule is already populated here and
+    // this passed throughout the bug below.
+    expect(preflight()['schedule']['status'])->toBe(PickemPreflight::OK);
+});
+
+it('finds the sweeps over HTTP, where the schedule starts out empty', function () {
+    /*
+     * THE BUG THIS EXISTS FOR. routes/console.php loads only when the CONSOLE
+     * kernel bootstraps, so in an HTTP request `app(Schedule::class)` resolves
+     * with no events at all — and a raw read of it concluded that all four
+     * sweeps were unscheduled. Every admin page load showed a red launch gate
+     * over a schedule that was entirely correct, a week before the flip.
+     *
+     * The empty case cannot occur naturally in Pest: the kernel is bootstrapped
+     * before the first test, and `commandsLoaded` stops a second bootstrap()
+     * from re-reading the file. So it is STAGED — an empty Schedule, plus a
+     * kernel that populates it when asked to bootstrap, which is precisely
+     * what happens on the HTTP path.
+     */
+    $schedule = new Schedule;
+    app()->instance(Schedule::class, $schedule);
+
+    $kernel = Mockery::mock(Kernel::class)->shouldIgnoreMissing();
+    $kernel->shouldReceive('bootstrap')->once()->andReturnUsing(function () use ($schedule): void {
+        foreach (['pickem:publish-slates', 'pickem:settle', 'pickem:open-lobbies', 'pickem:remind'] as $command) {
+            $schedule->command($command)->weekly();
+        }
+    });
+    app()->instance(Kernel::class, $kernel);
+
     expect(preflight()['schedule']['status'])->toBe(PickemPreflight::OK);
 });
 
