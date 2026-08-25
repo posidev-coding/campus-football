@@ -99,12 +99,26 @@ class WorkbookResource extends Resource
                 ->label('Evidence')
                 ->columnSpanFull()
                 ->placeholder('—')
-                // Pretty-printed rather than a KeyValueEntry: evidence is
-                // arbitrary nested JSON from a telemetry snapshot, and a
-                // flat key/value list would drop everything below the surface.
-                ->formatStateUsing(fn (?array $state): string => $state === null
-                    ? '—'
-                    : json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES))
+                /*
+                 * `state()`, NOT `formatStateUsing()`, and the difference is a
+                 * TypeError rather than a style choice.
+                 *
+                 * `evidence` carries an `array` cast, and Filament renders an
+                 * array state as a LIST — it calls the formatter once per
+                 * ELEMENT, handing it the element. So a `?array` hint blows up
+                 * on the first `['hits' => 214]`, at the moment somebody opens
+                 * the item, with the row rendering perfectly in the table
+                 * behind it.
+                 *
+                 * Overriding the state collapses it to one string before
+                 * Filament ever sees an array. Pretty-printed rather than a
+                 * KeyValueEntry, because evidence is arbitrary nested JSON
+                 * from a telemetry snapshot and a flat key/value list would
+                 * drop everything below the surface.
+                 */
+                ->state(fn (WorkbookItem $record): ?string => $record->evidence === null
+                    ? null
+                    : json_encode($record->evidence, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES))
                 ->fontFamily('mono')
                 ->size('xs'),
             TextEntry::make('prompt')

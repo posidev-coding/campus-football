@@ -17,6 +17,10 @@ use App\Models\FeedRun;
 use App\Models\User;
 use App\Models\WorkbookItem;
 use App\Support\SyncSchedule;
+use Filament\Actions\CreateAction;
+use Filament\Actions\EditAction;
+use Filament\Actions\Testing\TestAction;
+use Filament\Actions\ViewAction;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
@@ -281,5 +285,97 @@ describe('the schedule report', function () {
             ->all();
 
         expect($untracked)->toBe(['cfb:news:followed', 'cfb:news:followed:offseason']);
+    });
+});
+
+describe('the detail modal', function () {
+    /*
+     * The surface a table test cannot reach. `assertCanSeeTableRecords` proves
+     * the ROWS render; the infolist only runs when somebody opens the View
+     * modal, so it shipped unrendered by anything — the same gap that let the
+     * Pulse dashboard's lazy cards ship broken through a green suite.
+     */
+    it('renders the evidence and the prompt without falling over', function () {
+        // Evidence is an `array` cast, and Filament renders an array state as
+        // a LIST — calling formatStateUsing once per element, with the element,
+        // not the array. A nested map arrives as an int and a `?array` hint is
+        // a TypeError at exactly the moment somebody opens the item.
+        $item = WorkbookItem::factory()->create([
+            'title' => 'The picks screen N+1s',
+            'evidence' => [
+                'hits' => 214,
+                'worst_ms' => 2_400,
+                // Nested, because the advisor sends excerpts of a telemetry
+                // snapshot and a flat key/value view would drop this entirely.
+                'sample' => ['type' => 'slow_query', 'key' => 'select * from `games`'],
+            ],
+            'prompt' => 'Add the eager load to pickem-home and prove it with a query-count test.',
+        ]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->mountAction(TestAction::make(ViewAction::class)->table($item))
+            ->assertMountedActionModalSee('214')
+            ->assertMountedActionModalSee('Add the eager load');
+    });
+
+    it('renders an item with no evidence and no prompt', function () {
+        // The advisor may file a finding it could not attach numbers to, and
+        // a human filing by hand attaches neither.
+        $item = WorkbookItem::factory()->create(['evidence' => null, 'prompt' => null]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->mountAction(TestAction::make(ViewAction::class)->table($item))
+            ->assertOk();
+    });
+
+    it('renders evidence that is a flat list, not only a map', function () {
+        $item = WorkbookItem::factory()->create(['evidence' => ['one', 'two', 'three']]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->mountAction(TestAction::make(ViewAction::class)->table($item))
+            ->assertMountedActionModalSee('two');
+    });
+});
+
+describe('filing and editing by hand', function () {
+    it('files a human item with a key of its own', function () {
+        // The advisor is the volume, not the authority — `source` says which
+        // is which, and a human item still needs the unique key everything
+        // else is addressed by.
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(CreateAction::class, [
+                'title' => 'The lobby needs a Saturday countdown',
+                'category' => 'feature',
+                'severity' => 'low',
+                'status' => 'inbox',
+                'body' => 'Asked for twice this week.',
+            ]);
+
+        $item = WorkbookItem::sole();
+
+        expect($item->source)->toBe(WorkbookItem::SOURCE_HUMAN)
+            ->and($item->key)->toStartWith('human-the-lobby-needs-a-saturday-countdown')
+            ->and($item->first_seen_at)->not->toBeNull()
+            ->and($item->status)->toBe(WorkbookStatus::Inbox);
+    });
+
+    it('lets a human answer an item from the table', function () {
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Inbox]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(TestAction::make(EditAction::class)->table($item), [
+                'title' => $item->title,
+                'category' => $item->category->value,
+                'severity' => 'critical',
+                'status' => 'dismissed',
+            ]);
+
+        expect($item->fresh()->status)->toBe(WorkbookStatus::Dismissed)
+            ->and($item->fresh()->severity)->toBe(WorkbookSeverity::Critical);
     });
 });
