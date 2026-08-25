@@ -58,3 +58,10 @@ Never insert wallet_entries directly. One-time grants pass `key` (the (user_id, 
 
 ## Pick'em settlement payouts are KEYED — superseding "weekly wins pass no key"
 The older support.md line saying repeatable weekly wins pass no key predates event-driven settlement and is SUPERSEDED for pick'em: SettleSlate can double-fire (sweep overlap, retried jobs), so its payouts ride idempotency keys — `slate:{id}:win` (100 XP + 1 latte per winner) and `slate:{id}:pts` (points × 10 XP) — and the (user_id, key) unique index is what makes a re-settle pay nobody twice. Payouts happen ONLY at official settlement (past Cadence::officialFinal), never at the preliminary flip. The settle claim (whereNull settled_at → update) comes LAST; everything before it is idempotent by construction.
+
+## kickoff_day is a weekday name, and a date cast is midnight UTC
+Two ways to match "a game on this Saturday" that both fail silently.
+
+`games.kickoff_day` stores a WEEKDAY NAME ("Sat"), not a date — GameFactory writes `format('D')`. Never compare it to a date string. Read the day off `kickoff_at`, converted to `cfb.timezone`: 20:00 ET Saturday is 00:00 UTC Sunday, so matching the UTC date drops the whole night window.
+
+A column with a `date` cast (gameday_weeks.saturday) arrives as midnight UTC. Calling `->setTimezone('America/New_York')->startOfDay()` on it lands at 20:00 the PREVIOUS evening and yields the wrong day. Take `->toDateString()` and re-parse it in ET — a calendar date is re-pinned, never converted, the distinction Cadence already draws. Nothing throws either way; the query just finds nothing.

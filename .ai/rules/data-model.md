@@ -55,3 +55,10 @@ collides with `Command::arguments()`. Both are fatal at class-load time.
 
 ## SeasonFactory draws years without replacement — don't undo unique()
 seasons carries a (year, type) unique index and SeasonFactory's range is only 12 years, so any fixture graph reaching Season::factory() down two chains (a pick'em slate game does: Week AND Game) collided about one run in twelve — passing under --filter, failing in the suite. fake()->unique() makes the draws collision-free within a test; a test wanting 13+ unpinned seasons overflows loudly, which is the correct failure. Pin or share a season when building multi-game fixtures.
+
+## foreignId() cannot reference the ESPN-keyed tables
+`teams.id` is mediumint unsigned and `games.id`/`venues.id` are int unsigned — right-sized for ESPN's own ids. `foreignId()` emits bigint, and MySQL refuses to constrain a wide child against a narrow parent.
+
+It fails on the ALTER that adds the constraint, which runs AFTER `Schema::create` has already made the table, so the migration errors, leaves the table behind, and still reports itself Pending — a confusing second run that dies on "table already exists".
+
+Use `unsignedMediumInteger('team_id')` / `unsignedInteger('game_id')` plus an explicit `$table->foreign(...)->references('id')->on(...)`, the pattern every games/standings/rankings migration already uses. (Hit 2026-08-25 building gameday_weeks.)
