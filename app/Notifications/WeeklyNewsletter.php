@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Support\Brand;
+use App\Support\RecapWriter;
 use App\Support\Voice;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -20,9 +21,16 @@ use Illuminate\Support\Facades\URL;
 class WeeklyNewsletter extends Notification
 {
     /**
+     * `$recap` is this reader's week written in their own register, or NULL —
+     * which is not an error state but the DEFAULT one. The template answers
+     * null with the deterministic copy that shipped long before any of this
+     * existed, so a reader whose recap failed still gets last month's email.
+     * See {@see RecapWriter}.
+     *
      * @param  array{teams: list<array<string, mixed>>, since: mixed, has_results: bool}  $digest
+     * @param  array{headline: string, body: list<string>}|null  $recap
      */
-    public function __construct(public array $digest) {}
+    public function __construct(public array $digest, public ?array $recap = null) {}
 
     /**
      * @return list<string>
@@ -48,6 +56,7 @@ class WeeklyNewsletter extends Notification
             ->markdown('mail.newsletter', [
                 'user' => $notifiable,
                 'digest' => $this->digest,
+                'recap' => $this->recap,
                 'unsubscribeUrl' => $unsubscribe,
             ])
             /*

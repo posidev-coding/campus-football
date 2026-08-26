@@ -173,6 +173,57 @@ class StatCatalog
     }
 
     /**
+     * Every stat the answer layer may resolve, keyed `category.stat`.
+     *
+     * THE SAME ENTRIES THE LEADERBOARDS RENDER, and that is the point rather
+     * than a shortcut: an answer a reader cannot then go and verify on a screen
+     * is an answer they have to take on faith. Adding a leaderboard makes its
+     * stat askable in the same commit, with the label and the decimals it will
+     * be printed with already decided.
+     *
+     * The key is the PAIR, never the stat alone. `interceptions` lives in both
+     * `passing` (thrown — a bad outcome) and `interceptions` (caught — a good
+     * one): same word, opposite meaning, and a vocabulary keyed on the word
+     * would answer "how many interceptions did he have" with whichever row the
+     * database happened to return first.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public static function answerable(bool $team = false): array
+    {
+        $boards = $team ? self::teamLeaderboards() : self::leaderboards();
+
+        $pairs = [];
+
+        foreach ($boards as $side => $entries) {
+            foreach ($entries as $entry) {
+                $pairs[$entry['category'].'.'.$entry['stat']] = [...$entry, 'side' => $side];
+            }
+        }
+
+        return $pairs;
+    }
+
+    /**
+     * The same vocabulary as a block of prompt text.
+     *
+     * Generated rather than written out, so the list a model is given cannot
+     * drift from the list the resolver will accept — the two would disagree
+     * silently, and the symptom would be a model confidently naming a stat that
+     * is then declined as unanswerable.
+     */
+    public static function vocabulary(bool $team = false): string
+    {
+        $lines = [];
+
+        foreach (self::answerable($team) as $key => $entry) {
+            $lines[] = '  '.$key.' — '.$entry['label'];
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
      * @return array<string, string>
      */
     public static function sideLabels(): array

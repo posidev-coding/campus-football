@@ -1,5 +1,6 @@
 <?php
 
+use App\Livewire\Concerns\AsksQuestions;
 use App\Support\Search;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -19,6 +20,8 @@ use Livewire\Component;
  */
 new class extends Component
 {
+    use AsksQuestions;
+
     public string $q = '';
 
     public function clear(): void
@@ -61,6 +64,17 @@ new class extends Component
     public function recruits()
     {
         return Search::recruits($this->q, limit: 4);
+    }
+
+    /** Every group the answer layer has to come back empty against. */
+    protected function searchFoundSomething(): bool
+    {
+        return $this->teams->isNotEmpty()
+            || $this->players->isNotEmpty()
+            || $this->coaches->isNotEmpty()
+            || $this->conferences->isNotEmpty()
+            || $this->games->isNotEmpty()
+            || $this->recruits->isNotEmpty();
     }
 }; ?>
 
@@ -177,6 +191,17 @@ new class extends Component
             wire:target="q"
             class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] motion-safe:transition-opacity"
         >
+            {{-- Above the results, which still render whatever happens here.
+                 This is the surface that matters most: below `sm` it is the
+                 only search a phone has. --}}
+            @php($askState = $this->askState())
+
+            @if ($askState !== 'none')
+                <div class="pb-3">
+                    <x-stat-answer :state="$askState" :answer="$this->resolvedAnswer()" />
+                </div>
+            @endif
+
             @include('partials.search-results', [
                 'q' => $q,
                 'teams' => $this->teams,
