@@ -142,13 +142,30 @@ class RecapWriter
             $heading .= $row['record'] ? ' ('.$row['record'].')' : '';
 
             $lines[] = $heading;
-            $lines[] = '  Last week: '.($row['result'] instanceof Game
-                ? WeeklyDigest::describe($row['result'], $team)
+            $lines[] = '  Last result: '.($row['result'] instanceof Game
+                ? WeeklyDigest::describe($row['result'], $team).$this->on($row['result'])
                 : 'did not play');
             $lines[] = '  Next: '.$this->nextLine($row['next'] ?? null, $user);
         }
 
         return implode("\n", $lines);
+    }
+
+    /**
+     * The DATE of a result, and it is not decoration.
+     *
+     * Without it the model has to infer where in the season a game sits, and
+     * it will: the first real recap opened "Tennessee and North Carolina both
+     * open with losses" over a bowl defeat and a rivalry finale, because the
+     * next fixtures were in September. A missing fact is an invitation to
+     * invent one, and no sweep can catch a wrong characterization of a real
+     * score.
+     */
+    private function on(Game $game): string
+    {
+        $when = $game->kickoff_at?->setTimezone(config('cfb.timezone'))->format('M j, Y');
+
+        return $when === null ? '' : ', '.$when;
     }
 
     private function nextLine(mixed $next, User $user): string

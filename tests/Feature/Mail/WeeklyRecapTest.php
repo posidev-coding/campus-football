@@ -213,6 +213,24 @@ describe('the facts', function () {
             && str_contains($prompt->prompt, 'every true thing you may say'));
     });
 
+    it('dates every result, so the model never has to guess where it sat', function () {
+        /*
+         * The first real recap called a bowl defeat and a rivalry finale
+         * "both open with losses", because the next fixtures were in
+         * September and nothing said when the games had been played. A
+         * missing fact is an invitation to invent one, and no sweep can
+         * catch a wrong characterization of a real score.
+         */
+        WeeklyRecap::fake([recapAnswer()]);
+
+        writeRecap(recapReader());
+
+        WeeklyRecap::assertPrompted(fn ($prompt): bool => str_contains(
+            $prompt->prompt,
+            'Won 24-17 at Kentucky, '.$this->game->kickoff_at->setTimezone(config('cfb.timezone'))->format('M j, Y'),
+        ));
+    });
+
     it('states an absence rather than substituting a default', function () {
         /*
          * `null` means no data and callers skip — they never substitute. A

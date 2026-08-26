@@ -209,6 +209,7 @@ new class extends Component
                 'coaches' => $this->coaches,
                 'conferences' => $this->conferences,
                 'games' => $this->games,
+                'answered' => $askState === 'answered',
                 'recruits' => $this->recruits,
             ])
         </div>

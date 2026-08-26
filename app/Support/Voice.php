@@ -559,10 +559,13 @@ class Voice
          * What speaks is the chrome around it — the offer, the shrug and the
          * cap — which is the same licence the empty state above already has.
          */
+        // Deliberately does NOT repeat "nothing matched" — the empty-state
+        // callout directly underneath already says it, and reading the same
+        // sentence twice makes the offer look like an error message.
         'search.ask' => [
             'pg' => 'That reads like a question. We can look the number up.',
-            'pg13' => 'That reads like a question. Nothing matched the words — but we can go find the number.',
-            'r' => 'Nothing matched those words. Ask properly and we will go dig the number out.',
+            'pg13' => 'That reads like a question. We can go find the number.',
+            'r' => 'That reads like a question. Say the word and we will go dig the number out.',
         ],
 
         'search.ask.none' => [

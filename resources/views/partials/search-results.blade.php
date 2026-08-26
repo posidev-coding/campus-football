@@ -6,6 +6,11 @@
     $games and $recruits. Callers pass their own limits; this only renders what
     it is given.
 
+    `$answered` (optional) says a stat answer is on screen above these results.
+    "Nothing found" printed directly underneath an answer is a contradiction —
+    it reads as the page arguing with itself — so the empty state stands down
+    and the rows, if any, still render.
+
     The rows are rich and the groups are ordered by who gets asked for most,
     but the CONTENT stays factual — search serves Scores and League, so only
     the empty state speaks in the reader's register.
@@ -26,7 +31,7 @@
                 Teams, players, recruits, coaches, conferences and games. Type at least two characters.
             </flux:callout.text>
         </flux:callout>
-    @elseif (! $hasResults)
+    @elseif (! $hasResults && ! ($answered ?? false))
         <flux:callout icon="magnifying-glass">
             <flux:callout.heading>Nothing found</flux:callout.heading>
             <flux:callout.text>

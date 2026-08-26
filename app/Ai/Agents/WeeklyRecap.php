@@ -63,7 +63,9 @@ class WeeklyRecap implements Agent, HasStructuredOutput
            not add a score, a rank, a record, a player, a coach, an injury, a
            betting line or a piece of history that is not in it. If the week was
            dull, say so — a dull week honestly described beats an invented
-           storyline.
+           storyline. Every result carries its DATE: do not say where in a
+           season a game sat unless those dates tell you, and never call
+           something an opener, a finale or a streak on your own reading.
 
         2. ROAST THE PICK, THE TEAM, THE RECORD — NEVER THE PERSON. Their team
            can be a disaster. Their season can be a punchline. The reader

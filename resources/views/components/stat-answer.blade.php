@@ -77,11 +77,18 @@
         <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ App\Support\Voice::line('search.ask') }}</p>
 
         {{-- The label stays plain. A joke standing between somebody and the
-             button they are about to press is friction, not voice. --}}
-        <flux:button wire:click="ask" wire:loading.attr="disabled" wire:target="ask" size="sm" class="self-start">
-            <flux:icon.sparkles variant="micro" class="me-1.5" />
-            Look it up
-            <flux:icon.loading wire:loading wire:target="ask" class="ms-1.5 size-4" />
-        </flux:button>
+             button they are about to press is friction, not voice.
+
+             The icon rides the `icon` PROP rather than a child: flux:button
+             lays its slot out itself, and an icon passed as a child wrapped
+             onto its own line above the label at 390px. The in-flight tell
+             sits beside the button, the way the search input's does. --}}
+        <div class="flex items-center gap-2">
+            <flux:button wire:click="ask" wire:loading.attr="disabled" wire:target="ask" size="sm" icon="sparkles">
+                Look it up
+            </flux:button>
+
+            <flux:icon.loading wire:loading wire:target="ask" class="size-4 shrink-0 text-zinc-400" />
+        </div>
     </div>
 @endif
