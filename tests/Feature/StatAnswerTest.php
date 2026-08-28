@@ -15,6 +15,7 @@ use App\Models\TeamSeasonStat;
 use App\Models\User;
 use App\Services\CfbCalendar;
 use App\Services\Stats\AggregateAthleteStats;
+use App\Support\AskExamples;
 use App\Support\StatAnswer;
 use App\Support\Stats\StatCatalog;
 use Illuminate\Support\Facades\RateLimiter;
@@ -410,6 +411,108 @@ describe('what it costs', function () {
         askIt();
 
         expect(RateLimiter::attempts('ai-answer:'.$this->reader->id))->toBe(1);
+    });
+});
+
+describe('finding out it exists', function () {
+    /*
+     * Nobody types a question into a search box unless something told them
+     * they could. The idle screen is the only place that can, and it is the
+     * first thing every reader sees.
+     */
+    it('offers examples in the reader\'s own team name', function () {
+        $this->reader->followedTeams()->attach($this->vols->id, ['position' => 1]);
+
+        $examples = AskExamples::for($this->reader);
+
+        expect($examples)->toContain('How many points did Tennessee score last season?')
+            ->and($examples)->toContain('How many passing yards did Brandon Faizon throw last season?')
+            // A leaderboard needs no name to resolve, so it is the one example
+            // that cannot fail on a thin database.
+            ->and($examples)->toContain('Who leads the country in rushing yards?');
+    });
+
+    it('falls back to Tennessee for a reader following nobody', function () {
+        // The documented static example — the pilot audience is Tennessee
+        // alumni, and a canned school is otherwise somebody's rival.
+        expect(AskExamples::for($this->reader)[0])
+            ->toBe('How many points did Tennessee score last season?');
+    });
+
+    it('drops the player example rather than offering one that would be declined', function () {
+        /*
+         * A suggestion the app then declines is worse than no suggestion: it
+         * teaches that asking does not work, on the one attempt the reader was
+         * ever going to make. The resolver refuses an ambiguous name, so an
+         * example carrying one is a button that always fails.
+         */
+        Athlete::create(['id' => 900010, 'display_name' => 'Brandon Faizonaldo', 'last_name' => 'Faizonaldo', 'is_active' => true]);
+
+        $this->reader->followedTeams()->attach($this->vols->id, ['position' => 1]);
+
+        expect(AskExamples::for($this->reader))
+            ->not->toContain('How many passing yards did Brandon Faizon throw last season?');
+    });
+
+    it('promises a guest nothing the screen cannot then do', function () {
+        expect(AskExamples::for(null))->toBe([])
+            ->and(StatAnswer::available(null))->toBeFalse();
+
+        Livewire::test('search-page')
+            ->assertDontSee('or ask a question')
+            ->assertDontSee('Tap one');
+    });
+
+    it('says nothing about asking while the flag is closed', function () {
+        config()->set('cfb.ai_answers', false);
+
+        Livewire::actingAs($this->reader)->test('search-page')
+            ->assertDontSee('Tap one')
+            ->assertDontSee('or ask a question');
+    });
+
+    it('asks the example that was tapped, and puts it in the box', function () {
+        // Following a team is what puts the player example at index 1.
+        $this->reader->followedTeams()->attach($this->vols->id, ['position' => 1]);
+
+        StatQuestion::fake([statIntent()]);
+
+        Livewire::actingAs($this->reader)->test('search-page')
+            ->assertSee('Tap one')
+            ->call('askExample', 1)
+            // The query moves too: the reader has to see what was asked, be
+            // able to edit it, and share the URL.
+            ->assertSet('q', 'How many passing yards did Brandon Faizon throw last season?')
+            ->assertSee('3,412');
+    });
+
+    it('ignores an index nobody offered', function () {
+        // A Livewire action is a public endpoint, so the button posts an INDEX
+        // and the question is re-derived here — it can only ever ask ours.
+        StatQuestion::fake([statIntent()]);
+
+        Livewire::actingAs($this->reader)->test('search-page')
+            ->call('askExample', 99)
+            ->assertSet('q', '');
+
+        StatQuestion::assertNeverPrompted();
+    });
+});
+
+describe('a question outright, versus merely a long one', function () {
+    it('reads a question mark or an interrogative anywhere as asking', function () {
+        expect(StatAnswer::asksOutright('Mensah passing yards?'))->toBeTrue()
+            ->and(StatAnswer::asksOutright('tell me who leads in sacks'))->toBeTrue();
+    });
+
+    it('does not read a fixture name as asking, however long it runs', function () {
+        /*
+         * Five words is also what a game is called. Only an outright question
+         * is offered an answer while there are rows to read — the offer must
+         * never stand in front of a result somebody was about to tap.
+         */
+        expect(StatAnswer::asksOutright('Tennessee Volunteers at Kentucky Wildcats'))->toBeFalse()
+            ->and(StatAnswer::looksLikeAQuestion('Tennessee Volunteers at Kentucky Wildcats'))->toBeTrue();
     });
 });
 

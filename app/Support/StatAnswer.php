@@ -83,20 +83,26 @@ class StatAnswer
     public static function askable(string $question, ?User $user): bool
     {
         /*
-         * Guests get today's Search, unchanged. Reading is never gated in this
-         * app — but an answer is a COMPUTATION rather than a reading, and it
-         * has a bill attached that an anonymous session cannot be capped
-         * against.
+         * Guests get today's Search, unchanged — see available(). Reading is
+         * never gated in this app, but an answer is a COMPUTATION rather than
+         * a reading, and it carries a bill an anonymous session cannot be
+         * capped against.
          */
-        if ($user === null) {
-            return false;
-        }
+        return self::available($user) && self::looksLikeAQuestion($question);
+    }
 
-        if (config('cfb.ai_enabled') !== true || config('cfb.ai_answers') !== true) {
-            return false;
-        }
-
-        return self::looksLikeAQuestion($question);
+    /**
+     * May this reader ask ANYTHING — before there is a question to judge?
+     *
+     * Split out because the surface needs it on an empty screen: the example
+     * questions that teach the feature exist are shown on the same terms the
+     * feature itself is, so nobody is ever offered a tap they cannot take.
+     */
+    public static function available(?User $user): bool
+    {
+        return $user !== null
+            && config('cfb.ai_enabled') === true
+            && config('cfb.ai_answers') === true;
     }
 
     /**
@@ -135,6 +141,38 @@ class StatAnswer
 
         return count($words) >= 5
             || in_array(mb_strtolower($words[0] ?? ''), self::INTERROGATIVES, true);
+    }
+
+    /**
+     * Does this ASK something, rather than merely being long enough to?
+     *
+     * The distinction earns its keep on the surface. An outright question — a
+     * question mark, or an interrogative anywhere in it — is offered an answer
+     * even when search found rows, because "Mensah passing yards?" matches a
+     * player AND wants a number, and the reader who typed it is the one this
+     * feature is for. A query that qualifies only by LENGTH is offered nothing
+     * while results exist: "Tennessee Volunteers at Kentucky Wildcats" is five
+     * words and a fixture, not a question.
+     */
+    public static function asksOutright(string $question): bool
+    {
+        $question = trim($question);
+
+        if (mb_strlen($question) < self::MIN_LENGTH) {
+            return false;
+        }
+
+        if (str_contains($question, '?')) {
+            return true;
+        }
+
+        foreach (preg_split('/\s+/', mb_strtolower($question)) ?: [] as $word) {
+            if (in_array(trim($word, ".,!'\""), self::INTERROGATIVES, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

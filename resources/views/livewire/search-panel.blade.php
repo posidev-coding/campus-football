@@ -157,7 +157,7 @@ new class extends Component
                 wire:model.live.debounce.300ms="q"
                 @focus="open = true"
                 icon="magnifying-glass"
-                placeholder="Teams, players, coaches, games…"
+                :placeholder="$this->searchPlaceholder()"
                 clearable
                 class="flex-1"
             />
@@ -198,7 +198,7 @@ new class extends Component
 
             @if ($askState !== 'none')
                 <div class="pb-3">
-                    <x-stat-answer :state="$askState" :answer="$this->resolvedAnswer()" />
+                    <x-stat-answer :state="$askState" :answer="$this->resolvedAnswer()" :examples="$this->askExamples()" />
                 </div>
             @endif
 

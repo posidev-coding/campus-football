@@ -84,7 +84,7 @@ new class extends Component
         <flux:input
             wire:model.live.debounce.300ms="q"
             icon="magnifying-glass"
-            placeholder="Teams, players, coaches, games…"
+            :placeholder="$this->searchPlaceholder()"
             autofocus
             clearable
             class="flex-1"
@@ -97,7 +97,7 @@ new class extends Component
     {{-- Above the results, which still render whatever happens here. --}}
     @php($askState = $this->askState())
 
-    <x-stat-answer :state="$askState" :answer="$this->resolvedAnswer()" />
+    <x-stat-answer :state="$askState" :answer="$this->resolvedAnswer()" :examples="$this->askExamples()" />
 
     <div wire:loading.class="opacity-60" wire:target="q" class="motion-safe:transition-opacity">
     @include('partials.search-results', [

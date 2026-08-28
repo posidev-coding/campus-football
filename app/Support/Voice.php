@@ -559,6 +559,18 @@ class Voice
          * What speaks is the chrome around it — the offer, the shrug and the
          * cap — which is the same licence the empty state above already has.
          */
+        /*
+         * The idle screen, which is where anybody ever finds out this exists.
+         * Nobody types a question into a search box unless something told them
+         * they could — so this line is an invitation and the examples under it
+         * are the instruction, kept plain the way every affordance here is.
+         */
+        'search.ask.idle' => [
+            'pg' => 'Ask a question and we will look it up. Tap one to see how.',
+            'pg13' => 'Ask a question and we will look it up. Tap one and see what comes back.',
+            'r' => 'Ask a question and we will go get the number. Tap one — it comes from the box score, not a hunch.',
+        ],
+
         // Deliberately does NOT repeat "nothing matched" — the empty-state
         // callout directly underneath already says it, and reading the same
         // sentence twice makes the offer look like an error message.

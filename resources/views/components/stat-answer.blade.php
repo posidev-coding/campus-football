@@ -1,8 +1,10 @@
 @props([
-    /** none | offer | capped | answered | missed — from AsksQuestions::askState(). */
+    /** none | idle | offer | capped | answered | missed — AsksQuestions::askState(). */
     'state' => 'none',
     /** array{kind:string,...}|null — a resolved answer, never a model's prose. */
     'answer' => null,
+    /** list<string> — questions to offer on the idle screen. */
+    'examples' => [],
 ])
 
 {{--
@@ -72,6 +74,42 @@
     <flux:callout icon="sparkles">
         <flux:callout.text>{{ App\Support\Voice::line('search.ask.none') }}</flux:callout.text>
     </flux:callout>
+@elseif ($state === 'idle' && $examples)
+    {{-- THE DISCOVERY SURFACE. Everything else here waits for somebody to
+         already know they can ask; this is the screen that tells them, and it
+         is the first thing a reader sees every time search opens.
+
+         Real questions rather than a description of what questions look like:
+         one tap answers it, with their own team's name in it, and the shape
+         is learned by having used it once. Every line is built from a metric
+         the resolver accepts — see AskExamples for why a suggestion that would
+         be declined is worse than no suggestion at all. --}}
+    <div class="flex flex-col gap-2 rounded-xl border border-dashed border-zinc-300 px-4 py-3 dark:border-zinc-700">
+        <p class="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400">
+            <flux:icon.sparkles variant="micro" class="shrink-0" />
+            {{ App\Support\Voice::line('search.ask.idle') }}
+        </p>
+
+        <div class="flex flex-col gap-1">
+            @foreach ($examples as $i => $example)
+                {{-- The INDEX, never the text: a Livewire action is a public
+                     endpoint, and this way it can only ask what we wrote. --}}
+                <button
+                    type="button"
+                    wire:click="askExample({{ $i }})"
+                    wire:loading.attr="disabled"
+                    wire:target="askExample"
+                    wire:key="ask-eg-{{ $i }}"
+                    class="flex items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-start text-sm transition-colors hover:border-zinc-300 disabled:opacity-60 dark:border-zinc-800 dark:hover:border-zinc-700"
+                >
+                    <span class="min-w-0 flex-1">{{ $example }}</span>
+                    <flux:icon.chevron-right variant="micro" class="shrink-0 text-zinc-400" />
+                </button>
+            @endforeach
+        </div>
+
+        <flux:icon.loading wire:loading wire:target="askExample" class="size-4 self-center text-zinc-400" />
+    </div>
 @elseif ($state === 'offer')
     <div class="flex flex-col gap-2 rounded-xl border border-dashed border-zinc-300 px-4 py-3 dark:border-zinc-700">
         <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ App\Support\Voice::line('search.ask') }}</p>
