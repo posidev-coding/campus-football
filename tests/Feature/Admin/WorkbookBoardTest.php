@@ -88,6 +88,41 @@ describe('the board', function () {
             ->not->toContain('wire:sort:group="');
     });
 
+    it('marks effort without a badge, so it cannot be read as severity', function () {
+        /*
+         * Found by looking, which is the only way it could have been. Every
+         * badge rendered correctly in isolation; the defect was two of them
+         * side by side. A card has no column header, so `Large` sat next to
+         * `High` in the same amber, and `Medium` effort collided with `Medium`
+         * severity on the word AND the color — three vocabularies in one row
+         * with nothing to tell them apart.
+         *
+         * Effort is a muted mono marker on the card now. It stays a full badge
+         * on the table and the infolist, where a labelled column disambiguates.
+         */
+        WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Inbox,
+            'severity' => WorkbookSeverity::High,
+            'effort' => WorkbookEffort::Large,
+        ]);
+
+        $html = Livewire::actingAs($this->admin)->test(Workbook::class)->html();
+
+        expect($html)->toContain('data-effort="l"')
+            // Severity keeps its badge...
+            ->toContain('High')
+            // ...and the word that collided with it is nowhere on the board.
+            ->not->toContain('Large');
+    });
+
+    it('says nothing about effort on a card nobody has sized', function () {
+        // Null means NOT SIZED. No marker, no dash, no zero.
+        WorkbookItem::factory()->create(['status' => WorkbookStatus::Inbox, 'effort' => null]);
+
+        expect(Livewire::actingAs($this->admin)->test(Workbook::class)->html())
+            ->not->toContain('data-effort');
+    });
+
     it('builds the whole board in one query, not one per column', function () {
         foreach (WorkbookStatus::columns() as $status) {
             column($status, 2);
