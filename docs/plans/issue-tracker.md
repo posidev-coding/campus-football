@@ -44,9 +44,37 @@
 > `cfb:issue link` arrived with Phase 4 rather than Phase 3, so that every
 > commit's suite was green with no dead option in the signature.
 >
-> Not done: the end-to-end rehearsal in Verification step 6 (it opens a real
-> pull request), and the 768px pass — the board was checked at 390px through
-> the local harness.
+> **Verification step 6 ran for real on 2026-08-28**, against production, on
+> CFB-4 (`telemetry-exception-worst-is-a-timestamp`). `cfb:issue start` on
+> production, the branch cut locally, the work done, PR #8 merged by a human —
+> and GitHub's own delivery record answered
+> `200 {"result":"done","issue":"CFB-4"}` for head ref
+> `CFB-4-telemetry-exception-worst-is-a-timestamp`.
+>
+> That `done` is worth more than it looks. It proves the branch name minted on
+> production matched, byte for byte, the one derived locally from the same
+> `(reference, key)` — so `branchName()` is genuinely deterministic across
+> environments, which is the assumption the whole hand-off rests on. A single
+> character of drift would have answered `no_issue` and left the card in In
+> progress.
+>
+> One artifact of that run: `cfb:issue review` never ran, because the session
+> could not reach the production workbook, so the card went
+> `in_progress → done` and its trail carries no `pr_opened` row. The end state
+> is right; the trail is one line thinner than a full `/work` run produces.
+>
+> **Found after shipping, fixed in PR #7:** GitHub's "Add webhook" form defaults
+> to `application/x-www-form-urlencoded`, which posts `payload=<urlencoded
+> json>`. The HMAC verified over the raw body either way, so a correctly-signed
+> merge answered 200 `ignored`, moved nothing, and showed a GREEN CHECKMARK.
+> The controller now reads both shapes. Measured before it was fixed, and the
+> test only caught it once it supplied both the raw body and the parsed
+> parameters — PHP fills `$_POST` from a urlencoded body, but Symfony's
+> `Request::create()` does not, so the first version of that test passed
+> against broken code.
+>
+> Still not done: the 768px pass — the board was checked at 390px through the
+> local harness.
 
 ## Context
 
