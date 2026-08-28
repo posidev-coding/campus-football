@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\WorkbookStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 /**
  * One line of an issue's activity trail. Immutable, and never written directly
@@ -54,6 +55,19 @@ class WorkbookEvent extends Model
 
     /** `actor` is 80 characters, and a trail row is not the place to fail a write. */
     public const ACTOR_MAX_LENGTH = 80;
+
+    /**
+     * An automated actor — `agent:local`, `cloud:nightly`, anything a routine
+     * names itself.
+     *
+     * The one thing this gates is Done. If a session could close its own work,
+     * In review is decorative and the trail fills with sessions marking
+     * themselves complete; merging earns Done, and merging is a human's.
+     */
+    public static function isAgent(string $actor): bool
+    {
+        return Str::startsWith($actor, ['agent:', 'cloud:']);
+    }
 
     protected $guarded = [];
 

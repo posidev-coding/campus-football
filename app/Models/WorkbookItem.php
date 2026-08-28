@@ -315,6 +315,22 @@ class WorkbookItem extends Model
         });
     }
 
+    /**
+     * Claimed right now — a lease that has lapsed is not a claim, which is what
+     * makes the whole thing self-healing.
+     */
+    public function isHeld(): bool
+    {
+        return $this->claimed_at !== null
+            && ($this->claim_expires_at === null || $this->claim_expires_at->isFuture());
+    }
+
+    /** Held by somebody who is not you. The one question every write asks first. */
+    public function heldByAnother(string $by): bool
+    {
+        return $this->isHeld() && $this->claimed_by !== $by;
+    }
+
     /** The end of a column. Positions only ever compare against siblings. */
     public static function nextPosition(WorkbookStatus|string $status): int
     {
