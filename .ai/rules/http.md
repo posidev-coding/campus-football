@@ -20,3 +20,10 @@ The issue routes (2026-08-28) add one signed GET and six unsigned POSTs. `signed
 The mitigation is SCOPE, not signing, and it is enforced by the ROUTING TABLE rather than a validator: routes are named after transitions (`claim`, `release`, `start`, `review`, `comment`), so the reachable set is exactly `planned → in_progress → in_review`. There is no create, no delete, no dismiss, no `position`, no arbitrary `PATCH {status}` and **no `done`** — merging earns Done and merging is a human's. `->where('issue', ...)` stops a traversal probe at the router.
 
 `204` when nothing is ready (branch on the code, not on an empty body) and `409 {"result":"held","by":…}` on a double assign (a 200 with `claimed:false` invites a routine to carry on). The envelope key is `result`, never `status` — the issue keeps its own `status`. `pr_url` is pinned to `config('cfb.repo_host')`, because the panel renders it as a link an admin clicks.
+
+## /ops/github authenticates the other way round, and is the ONLY path to Done
+GitHub will not send `X-Ops-Token`, so the merge webhook (2026-08-28) sits outside the token group with its own `EnsureGithubSignature` — an HMAC over the RAW body against `GITHUB_WEBHOOK_SECRET`, with the same four failure modes as the token: unset means 404, under 32 chars counts as unset, `hash_equals`, 401 with no hint. Never re-encode the parsed body to verify: `json_encode(json_decode($body))` is not byte-identical to what GitHub signed.
+
+It does not weaken "an agent can never reach Done" — a merge IS the human's answer. It acts only on `pull_request.merged`, matches `head.ref` against the STORED `branch` column (which is why that column is unique and never rewritten), moves that one issue, and writes nothing else. It records actor `github`, never the merging user: every payload carries a login and an email, and `actor` is the column that would break the no-identity guarantee.
+
+Always 200, even on no match — GitHub retries a non-2xx, and every other branch in the repository comes through this door. Idempotent because `MoveWorkbookItem` writes an event only when the column actually changes.

@@ -47,6 +47,13 @@ class WorkbookItem extends Model
     public const SOURCE_HUMAN = 'human';
 
     /**
+     * The merge webhook. A ROLE, not the person who clicked merge — GitHub
+     * sends a login and an email in every payload, and `actor` is the column
+     * that would quietly break the no-identity guarantee.
+     */
+    public const ACTOR_GITHUB = 'github';
+
+    /**
      * What the advisor recomputes every pass, and therefore owns outright.
      *
      * `first_seen_at` and `last_seen_at` are absent deliberately: they are the

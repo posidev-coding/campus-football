@@ -177,4 +177,17 @@ return [
      */
     'repo_host' => env('CFB_REPO_HOST', 'github.com/posidev-coding/campus-football'),
 
+    /*
+     * The shared secret GitHub signs its webhook bodies with.
+     *
+     * UNSET MEANS OFF, and off means 404 — the same rule as `ops_token`, for
+     * the same reason: a webhook door nobody has configured should not exist,
+     * and should not announce that it would. A secret under
+     * `EnsureGithubSignature::MINIMUM_LENGTH` counts as unset.
+     *
+     * Set this on the repository's webhook AND here, or a merge simply does not
+     * move a card — which is the pre-webhook behavior and is safe to sit in.
+     */
+    'github_webhook_secret' => env('GITHUB_WEBHOOK_SECRET'),
+
 ];

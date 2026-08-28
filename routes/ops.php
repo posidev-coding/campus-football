@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Controllers\Ops\GithubController;
 use App\Http\Controllers\Ops\IssueController;
 use App\Http\Controllers\Ops\TelemetryController;
 use App\Http\Controllers\Ops\WorkbookController;
+use App\Http\Middleware\EnsureGithubSignature;
 use App\Http\Middleware\EnsureOpsToken;
 use Illuminate\Support\Facades\Route;
 
@@ -92,3 +94,23 @@ Route::middleware(['throttle:ops', EnsureOpsToken::class])
         Route::post('issues/{issue}/comment', [IssueController::class, 'comment'])->name('issues.comment');
     })
     ->where('issue', '[A-Za-z0-9][A-Za-z0-9-]{0,120}');
+
+/*
+ * The merge webhook — the one door that is NOT tokened, because GitHub will not
+ * send our header.
+ *
+ * It authenticates the other way round: GitHub signs the raw body with a shared
+ * secret and sends `X-Hub-Signature-256`, so {@see EnsureGithubSignature} checks
+ * an HMAC over the body instead of comparing a bearer string. Same failure
+ * modes as the token, deliberately — unset secret means 404, a short one counts
+ * as unset, `hash_equals`, 401 with no hint.
+ *
+ * Same `throttle:ops` in front of it, so a flood costs a rate-limiter hit
+ * rather than a signature computation per request.
+ */
+Route::middleware(['throttle:ops', EnsureGithubSignature::class])
+    ->prefix('ops')
+    ->name('ops.')
+    ->group(function (): void {
+        Route::post('github', GithubController::class)->name('github');
+    });
