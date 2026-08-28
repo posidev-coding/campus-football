@@ -166,4 +166,15 @@ return [
      */
     'issue_prefix' => env('CFB_ISSUE_PREFIX', 'CFB'),
 
+    /*
+     * Where this repository lives, and the only host a pull request URL may
+     * point at.
+     *
+     * The panel renders `pr_url` as a link an admin will click, and that URL
+     * arrives over HTTP from a routine. An unconstrained one is a phishing
+     * surface for free — so the validator pins the host rather than trusting
+     * `url` alone.
+     */
+    'repo_host' => env('CFB_REPO_HOST', 'github.com/posidev-coding/campus-football'),
+
 ];

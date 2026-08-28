@@ -33,6 +33,11 @@ class IssueBoard
      */
     public function one(WorkbookItem $item): array
     {
+        // Both directions, loaded before anything reads them. `renderedLinks`
+        // touches linksOut AND linksIn, and an accessor that lazy-loads is a
+        // 500 under `preventLazyLoading` and an N+1 without it.
+        $item->loadMissing(['linksOut', 'linksIn']);
+
         return [
             ...$this->row($item),
             'body' => $item->body,

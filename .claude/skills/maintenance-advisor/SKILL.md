@@ -61,6 +61,10 @@ already settled.
   rediscovering refused work is a wasted pass.
 - **Already `done` and back again** → file it, and say in the body that it
   recurred after being closed. That is a regression and it deserves the noise.
+- **Already `in_review`** → **re-file under the same key, like any open item.**
+  In review means a session finished and opened a pull request; nobody has
+  merged it. It is open work, not an answer, so it is neither settled nor
+  something to propose fresh.
 
 ### 4. File one request
 
@@ -114,6 +118,18 @@ session that has not read the snapshot.
 
 **Not `status`, not `position`, not `source`.** Where work sits on the board is
 a human's answer. Send them and they are ignored.
+
+**Not `effort`, not `labels`, not `branch`, not `pr_url`, and nothing about the
+claim.** Those are the WORK, and the work is a human's. You own the FINDING —
+title, body, category, severity, evidence, prompt — and every pass overwrites
+all six from fresh telemetry. `WorkbookItem::ADVISOR_OWNED` is the whole of
+what you can reach; everything else is filtered out before it lands, whatever
+you send.
+
+You will SEE `reference` (`CFB-12`), `effort` and `labels` on
+`workbook.open[]`, and they are worth reading — a card a human has already
+sized and labeled is one they have already thought about. Quote the reference
+when you mention a card, because that is the name people use for it.
 
 ## What this project will hold you to
 

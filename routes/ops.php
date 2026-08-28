@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Ops\IssueController;
 use App\Http\Controllers\Ops\TelemetryController;
 use App\Http\Controllers\Ops\WorkbookController;
 use App\Http\Middleware\EnsureOpsToken;
@@ -49,4 +50,45 @@ Route::middleware(['throttle:ops', EnsureOpsToken::class])
          * are the guards — see the controller.
          */
         Route::post('workbook', WorkbookController::class)->name('workbook');
-    });
+
+        /*
+         * The issue board, for a cloud routine that wants to WORK an item
+         * rather than file one.
+         *
+         * WHY ONLY THE LIST IS SIGNED, said plainly rather than worked around.
+         * `signed` protects a URL that is HANDED to a client and then lives in
+         * a config file, a shell history and a log line — it binds it to this
+         * exact path so a leak cannot be edited into a different one. It was
+         * never doing authentication; the token is. A URL the client COMPOSES
+         * itself gains nothing from a signature, and cannot carry one anyway.
+         * So the fixed-path read is signed, exactly like `/ops/telemetry`, and
+         * every variable-path route here is a WRITE — and writes were never
+         * signed.
+         *
+         * What that costs: the routes become enumerable by a token holder, who
+         * already reaches `/ops/workbook`, so it is not a new grant. A leaked
+         * write URL is worthless without the token, and a token holder can
+         * compose any URL anyway. The mitigation that matters is SCOPE — see
+         * the controller for the list of things these endpoints cannot do —
+         * not signing.
+         */
+        Route::get('issues', [IssueController::class, 'index'])
+            ->middleware('signed')
+            ->name('issues.index');
+
+        // POST because it TAKES THE CLAIM, which collapses list-then-claim into
+        // one call and removes the race between them.
+        Route::post('issues/next', [IssueController::class, 'next'])->name('issues.next');
+
+        /*
+         * The same bounded vocabulary as the advisor's key regex, so a
+         * `../../etc/passwd` probe stops at the ROUTER rather than in a
+         * controller. There is no `done` route, and there never will be.
+         */
+        Route::post('issues/{issue}/claim', [IssueController::class, 'claim'])->name('issues.claim');
+        Route::post('issues/{issue}/release', [IssueController::class, 'release'])->name('issues.release');
+        Route::post('issues/{issue}/start', [IssueController::class, 'start'])->name('issues.start');
+        Route::post('issues/{issue}/review', [IssueController::class, 'review'])->name('issues.review');
+        Route::post('issues/{issue}/comment', [IssueController::class, 'comment'])->name('issues.comment');
+    })
+    ->where('issue', '[A-Za-z0-9][A-Za-z0-9-]{0,120}');
