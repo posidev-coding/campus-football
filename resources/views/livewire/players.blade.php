@@ -267,13 +267,14 @@ new class extends Component
             // (team_id, season_year, position_group).
             ->when($teamIds !== null, fn ($q) => $q->whereIn('athlete_team_seasons.team_id', $teamIds))
             ->when($positionIds !== [], fn ($q) => $q->whereIn('athlete_team_seasons.position_id', $positionIds))
-            ->when($this->q !== '', function ($q) {
-                $term = Search::term($this->q);
-
-                $q->where(fn ($w) => $w
-                    ->where('athletes.display_name', 'like', $term.'%')
-                    ->orWhere('athletes.last_name', 'like', $term.'%'));
-            });
+            // Every word has to match a name, in any order — "aguilar joey"
+            // filters the same as "joey aguilar". Prefix on both halves, which
+            // is what keeps the two name indexes usable; AND only, because a
+            // filter that widens when it fails to match is one nobody trusts.
+            ->when($this->q !== '', fn ($q) => Search::everyTerm($q, [
+                'athletes.display_name',
+                'athletes.last_name',
+            ], $this->q));
     }
 
     /**

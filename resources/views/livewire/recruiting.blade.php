@@ -267,15 +267,14 @@ new class extends Component
                 fn ($w) => $w->whereIn('committed_team_id', $teamIds)->orWhereNull('committed_team_id')
             ))
             ->when($positionIds !== [], fn ($q) => $q->whereIn('position_id', $positionIds))
-            ->when($this->q !== '', function ($q) {
-                $term = Search::term($this->q);
-
-                // Prefix on either half of the name, matching Search::recruits()
-                // and the model's own #[SearchUsingPrefix].
-                $q->where(fn ($w) => $w
-                    ->where('display_name', 'like', $term.'%')
-                    ->orWhere('last_name', 'like', $term.'%'));
-            });
+            // Prefix on either half of the name, matching Search::recruits()
+            // and the model's own #[SearchUsingPrefix] — but per WORD now, so
+            // "aguilar joey" filters the same as "joey aguilar". AND only: a
+            // filter that widens when it fails to match is one nobody trusts.
+            ->when($this->q !== '', fn ($q) => Search::everyTerm($q, [
+                'display_name',
+                'last_name',
+            ], $this->q));
     }
 
     #[Computed]

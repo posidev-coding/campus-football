@@ -65,3 +65,18 @@ Two ways to match "a game on this Saturday" that both fail silently.
 `games.kickoff_day` stores a WEEKDAY NAME ("Sat"), not a date — GameFactory writes `format('D')`. Never compare it to a date string. Read the day off `kickoff_at`, converted to `cfb.timezone`: 20:00 ET Saturday is 00:00 UTC Sunday, so matching the UTC date drops the whole night window.
 
 A column with a `date` cast (gameday_weeks.saturday) arrives as midnight UTC. Calling `->setTimezone('America/New_York')->startOfDay()` on it lands at 20:00 the PREVIOUS evening and yields the wrong day. Take `->toDateString()` and re-parse it in ET — a calendar date is re-pinned, never converted, the distinction Cadence already draws. Nothing throws either way; the query just finds nothing.
+
+## Search is word-wise: all of your words, then whatever has the most
+Scout's DatabaseEngine matched the ENTIRE query as one LIKE, so a second word not in the name took results to zero and word order decided whether anything was found. `App\Support\Search` now builds the match itself, per word. Scout still DECLARES the surface — `toSearchableArray()` says which columns, `#[SearchUsingPrefix]` says how — and both are read off the model rather than restated. Do not reintroduce `Model::search()` here.
+
+Two passes. First: every word must match at least one column (AND across words, OR across columns) — one query, the path everybody is on. Second, ONLY when the first found nothing: OR across words, ranked by how many matched. The fallback can therefore never widen a search that was already working, which is what keeps "Rose Bowl" returning Rose Bowl games rather than every bowl.
+
+`MIN_FALLBACK_MATCHES = 2` is the quality of that second pass. At one, "Rose Bowl" filled Players with everyone named Rose and Teams with Bowling Green — every row honestly matching a word, none of them the answer. A row has to corroborate itself.
+
+STOPWORDS are not tidiness. "How many passing yards did Joey Aguilar throw?" put Adam Howanitz on top of Players — "How" is a real prefix match on a real surname — and buried the person named in the question. The answer layer taught people to type questions into this box. `at` is in the list because it is in every game name we hold and so discriminates nothing.
+
+Relevance is applied as the FIRST orderBy and the group's own domain ordering follows it, so FBS-before-everyone and active-before-departed decide every tie. A query builder emits `order by` in call order — that sequence in `run()` is load-bearing.
+
+The prefix strategy is not cosmetic: Athlete and Recruit carry it, and `LIKE 'agu%'` can walk athletes_last_name_index across 34,000 rows where `LIKE '%agu%'` cannot. Warm cost is 2-3.5 ms per group, ~32 ms for all six on one keystroke.
+
+The Players and Recruiting roster filters share the splitter through `Search::everyTerm()` — AND only, no fallback, because a filter that widens when it fails to match is one nobody can trust.

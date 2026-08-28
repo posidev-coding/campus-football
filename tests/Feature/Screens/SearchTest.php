@@ -360,3 +360,171 @@ describe('the denormalized season year', function () {
             ->and($source)->not->toContain('select max(');
     });
 });
+
+/*
+ * Matching used to be one LIKE against the whole query string, so a second
+ * word that was not in the name took results to zero and word ORDER decided
+ * whether anything was found at all. These pin the contract that replaced it:
+ * all of your words, and when nothing has all of them, whatever has the most.
+ */
+describe('more than one word', function () {
+    beforeEach(function () {
+        $this->passer = Athlete::create([
+            'id' => 700001, 'display_name' => 'Joey Aguilar', 'last_name' => 'Aguilar', 'is_active' => true,
+        ]);
+        AthleteTeamSeason::create(['athlete_id' => 700001, 'team_id' => 61, 'season_year' => 2025]);
+    });
+
+    it('finds somebody when the query carries a word their name does not', function () {
+        // The whole reason for the rewrite. "Joey Aguilar passing" found
+        // nobody, while "Joey Aguilar" found him — no partial credit at all.
+        expect(Search::players('Joey Aguilar passing')->pluck('id')->all())->toBe([700001]);
+    });
+
+    it('does not care what order the words come in', function () {
+        expect(Search::players('aguilar joey')->pluck('id')->all())->toBe([700001]);
+    });
+
+    it('reads through the scaffolding of a question', function () {
+        /*
+         * The answer layer taught people to type questions in here. Before the
+         * stopword pass this put Adam Howanitz on top — "How" is a real prefix
+         * match on a real surname — and buried the person actually named.
+         */
+        expect(Search::terms('How many passing yards did Joey Aguilar throw?'))
+            ->toBe(['passing', 'yards', 'Joey', 'Aguilar', 'throw'])
+            ->and(Search::players('How many passing yards did Joey Aguilar throw?')->pluck('id')->all())
+            ->toBe([700001]);
+    });
+
+    it('ranks by how many of the words a row actually matched', function () {
+        /*
+         * Teams rather than players, and that is forced: a player matches a
+         * word only through the front of their display name or the front of
+         * their surname, so two is the most any of them can score and the
+         * ordering never gets to show itself. A team has four searchable
+         * columns and can genuinely out-match another.
+         *
+         * "zzz" is in the query so that NOBODY matches everything — without it
+         * the first pass answers and the second never runs.
+         */
+        $three = Team::factory()->create([
+            'location' => 'Blue State', 'display_name' => 'Blue State Bulldogs',
+            'nickname' => 'Bulldogs', 'abbreviation' => 'BLU',
+        ]);
+        $two = Team::factory()->create([
+            'location' => 'Alpha State', 'display_name' => 'Alpha State Bulldogs',
+            'nickname' => 'Bulldogs', 'abbreviation' => 'ALP',
+        ]);
+        $one = Team::factory()->create([
+            'location' => 'Sky', 'display_name' => 'Sky Blue Hawks',
+            'nickname' => 'Hawks', 'abbreviation' => 'SKY',
+        ]);
+
+        foreach ([$three, $two, $one] as $team) {
+            TeamSeason::create(['team_id' => $team->id, 'season_year' => 2025, 'conference_id' => 8, 'classification' => 'FBS']);
+        }
+
+        $ids = Search::teams('state bulldogs blue zzz')->pluck('id')->all();
+
+        // Alphabetically "Alpha" leads, so only relevance can put Blue first.
+        expect($ids[0])->toBe($three->id)
+            ->and($ids[1])->toBe($two->id)
+            // One word is a coincidence, not a match.
+            ->and($ids)->not->toContain($one->id);
+    });
+
+    it('needs two words corroborating before it widens at all', function () {
+        /*
+         * At one word "Rose Bowl" filled Players with everyone named Rose and
+         * Teams with Bowling Green — every row honestly matching a word, and
+         * not one of them what anybody asked for.
+         */
+        Athlete::create(['id' => 700003, 'display_name' => 'Archie Roseman', 'last_name' => 'Roseman', 'is_active' => true]);
+        Team::factory()->create(['location' => 'Bowling Green', 'display_name' => 'Bowling Green Falcons']);
+
+        expect(Search::players('Rose Bowl'))->toBeEmpty()
+            ->and(Search::teams('Rose Bowl'))->toBeEmpty();
+    });
+
+    it('still refuses to widen a search that already worked', function () {
+        // The fallback runs only where the screen would show nothing, so
+        // precision where every word matches is untouched.
+        Game::factory()->create([
+            'season_id' => $this->season->id,
+            'name' => 'TBD at TBD', 'home_team_id' => null, 'away_team_id' => null,
+            'note' => 'Rose Bowl Presented by Prudential',
+            'kickoff_at' => '2026-01-01 17:00:00',
+        ]);
+        Game::factory()->create([
+            'season_id' => $this->season->id,
+            'name' => 'TBD at TBD', 'home_team_id' => null, 'away_team_id' => null,
+            'note' => 'Sugar Bowl', 'kickoff_at' => '2026-01-01 20:00:00',
+        ]);
+
+        expect(Search::games('Rose Bowl'))->toHaveCount(1);
+    });
+
+    it('keeps each group\'s own match strategy, per word', function () {
+        /*
+         * Athlete and Recruit carry #[SearchUsingPrefix] and the rest do not,
+         * and that is load-bearing rather than incidental: `LIKE 'agu%'` can
+         * walk athletes_last_name_index across 34,000 rows and `LIKE '%agu%'`
+         * cannot. Splitting into words must not quietly turn one into the
+         * other.
+         */
+        expect(Search::players('guilar'))->toBeEmpty()          // mid-name: prefix says no
+            ->and(Search::players('Agui')->pluck('id')->all())->toBe([700001])
+            // Teams match anywhere, which is how "bulldogs" finds Georgia.
+            ->and(Search::teams('ulldog')->pluck('id'))->toContain(61);
+    });
+
+    it('will not widen on a single lucky word, even in a longer query', function () {
+        // The corroboration floor itself: three words asked, one matched, and
+        // one word is a coincidence rather than a result.
+        Athlete::create(['id' => 700004, 'display_name' => 'Joey Nobody', 'last_name' => 'Nobody', 'is_active' => true]);
+
+        // "Joey" alone matches him; the other two words match nothing of his.
+        expect(Search::players('joey barcelona umbrella')->pluck('id')->all())
+            ->not->toContain(700004);
+    });
+
+    it('drops a one-character word rather than matching most of the table', function () {
+        // Deliberately not "a": that is a stopword too, so it would be dropped
+        // for the other reason and the length rule would go untested.
+        expect(Search::terms('x Joey'))->toBe(['Joey'])
+            ->and(Search::terms('Joey Aguilar'))->toBe(['Joey', 'Aguilar']);
+    });
+
+    it('keeps a wildcard typed literally as a literal', function () {
+        // `%` and `_` are LIKE wildcards; typed, they must match themselves
+        // rather than blowing the query open one word at a time.
+        expect(Search::terms('100% Aguilar'))->toBe(['100\%', 'Aguilar'])
+            ->and(Search::players('100% Aguilar'))->toBeEmpty();
+    });
+
+    it('falls back to the scaffolding when that is the whole query', function () {
+        // "who is it" is all stopwords. Stripping every one would leave an
+        // empty screen that reads as the search being broken.
+        expect(Search::terms('who is it'))->toBe(['who', 'is', 'it']);
+    });
+
+    it('costs exactly one extra query to widen, and only when it widens', function () {
+        /*
+         * The common path is a single matching pass. Counted as a DELTA rather
+         * than an absolute: the group's eager loads are queries too, and
+         * pinning their number here would make this fail every time a column
+         * was added to a row partial.
+         */
+        DB::enableQueryLog();
+        Search::players('Joey Aguilar');
+        $found = count(DB::getQueryLog());
+
+        DB::flushQueryLog();
+        Search::players('Joey Aguilar passing');
+        $widened = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        expect($widened)->toBe($found + 1);
+    });
+});
