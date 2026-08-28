@@ -10,6 +10,7 @@ use App\Models\FeedRun;
 use App\Models\UxEvent;
 use App\Models\WorkbookItem;
 use App\Services\CfbCalendar;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -37,6 +38,12 @@ use Illuminate\Support\Facades\Schema;
  */
 class TelemetrySnapshot
 {
+    /**
+     * The one Pulse type whose `value` is not a duration. Named, because the
+     * whole of `pulseTop()`'s split personality hangs off this comparison.
+     */
+    private const EXCEPTION = 'exception';
+
     public function __construct(
         private OpsReport $ops,
         private CoverageReport $coverage,
@@ -212,7 +219,7 @@ class TelemetrySnapshot
             return [];
         }
 
-        return collect(['slow_request', 'slow_query', 'slow_job', 'slow_outgoing_request', 'exception'])
+        return collect(['slow_request', 'slow_query', 'slow_job', 'slow_outgoing_request', self::EXCEPTION])
             ->mapWithKeys(fn (string $type): array => [$type => $this->pulseTop($type)])
             ->all();
     }
@@ -220,6 +227,24 @@ class TelemetrySnapshot
     /**
      * The heaviest entries of one type. Grouped by key, so a route that is
      * slow two hundred times is one line with a count rather than two hundred.
+     *
+     * ONE QUERY, TWO MEANINGS — and it has to be said out loud, because the
+     * column does not say it. Pulse writes a DURATION IN MILLISECONDS into
+     * `value` for slow_request, slow_query, slow_job and slow_outgoing_request.
+     * For `exception` it writes the OCCURRENCE TIMESTAMP there instead
+     * (`Recorders/Exceptions.php`, `value: $timestamp`).
+     *
+     * So `max(value) desc` is "slowest first" for four types and "most recent
+     * first" for the fifth. Both orderings are right for their type; only the
+     * NAME was wrong. This used to emit `"worst": 1787646322` on an exception
+     * row — a unix timestamp sitting in a field every sibling row measures in
+     * milliseconds — to a consumer with no database access that is explicitly
+     * told never to invent a number.
+     *
+     * Exceptions therefore carry `last_seen_at` and NO `worst`. OMITTED rather
+     * than zeroed: a missing measurement is skipped, never substituted, and a
+     * `worst` of 0 on an exception row is precisely the invented value that
+     * rule exists to stop.
      *
      * @return list<array<string, mixed>>
      */
@@ -231,12 +256,18 @@ class TelemetrySnapshot
             ->groupBy('key')
             ->orderByRaw('max(value) desc')
             ->limit(10)
-            ->selectRaw('`key`, count(*) as hits, max(value) as worst')
+            // `max_value`, not `worst`: the alias says what the column HOLDS,
+            // and what it MEANS is decided below, per type.
+            ->selectRaw('`key`, count(*) as hits, max(value) as max_value')
             ->get()
             ->map(fn ($row): array => [
                 'what' => OpsReport::readableKey((string) $row->key),
                 'hits' => (int) $row->hits,
-                'worst' => (int) $row->worst,
+                ...$type === self::EXCEPTION
+                    // UTC spelled out rather than left to Carbon's default,
+                    // which changed between major versions.
+                    ? ['last_seen_at' => CarbonImmutable::createFromTimestamp((int) $row->max_value, 'UTC')->toIso8601String()]
+                    : ['worst' => (int) $row->max_value],
             ])
             ->all();
     }

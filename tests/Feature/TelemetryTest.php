@@ -136,6 +136,89 @@ describe('what it reports', function () {
             ->and($slow[0])->toBe(['what' => 'GET /picks', 'hits' => 5, 'worst' => 1_005]);
     });
 
+    it('never reports a timestamp in a field measured in milliseconds', function () {
+        /*
+         * One query shape serves five Pulse types, and `value` does not mean
+         * the same thing in all five: it is a DURATION for the four slow_*
+         * types and the OCCURRENCE TIMESTAMP for `exception`
+         * (`Recorders/Exceptions.php`, `value: $timestamp`).
+         *
+         * So the snapshot reported `"worst": 1787646322` on an exception row —
+         * a unix time in a field every sibling row measures in ms — to a
+         * consumer with no database access that is explicitly told never to
+         * invent a number. Handing it that invites exactly one mistake:
+         * reporting a twenty-day exception.
+         *
+         * Both types are seeded together on purpose. Fixing this by renaming
+         * the field for everyone would pass a test that only looked at
+         * exceptions.
+         */
+        $thrownAt = now()->subMinutes(30)->startOfSecond();
+
+        DB::table('pulse_entries')->insert([
+            [
+                'timestamp' => now()->subMinutes(10)->getTimestamp(),
+                'type' => 'slow_request',
+                'key' => '["GET","/picks"]',
+                'value' => 1_005,
+            ],
+            [
+                'timestamp' => $thrownAt->getTimestamp(),
+                'type' => 'exception',
+                'key' => '["RedisException","vendor\/laravel\/framework\/src\/Illuminate\/Redis\/Connectors\/PhpRedisConnector.php:185"]',
+                // What Pulse actually writes: the occurrence timestamp.
+                'value' => $thrownAt->getTimestamp(),
+            ],
+        ]);
+
+        $performance = telemetry()['performance'];
+
+        expect($performance['exception'][0])
+            // Named for what it is, and readable without a decoder.
+            ->toHaveKey('last_seen_at')
+            ->and($performance['exception'][0]['last_seen_at'])->toBe($thrownAt->toIso8601String())
+            // OMITTED, not zeroed. A missing measurement is skipped, never
+            // substituted — a `worst` of 0 here is the invented value the
+            // whole rule exists to stop.
+            ->and($performance['exception'][0])->not->toHaveKey('worst')
+            // ...and the four types that DO measure a duration are untouched.
+            ->and($performance['slow_request'][0]['worst'])->toBe(1_005)
+            ->and($performance['slow_request'][0])->not->toHaveKey('last_seen_at');
+    });
+
+    it('emits a closed set of keys for each Pulse row shape', function () {
+        /*
+         * The same guard as the schedule report's below: a row leaves this
+         * machine, so what is IN it is pinned rather than trusted. It is also
+         * what stops the fix above from being undone by addition — putting
+         * `worst` back alongside `last_seen_at` would fail here even though
+         * every other assertion still passed.
+         *
+         * `pulse_entries` carries no user column at all (id, timestamp, type,
+         * key, key_hash, value), so identity cannot leak from a row — only
+         * from `key`, which `OpsReport::readableKey()` truncates to two parts.
+         */
+        DB::table('pulse_entries')->insert([
+            [
+                'timestamp' => now()->subMinutes(10)->getTimestamp(),
+                'type' => 'slow_query',
+                'key' => '["select * from `games`","app/Support/Thing.php:12"]',
+                'value' => 2_400,
+            ],
+            [
+                'timestamp' => now()->subMinutes(10)->getTimestamp(),
+                'type' => 'exception',
+                'key' => '["RuntimeException","app/Support/Thing.php:12"]',
+                'value' => now()->subMinutes(10)->getTimestamp(),
+            ],
+        ]);
+
+        $performance = telemetry()['performance'];
+
+        expect(array_keys($performance['slow_query'][0]))->toBe(['what', 'hits', 'worst'])
+            ->and(array_keys($performance['exception'][0]))->toBe(['what', 'hits', 'last_seen_at']);
+    });
+
     it('carries the browser errors no server-side monitor can see', function () {
         ClientError::create([
             'fingerprint' => str_repeat('b', 40), 'kind' => 'unhandledrejection',
