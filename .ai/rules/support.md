@@ -80,3 +80,10 @@ Relevance is applied as the FIRST orderBy and the group's own domain ordering fo
 The prefix strategy is not cosmetic: Athlete and Recruit carry it, and `LIKE 'agu%'` can walk athletes_last_name_index across 34,000 rows where `LIKE '%agu%'` cannot. Warm cost is 2-3.5 ms per group, ~32 ms for all six on one keystroke.
 
 The Players and Recruiting roster filters share the splitter through `Search::everyTerm()` — AND only, no fallback, because a filter that widens when it fails to match is one nobody can trust.
+
+## A conditional-UPDATE claim must read back the winner, not the row count
+MySQL's affected-row count is rows CHANGED, not rows matched. So the shape `update([...]) === 0 ? refused : taken` is wrong for any claim a holder may renew: writing identical values inside the same second updates zero rows and reads as refused. `cfb:issue start` run twice in a row hit exactly this (ClaimWorkbookItem::take, 2026-08-28).
+
+Keep the atomicity in the WHERE clause — that is what serializes concurrent writers — but decide the outcome by re-reading the winner: `->value('claimed_by') === $by`. The winner and the renewing holder both see themselves; a loser whose WHERE no longer matched sees the holder.
+
+Pick'em settlement's `whereNull('settled_at')` claim is unaffected: it flips null to a timestamp, so a re-run always changes the row.

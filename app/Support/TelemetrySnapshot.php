@@ -98,9 +98,16 @@ class TelemetrySnapshot
             ->get()
             ->map(fn (WorkbookItem $item): array => [
                 'key' => $item->key,
+                // The handle a human says out loud, so the advisor can quote a
+                // card in the language the board uses rather than in a slug.
+                'reference' => $item->reference,
                 'title' => $item->title,
                 'category' => $item->category->value,
                 'severity' => $item->severity->value,
+                // Human-owned, and the advisor is told them so it stops
+                // proposing work a human has already sized and filed.
+                'effort' => $item->effort?->value,
+                'labels' => $item->labels,
                 'status' => $item->status->value,
                 'first_seen_at' => $item->first_seen_at?->toIso8601String(),
                 'last_seen_at' => $item->last_seen_at?->toIso8601String(),

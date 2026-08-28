@@ -151,4 +151,43 @@ return [
      */
     'ops_token' => env('OPS_TOKEN'),
 
+    /*
+     * The prefix on a workbook item's reference — `CFB-12`, the handle a human
+     * types and a session is handed.
+     *
+     * The number after it is `workbook_items.id`, derived and never stored, so
+     * this string is the only part of a reference anyone chooses. Changing it
+     * renames every reference at once and orphans every branch already cut
+     * under the old one, so treat it as set-once.
+     *
+     * `WorkbookItem::findByReference()` refuses any OTHER prefix rather than
+     * ignoring it, so `ACME-12` pasted in from somewhere else resolves to
+     * nothing instead of quietly resolving to our twelfth item.
+     */
+    'issue_prefix' => env('CFB_ISSUE_PREFIX', 'CFB'),
+
+    /*
+     * Where this repository lives, and the only host a pull request URL may
+     * point at.
+     *
+     * The panel renders `pr_url` as a link an admin will click, and that URL
+     * arrives over HTTP from a routine. An unconstrained one is a phishing
+     * surface for free — so the validator pins the host rather than trusting
+     * `url` alone.
+     */
+    'repo_host' => env('CFB_REPO_HOST', 'github.com/posidev-coding/campus-football'),
+
+    /*
+     * The shared secret GitHub signs its webhook bodies with.
+     *
+     * UNSET MEANS OFF, and off means 404 — the same rule as `ops_token`, for
+     * the same reason: a webhook door nobody has configured should not exist,
+     * and should not announce that it would. A secret under
+     * `EnsureGithubSignature::MINIMUM_LENGTH` counts as unset.
+     *
+     * Set this on the repository's webhook AND here, or a merge simply does not
+     * move a card — which is the pre-webhook behavior and is safe to sit in.
+     */
+    'github_webhook_secret' => env('GITHUB_WEBHOOK_SECRET'),
+
 ];
