@@ -364,16 +364,17 @@ class WorkbookItem extends Model
      *
      * A session reads this and STOPS. Working an issue whose blocker is still
      * open is how two branches end up fighting over the same file.
+     *
+     * Reads `linksIn` ONLY, and that is not an optimization — it is what the
+     * storage rule guarantees. `blocked_by` is never stored, so a blocker can
+     * only ever be a `blocks` row POINTING AT this issue. Going through
+     * `renderedLinks` would drag `linksOut` in behind it and put a second eager
+     * load on every card of the board for an answer it cannot contain.
      */
     public function isBlocked(): bool
     {
-        foreach ($this->renderedLinks as $link) {
-            if ($link['relation'] === WorkbookLinkType::BlockedBy->value && ! $link['done']) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->linksIn->contains(fn (WorkbookLink $link): bool => $link->relation === WorkbookLinkType::Blocks
+            && $link->from?->status !== WorkbookStatus::Done);
     }
 
     /** @return array<string, mixed> */

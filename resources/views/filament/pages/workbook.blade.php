@@ -24,7 +24,9 @@
 <x-filament-panels::page>
     <div class="flex gap-4 overflow-x-auto pb-4">
         @foreach ($this->columns as $column)
-            <section class="w-80 shrink-0 rounded-xl bg-gray-100 p-3 dark:bg-white/5">
+            {{-- w-72, not w-80: five columns, and the fifth one has to be
+                 reachable without the board feeling like a corridor. --}}
+            <section class="w-72 shrink-0 rounded-xl bg-gray-100 p-3 dark:bg-white/5">
                 <header class="mb-3 flex items-center justify-between px-1">
                     <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200">
                         {{ $column['status']->label() }}
@@ -59,9 +61,42 @@
                                     <x-filament::icon icon="heroicon-m-bars-2" class="h-4 w-4" />
                                 </span>
 
-                                <p class="min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-gray-100">
-                                    {{ $item->title }}
-                                </p>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">
+                                            {{ $item->reference }}
+                                        </span>
+                                        @if ($item->isBlocked())
+                                            {{-- Blocked by something nobody has
+                                                 finished. A session reads this
+                                                 and stops. --}}
+                                            <span class="text-xs text-danger-600 dark:text-danger-400" title="Blocked">
+                                                <x-filament::icon icon="heroicon-m-lock-closed" class="h-3 w-3" />
+                                            </span>
+                                        @endif
+                                    </div>
+                                    <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                        {{ $item->title }}
+                                    </p>
+                                </div>
+
+                                {{-- Filament's own copyable() is a table and
+                                     infolist concern, so the card gets four
+                                     lines of Alpine instead.
+
+                                     `.stop` matters: the card is handle-dragged
+                                     today, so a stray click cannot start a drag
+                                     — and stopping propagation keeps that true
+                                     if handle mode ever comes off. --}}
+                                <button
+                                    type="button"
+                                    x-data
+                                    x-on:click.stop="navigator.clipboard?.writeText(@js('/work '.$item->reference))"
+                                    class="shrink-0 text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
+                                    title="Copy /work {{ $item->reference }}"
+                                >
+                                    <x-filament::icon icon="heroicon-m-clipboard-document" class="h-4 w-4" />
+                                </button>
                             </div>
 
                             <div class="mt-2 flex flex-wrap items-center gap-1.5 pl-6">
@@ -71,6 +106,14 @@
                                 <x-filament::badge :color="$item->severity->color()" size="xs">
                                     {{ $item->severity->label() }}
                                 </x-filament::badge>
+                                @if ($item->effort)
+                                    <x-filament::badge :color="$item->effort->color()" size="xs">
+                                        {{ $item->effort->label() }}
+                                    </x-filament::badge>
+                                @endif
+                                @foreach ($item->labels ?? [] as $label)
+                                    <x-filament::badge color="gray" size="xs">{{ $label }}</x-filament::badge>
+                                @endforeach
                                 @if ($item->first_seen_at)
                                     {{-- How long this has been true, which a
                                          re-propose never resets. --}}

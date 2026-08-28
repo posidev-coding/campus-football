@@ -11,7 +11,9 @@ use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Js;
 use Livewire\Attributes\Computed;
 use UnitEnum;
 
@@ -60,6 +62,17 @@ class Workbook extends Page
     public function columns(): array
     {
         $byStatus = WorkbookItem::query()
+            /*
+             * `linksIn` is where "blocked by" lives, because only `blocks` is
+             * ever stored — and the badge needs the BLOCKER's status, which is
+             * why the relation eager-loads its own far end.
+             *
+             * Eager, not lazy, and no feature test can prove it: the
+             * per-instance `preventsLazyLoading` flag is false under test, so
+             * an unloaded relation resolves silently here and throws only in a
+             * browser. The board's query-count ceiling is the guard.
+             */
+            ->with('linksIn')
             ->whereIn('status', array_map(fn (WorkbookStatus $s): string => $s->value, WorkbookStatus::columns()))
             ->orderBy('position')
             ->orderBy('id')
@@ -91,9 +104,49 @@ class Workbook extends Page
         unset($this->columns);
     }
 
+    /**
+     * The worst ready issue nobody is holding — what `cfb:issue start` would
+     * pick up next, without taking the claim.
+     */
+    #[Computed]
+    public function nextReady(): ?WorkbookItem
+    {
+        return WorkbookItem::query()
+            ->where('status', WorkbookStatus::Planned->value)
+            ->whereNotNull('ready_at')
+            ->where(fn (Builder $query): Builder => $query
+                ->whereNull('claimed_at')
+                ->orWhere('claim_expires_at', '<', now()))
+            ->orderByRaw("field(severity, 'critical', 'high', 'medium', 'low')")
+            ->orderBy('position')
+            ->orderBy('id')
+            ->first();
+    }
+
     protected function getHeaderActions(): array
     {
         return [
+            /*
+             * One tap from the board to a session. Client-side only — there is
+             * no `->action()`, because the whole job is
+             * `navigator.clipboard.writeText` and a round trip to the server to
+             * copy a string is a round trip for nothing.
+             *
+             * Untestable at the clipboard: `navigator.clipboard` needs a secure
+             * context and is absent from the automated tab. The test asserts
+             * the rendered attribute, per "test through the layer a test can
+             * hold".
+             */
+            Action::make('next')
+                ->label('Copy the next ready issue')
+                ->icon(Heroicon::OutlinedClipboardDocument)
+                ->color('gray')
+                ->visible(fn (): bool => $this->nextReady() !== null)
+                ->extraAttributes(fn (): array => [
+                    'x-data' => '',
+                    'x-on:click.prevent' => 'navigator.clipboard?.writeText('
+                        .Js::from('/work '.$this->nextReady()?->reference).')',
+                ]),
             Action::make('table')
                 ->label('Open the table')
                 ->icon(Heroicon::OutlinedTableCells)

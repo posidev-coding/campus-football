@@ -1,7 +1,10 @@
 <?php
 
+use App\Actions\LinkWorkbookItems;
 use App\Actions\MoveWorkbookItem;
 use App\Enums\WorkbookCategory;
+use App\Enums\WorkbookEffort;
+use App\Enums\WorkbookLinkType;
 use App\Enums\WorkbookSeverity;
 use App\Enums\WorkbookStatus;
 use App\Filament\Pages\Branding;
@@ -90,6 +93,15 @@ describe('the board', function () {
             column($status, 2);
         }
 
+        // ...and a link, so the blocked badge's nested load actually fires.
+        // Without one, `linksIn.from` never runs and the ceiling below is
+        // measured on a board that does not exercise the badge at all.
+        app(LinkWorkbookItems::class)->handle(
+            WorkbookItem::query()->firstOrFail(),
+            WorkbookItem::query()->latest('id')->firstOrFail(),
+            WorkbookLinkType::BlockedBy,
+        );
+
         $queries = 0;
         DB::listen(function () use (&$queries): void {
             $queries++;
@@ -97,10 +109,20 @@ describe('the board', function () {
 
         Livewire::actingAs($this->admin)->test(Workbook::class)->html();
 
-        // One read for the items. The rest is the panel's own session and
-        // user lookups, so the ceiling is generous — the point is that it does
-        // not scale with the number of columns.
-        expect($queries)->toBeLessThan(8);
+        /*
+         * FOUR, and the number is derived rather than raised:
+         *
+         *   1. the items, one read for the whole board
+         *   2. `linksIn`, eager — a blocked badge that lazy-loads is an N+1
+         *      across every card, and no feature test can catch a missing
+         *      eager load
+         *   3. `linksIn.from`, the blocker whose status the badge reads
+         *   4. the header action's next-ready lookup
+         *
+         * None of them scale with the number of columns or the number of
+         * cards, which is the property this test exists to hold.
+         */
+        expect($queries)->toBe(4);
     });
 });
 
@@ -522,5 +544,182 @@ describe('the activity trail', function () {
         app(MoveWorkbookItem::class)->handle($item->id, WorkbookStatus::InReview);
 
         expect($item->fresh()->claimed_by)->toBe('agent:local');
+    });
+});
+
+describe('the hand-off', function () {
+    /*
+     * Clipboard is untestable — `navigator.clipboard` needs a secure context
+     * and is absent from the automated tab. So everything here asserts the
+     * rendered STATE, which is the layer a test can hold.
+     */
+
+    it('reads the reference and copies the hand-off', function () {
+        $item = WorkbookItem::factory()->create();
+
+        $html = Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            // The cell READS `CFB-12`...
+            ->assertTableColumnStateSet('reference', $item->reference, $item)
+            ->html();
+
+        // ...and COPIES `/work CFB-12`, which is the whole hand-off. Asserted
+        // through the rendered handler, because `navigator.clipboard` needs a
+        // secure context the automated tab does not have.
+        expect($html)->toContain('/work '.$item->reference);
+    });
+
+    it('puts the hand-off on every card', function () {
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Inbox]);
+
+        $html = Livewire::actingAs($this->admin)->test(Workbook::class)->html();
+
+        expect($html)->toContain($item->reference)
+            ->toContain('navigator.clipboard');
+    });
+
+    it('offers the next ready issue from the header, and nothing when none is', function () {
+        Livewire::actingAs($this->admin)->test(Workbook::class)
+            ->assertActionHidden('next');
+
+        $ready = WorkbookItem::factory()->create(['status' => WorkbookStatus::Planned]);
+        $ready->forceFill(['ready_at' => now()])->save();
+
+        $html = Livewire::actingAs($this->admin)->test(Workbook::class)
+            ->assertActionVisible('next')
+            ->html();
+
+        expect($html)->toContain('/work '.$ready->reference);
+    });
+
+    it('sorts and searches a column that does not exist', function () {
+        // `reference` is derived, so both need explicit closures or MySQL
+        // answers 1054 on a column that is not there.
+        $first = WorkbookItem::factory()->create();
+        $second = WorkbookItem::factory()->create();
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->sortTable('reference', 'desc')
+            ->assertCanSeeTableRecords([$second, $first], inOrder: true)
+            ->searchTable((string) $second->id)
+            ->assertCanSeeTableRecords([$second])
+            ->assertCanNotSeeTableRecords([$first]);
+    });
+});
+
+describe('sizing, labeling and readying from the panel', function () {
+    it('saves an effort and a label through the form', function () {
+        $item = WorkbookItem::factory()->create();
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(TestAction::make(EditAction::class)->table($item), [
+                'title' => $item->title,
+                'category' => $item->category->value,
+                'severity' => $item->severity->value,
+                'status' => $item->status->value,
+                'effort' => 'l',
+                'labels' => ['Slow Query'],
+            ]);
+
+        expect($item->fresh()->effort)->toBe(WorkbookEffort::Large)
+            // Normalized by the model's mutator, not the form — so the form,
+            // the command and a factory all land on one vocabulary.
+            ->and($item->fresh()->labels)->toBe(['slow-query']);
+    });
+
+    it('carries the edit form\'s note onto the trail', function () {
+        // `dehydrated(false)` would have hidden this from `using()`, which is
+        // the only thing that reads it.
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Inbox]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(TestAction::make(EditAction::class)->table($item), [
+                'title' => $item->title,
+                'category' => $item->category->value,
+                'severity' => $item->severity->value,
+                'status' => 'planned',
+                'move_note' => 'Sized it first.',
+            ]);
+
+        expect($item->fresh()->events()->where('kind', WorkbookEvent::MOVED)->sole()->note)
+            ->toBe('Sized it first.')
+            // ...and it is never written to the row.
+            ->and($item->fresh()->getAttributes())->not->toHaveKey('move_note');
+    });
+
+    it('marks an item ready, and then stops offering to', function () {
+        $item = WorkbookItem::factory()->create();
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(TestAction::make('ready')->table($item));
+
+        expect($item->fresh()->ready_at)->not->toBeNull();
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->assertActionHidden(TestAction::make('ready')->table($item->fresh()));
+    });
+
+    it('filters the table by a label and by an effort', function () {
+        $slow = WorkbookItem::factory()->create(['labels' => ['slow-query'], 'effort' => WorkbookEffort::Large]);
+        $other = WorkbookItem::factory()->create(['labels' => ['frontend'], 'effort' => WorkbookEffort::Small]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->filterTable('label', 'slow-query')
+            ->assertCanSeeTableRecords([$slow])
+            ->assertCanNotSeeTableRecords([$other])
+            ->removeTableFilter('label')
+            ->filterTable('effort', ['s'])
+            ->assertCanSeeTableRecords([$other])
+            ->assertCanNotSeeTableRecords([$slow]);
+    });
+
+    it('offers no bulk move to In review', function () {
+        // In review means a pull request is open and waiting on a human. A
+        // bulk move puts cards there without one, and a column that lies is
+        // worse than a column nobody uses.
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->assertTableBulkActionDoesNotExist('move_in_review');
+    });
+});
+
+describe('the detail view, which ships rendered by nothing', function () {
+    it('renders every new section, including the ones that only sometimes exist', function () {
+        // Modals are the panel's blind spot: an infolist entry runs only when
+        // the modal mounts, so it ships covered by no test unless driven.
+        $blocker = WorkbookItem::factory()->create(['key' => 'the-blocker', 'title' => 'Fix the feed first']);
+        $item = WorkbookItem::factory()->create(['effort' => WorkbookEffort::Medium, 'labels' => ['slow-query']]);
+        $item->forceFill(['branch' => $item->branchName(), 'pr_url' => 'https://example.com/pull/9'])->save();
+
+        app(LinkWorkbookItems::class)->handle($item, $blocker, WorkbookLinkType::BlockedBy);
+        app(MoveWorkbookItem::class)->handle($item->id, WorkbookStatus::Planned, note: 'Worth doing.');
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->mountAction(TestAction::make(ViewAction::class)->table($item->fresh()))
+            ->assertMountedActionModalSee($item->reference)
+            ->assertMountedActionModalSee($item->branchName())
+            ->assertMountedActionModalSee('slow-query')
+            ->assertMountedActionModalSee('Blocked by')
+            ->assertMountedActionModalSee('Fix the feed first')
+            ->assertMountedActionModalSee('Worth doing.');
+    });
+
+    it('renders an item with no links, no claim and no branch', function () {
+        // The empty case is the one that ships broken: a section whose state
+        // is null renders nothing rather than an empty box.
+        $item = WorkbookItem::factory()->create();
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->mountAction(TestAction::make(ViewAction::class)->table($item))
+            ->assertOk()
+            ->assertMountedActionModalSee('Not started');
     });
 });
