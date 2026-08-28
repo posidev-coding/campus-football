@@ -44,6 +44,10 @@ class IssueBoard
             'started_at' => $item->started_at?->toIso8601String(),
             'completed_at' => $item->completed_at?->toIso8601String(),
             'evidence' => $item->evidence,
+            // BOTH directions, inverse already applied. A session reading this
+            // must never have to know which way a row happened to be stored.
+            'links' => $item->renderedLinks,
+            'blocked' => $item->isBlocked(),
             'trail' => $this->trail($item),
         ];
     }

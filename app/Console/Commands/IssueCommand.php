@@ -4,12 +4,14 @@ namespace App\Console\Commands;
 
 use App\Actions\ClaimWorkbookItem;
 use App\Actions\DescribeWorkbookItem;
+use App\Actions\LinkWorkbookItems;
 use App\Actions\MoveWorkbookItem;
 use App\Actions\ReadyWorkbookItem;
 use App\Actions\RecordWorkbookEvent;
 use App\Actions\ReviewWorkbookItem;
 use App\Actions\StartWorkbookItem;
 use App\Enums\WorkbookEffort;
+use App\Enums\WorkbookLinkType;
 use App\Enums\WorkbookStatus;
 use App\Models\WorkbookEvent;
 use App\Models\WorkbookItem;
@@ -39,12 +41,14 @@ use Illuminate\Support\Str;
 class IssueCommand extends Command
 {
     protected $signature = 'cfb:issue
-        {action=show : show|start|ready|review|done|comment|claim|release}
+        {action=show : show|start|ready|review|done|comment|claim|release|link}
         {issue? : CFB-12, a bare id, or the advisor key — omit to read it off the current branch}
         {--note= : One line for the activity trail}
         {--effort= : s, m or l}
         {--label=* : Add a label; repeatable}
         {--pr= : The pull request URL, for review}
+        {--to= : The other issue, for link}
+        {--relation=relates_to : blocks|blocked_by|relates_to|duplicates|duplicated_by}
         {--as=agent:local : Who is acting, recorded on the trail}
         {--json : The machine shape instead of a terminal read}';
 
@@ -78,7 +82,8 @@ class IssueCommand extends Command
             'comment' => $this->remark($item, $by, $note),
             'claim' => app(ClaimWorkbookItem::class)->handle($item, $by) ?? $this->refuse($this->heldBy($item)),
             'release' => app(ClaimWorkbookItem::class)->release($item, $by, $note) ?? $this->refuse($this->heldBy($item)),
-            default => $this->refuse("There is no `{$action}`. Try show, start, ready, review, done, comment, claim or release."),
+            'link' => $this->link($item, $by),
+            default => $this->refuse("There is no `{$action}`. Try show, start, ready, review, done, comment, claim, release or link."),
         };
 
         if ($outcome === null) {
@@ -208,6 +213,28 @@ class IssueCommand extends Command
         return $item;
     }
 
+    private function link(WorkbookItem $item, string $by): ?WorkbookItem
+    {
+        $handle = trim((string) $this->option('to'));
+        $other = $handle === '' ? null : WorkbookItem::resolve($handle);
+
+        if ($other === null) {
+            return $this->refuse('Pass --to= with the other issue — CFB-12, a bare id, or its key.');
+        }
+
+        $relation = WorkbookLinkType::tryFrom((string) $this->option('relation'));
+
+        if ($relation === null) {
+            return $this->refuse('--relation must be blocks, blocked_by, relates_to, duplicates or duplicated_by.');
+        }
+
+        $linker = app(LinkWorkbookItems::class);
+
+        return $linker->handle($item, $other, $relation, $by) === null
+            ? $this->refuse((string) $linker->refusal)
+            : $item;
+    }
+
     private function heldBy(WorkbookItem $item): string
     {
         $until = $item->claim_expires_at?->diffForHumans() ?? 'no stated end';
@@ -260,6 +287,10 @@ class IssueCommand extends Command
             // PRINTED, never run. See the class docblock.
             $this->newLine();
             $this->line("  <fg=green>git switch -c {$issue['branch']}</>");
+        }
+
+        foreach ($issue['links'] as $link) {
+            $this->line(sprintf('  <fg=gray>%s</> %s  %s', $link['label'], $link['reference'], $link['title']));
         }
 
         if ($issue['prompt'] !== null && $action === 'show') {

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Actions\RecordWorkbookEvent;
 use App\Enums\WorkbookCategory;
 use App\Enums\WorkbookEffort;
+use App\Enums\WorkbookLinkType;
 use App\Enums\WorkbookSeverity;
 use App\Enums\WorkbookStatus;
 use Database\Factories\WorkbookItemFactory;
@@ -313,6 +314,79 @@ class WorkbookItem extends Model
 
             return ['labels' => $labels === [] ? null : json_encode($labels)];
         });
+    }
+
+    /**
+     * Edges this issue is the SOURCE of — `blocks`, `duplicates`, and the half
+     * of `relates_to` that landed on the lower id.
+     *
+     * `with('to')` on the relation rather than at every call site: a link list
+     * that lazy-loads its other end is an N+1 across every card on the board,
+     * and no feature test can catch a missing eager load.
+     *
+     * @return HasMany<WorkbookLink, $this>
+     */
+    public function linksOut(): HasMany
+    {
+        return $this->hasMany(WorkbookLink::class, 'from_item_id')->with('to');
+    }
+
+    /**
+     * Edges POINTING AT this issue — which is where "blocked by" lives, since
+     * only `blocks` is ever stored.
+     *
+     * @return HasMany<WorkbookLink, $this>
+     */
+    public function linksIn(): HasMany
+    {
+        return $this->hasMany(WorkbookLink::class, 'to_item_id')->with('from');
+    }
+
+    /**
+     * Both directions as one list, with the inverse already applied — the only
+     * shape anything renders. A reader should never have to know which way a
+     * row happened to be stored.
+     *
+     * @return Attribute<list<array<string, mixed>>, never>
+     */
+    protected function renderedLinks(): Attribute
+    {
+        return Attribute::get(function (): array {
+            $out = $this->linksOut->map(fn (WorkbookLink $link): array => self::renderLink($link->relation, $link->to));
+            $in = $this->linksIn->map(fn (WorkbookLink $link): array => self::renderLink($link->relation->inverse(), $link->from));
+
+            return $out->concat($in)->values()->all();
+        });
+    }
+
+    /**
+     * Blocked by something nobody has finished.
+     *
+     * A session reads this and STOPS. Working an issue whose blocker is still
+     * open is how two branches end up fighting over the same file.
+     */
+    public function isBlocked(): bool
+    {
+        foreach ($this->renderedLinks as $link) {
+            if ($link['relation'] === WorkbookLinkType::BlockedBy->value && ! $link['done']) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @return array<string, mixed> */
+    private static function renderLink(WorkbookLinkType $relation, ?WorkbookItem $other): array
+    {
+        return [
+            'relation' => $relation->value,
+            'label' => $relation->label(),
+            'reference' => $other?->reference,
+            'title' => $other?->title,
+            'status' => $other?->status->value,
+            'done' => $other?->status === WorkbookStatus::Done,
+        ];
     }
 
     /**
