@@ -19,6 +19,34 @@
 >
 > Branch: `ai-layer` is level with `main` and open for this work. One commit per
 > phase; the suite stays green at every step.
+>
+> **Shipped 2026-08-28**, eight commits on `ai-layer`, suite green at every one
+> (1,923 tests). Four things came out differently from what is written below,
+> each for a reason recorded beside it:
+>
+> 1. **The claim cannot read an affected-row count.** MySQL reports rows
+>    CHANGED, not matched, so a holder renewing its own lease inside the same
+>    second updates zero rows and reads as refused — `cfb:issue start` twice in
+>    a row hit it. The atomicity stays in the WHERE clause; the outcome is
+>    decided by reading back the winner's name. Filed in `.ai/rules/support.md`.
+> 2. **`move_note` is not `->dehydrated(false)`.** That would drop it from the
+>    state `using()` is handed, which is the only thing that reads it. It is
+>    hidden on create and pulled out of the data in `using()` instead.
+> 3. **`start` writes no `claimed` event.** It takes the lease silently, because
+>    a `claimed` row immediately followed by a `started` row is two lines saying
+>    one thing. `ClaimWorkbookItem::take()` is the atomic half; `handle()` is the
+>    half that announces.
+> 4. **`isBlocked()` reads `linksIn` alone**, not `renderedLinks`. Only `blocks`
+>    is ever stored, so a blocker can only be a row pointing this way — going
+>    through the accessor would drag `linksOut` in behind it and put a second
+>    eager load on every card of the board.
+>
+> `cfb:issue link` arrived with Phase 4 rather than Phase 3, so that every
+> commit's suite was green with no dead option in the signature.
+>
+> Not done: the end-to-end rehearsal in Verification step 6 (it opens a real
+> pull request), and the 768px pass — the board was checked at 390px through
+> the local harness.
 
 ## Context
 
@@ -188,7 +216,7 @@ have `gh`, and a skill that assumes a binary is a skill that dies silently.
 
 ---
 
-## Phase 1 — The reference, the fields, the ownership boundary
+## Phase 1 — The reference, the fields, the ownership boundary ✅ **Landed 2026-08-28**
 
 **Config.** `config/cfb.php`, beside `ops_token` (`:152`):
 
@@ -290,7 +318,7 @@ why the accessor is built now.
   when the caller sends them*. This is what stops the next caller widening the
   door.
 
-## Phase 2 — The activity trail, and one doorway
+## Phase 2 — The activity trail, and one doorway ✅ **Landed 2026-08-28**
 
 **The problem, precisely.** Five things write `status` today:
 
@@ -389,7 +417,7 @@ exactly one `filed` on create and none on a re-file. The four existing
 `MoveWorkbookItem` position tests (`WorkbookBoardTest.php:107-148`) compile and
 pass unchanged — the new parameters are optional.
 
-## Phase 3 — The claim, and the command surface
+## Phase 3 — The claim, and the command surface ✅ **Landed 2026-08-28**
 
 **`app/Actions/ClaimWorkbookItem.php`.** Do **not** write
 `if ($item->claimed_at === null) { $item->update([...]); }` — two routines a
@@ -501,7 +529,7 @@ and does not overwrite `claimed_by`; a lapsed lease is re-claimable.
 > explicit that sequential calls are not concurrent writers — the guarantee lives
 > in the `WHERE` clause, so that is what the test must exercise.
 
-## Phase 4 — Links and labels
+## Phase 4 — Links and labels ✅ **Landed 2026-08-28**
 
 **Migration `workbook_links`:**
 
@@ -540,7 +568,7 @@ appear on one side, so nothing double-counts. The model gets `linksOut`
 (`from_item_id`), `linksIn` (`to_item_id`) and a `renderedLinks` accessor that
 flattens both into one list with the inverse already applied.
 
-## Phase 5 — Filament
+## Phase 5 — Filament ✅ **Landed 2026-08-28**
 
 **Table** (`WorkbookResource::table()`, `:141`). A leading mono `reference`
 column carries the entire clipboard feature:
@@ -625,7 +653,7 @@ from the board to a session.
 ceiling in `WorkbookBoardTest.php:87-103` rather than raising it, with a comment
 saying what each query is.
 
-## Phase 6 — The ops issue API
+## Phase 6 — The ops issue API ✅ **Landed 2026-08-28**
 
 Inside the existing group in `routes/ops.php:29-32`:
 
@@ -712,7 +740,7 @@ safe by design. Say that in the new test's comment so it reads as a decision.
 fields are human-owned and ignored, and its status vocabulary learns
 `in_review`, which is **open**, not answered, so it must not be re-filed.
 
-## Phase 7 — The `/work` skill
+## Phase 7 — The `/work` skill ✅ **Landed 2026-08-28**
 
 `.claude/skills/work/SKILL.md`, in the shape of the advisor's frontmatter so it
 activates on `/work CFB-12` and on "pick up the next ready issue".
@@ -757,7 +785,7 @@ touching `.env` or printing `OPS_TOKEN`; working two issues on one branch.
 **And the important one: if the work turns out bigger than the card, STOP.**
 Comment what you found, release the claim, say so. Do not silently expand scope.
 
-## Phase 8 (optional) — PR merged → Done
+## Phase 8 — PR merged → Done ✅ **Landed 2026-08-28** (kept, not cut)
 
 The last manual step. `POST /ops/github` with an HMAC signature check
 (`GITHUB_WEBHOOK_SECRET`), reading `pull_request.merged`, matching `head.ref`
