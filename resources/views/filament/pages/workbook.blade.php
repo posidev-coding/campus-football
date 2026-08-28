@@ -66,6 +66,23 @@
                                         <span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">
                                             {{ $item->reference }}
                                         </span>
+                                        @if ($item->effort)
+                                            {{-- Effort is a MARKER here, not a
+                                                 badge, and that is the whole
+                                                 point. A card has no column
+                                                 header, so a `Large` badge sat
+                                                 beside a `High` badge in the
+                                                 same amber, and `Medium`
+                                                 collided with `Medium` on both
+                                                 the word and the color. It
+                                                 stays a badge on the table and
+                                                 the infolist, where a labelled
+                                                 column says which is which. --}}
+                                            <span
+                                                class="font-mono text-[11px] text-gray-400 dark:text-gray-500"
+                                                data-effort="{{ $item->effort->value }}"
+                                            >&middot; {{ $item->effort->short() }}</span>
+                                        @endif
                                         @if ($item->isBlocked())
                                             {{-- Blocked by something nobody has
                                                  finished. A session reads this
@@ -106,11 +123,6 @@
                                 <x-filament::badge :color="$item->severity->color()" size="xs">
                                     {{ $item->severity->label() }}
                                 </x-filament::badge>
-                                @if ($item->effort)
-                                    <x-filament::badge :color="$item->effort->color()" size="xs">
-                                        {{ $item->effort->label() }}
-                                    </x-filament::badge>
-                                @endif
                                 @foreach ($item->labels ?? [] as $label)
                                     <x-filament::badge color="gray" size="xs">{{ $label }}</x-filament::badge>
                                 @endforeach

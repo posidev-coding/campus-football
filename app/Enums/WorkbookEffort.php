@@ -39,6 +39,21 @@ enum WorkbookEffort: string
         };
     }
 
+    /**
+     * One character, for the board's cards.
+     *
+     * A card has no column header, so a badge reading `Large` sits beside a
+     * badge reading `High` and nothing says which is size and which is
+     * priority — they are also the same amber. `Medium` collides on both the
+     * word AND the color. So effort is a muted mono marker on the card and
+     * stays a full badge on the table and the infolist, where a labelled
+     * column does the disambiguating.
+     */
+    public function short(): string
+    {
+        return mb_strtoupper($this->value);
+    }
+
     /** @return array<string, string> value => label, for a Filament select */
     public static function options(): array
     {
