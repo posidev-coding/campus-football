@@ -36,6 +36,26 @@ function pulseEntry(string $type, string $key, int $value, int $minutesAgo = 5):
     ]);
 }
 
+/**
+ * An exception, recorded the way Pulse actually records one.
+ *
+ * `value` holds the OCCURRENCE TIMESTAMP, not a duration
+ * (`Recorders/Exceptions.php`, `value: $timestamp`). Writing `value: 1` here —
+ * which this file used to do — makes every exception tie, so the row's
+ * ordering is whatever MySQL feels like and the test proves nothing about it.
+ */
+function exceptionEntry(string $key, int $minutesAgo = 5): void
+{
+    $thrownAt = now()->subMinutes($minutesAgo)->getTimestamp();
+
+    DB::table('pulse_entries')->insert([
+        'timestamp' => $thrownAt,
+        'type' => 'exception',
+        'key' => $key,
+        'value' => $thrownAt,
+    ]);
+}
+
 describe('the shape', function () {
     it('agrees with the other two reports, row for row', function () {
         // Same keys on purpose: one terminal renderer prints all three, and a
@@ -106,15 +126,39 @@ describe('the monitor watching itself', function () {
 });
 
 describe('what it reads', function () {
-    it('counts exceptions and names the worst one', function () {
-        pulseEntry('exception', '["RuntimeException","app\/Jobs\/Thing.php:20"]', 1);
-        pulseEntry('exception', '["TypeError","app\/Support\/Other.php:9"]', 1);
+    it('counts exceptions and names the LATEST one, not the worst', function () {
+        /*
+         * `orderByDesc('value')` picks the slowest entry for the four slow_*
+         * types, because `value` is a duration there. For `exception` Pulse
+         * writes the occurrence timestamp instead, so the same ordering means
+         * MOST RECENT — and the row has to say the word it actually means.
+         *
+         * The two entries are deliberately minutes apart, so "latest" is a
+         * claim the fixture can falsify rather than a tie.
+         */
+        exceptionEntry('["TypeError","app\/Support\/Other.php:9"]', minutesAgo: 45);
+        exceptionEntry('["RuntimeException","app\/Jobs\/Thing.php:20"]', minutesAgo: 2);
 
         $row = collect((new OpsReport)->checks())->firstWhere('key', 'exceptions');
 
         expect($row['status'])->toBe(OpsReport::WARN)
             ->and($row['detail'])->toContain('2 thrown')
-            ->and($row['detail'])->toContain('RuntimeException');
+            ->and($row['detail'])->toContain('latest: ')
+            ->and($row['detail'])->toContain('RuntimeException')
+            // ...and not the older one, which is what makes the ordering a
+            // measured claim rather than a coin flip.
+            ->and($row['detail'])->not->toContain('TypeError');
+    });
+
+    it('still says "worst" where value really is a duration', function () {
+        // The four slow_* types order by a real measurement, so the word is
+        // honest there and must not be swept up in the rename.
+        pulseEntry('slow_request', '["GET","\/picks"]', 1_200);
+
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'slow_requests');
+
+        expect($row['detail'])->toContain('worst: ')
+            ->and($row['detail'])->toContain('GET /picks');
     });
 
     it('surfaces the slow query, which no test can ever catch', function () {
@@ -130,7 +174,7 @@ describe('what it reads', function () {
     });
 
     it('ignores anything outside the window', function () {
-        pulseEntry('exception', '["OldError","app\/Old.php:1"]', 1, minutesAgo: 60 * (OpsReport::HOURS + 1));
+        exceptionEntry('["OldError","app\/Old.php:1"]', minutesAgo: 60 * (OpsReport::HOURS + 1));
 
         expect(collect((new OpsReport)->checks())->firstWhere('key', 'exceptions')['status'])
             ->toBe(OpsReport::OK);

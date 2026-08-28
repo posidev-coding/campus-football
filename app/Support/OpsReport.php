@@ -134,7 +134,11 @@ class OpsReport
             $count === 0 ? self::OK : self::WARN,
             $count === 0
                 ? 'None thrown'
-                : "{$count} thrown · worst: ".$this->pulseWorstKey('exception'),
+                // LATEST, not worst. For `exception` Pulse writes the
+                // occurrence timestamp into `value`, so ordering by it means
+                // "most recently thrown" — the four slow_* rows below order by
+                // a real duration and say "worst" honestly.
+                : "{$count} thrown · latest: ".$this->pulseTopKey('exception'),
             $count === 0 ? null : 'Open /pulse for the stack traces.',
         );
     }
@@ -149,7 +153,7 @@ class OpsReport
             $count === 0 ? self::OK : self::WARN,
             $count === 0
                 ? 'Nothing over the threshold'
-                : "{$count} over ".config('pulse.recorders.'.SlowRequests::class.'.threshold').'ms · worst: '.$this->pulseWorstKey('slow_request'),
+                : "{$count} over ".config('pulse.recorders.'.SlowRequests::class.'.threshold').'ms · worst: '.$this->pulseTopKey('slow_request'),
             $count === 0 ? null : 'Open /pulse; the slowest route is where to start.',
         );
     }
@@ -172,7 +176,7 @@ class OpsReport
             $count === 0 ? self::OK : self::WARN,
             $count === 0
                 ? 'Nothing over the threshold'
-                : "{$count} over threshold · worst: ".$this->pulseWorstKey('slow_query'),
+                : "{$count} over threshold · worst: ".$this->pulseTopKey('slow_query'),
             $count === 0 ? null : 'Check the eager loads on the calling screen — no test can catch this one.',
         );
     }
@@ -281,7 +285,22 @@ class OpsReport
     }
 
     /** The heaviest entry of one type, named for a human. */
-    private function pulseWorstKey(string $type): string
+    /**
+     * The leading entry of one Pulse type, by `value` — and `value` does not
+     * mean the same thing for every type, which is why this is NOT called
+     * `pulseWorstKey` any more.
+     *
+     * Pulse stores a DURATION IN MILLISECONDS for slow_request, slow_query,
+     * slow_job and slow_outgoing_request, and the OCCURRENCE TIMESTAMP for
+     * `exception` (`Recorders/Exceptions.php`, `value: $timestamp`). So
+     * `orderByDesc('value')` is "slowest" for four types and "most recent" for
+     * the fifth. Both are the right order for their type; the caller supplies
+     * the word, because only the caller knows which one it asked for.
+     *
+     * Same split `TelemetrySnapshot::pulseTop()` carries, and the same reason
+     * its SQL alias is `max_value` rather than `worst`.
+     */
+    private function pulseTopKey(string $type): string
     {
         if (! Schema::hasTable('pulse_entries')) {
             return 'unknown';
