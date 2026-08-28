@@ -2,12 +2,15 @@
 
 namespace App\Filament\Resources\Workbook;
 
+use App\Actions\MoveWorkbookItem;
 use App\Enums\WorkbookCategory;
 use App\Enums\WorkbookSeverity;
 use App\Enums\WorkbookStatus;
 use App\Filament\Resources\Workbook\Pages\ManageWorkbook;
+use App\Models\WorkbookEvent;
 use App\Models\WorkbookItem;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
@@ -23,6 +26,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Arr;
 use UnitEnum;
 
 /**
@@ -172,7 +176,8 @@ class WorkbookResource extends Resource
             ])
             ->recordActions([
                 ViewAction::make(),
-                EditAction::make(),
+                self::edit(),
+                self::move(),
             ])
             ->toolbarActions([
                 self::moveTo(WorkbookStatus::Planned),
@@ -192,6 +197,54 @@ class WorkbookResource extends Resource
     }
 
     /**
+     * The edit form, saved through the doorway rather than around it.
+     *
+     * Filament's default save is `$record->update($data)`, which writes
+     * `status` directly and leaves no event — one of the four holes the trail
+     * exists to close. `using()` pulls the status out and hands it to
+     * `MoveWorkbookItem`; everything else saves normally.
+     */
+    private static function edit(): EditAction
+    {
+        return EditAction::make()->using(function (WorkbookItem $record, array $data): WorkbookItem {
+            $status = WorkbookStatus::from(Arr::pull($data, 'status'));
+            $note = Arr::pull($data, 'move_note');
+
+            $record->update($data);
+
+            return app(MoveWorkbookItem::class)
+                ->handle($record->id, $status, actor: WorkbookEvent::ACTOR_HUMAN, note: $note) ?? $record;
+        });
+    }
+
+    /**
+     * Move one item, WITH a reason.
+     *
+     * A form save has nowhere to put a note, and the note is what makes a trail
+     * worth opening — "moved to planned" is a fact anyone could have guessed,
+     * "moved to planned, waiting on the ESPN feed fix" is a record.
+     */
+    private static function move(): Action
+    {
+        return Action::make('move')
+            ->label('Move')
+            ->icon(Heroicon::OutlinedArrowRight)
+            ->color('gray')
+            ->fillForm(fn (WorkbookItem $record): array => ['status' => $record->status->value])
+            ->schema([
+                Select::make('status')->options(WorkbookStatus::options())->required()->native(false),
+                Textarea::make('note')->label('Why')->rows(3)
+                    ->helperText('Goes on the activity trail, for whoever reads this in a month.'),
+            ])
+            ->action(fn (WorkbookItem $record, array $data) => app(MoveWorkbookItem::class)->handle(
+                $record->id,
+                WorkbookStatus::from($data['status']),
+                actor: WorkbookEvent::ACTOR_HUMAN,
+                note: $data['note'] ?? null,
+            ));
+    }
+
+    /**
      * Answering several items at once — the thing a Kanban cannot do, and the
      * reason this surface exists beside the board.
      */
@@ -207,13 +260,15 @@ class WorkbookResource extends Resource
                 : null)
             ->deselectRecordsAfterCompletion()
             ->action(function (Collection $records) use ($status): void {
-                // Appended in the order they were selected, so a bulk move
-                // does not interleave with what is already in the column.
-                $next = WorkbookItem::nextPosition($status);
-
-                $records->each(function (WorkbookItem $item) use ($status, &$next): void {
-                    $item->update(['status' => $status, 'position' => $next++]);
-                });
+                // Through the action, never `$item->update([...])` — a direct
+                // write here was one of the four holes in the trail.
+                //
+                // `position: null` means APPEND, which is exactly the old
+                // behavior: each item lands at the end in the order it was
+                // selected, so a bulk move does not interleave with what is
+                // already in the column. It is NOT `0`, which is the top.
+                $records->each(fn (WorkbookItem $item) => app(MoveWorkbookItem::class)
+                    ->handle($item->id, $status, position: null, actor: WorkbookEvent::ACTOR_HUMAN));
             });
     }
 }

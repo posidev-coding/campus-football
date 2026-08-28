@@ -15,6 +15,7 @@ use App\Filament\Widgets\RecentSyncFailures;
 use App\Filament\Widgets\SyncSpend;
 use App\Models\FeedRun;
 use App\Models\User;
+use App\Models\WorkbookEvent;
 use App\Models\WorkbookItem;
 use App\Support\SyncSchedule;
 use Filament\Actions\CreateAction;
@@ -377,5 +378,149 @@ describe('filing and editing by hand', function () {
 
         expect($item->fresh()->status)->toBe(WorkbookStatus::Dismissed)
             ->and($item->fresh()->severity)->toBe(WorkbookSeverity::Critical);
+    });
+});
+
+describe('the activity trail', function () {
+    /*
+     * The point of the trail is completeness. FIVE things could write `status`
+     * and four of them recorded nothing — so what these tests hold is not that
+     * MoveWorkbookItem writes an event, but that every OTHER writer goes
+     * through it. A trail with four holes reads as a complete record, which is
+     * worse than no trail at all.
+     */
+
+    /** Everything but the `filed` row every create writes. */
+    function trail(WorkbookItem $item): array
+    {
+        return $item->events()->where('kind', '!=', WorkbookEvent::FILED)->get()->all();
+    }
+
+    it('records the drag', function () {
+        [$a] = column(WorkbookStatus::Inbox, 1);
+
+        Livewire::actingAs($this->admin)->test(Workbook::class)
+            ->call('move', (string) $a->id, 0, 'planned');
+
+        $event = collect(trail($a))->sole();
+
+        expect($event->kind)->toBe(WorkbookEvent::MOVED)
+            ->and($event->from_status)->toBe(WorkbookStatus::Inbox)
+            ->and($event->to_status)->toBe(WorkbookStatus::Planned)
+            ->and($event->actor)->toBe(WorkbookEvent::ACTOR_HUMAN);
+    });
+
+    it('records a bulk move, which used to write status directly', function () {
+        $items = column(WorkbookStatus::Inbox);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callTableBulkAction('move_dismissed', $items);
+
+        foreach ($items as $item) {
+            expect(collect(trail($item))->sole()->to_status)->toBe(WorkbookStatus::Dismissed);
+        }
+    });
+
+    it('appends a bulk move in selection order, because null is not zero', function () {
+        // `position: null` means APPEND. Read as `0` it would mean the TOP of
+        // the column, silently reversing the order — and no assertion about
+        // the status would notice.
+        $items = column(WorkbookStatus::Inbox);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callTableBulkAction('move_planned', $items);
+
+        expect(WorkbookItem::query()->inColumn(WorkbookStatus::Planned)->pluck('id')->all())
+            ->toBe(collect($items)->pluck('id')->all());
+    });
+
+    it('records a save from the edit form, which Filament routes around the action', function () {
+        // Filament saves through `$record->update($data)`. Without `using()`
+        // the status lands and nothing remembers it.
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Inbox]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(TestAction::make(EditAction::class)->table($item), [
+                'title' => 'Renamed while answering it',
+                'category' => $item->category->value,
+                'severity' => $item->severity->value,
+                'status' => 'planned',
+            ]);
+
+        expect($item->fresh()->title)->toBe('Renamed while answering it')
+            ->and(collect(trail($item))->sole()->to_status)->toBe(WorkbookStatus::Planned);
+    });
+
+    it('carries the reason a form save has nowhere to put', function () {
+        // "Moved to planned" is a fact anyone could guess. The note is the
+        // whole reason a trail is worth opening.
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Inbox]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(TestAction::make('move')->table($item), [
+                'status' => 'planned',
+                'note' => 'Waiting on the ESPN feed fix first.',
+            ]);
+
+        expect(collect(trail($item))->sole()->note)->toBe('Waiting on the ESPN feed fix first.');
+    });
+
+    it('says nothing about a reorder inside a column', function () {
+        // A board where every nudge writes a row is a trail nobody opens,
+        // which costs it the only thing it has.
+        [$a, $b, $c] = column(WorkbookStatus::Inbox);
+
+        app(MoveWorkbookItem::class)->handle($c->id, WorkbookStatus::Inbox, 0);
+
+        expect(trail($a))->toBe([])
+            ->and(trail($b))->toBe([])
+            ->and(trail($c))->toBe([])
+            // ...and the reorder still happened.
+            ->and($c->fresh()->position)->toBe(1);
+    });
+
+    it('stamps the lifecycle a status column cannot answer on its own', function () {
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Planned]);
+
+        app(MoveWorkbookItem::class)->handle($item->id, WorkbookStatus::InProgress);
+        $started = $item->fresh()->started_at;
+
+        app(MoveWorkbookItem::class)->handle($item->id, WorkbookStatus::Done);
+
+        expect($started)->not->toBeNull()
+            ->and($item->fresh()->completed_at)->not->toBeNull()
+            // First entry only — bouncing back must not reset how long this
+            // has been being worked on.
+            ->and($item->fresh()->started_at->toIso8601String())->toBe($started->toIso8601String());
+    });
+
+    it('releases the claim the moment work is finished or back in a queue', function () {
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::InProgress]);
+        $item->forceFill([
+            'claimed_at' => now(),
+            'claimed_by' => 'agent:local',
+            'claim_expires_at' => now()->addHour(),
+        ])->save();
+
+        app(MoveWorkbookItem::class)->handle($item->id, WorkbookStatus::Planned);
+
+        expect($item->fresh()->claimed_at)->toBeNull()
+            ->and($item->fresh()->claimed_by)->toBeNull()
+            ->and($item->fresh()->claim_expires_at)->toBeNull();
+    });
+
+    it('keeps a lease across the transition it is a lease FOR', function () {
+        // In progress -> In review is a session handing its own work on. The
+        // claim survives, because the work is not finished until a human merges.
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::InProgress]);
+        $item->forceFill(['claimed_at' => now(), 'claimed_by' => 'agent:local'])->save();
+
+        app(MoveWorkbookItem::class)->handle($item->id, WorkbookStatus::InReview);
+
+        expect($item->fresh()->claimed_by)->toBe('agent:local');
     });
 });

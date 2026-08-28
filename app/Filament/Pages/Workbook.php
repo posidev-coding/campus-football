@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Actions\MoveWorkbookItem;
 use App\Enums\WorkbookStatus;
 use App\Filament\Resources\Workbook\WorkbookResource;
+use App\Models\WorkbookEvent;
 use App\Models\WorkbookItem;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -85,7 +86,7 @@ class Workbook extends Page
             return;
         }
 
-        app(MoveWorkbookItem::class)->handle((int) $item, $column, $position);
+        app(MoveWorkbookItem::class)->handle((int) $item, $column, $position, actor: WorkbookEvent::ACTOR_HUMAN);
 
         unset($this->columns);
     }

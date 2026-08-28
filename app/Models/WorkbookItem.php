@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Actions\RecordWorkbookEvent;
 use App\Enums\WorkbookCategory;
 use App\Enums\WorkbookEffort;
 use App\Enums\WorkbookSeverity;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 
@@ -115,6 +117,35 @@ class WorkbookItem extends Model
             'claimed_at' => 'datetime',
             'claim_expires_at' => 'datetime',
         ];
+    }
+
+    /**
+     * `filed` is a MODEL HOOK, not a call site, and that is the whole point.
+     *
+     * Four things create a workbook item — `propose()`, the panel's
+     * CreateAction, the factory, and whatever files one next — and only one of
+     * them was ever going to remember. The actor derives from `source`, so
+     * nothing needs plumbing and no create site can forget.
+     *
+     * A RE-propose writes nothing: recurrence is already carried by
+     * `last_seen_at`, and a weekly "still true" row would bury the eight rows
+     * that actually matter.
+     */
+    protected static function booted(): void
+    {
+        static::created(fn (self $item): WorkbookEvent => app(RecordWorkbookEvent::class)
+            ->handle($item, WorkbookEvent::FILED, to: $item->status, actor: (string) $item->source));
+    }
+
+    /**
+     * The activity trail, oldest first — `created_at` then `id`, because two
+     * events written inside one transaction share a second.
+     *
+     * @return HasMany<WorkbookEvent, $this>
+     */
+    public function events(): HasMany
+    {
+        return $this->hasMany(WorkbookEvent::class)->orderBy('created_at')->orderBy('id');
     }
 
     /**

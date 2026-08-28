@@ -4,6 +4,7 @@ use App\Enums\WorkbookCategory;
 use App\Enums\WorkbookEffort;
 use App\Enums\WorkbookSeverity;
 use App\Enums\WorkbookStatus;
+use App\Models\WorkbookEvent;
 use App\Models\WorkbookItem;
 
 /*
@@ -390,5 +391,58 @@ describe('the ownership boundary', function () {
         $item = WorkbookItem::propose('picks-n-plus-one', proposal(['status' => WorkbookStatus::Done]));
 
         expect($item->status)->toBe(WorkbookStatus::Inbox);
+    });
+});
+
+describe('filed is a model hook', function () {
+    it('writes exactly one filed event, whoever created the row', function () {
+        // A hook rather than a call site: there are four ways to create an
+        // item and only one of them was ever going to remember.
+        $proposed = WorkbookItem::propose('picks-n-plus-one', proposal());
+        $byHand = WorkbookItem::factory()->create(['source' => WorkbookItem::SOURCE_HUMAN]);
+
+        expect($proposed->events()->pluck('kind')->all())->toBe([WorkbookEvent::FILED])
+            ->and($byHand->events()->pluck('kind')->all())->toBe([WorkbookEvent::FILED])
+            // The actor derives from `source`, so nothing needs plumbing.
+            ->and($proposed->events()->sole()->actor)->toBe(WorkbookItem::SOURCE_ADVISOR)
+            ->and($byHand->events()->sole()->actor)->toBe(WorkbookItem::SOURCE_HUMAN);
+    });
+
+    it('says nothing when the advisor files the same finding again', function () {
+        // Recurrence is already carried by `last_seen_at`. A weekly "still
+        // true" row would bury the eight rows that actually matter.
+        WorkbookItem::propose('picks-n-plus-one', proposal());
+        WorkbookItem::propose('picks-n-plus-one', proposal(['evidence' => ['hits' => 900]]));
+        WorkbookItem::propose('picks-n-plus-one', proposal(['evidence' => ['hits' => 1200]]));
+
+        expect(WorkbookItem::sole()->events()->count())->toBe(1);
+    });
+
+    it('says nothing when a re-propose lands on a dismissed item either', function () {
+        WorkbookItem::propose('wont-fix', proposal());
+        WorkbookItem::sole()->update(['status' => WorkbookStatus::Dismissed]);
+
+        WorkbookItem::propose('wont-fix', proposal());
+
+        expect(WorkbookItem::sole()->events()->count())->toBe(1);
+    });
+
+    it('never carries a person, only a role', function () {
+        // The snapshot a third-party routine reads is asserted to carry no
+        // user identifiers at all, and `actor` is the column that would
+        // quietly break that.
+        $item = WorkbookItem::factory()->create();
+
+        expect($item->events()->sole()->actor)
+            ->toBeIn([WorkbookItem::SOURCE_ADVISOR, WorkbookItem::SOURCE_HUMAN])
+            ->and($item->events()->sole()->actor)->not->toContain('@');
+    });
+
+    it('goes with the item when the item goes', function () {
+        $item = WorkbookItem::factory()->create();
+
+        $item->delete();
+
+        expect(WorkbookEvent::count())->toBe(0);
     });
 });
