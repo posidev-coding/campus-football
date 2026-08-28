@@ -66,6 +66,38 @@ function transformHeaders(array $headers): array
     return $server;
 }
 
+/**
+ * The same delivery, form-encoded — which is what GitHub's "Add webhook" form
+ * produces by DEFAULT: `payload=<urlencoded json>` instead of a JSON body.
+ */
+function mergeAsForm(array $payload, ?string $secret = WEBHOOK_SECRET): TestResponse
+{
+    return formDelivery((string) json_encode($payload), $secret);
+}
+
+/**
+ * A form-encoded delivery, built the way a real one arrives.
+ *
+ * BOTH halves have to be supplied. PHP populates `$_POST` from a urlencoded
+ * body by itself, but Symfony's `Request::create()` does NOT parse the raw
+ * `$content` into parameters — so a test that passes only the body proves the
+ * opposite of what it looks like it proves. The signature is checked against
+ * the RAW body, the controller reads the PARSED field, and a real delivery has
+ * both.
+ */
+function formDelivery(string $json, ?string $secret = WEBHOOK_SECRET): TestResponse
+{
+    $body = 'payload='.urlencode($json);
+
+    $headers = ['Content-Type' => 'application/x-www-form-urlencoded'];
+
+    if ($secret !== null) {
+        $headers[EnsureGithubSignature::HEADER] = 'sha256='.hash_hmac('sha256', $body, $secret);
+    }
+
+    return test()->call('POST', '/ops/github', ['payload' => $json], [], [], transformHeaders($headers), $body);
+}
+
 /** @param  array<string, mixed>  $overrides */
 function mergePayload(string $branch, array $overrides = []): array
 {
@@ -199,5 +231,52 @@ describe('a merge closes its issue', function () {
             // ...and the branch is never rewritten. It is the durable copy of
             // the reference and it is already in git.
             ->and($item->fresh()->branch)->toBe($item->branch);
+    });
+});
+
+describe('the content type GitHub defaults to', function () {
+    /*
+     * This is the failure this block exists for, and it was verified before it
+     * was fixed: a correctly-signed merge sent as `x-www-form-urlencoded`
+     * answered 200 `ignored`, moved nothing, and showed a GREEN CHECKMARK in
+     * GitHub's delivery log. The signature was never the problem — the HMAC is
+     * over the raw body either way — the payload was simply somewhere else.
+     */
+
+    it('closes the issue when the body arrives form-encoded', function () {
+        $item = mergedIssue();
+
+        $response = mergeAsForm(mergePayload($item->branch))->assertOk();
+
+        expect($response->json('result'))->toBe('done')
+            ->and($item->fresh()->status)->toBe(WorkbookStatus::Done);
+    });
+
+    it('still checks the signature over the form body', function () {
+        // Accepting a second shape must not accept a second authentication.
+        $item = mergedIssue();
+
+        mergeAsForm(mergePayload($item->branch), secret: 'a-different-secret-of-a-believable-length-012345')
+            ->assertStatus(401);
+
+        expect($item->fresh()->status)->toBe(WorkbookStatus::InProgress);
+    });
+
+    it('is a no-op rather than a 500 when the payload field is not JSON', function () {
+        // A body we did not write must not throw. Malformed JSON decodes to
+        // null, casts to an empty array, and falls through to `ignored`.
+        $item = mergedIssue();
+
+        formDelivery('{not json at all')->assertOk()->assertJson(['result' => 'ignored']);
+
+        expect($item->fresh()->status)->toBe(WorkbookStatus::InProgress);
+    });
+
+    it('leaves a form-encoded unmerged pull request alone too', function () {
+        $item = mergedIssue();
+
+        mergeAsForm(mergePayload($item->branch, ['merged' => false]))->assertOk();
+
+        expect($item->fresh()->status)->toBe(WorkbookStatus::InProgress);
     });
 });

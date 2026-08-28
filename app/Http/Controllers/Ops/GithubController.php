@@ -39,8 +39,10 @@ class GithubController
 {
     public function __invoke(Request $request): JsonResponse
     {
-        $merged = $request->boolean('pull_request.merged');
-        $branch = (string) $request->input('pull_request.head.ref', '');
+        $payload = self::payload($request);
+
+        $merged = filter_var(data_get($payload, 'pull_request.merged'), FILTER_VALIDATE_BOOLEAN);
+        $branch = (string) data_get($payload, 'pull_request.head.ref', '');
 
         if (! $merged || $branch === '') {
             return response()->json(['result' => 'ignored']);
@@ -65,5 +67,37 @@ class GithubController
         );
 
         return response()->json(['result' => 'done', 'issue' => $item->reference]);
+    }
+
+    /**
+     * GitHub sends the same JSON two ways, and the second one used to be a
+     * silent no-op.
+     *
+     * The "Add webhook" form DEFAULTS to `application/x-www-form-urlencoded`,
+     * which posts `payload=<urlencoded json>` rather than a JSON body. The HMAC
+     * verifies either way — it is computed over the RAW body, whatever shape
+     * that body is — so the signature was never the problem. Reading only
+     * `$request->input('pull_request.merged')` was: on a form body it is null,
+     * so a correctly-signed merge answered 200 `ignored`, moved nothing, and
+     * showed a GREEN CHECKMARK in GitHub's delivery log. Verified 2026-08-28.
+     *
+     * Accepting both rather than rejecting the form shape, deliberately: it is
+     * GitHub's own default, so it is a likely configuration rather than a
+     * mistake, and there is no security difference between the two. A 422
+     * would make the misconfiguration loud, but it would also mean a webhook
+     * set up through the UI in the obvious way simply does not work.
+     *
+     * @return array<string, mixed>
+     */
+    private static function payload(Request $request): array
+    {
+        if (! $request->isJson() && is_string($encoded = $request->input('payload'))) {
+            // Malformed JSON decodes to null, which casts to an empty array —
+            // and an empty array is not a merge, so it falls through to
+            // `ignored` rather than throwing on a body we did not write.
+            return (array) json_decode($encoded, true);
+        }
+
+        return $request->all();
     }
 }
