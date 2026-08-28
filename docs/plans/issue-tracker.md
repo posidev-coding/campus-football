@@ -170,21 +170,21 @@ owns the work.**
 
 ---
 
-## Prerequisite (one time, before Phase 7)
+## The PR prerequisite is already satisfied
 
-`gh` is not installed on this machine, and `origin` is
-`git@posidev:posidev-coding/campus-football.git` — a custom SSH alias
-(`~/.ssh/config`: `Host posidev` → `github.com`) that `gh` will not resolve on
-its own.
+`gh` 2.98.0 is installed and authenticated as `posidev-coding` with the `repo`
+scope. **It resolves the custom SSH alias by itself** — `origin` is
+`git@posidev:posidev-coding/campus-football.git` and `~/.ssh/config` maps
+`Host posidev` → `github.com`, and a bare `gh repo view` inside this repository
+answers `posidev-coding/campus-football` with **no `remote.origin.gh-resolved`
+entry in `.git/config`**. Verified 2026-08-28.
 
-```bash
-brew install gh && gh auth login
-gh repo set-default posidev-coding/campus-football   # writes remote.origin.gh-resolved
-```
-
-Without it the skill falls back to pushing and storing the compare URL
-(`https://github.com/posidev-coding/campus-football/compare/main...CFB-12-slug?expand=1`).
-It probes with `command -v gh` and never assumes.
+So Phase 7 needs no `--repo` flag and no `gh repo set-default`:
+`gh pr create --fill --base main` is enough. The skill still probes with
+`command -v gh` and still falls back to pushing and storing the compare URL
+(`https://github.com/posidev-coding/campus-football/compare/main...CFB-12-slug?expand=1`)
+— not for this machine, but because a cloud session working an issue may not
+have `gh`, and a skill that assumes a binary is a skill that dies silently.
 
 ---
 
