@@ -15,6 +15,7 @@ enum WorkbookStatus: string
     case Inbox = 'inbox';
     case Planned = 'planned';
     case InProgress = 'in_progress';
+    case InReview = 'in_review';
     case Done = 'done';
     case Dismissed = 'dismissed';
 
@@ -24,6 +25,7 @@ enum WorkbookStatus: string
             self::Inbox => 'Inbox',
             self::Planned => 'Planned',
             self::InProgress => 'In progress',
+            self::InReview => 'In review',
             self::Done => 'Done',
             self::Dismissed => 'Dismissed',
         };
@@ -35,6 +37,7 @@ enum WorkbookStatus: string
             self::Inbox => 'gray',
             self::Planned => 'info',
             self::InProgress => 'warning',
+            self::InReview => 'primary',
             self::Done => 'success',
             self::Dismissed => 'danger',
         };
@@ -46,10 +49,15 @@ enum WorkbookStatus: string
      * Dismissed is NOT among them: it is an answer, not a stage, and a column
      * of things we have decided against is a column nobody reads. The table
      * surface filters to it instead.
+     *
+     * `InReview` earns a column because a session finishing is not the same
+     * fact as the work being merged. Without it the card either lies or never
+     * moves — and it is where an agent's terminal transition lands, since only
+     * a human merging earns Done.
      */
     public static function columns(): array
     {
-        return [self::Inbox, self::Planned, self::InProgress, self::Done];
+        return [self::Inbox, self::Planned, self::InProgress, self::InReview, self::Done];
     }
 
     /** @return array<string, string> value => label, for a Filament select */

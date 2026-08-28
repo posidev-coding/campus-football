@@ -151,4 +151,19 @@ return [
      */
     'ops_token' => env('OPS_TOKEN'),
 
+    /*
+     * The prefix on a workbook item's reference — `CFB-12`, the handle a human
+     * types and a session is handed.
+     *
+     * The number after it is `workbook_items.id`, derived and never stored, so
+     * this string is the only part of a reference anyone chooses. Changing it
+     * renames every reference at once and orphans every branch already cut
+     * under the old one, so treat it as set-once.
+     *
+     * `WorkbookItem::findByReference()` refuses any OTHER prefix rather than
+     * ignoring it, so `ACME-12` pasted in from somewhere else resolves to
+     * nothing instead of quietly resolving to our twelfth item.
+     */
+    'issue_prefix' => env('CFB_ISSUE_PREFIX', 'CFB'),
+
 ];
