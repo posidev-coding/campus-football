@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ClientErrorController;
+use App\Http\Controllers\LeaveImpersonationController;
 use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\SmsStatusWebhookController;
 use App\Http\Controllers\SmsWebhookController;
@@ -233,6 +234,19 @@ Route::livewire('recruiting/{year?}', 'recruiting')->name('recruiting');
  */
 Route::middleware(['auth'])->group(function () {
     Route::livewire('account', 'account')->name('account');
+
+    /*
+     * The exit from an impersonated session, posted from the amber banner the
+     * product layout renders while `impersonator_id` is in the session.
+     *
+     * A POST because it changes who is signed in — so it rides CSRF like any
+     * other state change — and inside the auth group because the only session
+     * that can leave an impersonation is one that is inside it. There is no
+     * matching ENTRY route: impersonation starts from the admin panel's own
+     * action, where the guards live.
+     */
+    Route::post('impersonation/leave', LeaveImpersonationController::class)
+        ->name('impersonation.leave');
 
     /*
      * The inbox. Signed-in only, and inside the auth group for the obvious
