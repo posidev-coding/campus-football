@@ -2,13 +2,18 @@
 
 namespace App\Models;
 
+use Database\Factories\CoachTeamSeasonFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable(['coach_id', 'team_id', 'season_year', 'experience', 'wins', 'losses', 'ties'])]
 class CoachTeamSeason extends Model
 {
+    /** @use HasFactory<CoachTeamSeasonFactory> */
+    use HasFactory;
+
     /** Same one-door denormalization as AthleteTeamSeason::booted(). */
     protected static function booted(): void
     {

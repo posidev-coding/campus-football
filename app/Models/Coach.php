@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use Database\Factories\CoachFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -15,6 +17,9 @@ use Laravel\Scout\Searchable;
 ])]
 class Coach extends Model
 {
+    /** @use HasFactory<CoachFactory> */
+    use HasFactory;
+
     use Searchable;
 
     public $incrementing = false;
