@@ -6,13 +6,16 @@ use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
 use App\Models\Contest;
 use App\Models\Group;
+use App\Models\GroupMember;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateEntry;
 use App\Models\Week;
 use App\Services\CfbCalendar;
+use App\Services\Contests\SuggestSlate;
 use App\Support\Cadence;
 use App\Support\Lobby;
+use App\Support\SlateFeasibility;
 use App\Support\RankLadder;
 use App\Support\Voice;
 use Laravel\Pennant\Feature;
@@ -143,7 +146,17 @@ new class extends Component
         $pending = $week === null ? null : Cadence::activeSaturday($week);
         $fallbackDeadline = $pending === null ? null : Cadence::slateDeadline($pending);
 
-        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $fallbackDeadline, $weekId) {
+        /*
+         * The Saturday's usable pool, resolved AT MOST ONCE for the whole
+         * screen and only if a commissioner card actually asks: this is
+         * the builder's own candidate pass, and per card it would be a
+         * slate suggestion per row. Private groups carry no themed
+         * filter, so one count answers for all of them. By reference —
+         * an arrow function would capture the null by value forever.
+         */
+        $viable = null;
+
+        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $fallbackDeadline, $weekId, $week, $pending, &$viable) {
             $contest = $contests->get($group->id);
             $slate = $contest === null ? null : $slates->get($contest->id);
             $tally = $slate === null ? null : $made->get($slate->id);
@@ -157,10 +170,27 @@ new class extends Component
                 default => 'upcoming',
             };
 
+            $commissioner = $group->pivot->role === GroupMember::COMMISSIONER;
+
+            /*
+             * Can this week even be built? Only a commissioner staring at
+             * a slateless group is asking, so nothing else pays for the
+             * answer — and a week we cannot ask about (no week, no
+             * Saturday) leaves the door alone rather than closing it.
+             */
+            $buildable = true;
+
+            if ($commissioner && $state === 'waiting' && $contest !== null && ! $group->isRoom() && $week !== null && $pending !== null) {
+                $viable ??= app(SuggestSlate::class)->viableCount($contest, $week, $pending);
+
+                $buildable = SlateFeasibility::fromCount($viable, $contest, $pending)['ok'];
+            }
+
             return [
                 'group' => $group,
                 'contest' => $contest,
-                'commissioner' => $group->pivot->role === App\Models\GroupMember::COMMISSIONER,
+                'commissioner' => $commissioner,
+                'buildable' => $buildable,
                 'state' => $state,
                 'made' => (int) ($tally->made ?? 0),
                 'total' => $slate?->games->count() ?? 0,

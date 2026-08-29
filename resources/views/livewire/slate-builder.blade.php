@@ -22,6 +22,7 @@ use App\Services\Contests\ContestLine;
 use App\Services\Contests\GameQualityScore;
 use App\Services\Contests\SuggestSlate;
 use App\Support\Cadence;
+use App\Support\SlateFeasibility;
 use App\Support\Voice;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -59,10 +60,19 @@ new class extends Component
 
     public Contest $contest;
 
-    public int $slateId;
+    public int $slateId = 0;
 
     /** The Saturday this slate is being built for, as a plain date string. */
     public string $saturday = '';
+
+    /**
+     * Set only when this Saturday cannot seat the mode at all: the two
+     * numbers the refusal states and the next Saturday it could go up,
+     * already formatted. Plain scalars — it rides to the browser and back.
+     *
+     * @var array{viable: int, needed: int, next: string}|array{}
+     */
+    public array $thinWindow = [];
 
     #[Url(except: 'games')]
     public string $step = 'games';
@@ -109,7 +119,38 @@ new class extends Component
 
         $this->saturday = $saturday->toDateString();
 
-        $slate = Slate::query()->firstOrCreate(
+        $existing = Slate::query()
+            ->where('contest_id', $contest->id)
+            ->where('saturday', $this->saturday)
+            ->first();
+
+        /*
+         * A SATURDAY THAT CANNOT SEAT THE MODE has no wizard to open —
+         * Week 0's eight games fill neither Shotgun's ten nor the
+         * Woodshed's fifteen, and every step of the ritual would end at a
+         * publish that can only refuse. The clubhouse already takes the
+         * door away; this is the same refusal for a typed or bookmarked
+         * URL, and it deliberately runs BEFORE the draft is created, so a
+         * look around does not leave an unpublishable slate behind.
+         *
+         * A slate that already exists keeps its wizard: the commissioner
+         * has work in there, and taking the room away is not our call.
+         */
+        if ($existing === null) {
+            $window = SlateFeasibility::for($contest, $week, $saturday);
+
+            if (! $window['ok']) {
+                $this->thinWindow = [
+                    'viable' => $window['viable'],
+                    'needed' => $window['needed'],
+                    'next' => $window['next']->format('M j'),
+                ];
+
+                return;
+            }
+        }
+
+        $slate = $existing ?? Slate::firstOrCreate(
             ['contest_id' => $contest->id, 'saturday' => $this->saturday],
             ['week_id' => $week->id, 'status' => Slate::DRAFT],
         );
@@ -438,7 +479,21 @@ new class extends Component
 <div class="flex flex-col gap-5 lg:mx-auto lg:w-full lg:max-w-3xl">
     <h1 class="sr-only">Build the slate</h1>
 
-    @if ($this->slate->isPublished())
+    @if ($thinWindow !== [])
+        {{-- Words and a door, never a dead end: the same refusal the
+             clubhouse gives, for anyone who arrived by URL. --}}
+        <div class="flex flex-col gap-3 rounded-xl border border-dashed border-zinc-300 p-4 dark:border-zinc-700">
+            <flux:heading size="lg">Not enough games this Saturday</flux:heading>
+            <flux:subheading>
+                {{ $contest->mode->label() }} needs {{ $thinWindow['needed'] }} games and this Saturday's card has {{ $thinWindow['viable'] }}.
+                The next slate can go up Saturday, {{ $thinWindow['next'] }}.
+            </flux:subheading>
+            <flux:subheading>{{ Voice::line('group.slate.thin') }}</flux:subheading>
+            <flux:button :href="route('pickem.group', $group)" wire:navigate variant="primary" class="self-start">
+                Open the clubhouse
+            </flux:button>
+        </div>
+    @elseif ($this->slate->isPublished())
         {{-- The week is out the door; the clubhouse owns it now. --}}
         <div class="flex flex-col gap-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
             <div class="flex items-center gap-2">

@@ -20,8 +20,11 @@ use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateEntry;
 use App\Models\User;
+use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Services\Contests\SpreadGrader;
+use App\Support\Cadence;
+use App\Support\SlateFeasibility;
 use App\Support\Voice;
 use Flux\Flux;
 use Illuminate\Support\Collection;
@@ -159,6 +162,39 @@ new class extends Component
                 'contest.group:id,name,kind',
             ])
             ->first();
+    }
+
+    /**
+     * Whether this Saturday can field this group's mode at all, and what
+     * it would take — see App\Support\SlateFeasibility. Week 0 holds
+     * eight usable games, which fills neither Shotgun's ten nor the
+     * Woodshed's fifteen, and a "Build the slate" button over that is a
+     * door into a wizard whose publish can only refuse.
+     *
+     * NULL is "cannot tell" — no contest, no week, no Saturday — and the
+     * caller must not read it as "no": an unanswerable question leaves
+     * the commissioner's door exactly where it was. Asked only inside the
+     * branch that renders it, because it runs the builder's own candidate
+     * pass.
+     *
+     * @return array{ok: bool, viable: int, needed: int, next: \Carbon\CarbonInterface}|null
+     */
+    #[Computed]
+    public function slateWindow(): ?array
+    {
+        if ($this->contest === null) {
+            return null;
+        }
+
+        $weekId = app(CfbCalendar::class)->defaultWeekId($this->contest->season_year);
+        $week = $weekId === null ? null : Week::find($weekId);
+        $saturday = $week === null ? null : Cadence::activeSaturday($week);
+
+        if ($week === null || $saturday === null) {
+            return null;
+        }
+
+        return SlateFeasibility::for($this->contest, $week, $saturday);
     }
 
     /**
@@ -702,16 +738,34 @@ new class extends Component
             {{-- Dashed border = "not yet", the house grammar for a promise. --}}
             <div class="flex flex-col gap-2 rounded-xl border border-dashed border-zinc-300 px-4 py-4 dark:border-zinc-700">
                 @if ($this->isCommissioner && $this->contest !== null)
-                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('group.slate.build_prompt') }}</p>
-                    <flux:button
-                        :href="route('pickem.build', $group)"
-                        wire:navigate
-                        size="sm"
-                        variant="primary"
-                        class="self-start"
-                    >
-                        Build the slate
-                    </flux:button>
+                    @php $window = $this->slateWindow; @endphp
+
+                    {{-- A SATURDAY THAT CANNOT SEAT THE MODE. The lobby
+                         dashes a room it cannot spawn; a group already
+                         exists, so its clubhouse says the same thing in
+                         its own words and takes the door away rather than
+                         opening a wizard whose publish can only refuse.
+                         Null means the question could not be asked — the
+                         door stays exactly where it was. --}}
+                    @if ($window !== null && ! $window['ok'])
+                        <p class="text-sm font-medium">Not enough games this Saturday.</p>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">
+                            {{ $this->contest->mode->label() }} needs {{ $window['needed'] }} games and this Saturday's card has {{ $window['viable'] }}.
+                            The next slate can go up Saturday, {{ $window['next']->format('M j') }}.
+                        </p>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('group.slate.thin') }}</p>
+                    @else
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('group.slate.build_prompt') }}</p>
+                        <flux:button
+                            :href="route('pickem.build', $group)"
+                            wire:navigate
+                            size="sm"
+                            variant="primary"
+                            class="self-start"
+                        >
+                            Build the slate
+                        </flux:button>
+                    @endif
                 @else
                     <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('group.slate.waiting') }}</p>
                 @endif

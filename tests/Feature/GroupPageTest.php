@@ -3,6 +3,7 @@
 use App\Actions\PublishSlate;
 use App\Enums\ContestMode;
 use App\Models\Contest;
+use App\Models\Game;
 use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Pick;
@@ -89,6 +90,55 @@ it('shows the commissioner a build prompt and a member the waiting room on a dra
     Livewire::actingAs($member)->test('group', ['group' => $group])
         ->assertSee(Voice::line('group.slate.waiting'))
         ->assertDontSee('Build the slate');
+});
+
+it('takes the build door away on a Saturday that cannot seat the mode', function () {
+    /*
+     * WEEK 0. The split week's first card holds seven lined games, which
+     * fills neither Shotgun's ten nor the Woodshed's fifteen — and a
+     * group never downsizes the way a house room does, because its mode
+     * is a season-long promise its members chose.
+     *
+     * A "Build the slate" button over that is a door into a wizard whose
+     * publish can only refuse, so the clubhouse states both numbers and
+     * the Saturday the ritual reopens on instead.
+     */
+    $this->travelTo('2026-08-26 12:00:00');
+
+    [, $week] = splitPickemWeek();
+
+    foreach (Game::query()->whereDate('kickoff_at', '2026-08-29')->get() as $game) {
+        pickemOdd($game);
+    }
+
+    [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSee('Not enough games this Saturday.')
+        // Literal template text, so the apostrophe is never escaped.
+        ->assertSee("Shotgun needs 10 games and this Saturday's card has 7.", escape: false)
+        ->assertSee('The next slate can go up Saturday, Sep 5.')
+        ->assertSee(Voice::line('group.slate.thin', for: $commissioner))
+        ->assertDontSee('Build the slate');
+});
+
+it('keeps the build door on a Saturday the mode fits, thin week or not', function () {
+    // The same fixture one week on: 9/5 carries twelve lined games, so
+    // Shotgun's ten fits and nothing is taken away. The gate has to be
+    // the SATURDAY's answer, not a launch-window switch.
+    $this->travelTo('2026-09-02 12:00:00');
+
+    [, $week] = splitPickemWeek();
+
+    foreach (Game::query()->whereDate('kickoff_at', '2026-09-05')->get() as $game) {
+        pickemOdd($game);
+    }
+
+    [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSee('Build the slate')
+        ->assertDontSee('Not enough games this Saturday');
 });
 
 it('renders result marks and the week standings once games grade', function () {

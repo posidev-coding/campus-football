@@ -9,6 +9,7 @@ use App\Actions\SetTiebreaker;
 use App\Enums\ContestMode;
 use App\Enums\TiebreakerMetric;
 use App\Exceptions\NotGroupCommissioner;
+use App\Models\Game;
 use App\Models\GameOdd;
 use App\Models\GroupMember;
 use App\Models\Slate;
@@ -277,6 +278,14 @@ it('offers only the slate Saturday in the builder candidate list', function () {
     [$commissioner, $group] = pickemContest();
     [$season, $week] = pickemSeasonWeek();
 
+    // A card the mode can actually fill, or the wizard now refuses to
+    // open at all — a Saturday that cannot seat the mode has no ritual.
+    // These are the ten the draft auto-fills from; the two probes below
+    // stay off it.
+    foreach (range(1, 10) as $i) {
+        pickemOdd(pickemGame($season, $week, ['kickoff_at' => '2026-08-29 19:30:00']));
+    }
+
     // Both spreadless so neither is suggested onto the slate — this pins
     // the CANDIDATE list, which has no line requirement.
     $sameSaturday = pickemGame($season, $week, ['kickoff_at' => '2026-08-29 19:30:00']);
@@ -344,6 +353,33 @@ it('publishes from the wizard and lands back on the clubhouse', function () {
         ->assertRedirect(route('pickem.group', $group));
 
     expect($slate->fresh()->status)->toBe(Slate::PUBLISHED);
+});
+
+it('refuses to open the wizard on a Saturday that cannot seat the mode', function () {
+    /*
+     * The clubhouse already takes the door away; this is the same refusal
+     * for a bookmarked or typed URL. It runs BEFORE the draft is created
+     * on purpose — a look around used to leave a short, unpublishable
+     * slate behind, and the wizard's every step would have ended at a
+     * publish that can only say "not enough games".
+     */
+    $this->travelTo('2026-08-26 12:00:00');
+
+    [, $week] = splitPickemWeek();
+
+    foreach (Game::query()->whereDate('kickoff_at', '2026-08-29')->get() as $game) {
+        pickemOdd($game);
+    }
+
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Woodshed);
+
+    Livewire::actingAs($commissioner)->test('slate-builder', ['group' => $group])
+        ->assertSee('Not enough games this Saturday')
+        ->assertSee("The Woodshed needs 15 games and this Saturday's card has 7.", escape: false)
+        ->assertSee('Open the clubhouse')
+        ->assertDontSee('Publish the slate');
+
+    expect(Slate::query()->where('contest_id', $contest->id)->exists())->toBeFalse();
 });
 
 it('keeps non-commissioners out of the wizard, and walks the old URL to it', function () {

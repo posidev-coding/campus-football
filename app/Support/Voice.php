@@ -963,6 +963,19 @@ class Voice
             'r' => 'The week doesn\'t exist until you set the slate. That gavel isn\'t decorative.',
         ],
 
+        /*
+         * A SATURDAY TOO THIN TO SLATE. The clubhouse takes the build
+         * door away and states both numbers plainly above this line —
+         * the mode's size and the card's — so this stays mood only. No
+         * count and no date rides in here: a register line that carries
+         * the facts is a second place for them to go wrong.
+         */
+        'group.slate.thin' => [
+            'pg' => 'There is not enough football on this Saturday to fill your slate. The card fills out next week.',
+            'pg13' => 'Not enough football this Saturday to make a real slate. Next week the whole sport clocks in.',
+            'r' => 'This Saturday is a warmup with a TV deal. Next week the whole sport clocks in and you can deal a real card.',
+        ],
+
         'group.season.empty' => [
             'pg' => 'No weeks in the books yet. Season standings start counting when the first slate goes final.',
             'pg13' => 'Nothing on the ledger yet. Standings start counting the first time a week goes official.',
