@@ -162,6 +162,30 @@ describe('the store (inside the flag)', function () {
             ->assertDontSee('The flash card: 5 games, in and out.');
     });
 
+    it('drops the Join CTA to a flat cue in a room the reader already sits in', function () {
+        /*
+         * The shelves are SEAT-INCLUSIVE — a room you joined an hour ago
+         * must not render as closed — so the row has to tell "for sale"
+         * from "yours". It shipped selling both: a seated reader was
+         * offered a primary Join for a seat they already hold.
+         */
+        [, $week] = lobbyScreenWeek();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        $viewer = pickemAdmin();
+
+        Livewire::actingAs($viewer)->test('lobby')
+            ->assertSee('wire:click="joinLobby('.$room->id.')"', escape: false)
+            ->assertDontSee('View picks');
+
+        GroupMember::factory()->create(['group_id' => $room->id, 'user_id' => $viewer->id]);
+
+        Livewire::actingAs($viewer)->test('lobby')
+            ->assertSee('View picks')
+            // The row is still the door to the room; only the CTA goes.
+            ->assertSee(route('pickem.room', $room), escape: false)
+            ->assertDontSee('wire:click="joinLobby('.$room->id.')"', escape: false);
+    });
+
     it('folds what this Saturday could not seat into one line — Conference keeps its names', function () {
         /*
          * Eight lined games: Shotgun downsizes and sells, the fifteen-game

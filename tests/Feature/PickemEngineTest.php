@@ -193,6 +193,34 @@ it('honors a slate_size override on Shotgun, and only on Shotgun', function () {
         ->and(ContestMode::Woodshed->engine(['slate_size' => 5])->slateSize())->toBe(15);
 });
 
+it('describes the card a contest actually deals, never the mode\'s default', function () {
+    /*
+     * Week 0's reality, as COPY: the house Shotgun room is frozen at
+     * eight, so every surface holding that contest says eight — and says
+     * what a perfect eight-game week is worth. The size and the sentence
+     * come from the same number now; they used to come from the contest
+     * and the enum respectively, which is how a seven-game room shipped
+     * pitched as ten.
+     */
+    expect(ContestMode::Classic->blurb(8))
+        ->toBe('8 games, 10 points each. Every call counts the same.')
+        ->and(ContestMode::Classic->ruleLines(8))->toBe([
+            '8 games against the spread, every one worth 10 points.',
+            'A perfect week is 80.',
+        ])
+        // No contest in hand — the mode doors and the lobby's explainer
+        // describe the mode's own shape, which is still ten.
+        ->and(ContestMode::Classic->blurb())
+        ->toBe('10 games, 10 points each. Every call counts the same.')
+        ->and(ContestMode::Classic->ruleLines())->toContain('A perfect week is 100.')
+        // Fifteen or nothing: the tiered modes ignore a size in their copy
+        // exactly the way their engines ignore the knob.
+        ->and(ContestMode::Tiered->blurb(8))->toBe(ContestMode::Tiered->blurb())
+        ->and(ContestMode::Tiered->ruleLines(8))->toBe(ContestMode::Tiered->ruleLines())
+        ->and(ContestMode::Woodshed->blurb(8))->toBe(ContestMode::Woodshed->blurb())
+        ->and(ContestMode::Woodshed->ruleLines(8))->toBe(ContestMode::Woodshed->ruleLines());
+});
+
 it('publishes a short Shotgun slate when the contest carries the knob', function () {
     $this->travelTo('2026-09-02 12:00:00');
 

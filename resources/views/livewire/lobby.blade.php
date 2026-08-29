@@ -209,6 +209,7 @@ new class extends Component
                         :mode="$entry['mode']"
                         :game-count="$entry['gameCount']"
                         :seats="$entry['seats']"
+                        :seated="$entry['seated']"
                     />
                 @endforeach
 

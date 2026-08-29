@@ -47,7 +47,12 @@ class ContestResource extends Resource
                 TextEntry::make('season_year')->label('Season'),
                 TextEntry::make('mode')->badge()
                     ->formatStateUsing(fn (ContestMode $state): string => $state->label())
-                    ->helperText(fn (ContestMode $state): string => $state->blurb()),
+                    // Sized from the RECORD: a contest's frozen slate_size is
+                    // what it actually deals, and the admin reading this row
+                    // is the person who has to trust the number.
+                    ->helperText(fn (Contest $record): string => $record->mode->blurb(
+                        $record->mode->engine($record->settings)->slateSize(),
+                    )),
                 TextEntry::make('mode_changed_at')->label('Mode changed')->dateTime()->placeholder('Never'),
                 TextEntry::make('settings')
                     ->label('Settings')

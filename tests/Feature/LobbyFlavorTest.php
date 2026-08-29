@@ -362,6 +362,44 @@ it('stocks only what the opening card can seat, through the sweep', function () 
         ->and($rooms['detail'])->toContain('not enough games this Saturday');
 });
 
+it('pitches a downsized room by the card it deals, on the room and on the invite', function () {
+    /*
+     * The bug this pins, found in the Week 0 rehearsal: the room screen
+     * read "10 games, 10 points each" over a seven-game slate. The slate
+     * came from the CONTEST (frozen at spawn by the Saturday that exists)
+     * and the pitch came from the MODE, so the two could not agree.
+     *
+     * Upset Alley is the flavored half of the same bug: its headline
+     * number is ten and its Week 0 card is seven.
+     */
+    $this->travelTo('2026-08-26 12:00:00');
+
+    [, $week] = splitPickemWeek();
+
+    foreach (Game::query()->where('week_id', $week->id)->get() as $game) {
+        pickemOdd($game);
+    }
+
+    $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+    $house = Group::query()->where('name', 'Hail Mary')->sole();
+    $kicker = Group::query()->where('name', 'Upset Alley')->sole();
+    $viewer = pickemAdmin();
+
+    Livewire::actingAs($viewer)->test('group', ['group' => $house])
+        ->assertSee('7 games, 10 points each. Every call counts the same.')
+        ->assertDontSee('10 games, 10 points each.');
+
+    Livewire::actingAs($viewer)->test('group', ['group' => $kicker])
+        ->assertSee('7 games — and +2 on top when your dog covers AND wins outright.');
+
+    // The invite landing sells the same card by the same number — a guest
+    // who joins on "10 games" arrives at seven.
+    Livewire::actingAs($viewer)->test('join', ['code' => $house->code])
+        ->assertSee('7 games, 10 points each. Every call counts the same.')
+        ->assertDontSee('10 games, 10 points each.');
+});
+
 it('stocks the specialty shelf and reports it honestly in the preflight', function () {
     [, $week] = lobbyFlavorWeek();
 

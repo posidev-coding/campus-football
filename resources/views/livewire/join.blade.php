@@ -222,6 +222,12 @@ new class extends Component
         @php
             $mode = $this->contest?->mode;
             $palette = $mode?->palette();
+            // The card this room actually deals — Shotgun's size is frozen
+            // per Saturday, so the pitch is sized from the CONTEST rather
+            // than the mode's ten-game default.
+            $modeGames = $this->contest === null
+                ? null
+                : $this->contest->mode->engine($this->contest->settings)->slateSize();
         @endphp
 
         @if ($this->inviter !== null)
@@ -262,7 +268,7 @@ new class extends Component
             </div>
 
             @if ($mode !== null)
-                <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ $this->group->flavorEnum()?->blurb() ?? $mode->blurb() }}</p>
+                <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ $this->group->flavorEnum()?->blurb($modeGames) ?? $mode->blurb($modeGames) }}</p>
             @endif
 
             <flux:subheading>{{ Voice::line('join.pitch', ['group' => $this->group->name]) }}</flux:subheading>
