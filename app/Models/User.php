@@ -258,6 +258,27 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     }
 
     /**
+     * Every call this person has made, across every contest.
+     *
+     * The column and its index have existed since pick'em shipped — the
+     * relation never did, because the product always asks for picks through a
+     * SLATE ("this Saturday, in this contest") rather than through a person.
+     * The admin audit surface is the first caller that wants the other
+     * direction. Deliberately unscoped: `Pick::visibleTo()` is the privacy
+     * gate for readers, and an admin looking at one account is not a reader.
+     */
+    public function picks(): HasMany
+    {
+        return $this->hasMany(Pick::class);
+    }
+
+    /** This person's seat and result in each slate they entered. */
+    public function slateEntries(): HasMany
+    {
+        return $this->hasMany(SlateEntry::class);
+    }
+
+    /**
      * Memoized within one request so the two wallet-chip render sites (layout
      * header and home nav) cost one query between them.
      *

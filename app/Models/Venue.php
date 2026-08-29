@@ -2,12 +2,17 @@
 
 namespace App\Models;
 
+use Database\Factories\VenueFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 #[Fillable(['id', 'name', 'city', 'state', 'capacity', 'indoor', 'grass', 'image_url', 'image_checked_at'])]
 class Venue extends Model
 {
+    /** @use HasFactory<VenueFactory> */
+    use HasFactory;
+
     public $incrementing = false;
 
     protected $keyType = 'int';

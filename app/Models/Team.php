@@ -115,9 +115,20 @@ class Team extends Model
         return $this->belongsToMany(Article::class);
     }
 
+    /**
+     * The other side of `User::followedTeams()`, and it carries `position`
+     * for the same reason that one does: position 1 is the favorite, and
+     * there is no favorite_team_id column anywhere — the ORDER is the model.
+     *
+     * Without `withPivot` the pivot exists but the column is not selected, so
+     * `$user->pivot->position` reads null and every "is this their favorite"
+     * check silently answers no.
+     */
     public function followers(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'team_follows')->withTimestamps();
+        return $this->belongsToMany(User::class, 'team_follows')
+            ->withPivot('position')
+            ->withTimestamps();
     }
 
     /**

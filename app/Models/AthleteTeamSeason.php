@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use Database\Factories\AthleteTeamSeasonFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -16,6 +18,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 ])]
 class AthleteTeamSeason extends Model
 {
+    /** @use HasFactory<AthleteTeamSeasonFactory> */
+    use HasFactory;
+
     /**
      * Every saved season row bumps the athlete's denormalized
      * `latest_season_year` — the ONE door, so no sync writer (rosters,

@@ -2,18 +2,22 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\Dashboard;
 use App\Support\Brand;
+use Filament\Actions\Action;
 use Filament\FontProviders\LocalFontProvider;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Pages\Dashboard;
+use Filament\Navigation\NavigationGroup;
+use Filament\Navigation\NavigationItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Filament\Widgets\AccountWidget;
-use Filament\Widgets\FilamentInfoWidget;
+use Filament\Support\Enums\Width;
+use Filament\Support\Icons\Heroicon;
+use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -90,16 +94,69 @@ class AdminPanelProvider extends PanelProvider
              * guesses. It arrives with gamification, which is what will fill it.
              */
             ->databaseNotifications()
+            /*
+             * A compact, grouped rail instead of Filament's stock 20rem flat
+             * list. With sidebarCollapsibleOnDesktop() the group icons are
+             * functional, not decoration: the collapsed rail renders them as
+             * dropdown triggers, so every group needs one.
+             *
+             * Deliberately NO ->spa(): the exit chip and the Pulse link cross
+             * into the Flux front end, and wire:navigate across two asset
+             * bundles is the classic breakage.
+             */
+            ->sidebarCollapsibleOnDesktop()
+            ->sidebarWidth('15rem')
+            ->collapsedSidebarWidth('3.5rem')
+            ->maxContentWidth(Width::Full)
+            ->navigationGroups([
+                NavigationGroup::make('Pick\'em')->icon(Heroicon::OutlinedTrophy),
+                NavigationGroup::make('Community')->icon(Heroicon::OutlinedUsers),
+                NavigationGroup::make('College Football')->icon(Heroicon::OutlinedAcademicCap),
+                NavigationGroup::make('Content')->icon(Heroicon::OutlinedNewspaper)->collapsed(),
+                NavigationGroup::make('Work')->icon(Heroicon::OutlinedClipboardDocumentList),
+                NavigationGroup::make('Configuration')->icon(Heroicon::OutlinedCog6Tooth)->collapsed(),
+                NavigationGroup::make('Operations')->icon(Heroicon::OutlinedWrenchScrewdriver)->collapsed(),
+            ])
+            ->navigationItems([
+                // Pulse was an orphan admin surface with no door anywhere in
+                // the product. New tab, because it is the OTHER asset bundle.
+                NavigationItem::make('Pulse')
+                    ->url('/pulse', shouldOpenInNewTab: true)
+                    ->icon(Heroicon::OutlinedChartBar)
+                    ->group('Operations')
+                    ->sort(9),
+            ])
+            /*
+             * The way OUT. The installed PWA has no browser chrome — no back
+             * button, no address bar — so without its own exit, /admin is a
+             * dead end an admin can only leave by relaunching the app. Two
+             * doors: a persistent chip at TOPBAR_START (the topbar renders on
+             * phone AND desktop) and a user-menu item.
+             */
+            ->userMenuItems([
+                Action::make('backToApp')
+                    ->label('Back to app')
+                    ->icon(Heroicon::OutlinedArrowUturnLeft)
+                    ->url(fn (): string => route('home')),
+            ])
+            ->renderHook(
+                PanelsRenderHook::TOPBAR_START,
+                fn () => view('filament.partials.back-to-app'),
+            )
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 Dashboard::class,
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
-            ->widgets([
-                AccountWidget::class,
-                FilamentInfoWidget::class,
-            ])
+            /*
+             * Deliberately EMPTY, and the two removals are the point: Filament
+             * ships an account card and a link to its own documentation, and
+             * both were the whole dashboard until now. What belongs here is
+             * discovered from `app/Filament/Widgets` — everything that does
+             * not set `$isDiscovered = false`.
+             */
+            ->widgets([])
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

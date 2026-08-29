@@ -6,6 +6,13 @@
     @include('partials.head')
 </head>
 <body class="min-h-dvh">
+    {{-- Whose account this is, when it is not your own. First thing in the
+         body so it is painted before anything else and cannot be missed;
+         the session flag is set only by the panel's impersonate action. --}}
+    @if (session()->has('impersonator_id'))
+        @include('partials.impersonation-banner')
+    @endif
+
     {{-- Tints the mobile browser chrome to match. It lives in <body> because
          Alpine only initialises inside it — an `x-data` on the meta tag itself
          is never picked up. `x-effect` re-runs whenever `$flux.dark` changes,
