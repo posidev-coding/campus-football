@@ -106,7 +106,13 @@ enum ContestMode: string
      * state colors (live red-on-light, prelim amber, final green) or the
      * app's action blue.
      *
-     * @return array{chip: string, icon: string, tile: string, body: string}
+     * `onDark` is the one non-class entry, and it is here rather than in
+     * the caller because "is this tile dark?" is a fact about the MODE:
+     * anything rendering on top of a tile has to pick its own weight, and
+     * inferring that from the class string is how a palette edit silently
+     * un-reads a number nobody notices until launch.
+     *
+     * @return array{chip: string, icon: string, tile: string, body: string, onDark: bool}
      */
     public function palette(): array
     {
@@ -116,18 +122,25 @@ enum ContestMode: string
                 'icon' => 'text-cyan-600 dark:text-cyan-400',
                 'tile' => 'border-cyan-200 bg-cyan-50/50 dark:border-cyan-900 dark:bg-cyan-950/30',
                 'body' => 'text-zinc-500 dark:text-zinc-400',
+                'onDark' => false,
             ],
             self::Tiered => [
                 'chip' => 'bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300',
                 'icon' => 'text-violet-600 dark:text-violet-400',
                 'tile' => 'border-violet-200 bg-violet-50/50 dark:border-violet-900 dark:bg-violet-950/30',
                 'body' => 'text-zinc-500 dark:text-zinc-400',
+                'onDark' => false,
             ],
             self::Woodshed => [
                 'chip' => 'bg-zinc-900 text-red-300 ring-1 ring-red-900/50 dark:bg-black dark:text-red-400 dark:ring-red-950',
                 'icon' => 'text-red-500',
                 'tile' => 'border-red-900/40 bg-zinc-900 text-zinc-100 dark:border-red-950 dark:bg-black',
                 'body' => 'text-zinc-400',
+                // The one tile that is dark in BOTH schemes, said out loud:
+                // anything rendering ON it has to pick its own weight, and
+                // sniffing that out of the class string is how a palette
+                // change silently un-reads a number.
+                'onDark' => true,
             ],
         };
     }

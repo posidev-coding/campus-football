@@ -1234,6 +1234,30 @@ class Voice
             'r' => 'Your group, your people, one mode all season. Build it and start collecting victims.',
         ],
 
+        /*
+         * THE HERO'S LINE — the one card closest to locking, on My Picks.
+         * Kickoff stakes, said once; the button under it stays plain
+         * ("Make your picks"), because an affordance you cannot read is
+         * a joke that ate its instruction. Roast the SLATE and the blank
+         * pick, never the reader.
+         */
+        'picks.hero.zinger' => [
+            'pg' => 'Kickoff is the deadline. Get your calls in while they still count.',
+            'pg13' => 'Every game you leave blank grades as a zero. Kickoff does not wait for you.',
+            'r' => 'A blank pick is a zero with your name on it. Go be wrong on purpose instead.',
+        ],
+
+        /*
+         * THE RESULTS TAB, before anything has settled. Not an apology —
+         * a Saturday that has not happened yet, said plainly enough that
+         * nobody reads the empty tab as a broken one.
+         */
+        'picks.results.empty' => [
+            'pg' => 'Nothing settled yet — results land after Saturday.',
+            'pg13' => 'Nothing settled yet. Results land after Saturday, and so does the arguing.',
+            'r' => 'Nothing settled yet. Saturday pays out, and then somebody has some explaining to do.',
+        ],
+
         'lobby.needs.subheading' => [
             'pg' => 'Slates are open — get your picks in before kickoff.',
             'pg13' => "Open slates don't pick themselves. Kickoff is the deadline.",

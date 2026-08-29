@@ -88,6 +88,10 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'lobby.publics.empty',
     'lobby.first_run.body',
     'lobby.needs.subheading',
+    // My Picks' hero and its Results tab: the line over the one card
+    // closest to locking, and the tab before anything has settled.
+    'picks.hero.zinger',
+    'picks.results.empty',
     'lobby.rules.subheading',
     // The two products, told apart: the definitions under My Picks' two
     // headings, the first run's group path, the store's own framing, and
