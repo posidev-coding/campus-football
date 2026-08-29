@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use App\Enums\TiebreakerMetric;
+use App\Support\Cadence;
 use Carbon\CarbonInterface;
 use Database\Factories\SlateFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -130,6 +132,39 @@ class Slate extends Model
     public function celebrity(): BelongsTo
     {
         return $this->belongsTo(User::class, 'celebrity_user_id');
+    }
+
+    /**
+     * The slates for THE CARD BEING PLAYED in this week — one SATURDAY,
+     * never one week.
+     *
+     * ESPN's week is a container that usually holds one Saturday and
+     * sometimes two: 2026's Week 1 holds both 8/29 and 9/5, and `slates`
+     * is unique on (contest_id, saturday), so one contest legitimately
+     * owns two rows inside it. Every WRITE path already keys on the
+     * Saturday — publish validation, the deadline sweep, the spawner, the
+     * card's own deadline — and the reads did not: `where('week_id')`
+     * with no order returned whichever row the engine felt like. The
+     * clubhouse took `->first()` (a stale Week 0 draft) while My Picks
+     * took `keyBy()`'s last row (the published card), so two screens
+     * disagreed about the same week.
+     *
+     * A week with no Saturday at all — no games, no date range — is a
+     * week nobody is playing, and it matches NOTHING rather than falling
+     * back to "any slate this week". That is the honest answer, not a
+     * default: an unidentifiable card is not a card.
+     */
+    public function scopeOnCard(Builder $query, Week $week): Builder
+    {
+        $saturday = Cadence::activeSaturday($week);
+
+        if ($saturday === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query
+            ->where('week_id', $week->id)
+            ->where('saturday', $saturday->toDateString());
     }
 
     public function contest(): BelongsTo

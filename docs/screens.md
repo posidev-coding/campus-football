@@ -734,6 +734,15 @@ for the same reason — "Private group, all season · 4 members" /
 has never seen the app on a name, a mode chip and a member count, none of
 which say which thing they were invited to.
 
+Both screens resolve THE CARD BEING PLAYED through `Slate::scopeOnCard()`,
+never `where('week_id')` alone. An ESPN week can hold two Saturdays and
+`slates` is unique on `(contest_id, saturday)`, so a group that carried a
+Week 0 draft owns two rows inside one week — and the two screens used to
+pick different ones: the clubhouse's `->first()` took the older row while My
+Picks' `keyBy()` kept the last, so one said "no slate yet" while the other
+showed a live card for the same week. A week with no Saturday at all matches
+nothing rather than falling back to any slate in it.
+
 A commissioner's clubhouse gates the build door on the SATURDAY, not on
 the calendar: `SlateFeasibility::for()` asks whether this Saturday can seat
 the group's mode, and a Saturday that cannot (Week 0's seven or eight games

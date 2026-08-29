@@ -99,9 +99,19 @@ new class extends Component
             ? null
             : app(CfbCalendar::class)->defaultWeekId($contests->first()->season_year);
 
-        $slates = $weekId === null ? collect() : Slate::query()
+        /*
+         * The week is resolved BEFORE the slates now, because the card
+         * being played is a SATURDAY and an ESPN week can hold two of
+         * them. Keyed on the week alone, keyBy() silently kept whichever
+         * row came last — the published card here, while the clubhouse's
+         * ->first() took the other one. Two screens, one week, two
+         * answers. See Slate::scopeOnCard().
+         */
+        $week = $weekId === null ? null : Week::find($weekId);
+
+        $slates = $week === null ? collect() : Slate::query()
             ->whereIn('contest_id', $contests->pluck('id'))
-            ->where('week_id', $weekId)
+            ->onCard($week)
             ->with('games.game:id,kickoff_at,status,completed')
             ->get()
             ->keyBy('contest_id');
@@ -134,8 +144,6 @@ new class extends Component
             ->groupBy('slates.contest_id')
             ->selectRaw('slates.contest_id, COALESCE(SUM(slate_entries.won), 0) AS wins')
             ->pluck('wins', 'contest_id');
-
-        $week = $weekId === null ? null : Week::find($weekId);
 
         /*
          * The deadline belongs to a SATURDAY, not to a week — and a card
