@@ -101,7 +101,9 @@ class ArticleResource extends Resource
             ])
             ->defaultSort('published_at', 'desc')
             ->recordActions([ViewAction::make()])
-            ->toolbarActions([]);
+            ->toolbarActions([])
+            ->emptyStateHeading('No news yet')
+            ->emptyStateDescription('Stories arrive with the followed-team news sync.');
     }
 
     public static function getPages(): array

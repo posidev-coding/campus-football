@@ -205,7 +205,9 @@ class TeamResource extends Resource
                 ViewAction::make(),
                 EditAction::make(),
             ])
-            ->toolbarActions([]);
+            ->toolbarActions([])
+            ->emptyStateHeading('No teams synced')
+            ->emptyStateDescription('Reference data arrives with cfb:sync.');
     }
 
     public static function getRelations(): array

@@ -141,7 +141,12 @@ class GamedayResource extends Resource
                     ->requiresConfirmation()
                     ->modalDescription('Locks this week in. Later runs will leave it alone.')
                     ->action(fn (GamedayWeek $record) => $record->update(['status' => GamedayStatus::Confirmed])),
-            ]);
+            ])
+            // Over a sync-driven table, a bare "No records found" leaves the
+            // reader with the question the screen should be answering: is it
+            // broken, or has the routine not run?
+            ->emptyStateHeading('No GameDay weeks yet')
+            ->emptyStateDescription('Weeks are proposed by the gameday routine and confirmed by a person.');
     }
 
     public static function getPages(): array

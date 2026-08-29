@@ -87,7 +87,8 @@ class ConferenceResource extends Resource
             ])
             ->defaultSort('name')
             ->recordActions([ViewAction::make()])
-            ->toolbarActions([]);
+            ->toolbarActions([])
+            ->emptyStateHeading('No conferences synced');
     }
 
     public static function getRelations(): array

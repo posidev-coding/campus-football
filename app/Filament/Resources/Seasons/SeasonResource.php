@@ -99,7 +99,9 @@ class SeasonResource extends Resource
                 SelectFilter::make('type')->label('Phase')->options(self::phases()),
             ])
             ->recordActions([ViewAction::make()])
-            ->toolbarActions([]);
+            ->toolbarActions([])
+            ->emptyStateHeading('No seasons synced')
+            ->emptyStateDescription('The calendar arrives with cfb:sync.');
     }
 
     public static function getRelations(): array

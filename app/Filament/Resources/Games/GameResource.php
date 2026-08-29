@@ -163,7 +163,9 @@ class GameResource extends Resource
                     }),
             ], layout: FiltersLayout::AboveContent)
             ->recordActions([ViewAction::make()])
-            ->toolbarActions([]);
+            ->toolbarActions([])
+            ->emptyStateHeading('No games synced')
+            ->emptyStateDescription('Schedules arrive with cfb:games.');
     }
 
     public static function getRelations(): array

@@ -100,7 +100,9 @@ class CoachResource extends Resource
             ])
             ->defaultSort('display_name')
             ->recordActions([ViewAction::make()])
-            ->toolbarActions([]);
+            ->toolbarActions([])
+            ->emptyStateHeading('No coaches synced')
+            ->emptyStateDescription('Staffs arrive with cfb:coaches.');
     }
 
     public static function getPages(): array

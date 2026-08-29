@@ -160,7 +160,9 @@ class AthleteResource extends Resource
                 TernaryFilter::make('is_active')->label('Active'),
             ])
             ->recordActions([ViewAction::make()])
-            ->toolbarActions([]);
+            ->toolbarActions([])
+            ->emptyStateHeading('No players synced')
+            ->emptyStateDescription('Rosters arrive with cfb:players.');
     }
 
     public static function getPages(): array

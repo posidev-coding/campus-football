@@ -83,7 +83,8 @@ class VenueResource extends Resource
                 TernaryFilter::make('grass')->label('Grass'),
             ])
             ->recordActions([ViewAction::make()])
-            ->toolbarActions([]);
+            ->toolbarActions([])
+            ->emptyStateHeading('No venues synced');
     }
 
     public static function getPages(): array
