@@ -135,14 +135,24 @@ enum LobbyFlavor: string
         };
     }
 
-    /** The card's pitch — sized honestly, since the mode blurb says "10 games". */
-    public function blurb(): string
+    /**
+     * The card's pitch, SIZED FROM THE ROOM. `$games` is the contest's own
+     * frozen slate size; the fallback is this flavor's fixed size, then
+     * its mode's default. A flavor can be seated smaller than its headline
+     * number — Week 0 froze Upset Alley at eight — and a numbered pitch
+     * that ignores that is the room lying about the card it deals. The
+     * unnumbered pitches (dynamic sizes, the conference family) never had
+     * the problem and stay as they are.
+     */
+    public function blurb(?int $games = null): string
     {
+        $count = $games ?? $this->settings()['slate_size'] ?? $this->mode()->engine()->slateSize();
+
         return match ($this) {
             self::RankedAction => 'Every ranked team in action, one big card. 10 points a game.',
-            self::UnderTheLights => '8 night games, nothing before 7pm ET. 10 points a game.',
-            self::TwoMinuteDrill => 'The flash card: 5 games, in and out. 10 points a game.',
-            self::UpsetAlley => '10 games — and +2 on top when your dog covers AND wins outright.',
+            self::UnderTheLights => $count.' night games, nothing before 7pm ET. 10 points a game.',
+            self::TwoMinuteDrill => 'The flash card: '.$count.' games, in and out. 10 points a game.',
+            self::UpsetAlley => $count.' games — and +2 on top when your dog covers AND wins outright.',
             self::BackPorch => "The founders' game at a ten-seat table. Lock one call, beat the Bear.",
             self::SecShowdown => 'Every game with an SEC team in it. 10 points a game.',
             self::BigTenBlitz => 'Every game with a Big Ten team in it. 10 points a game.',

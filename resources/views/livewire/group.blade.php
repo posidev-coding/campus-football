@@ -591,13 +591,17 @@ new class extends Component
     @if ($group->isRoom() && $this->contest !== null)
         @php
             $roomFlavor = $group->flavorEnum();
+            // The card THIS room deals, not the mode's default one:
+            // Shotgun's size is frozen per Saturday, so a Week 0 room of
+            // eight games must not be pitched as ten.
+            $roomGames = $this->contest->mode->engine($this->contest->settings)->slateSize();
             $roomZinger = $roomFlavor === null
                 ? ''
                 : Voice::line($roomFlavor->zingerKey(), ['conference' => $roomFlavor->conferenceName() ?? '']);
         @endphp
 
         <div class="flex flex-col gap-1">
-            <p class="text-sm text-zinc-600 dark:text-zinc-300">{{ $roomFlavor?->blurb() ?? $this->contest->mode->blurb() }}</p>
+            <p class="text-sm text-zinc-600 dark:text-zinc-300">{{ $roomFlavor?->blurb($roomGames) ?? $this->contest->mode->blurb($roomGames) }}</p>
             @if ($roomZinger !== '')
                 <p class="text-micro italic text-zinc-400 dark:text-zinc-500">&ldquo;{{ $roomZinger }}&rdquo;</p>
             @endif

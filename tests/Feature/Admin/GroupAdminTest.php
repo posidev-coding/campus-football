@@ -188,6 +188,17 @@ describe('contests', function () {
             ->assertSee('lock_bonus');
     });
 
+    it('helps the admin with the card the contest actually deals', function () {
+        // Sized from the RECORD, not the mode: a downsized Shotgun room
+        // reads eight games here, the same number its players are shown.
+        $contest = Contest::factory()->create(['settings' => ['slate_size' => 8]]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ViewContest::class, ['record' => $contest->getKey()])
+            ->assertOk()
+            ->assertSee('8 games, 10 points each.');
+    });
+
     it('renders a contest with no settings at all', function () {
         $contest = Contest::factory()->create(['settings' => null]);
 

@@ -22,6 +22,8 @@
     /** @var int|null games on this room's published slate */
     'gameCount' => null,
     'seats' => 0,
+    /** Whether the VIEWER already holds a seat here — the row's door changes. */
+    'seated' => false,
     /** The HOST's join method, so the row can ride any screen that seats people. */
     'action' => 'joinLobby',
 ])
@@ -33,7 +35,7 @@
         href="{{ route('pickem.room', $room) }}"
         wire:navigate
         class="absolute inset-0 z-0 rounded-xl"
-        aria-label="{{ $room->name }} — {{ $mode->label() }}"
+        aria-label="{{ $room->name }} — {{ $mode->label() }}{{ $seated ? ' — view your picks' : '' }}"
     ></a>
 
     <span class="pointer-events-none relative z-10 flex size-8 shrink-0 items-center justify-center rounded-lg border {{ $palette['tile'] }}">
@@ -47,12 +49,24 @@
         </span>
     </span>
 
-    <flux:button
-        wire:click="{{ $action }}({{ $room->id }})"
-        wire:loading.attr="disabled"
-        wire:target="{{ $action }}({{ $room->id }})"
-        size="sm"
-        variant="primary"
-        class="pointer-events-auto relative z-10 -my-1 !h-9 shrink-0"
-    >Join</flux:button>
+    {{-- A SEAT IS NOT A SALE. Offering Join to somebody already sitting
+         in the room is a CTA for something they have done — and the tap
+         would only re-answer with a membership they hold. The row still
+         goes exactly where they want (their picks), so the door drops to
+         a flat cue and lets the stretched anchor carry the tap. --}}
+    @if ($seated)
+        <span class="pointer-events-none relative z-10 flex shrink-0 items-center gap-0.5 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+            View picks
+            <flux:icon name="chevron-right" variant="micro" class="size-4" />
+        </span>
+    @else
+        <flux:button
+            wire:click="{{ $action }}({{ $room->id }})"
+            wire:loading.attr="disabled"
+            wire:target="{{ $action }}({{ $room->id }})"
+            size="sm"
+            variant="primary"
+            class="pointer-events-auto relative z-10 -my-1 !h-9 shrink-0"
+        >Join</flux:button>
+    @endif
 </div>

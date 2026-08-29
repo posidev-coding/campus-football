@@ -651,7 +651,11 @@ lobby is where you browse and enter contests.
   identity is the tile plus the micro-line and never a right-hand chip: at
   390px a chip and a button together starve the name. Stretched-anchor
   grammar from `x-game-card` (a button may not nest in an anchor) — the row
-  opens the room, Join seats you in place.
+  opens the room, Join seats you in place. A row the reader is already
+  SEATED in trades the primary Join for a flat "View picks" cue (`seated`,
+  off `LobbyCatalog::shelves()`): the shelves are seat-inclusive, so the row
+  has to tell "for sale" from "yours", and a CTA for a seat you hold is a
+  tap that can only re-answer with the membership you already have.
 - **Dashed closed rows** for catalog entries with no live room, saying "Not
   enough games this Saturday" — the preflight's own vocabulary, an
   instruction and never Voice. They are an INFERENCE from the sweep's own
@@ -680,7 +684,11 @@ Guests and flag-off readers get the same `partials.pickem-promise` at both.
 
 The room screen carries what the old `x-contest-card` used to: the flavor's
 blurb (or the mode's) and its optional zinger render under the room hero,
-where somebody who tapped a row decides whether to sit down.
+where somebody who tapped a row decides whether to sit down. The blurb is
+SIZED FROM THE CONTEST — `blurb($contest->mode->engine($contest->settings)
+->slateSize())`, the same on the invite landing — because Shotgun's size is
+frozen per Saturday and the room screen used to read "10 games, 10 points
+each" over a Week 0 card of seven.
 
 ## The invite landing is the acquisition funnel
 

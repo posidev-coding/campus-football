@@ -29,6 +29,15 @@ game and nothing to weigh — which is exactly why it exists beside the tiered
 main event. No tiers (`tier` stays null on every slate game — never a
 default 1), no lock, no Bear. Perfect week: 100.
 
+Shotgun is the one mode that FLEXES, so ten is its default and not its
+promise: `settings.slate_size` is frozen per room at spawn (Week 0 seats
+eight games, or seven), and `blurb()`/`ruleLines()` take that size so a
+downsized room states its own count and its own perfect week. Every caller
+holding a contest passes it; null keeps the mode's own shape, which is the
+honest answer for the mode doors and the lobby explainer, where there is no
+contest to describe. `LobbyFlavor::blurb()` is sized the same way — Upset
+Alley's headline ten is seven on a Week 0 Saturday.
+
 ## Triple Option (`tiered` · TieredMode)
 
 The main event: **15 games in three tiers of five, by game quality — tier 1

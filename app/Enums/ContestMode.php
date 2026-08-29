@@ -23,7 +23,7 @@ use App\Services\Contests\WoodshedMode;
  */
 enum ContestMode: string
 {
-    /** 10 games, every one worth the same. The casual door. */
+    /** Ten games by default, every one worth the same. The casual door. */
     case Classic = 'classic';
 
     /** 15 games in 3 tiers of progressive quality. The main event. */
@@ -45,14 +45,37 @@ enum ContestMode: string
      * The one-line rules pitch — product vocabulary like label(), constant
      * across registers, shared by the mode cards and the lobby's room
      * cards so the mode is never described two ways.
+     *
+     * `$games` is the CONTEST's own slate size, passed by every caller
+     * that holds one. Shotgun flexes — Week 0 seats eight games, not ten
+     * — and a pitch that says "10 games" over an eight-game card is the
+     * room lying about the game it is selling. Null means "the mode's own
+     * shape", which is the honest answer for the doors and the lobby
+     * explainer, where there is no contest to describe.
      */
-    public function blurb(): string
+    public function blurb(?int $games = null): string
     {
         return match ($this) {
-            self::Classic => '10 games, 10 points each. Every call counts the same.',
+            self::Classic => $this->cardSize($games).' games, '.ClassicMode::GAME_POINTS.' points each. Every call counts the same.',
             self::Tiered => '15 games in three tiers — 9 points up top, then 7, then 4.',
             self::Woodshed => 'The founders\' game: 15 games at 8, 6 and 4. Lock one call, beat the Bear.',
         };
+    }
+
+    /**
+     * How many games a description is about: the caller's frozen size, or
+     * this mode's own default. The default is the ENGINE's, never a
+     * literal in the copy — one number, in one place, so a rebalance
+     * cannot leave the sentence behind.
+     *
+     * Only Shotgun's copy varies with it: the tiered modes are fifteen or
+     * nothing
+     * (their tier specs cannot scale, and their engines ignore the knob),
+     * so their copy states the count outright.
+     */
+    private function cardSize(?int $games): int
+    {
+        return $games ?? $this->engine()->slateSize();
     }
 
     /**
@@ -115,14 +138,20 @@ enum ContestMode: string
      * read, so the game is never described two ways. Product facts,
      * constant across registers; Voice speaks AROUND them, never in them.
      *
+     * Sized like blurb(): pass the contest's slate size wherever there is
+     * a contest, and a downsized Shotgun card states its own count and
+     * its own perfect week rather than the mode's ten and hundred.
+     *
      * @return list<string>
      */
-    public function ruleLines(): array
+    public function ruleLines(?int $games = null): array
     {
+        $count = $this->cardSize($games);
+
         return match ($this) {
             self::Classic => [
-                '10 games against the spread, every one worth 10 points.',
-                'A perfect week is 100.',
+                $count.' games against the spread, every one worth '.ClassicMode::GAME_POINTS.' points.',
+                'A perfect week is '.($count * ClassicMode::GAME_POINTS).'.',
             ],
             self::Tiered => [
                 '15 games in three tiers of five, by game quality.',
