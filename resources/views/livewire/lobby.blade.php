@@ -179,6 +179,24 @@ new class extends Component
             </div>
         @endif
 
+        {{-- WHAT THIS STORE SELLS. Under the band, never above it: the
+             band is sticky with its container's padding cancelled and
+             nothing to travel through, and anything inserted ahead of it
+             is something for it to slide under.
+
+             The sentence is an INSTRUCTION and stays plain in every
+             register — public, and one Saturday each are the two facts a
+             reader needs to tell a room from a group. The zinger under
+             it is where the voice goes, and where the other half of the
+             product is pointed at. --}}
+        <div class="flex flex-col gap-0.5">
+            <flux:subheading>Public rooms — anyone can take a seat, and each one plays a single Saturday.</flux:subheading>
+            @php $intro = Voice::line('lobby.intro.zinger'); @endphp
+            @if ($intro !== '')
+                <p class="text-micro text-zinc-400 dark:text-zinc-500">{{ $intro }}</p>
+            @endif
+        </div>
+
         <livewire:verify-callout :body-key="'verify.picks.body'" :dismissable="false" @email-verified="$refresh" />
 
         @if (session('status'))
@@ -272,10 +290,13 @@ new class extends Component
             </div>
         @endif
 
-        {{-- The other way to play, one line: rooms are the house's, a
-             group is yours. --}}
-        <x-link-row :href="route('pickem.create')" title="Rather run your own?">
-            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Start a group — name it, pick its mode, send one link.</span>
+        {{-- The other product, one line, and named as what it IS rather
+             than as a mood: a reader standing in a store of one-Saturday
+             rooms has to be told the season-long thing exists before
+             "rather run your own?" means anything to them. --}}
+        <x-link-row :href="route('pickem.create')" title="Want a season-long group?">
+            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Private and invite-only — you run it, and the standings run all season.</span>
+            <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">Name it, pick its mode, send one link.</span>
         </x-link-row>
 
         {{-- The rules, one expandable card per mode — the same

@@ -248,15 +248,25 @@ new class extends Component
 
                 <div class="min-w-0 flex-1">
                     <p class="truncate text-xl font-bold leading-tight">{{ $this->group->name }}</p>
+                    {{-- The KIND leads. A link lands somebody who has
+                         never seen the app on a name, a mode chip and a
+                         member count — none of which say whether they
+                         are being invited to somebody's season or to one
+                         Saturday with strangers. Facts only; join.pitch
+                         underneath carries the mood. --}}
                     <p class="pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-                        @if ($this->group->isRoom() && $this->group->week !== null)
-                            {{ \App\Support\Cadence::displayWeekLabel($this->group->week, $this->roomSaturday) }} ·
+                        @if ($this->group->isLobby())
+                            Public room ·
+                            @if ($this->group->isRoom() && $this->group->week !== null)
+                                {{ \App\Support\Cadence::displayWeekLabel($this->group->week, $this->roomSaturday) }} ·
+                            @endif
                             @if ($this->group->member_cap !== null)
                                 {{ $this->group->memberships_count }} of {{ $this->group->member_cap }} seats
                             @else
                                 {{ $this->group->memberships_count }} {{ Str::plural('member', $this->group->memberships_count) }}
                             @endif
                         @else
+                            Private group, all season ·
                             {{ $this->group->memberships_count }} {{ Str::plural('member', $this->group->memberships_count) }}
                         @endif
                     </p>

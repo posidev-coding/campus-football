@@ -54,7 +54,15 @@
 
     <div class="flex items-center justify-between gap-3 text-sm">
         @if ($card['state'] === 'waiting')
-            @if ($card['commissioner'] && $card['contest'])
+            {{-- A PUBLIC ROOM WHOSE SATURDAY IS GONE. It has no slate for
+                 the current week, so it falls through the state match to
+                 'waiting' — and the waiting line names a commissioner the
+                 room never had, on a week that is never coming. The room
+                 keeps its URL forever, so the card still travels; only
+                 the words change. --}}
+            @if ($card['past'] ?? false)
+                <span class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">{{ App\Support\Voice::line('group.room.past') }}</span>
+            @elseif ($card['commissioner'] && $card['contest'])
                 <span class="font-medium text-blue-600 dark:text-blue-400">Build the slate</span>
                 @if ($card['deadline'])
                     <span class="shrink-0 text-micro text-zinc-500">due {{ $card['deadline']->format('D g:ia') }}</span>

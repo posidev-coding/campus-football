@@ -598,14 +598,38 @@ urgency:
    taking picks the reader hasn't finished; each row is name + progress +
    first kick, walking into the clubhouse. This zone is why the screen
    works: it answers "what do I do right now" before anything else talks.
-3. **Your groups** (`x-group-card`) — every membership (groups AND joined
-   rooms) wearing its mode's mark and colors from `ContestMode::palette()`,
-   with pass 2's five-way state row (waiting / upcoming / live / prelim /
-   final) intact, and a `text-micro` "Start a group" escape beside the
-   heading. First-run readers get **Pick your mode** instead: three
-   `x-mode-door` tiles straight into the wizard. The doors ARE the create
-   affordance — pass 3 drew the same destination twice, as three doors and
-   then a full-width card underneath them.
+3. **Your groups** and **Public rooms** — two zones, not one. Both render
+   `x-group-card` with its mode mark, palette and pass 2's five-way state
+   row (waiting / upcoming / live / prelim / final) intact; what changed
+   (2026-08-29) is that they are no longer the same list. One heading over
+   both products meant a public room joined an hour ago sat under the word
+   "groups" beside a season-long league, and nothing on the screen said
+   either was what it was. Each heading now carries a one-line DEFINITION
+   (`picks.groups.subheading` / `picks.rooms.subheading`) and its own
+   escape — "Start a group" to the wizard, "Find a room" to the store. A
+   third zone, **Always open**, holds evergreen house lobbies (`kind =
+   lobby` with no week) under the Lobby's own word for them: neither of
+   the other two headings is true of an always-open table, and filing it
+   under one is a label the data does not support. All three are pure
+   projections of `cards()` (`groupCards` / `roomCards` / `tableCards`) —
+   no query is added.
+
+   A room's `week_id` is compared against the current `defaultWeekId` into
+   a `past` flag, because a room keeps its URL forever and leaves the
+   inventory when its week ends: with no slate on the current week it fell
+   through the state match to `waiting` and told the reader their PUBLIC
+   room was waiting on a commissioner it never had, on a week that was
+   never coming. `group.room.past` replaces that line and `roomCards`
+   sorts past rooms to the bottom.
+
+   First-run readers — meaning no PRIVATE groups, so one public seat does
+   not suppress the pitch — get **Two ways to play**: "Start your own
+   group" over the three `x-mode-door` tiles, then "Or take a seat this
+   Saturday" over the Lobby door. The doors are still the ONLY create
+   affordance (pass 3 drew that destination twice, as three doors and then
+   a full-width card underneath them); what is new is that the block says
+   what the doors are doors TO, and puts the weekly public alternative
+   beside the choice instead of 600px below it.
 4. **Last week** — the Monday payoff, compact: settled entries from the past
    seven days. Below Your groups because on Monday nothing needs picks — the
    recap IS the top of the useful screen.
@@ -616,9 +640,13 @@ urgency:
 6. **The invite code**, folded into a disclosure ("Have an invite code?")
    that auto-opens on a code error — links are the primary way in now, the
    code is the spoken-word fallback.
-7. **The Lobby, as a door**: a dashed card carrying a PLAIN COUNT ("3 rooms
-   open this Saturday", or `lobby.publics.empty` at zero) over one optional
-   Voice line, navigating to `/lobby`. It reads `Lobby::openRoomCount()`,
+7. **The Lobby, as a door** (`partials/lobby-door`): a dashed card carrying
+   a PLAIN COUNT ("3 public rooms open this Saturday", or
+   `lobby.publics.empty` at zero) over one optional Voice line, navigating
+   to `/lobby`. A partial because it renders in two mutually exclusive
+   places — at the foot of the screen for a reader with groups, hoisted up
+   beside the mode doors on a first run — and both must read the ONE
+   `roomsOpen` computed. It reads `Lobby::openRoomCount()`,
    never the inventory — a dashboard paying for the whole graph to print an
    integer is how the old screen got heavy. `LobbyRoomsTest` pins that count
    equal to what the Lobby actually lists, because two reads of one question
@@ -663,8 +691,20 @@ lobby is where you browse and enter contests.
   lobby dashes nothing either. A room the reader is SEATED in counts as
   stocked, which is why `Lobby::openRooms()` is seat-inclusive and flags
   rather than drops.
+- **A framing line under the band, before the first shelf**: one plain
+  sentence carrying the two facts a reader needs to tell a room from a
+  group ("Public rooms — anyone can take a seat, and each one plays a
+  single Saturday") over a render-guarded `lobby.intro.zinger`, which is
+  where the OTHER half of the product gets pointed at. It sits under the
+  band and never above it: the band is sticky with its container's padding
+  cancelled, and anything inserted ahead of it is something for it to
+  slide under.
 - **Evergreen tables** sell after the Saturday shelves; an always-open lobby
-  is not a Saturday product. Then a one-line cross-link to the wizard, then
+  is not a Saturday product. Then a one-line cross-link to the wizard —
+  "Want a season-long group? Private and invite-only — you run it, and the
+  standings run all season", because "Rather run your own?" asked a
+  question of somebody who had never been told the season-long thing
+  exists — then
   **How it's played** — one expandable `x-mode-rules` card per mode reading
   `ContestMode::ruleLines()` (the same source as the docs), plus the shared
   law in one plain paragraph. Collapsed content is x-show, not removed, so a
@@ -681,6 +721,18 @@ double-hop is dead) and a race to a filled room answers with
 other.** `/picks` used to 301 to `/lobby`; browsers cache a 301 forever, so a
 redirect pointing back would loop on every dev machine holding the old one.
 Guests and flag-off readers get the same `partials.pickem-promise` at both.
+
+The `x-group-hero` chip renders for BOTH kinds — `Public` for a lobby,
+`Private` otherwise. It used to render for lobbies only, which made the mark
+something some rooms wore and said nothing at all about the container a
+private group is; a badge one side of a pair wears is a badge nobody reads
+as a pair. A private group also gets the symmetric half of the room blurb
+below the hero: its mode's blurb sized from the contest, over
+`group.private.frame`. The invite landing's meta line leads with the kind
+for the same reason — "Private group, all season · 4 members" /
+"Public room · Week 1 · 3 of 20 seats" — because a link lands somebody who
+has never seen the app on a name, a mode chip and a member count, none of
+which say which thing they were invited to.
 
 The room screen carries what the old `x-contest-card` used to: the flavor's
 blurb (or the mode's) and its optional zinger render under the room hero,

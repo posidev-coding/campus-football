@@ -264,10 +264,24 @@ describe('the store (inside the flag)', function () {
             ->assertDontSee('Not enough games this Saturday');
     });
 
-    it('keeps the other way to play one line away', function () {
+    it('names the other product, and what makes it other', function () {
+        // "Rather run your own?" asked a question of somebody who had
+        // never been told the season-long thing exists. The cross-link
+        // says what it is now, and the store says what IT is up top.
         Livewire::actingAs(pickemAdmin())->test('lobby')
-            ->assertSee('Rather run your own?')
+            ->assertSee('Want a season-long group?')
+            ->assertSee('Private and invite-only')
             ->assertSee(route('pickem.create'), escape: false);
+    });
+
+    it('says what the store sells before the first shelf', function () {
+        $viewer = pickemAdmin();
+
+        Livewire::actingAs($viewer)->test('lobby')
+            ->assertSeeInOrder([
+                'Public rooms — anyone can take a seat, and each one plays a single Saturday.',
+                Voice::line('lobby.intro.zinger', for: $viewer),
+            ], escape: false);
     });
 
     it('spells every mode\'s rules, stakes included', function () {

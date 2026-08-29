@@ -582,6 +582,21 @@ new class extends Component
         </x-slot:actions>
     </x-group-hero>
 
+    {{-- WHAT THIS GROUP IS. The room half of this pair has said its
+         piece here since the contest card was retired; the private half
+         said nothing, so the one screen where a member sees the whole
+         container never mentioned that the container is theirs and runs
+         all season. The mode's blurb states the card, sized from the
+         CONTEST; the Voice line states the thing the mode cannot. --}}
+    @if (! $group->isLobby() && $this->contest !== null)
+        <div class="flex flex-col gap-1">
+            <p class="text-sm text-zinc-600 dark:text-zinc-300">
+                {{ $this->contest->mode->blurb($this->contest->mode->engine($this->contest->settings)->slateSize()) }}
+            </p>
+            <p class="text-micro text-zinc-400 dark:text-zinc-500">{{ Voice::line('group.private.frame') }}</p>
+        </div>
+    @endif
+
     {{-- WHAT THIS ROOM IS. The lobby sells uniform rows now, so the
          pitch — the flavor's own one-line rules, or the mode's, plus its
          optional zinger — is said HERE, where somebody who tapped the row
