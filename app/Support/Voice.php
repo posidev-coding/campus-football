@@ -970,6 +970,31 @@ class Voice
         ],
 
         /*
+         * WHAT A PRIVATE GROUP IS, said under the clubhouse hero — the
+         * symmetric half of the room's flavor blurb. The facts (mode,
+         * slate size) are the mode's own blurb above this line; this is
+         * the one thing the mode cannot say, which is that the container
+         * around it is yours and runs to the bowls.
+         */
+        'group.private.frame' => [
+            'pg' => 'A private group: invite-only, one mode, and the standings run all season.',
+            'pg13' => 'Yours, invite-only, all season. Nobody walks in off the street and nobody walks out clean.',
+            'r' => 'Invite-only and season-long. Every week goes on the ledger, and the ledger has a long memory.',
+        ],
+
+        /*
+         * A PUBLIC ROOM WHOSE SATURDAY IS GONE. A room has no
+         * commissioner and no next week, so the waiting line — "the
+         * commissioner is on the clock" — is a lie on a card like this.
+         * The room keeps its URL forever, so the card still travels.
+         */
+        'group.room.past' => [
+            'pg' => 'This room\'s Saturday is done. Your picks are still in there.',
+            'pg13' => 'That Saturday is in the books. The receipts are still inside.',
+            'r' => 'This room already happened. The evidence is still in there if you\'re brave.',
+        ],
+
+        /*
          * The creation wizard: name, THE GAME, the invite moment. The
          * one-season rule rides create.mode.hint — fine print that must
          * stay legible in every register, because it is the rule the
@@ -1147,6 +1172,41 @@ class Voice
             'r' => 'Three games, no pushes, nowhere to hide. Pick one and go recruit somebody to beat.',
         ],
 
+        /*
+         * THE TWO PRODUCTS, told apart. My Picks stacks a private group
+         * and a public room under two headings now, and these are the
+         * one-line definitions underneath each — the difference a reader
+         * could not see when both sat under the word "groups".
+         *
+         * The heading is the navigation and stays plain; the DEFINITION
+         * is the instruction, so every register keeps its two load-
+         * bearing facts intact (invite-only + all season / open to
+         * anyone + one Saturday). The joke rides the end of the line,
+         * never the middle of it.
+         */
+        'picks.groups.subheading' => [
+            'pg' => 'Invite-only, and the standings run all season.',
+            'pg13' => 'Invite-only, all season. Your people, your mode, one long argument.',
+            'r' => 'Invite-only, all season. The people you picked, and the receipts you can\'t outrun.',
+        ],
+
+        'picks.rooms.subheading' => [
+            'pg' => 'Public rooms, open to anyone. Each one plays a single Saturday.',
+            'pg13' => 'Public and open to anyone. One Saturday each — win it or wait for the next.',
+            'r' => 'Open to anybody with a thumb. One Saturday, one verdict, no rematch.',
+        ],
+
+        /*
+         * The first run's group path, over the three mode doors. The
+         * doors say what each MODE is; this says what the thing you are
+         * about to create is — a season-long room of your own people.
+         */
+        'picks.first_run.group' => [
+            'pg' => 'Your own private group: invite your people, pick one mode, and play every week this season.',
+            'pg13' => 'Your group, your people, one mode all season. Somebody has to be the commissioner.',
+            'r' => 'Your group, your people, one mode all season. Build it and start collecting victims.',
+        ],
+
         'lobby.needs.subheading' => [
             'pg' => 'Slates are open — get your picks in before kickoff.',
             'pg13' => "Open slates don't pick themselves. Kickoff is the deadline.",
@@ -1157,6 +1217,18 @@ class Voice
             'pg' => 'Every mode in plain words — points, the Lock, and the Bear.',
             'pg13' => 'The rules, straight: what pays what, and what the Bear is doing here.',
             'r' => "Read the rules once, argue about them forever. That's the sport.",
+        ],
+
+        /*
+         * WHAT THE STORE SELLS, at the top of it. The plain sentence
+         * above this one carries the two facts (public, one Saturday);
+         * this is the mood, and it is where the reader is told the other
+         * half of the product lives somewhere else.
+         */
+        'lobby.intro.zinger' => [
+            'pg' => 'No invite needed — and your season-long groups live over on My Picks.',
+            'pg13' => 'No invite, no waiting. Season-long groups are a different door — this one is walk-ons.',
+            'r' => 'Walk in, take a seat, ruin somebody\'s Saturday. Season-long grudges live on My Picks.',
         ],
 
         /*

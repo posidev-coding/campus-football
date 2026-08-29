@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\WalletEntry;
 use App\Services\CfbCalendar;
 use App\Support\Navigation;
+use App\Support\Voice;
 use Laravel\Pennant\Feature;
 use Livewire\Livewire;
 
@@ -180,7 +181,7 @@ it('links the door to the creation wizard from both screens', function () {
         ->assertSee(route('pickem.create'), escape: false);
 
     Livewire::actingAs(pickemAdmin())->test('lobby')
-        ->assertSee('Rather run your own?')
+        ->assertSee('Want a season-long group?')
         ->assertSee(route('pickem.create'), escape: false);
 });
 
@@ -201,6 +202,32 @@ it('shows a member their clubhouse: hero, mode, code and roster', function () {
         ->set('view', 'members')
         ->assertSee($group->code)
         ->assertSee('Commissioner');
+});
+
+it('wears its kind in the hero, and says what a private group IS', function () {
+    /*
+     * The chip used to render for lobbies only, so "Public" was a mark
+     * some rooms wore and nothing at all was said about the container a
+     * private group is — a badge one side of a pair wears is a badge
+     * nobody reads as a pair. The frame line beneath is the room blurb's
+     * missing symmetric half: the mode states the card, this states what
+     * the thing around it is.
+     */
+    $admin = pickemAdmin();
+    $group = app(CreateGroup::class)->handle($admin, 'The Test Group', ContestMode::Tiered);
+
+    Livewire::actingAs($admin)->test('group', ['group' => $group])
+        ->assertSee('Private')
+        ->assertSee(Voice::line('group.private.frame', for: $admin))
+        ->assertDontSee('Public');
+
+    $lobby = Group::factory()->lobby()->create(['name' => 'Walk-Ons Welcome']);
+    GroupMember::factory()->create(['group_id' => $lobby->id, 'user_id' => $admin->id]);
+
+    // And the room half keeps its own words — never the group's.
+    Livewire::actingAs($admin)->test('group', ['group' => $lobby])
+        ->assertSee('Public')
+        ->assertDontSee(Voice::line('group.private.frame', for: $admin));
 });
 
 it('keeps outsiders off a private group page and lets them read a lobby', function () {

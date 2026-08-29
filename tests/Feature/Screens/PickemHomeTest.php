@@ -12,6 +12,7 @@ use App\Models\GroupMember;
 use App\Models\Slate;
 use App\Models\SlateEntry;
 use App\Models\User;
+use App\Models\Week;
 use App\Support\Navigation;
 use App\Support\Voice;
 use Livewire\Livewire;
@@ -154,19 +155,48 @@ describe('my week (inside the flag)', function () {
         unset($slate);
     });
 
-    it('makes the mode doors the only create affordance on a first run', function () {
+    it('names both ways to play on a first run, and the modes under one of them', function () {
         /*
          * The doors ARE the pitch and the create door both. The old screen
          * carried a second full-width "Start a group" card underneath
          * them, which is the same destination drawn twice.
+         *
+         * What the doors could never say is what they were doors TO: a
+         * reader with no groups was shown three modes and no word about
+         * the container they were about to create, nor about the store
+         * selling the other, weekly, public product.
          */
         Livewire::actingAs(pickemAdmin())->test('pickem-home')
-            ->assertSee('Pick your mode')
-            ->assertSee('Shotgun')
-            ->assertSee('The Woodshed')
+            ->assertSeeInOrder([
+                'Two ways to play',
+                'Start your own group',
+                'Shotgun',
+                'The Woodshed',
+                'Or take a seat this Saturday',
+                'The Lobby',
+            ])
             ->assertSee(route('pickem.create'), escape: false)
-            ->assertDontSee('Your groups')
-            ->assertDontSee('Start a group');
+            ->assertSee(route('pickem.lobby'), escape: false)
+            ->assertDontSee('Your groups');
+    });
+
+    it('draws the lobby door exactly once on a first run', function () {
+        /*
+         * The door is hoisted up beside the mode doors when there are no
+         * groups, so the two ways to play sit together. Left rendering at
+         * the foot of the screen as well, it would be the same
+         * destination twice — the mistake the first-run block exists to
+         * retire — and the count would be read from one computed but
+         * printed on two rows a reader has to reconcile.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [, $week] = pickemHomeWeek();
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        $html = Livewire::actingAs(pickemAdmin())->test('pickem-home')->html();
+
+        expect(substr_count($html, '1 public room open this Saturday'))->toBe(1);
     });
 
     it('keeps a small escape to the wizard once the reader has groups', function () {
@@ -178,7 +208,85 @@ describe('my week (inside the flag)', function () {
             ->assertSee(route('pickem.create'), escape: false)
             // With groups in hand the doors are the wizard's job, not the
             // dashboard's.
-            ->assertDontSee('Pick your mode');
+            ->assertDontSee('Two ways to play')
+            ->assertDontSee('Start your own group');
+    });
+
+    it('files a private group and a joined room under their own headings', function () {
+        /*
+         * THE BUG THIS RETIRES: one heading, "Your groups", over both
+         * products — a public room joined an hour ago sat in the same
+         * stack under the same word as a season-long group, and nothing
+         * on the screen said either one was what it was.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, $group] = pickemContest();
+        $group->update(['name' => 'Rocky Top Rejects']);
+
+        [, $week] = pickemHomeWeek();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        app(JoinGroup::class)->handle($commissioner, $room);
+
+        Livewire::actingAs($commissioner->fresh())->test('pickem-home')
+            ->assertSeeInOrder([
+                'Your groups',
+                'Rocky Top Rejects',
+                'Public rooms',
+                $room->name,
+            ])
+            // And each heading carries its definition, which is the whole
+            // point of splitting them.
+            ->assertSee(Voice::line('picks.groups.subheading', for: $commissioner))
+            ->assertSee(Voice::line('picks.rooms.subheading', for: $commissioner))
+            ->assertSee(route('pickem.lobby'), escape: false);
+    });
+
+    it('shows the first-run pitch to a reader who holds only a room', function () {
+        // The zones are split on KIND, so "no groups" is no PRIVATE
+        // groups — a reader with one public seat and nothing else has
+        // still never seen the season-long half of the product.
+        $this->travelTo('2026-09-02 12:00:00');
+
+        $viewer = pickemAdmin();
+        [, $week] = pickemHomeWeek();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        app(JoinGroup::class)->handle($viewer, $room);
+
+        Livewire::actingAs($viewer->fresh())->test('pickem-home')
+            ->assertSee('Two ways to play')
+            ->assertSee('Start your own group')
+            ->assertSee('Public rooms')
+            ->assertDontSee('Your groups');
+    });
+
+    it('tells a room whose Saturday is gone from one waiting on a commissioner', function () {
+        /*
+         * A room keeps its URL forever and leaves the inventory when its
+         * week ends, so it has no slate for the CURRENT week and falls
+         * through the state match to 'waiting'. The waiting line names a
+         * commissioner the room never had, on a week that is never
+         * coming — over the very card meant to teach that rooms are
+         * transient.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        $viewer = pickemAdmin();
+        [$season, $week] = pickemHomeWeek();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        app(JoinGroup::class)->handle($viewer, $room);
+
+        // Same room, an earlier week — the room AND the slate it played,
+        // which is what leaves it with nothing on the current week.
+        $gone = Week::factory()->create(['season_id' => $season->id, 'number' => 0]);
+        $room->update(['week_id' => $gone->id]);
+        Slate::query()
+            ->whereIn('contest_id', $room->contests()->pluck('id'))
+            ->update(['week_id' => $gone->id]);
+
+        Livewire::actingAs($viewer->fresh())->test('pickem-home')
+            ->assertSee(Voice::line('group.room.past', for: $viewer))
+            ->assertDontSee(Voice::line('group.slate.waiting', for: $viewer));
     });
 
     it('pays the Monday payoff while it is still the conversation', function () {
@@ -236,7 +344,7 @@ describe('the lobby teaser', function () {
 
         Livewire::actingAs(pickemAdmin())->test('pickem-home')
             ->assertSee('The Lobby')
-            ->assertSee('2 rooms open this Saturday')
+            ->assertSee('2 public rooms open this Saturday')
             ->assertSee(route('pickem.lobby'), escape: false)
             // The store's inventory stays in the store: no room names, no
             // Join buttons, no blurbs on the dashboard.
@@ -248,7 +356,7 @@ describe('the lobby teaser', function () {
         app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
 
         Livewire::actingAs(pickemAdmin())->test('pickem-home')
-            ->assertSee('1 room open this Saturday');
+            ->assertSee('1 public room open this Saturday');
     });
 
     it('never counts a seat the reader already holds', function () {
@@ -260,7 +368,7 @@ describe('the lobby teaser', function () {
         app(JoinGroup::class)->handle($viewer, $seated);
 
         Livewire::actingAs($viewer->fresh())->test('pickem-home')
-            ->assertSee('1 room open this Saturday');
+            ->assertSee('1 public room open this Saturday');
     });
 
     it('says the honest empty line at zero rather than "0 rooms"', function () {
@@ -269,7 +377,7 @@ describe('the lobby teaser', function () {
         Livewire::actingAs($viewer)->test('pickem-home')
             ->assertSee('The Lobby')
             ->assertSee(Voice::line('lobby.publics.empty', for: $viewer))
-            ->assertDontSee('0 rooms open');
+            ->assertDontSee('0 public rooms open');
     });
 });
 

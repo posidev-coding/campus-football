@@ -143,7 +143,7 @@ new class extends Component
         $pending = $week === null ? null : Cadence::activeSaturday($week);
         $fallbackDeadline = $pending === null ? null : Cadence::slateDeadline($pending);
 
-        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $fallbackDeadline) {
+        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $fallbackDeadline, $weekId) {
             $contest = $contests->get($group->id);
             $slate = $contest === null ? null : $slates->get($contest->id);
             $tally = $slate === null ? null : $made->get($slate->id);
@@ -170,6 +170,12 @@ new class extends Component
                 'won' => (bool) ($entry->won ?? false),
                 'wins' => (int) ($wins[$contest?->id] ?? 0),
                 'firstKick' => $slate?->firstKickoff(),
+                // A room whose Saturday has come and gone. It keeps its
+                // URL forever but leaves the inventory when its week
+                // ends, so it falls through the state match to 'waiting'
+                // — where the card would tell a reader their PUBLIC room
+                // is waiting on a commissioner it never had.
+                'past' => $group->isRoom() && $group->week_id !== $weekId,
                 // A published slate answers for its OWN Saturday; a group
                 // still waiting on one is told about the card being sold.
                 'deadline' => $slate === null
@@ -177,6 +183,55 @@ new class extends Component
                     : Cadence::slateDeadline($slate->saturday),
             ];
         });
+    }
+
+    /**
+     * THE PRIVATE HALF — season-long groups the reader belongs to. A
+     * pure projection of cards(), like every zone on this screen.
+     *
+     * The split exists because one heading over both products is what
+     * made them indistinguishable: a public room joined an hour ago sat
+     * in the same stack, under the same word, as a group somebody runs
+     * to the bowls.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function groupCards()
+    {
+        return $this->cards->reject(fn (array $card) => $card['group']->isLobby())->values();
+    }
+
+    /**
+     * THE PUBLIC HALF — one-Saturday rooms, this week's first so a
+     * finished one never sits above a card still taking picks.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function roomCards()
+    {
+        return $this->cards
+            ->filter(fn (array $card) => $card['group']->isRoom())
+            ->sortBy(fn (array $card) => $card['past'] ? 1 : 0)
+            ->values();
+    }
+
+    /**
+     * The always-open house tables: kind = lobby with NO week. Neither
+     * of the zones above may absorb them — an evergreen table is not a
+     * private group and it is not a room that plays one Saturday, and
+     * filing it under either heading is a label the data does not
+     * support. Render-guarded, so it is invisible until one exists.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function tableCards()
+    {
+        return $this->cards
+            ->filter(fn (array $card) => $card['group']->isLobby() && ! $card['group']->isRoom())
+            ->values();
     }
 
     /**
@@ -361,10 +416,12 @@ new class extends Component
         @endif
 
         {{-- Your groups — GROUPS, not "games": a game is played on a
-             field. Before the first one, the three doors are the pitch
-             AND the create affordance, so there is no second big card
-             saying the same thing. --}}
-        @if ($this->cards->isNotEmpty())
+             field. And ONLY groups: a public room used to sit in this
+             stack under this word, which is exactly why nobody could
+             tell the season-long thing from the Saturday thing. The
+             heading navigates and stays plain; the line under it is the
+             definition, and it is the whole point of the zone. --}}
+        @if ($this->groupCards->isNotEmpty())
             <div class="flex flex-col gap-2">
                 <div class="flex items-baseline justify-between gap-3">
                     <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Your groups</flux:subheading>
@@ -372,21 +429,70 @@ new class extends Component
                         Start a group
                     </a>
                 </div>
+                <flux:subheading>{{ Voice::line('picks.groups.subheading') }}</flux:subheading>
 
-                @foreach ($this->cards as $card)
+                @foreach ($this->groupCards as $card)
                     <x-group-card wire:key="lobby-group-{{ $card['group']->id }}" :card="$card" />
                 @endforeach
             </div>
         @else
-            <div class="flex flex-col gap-2">
-                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Pick your mode</flux:subheading>
-                <flux:subheading>{{ Voice::line('lobby.first_run.body') }}</flux:subheading>
+            {{-- FIRST RUN, and the two products said out loud. Path one
+                 is the three doors, which remain the ONLY create
+                 affordance — the old screen drew the wizard twice, once
+                 as doors and once as a card underneath them. Path two is
+                 the Lobby's own door, hoisted here so the alternative is
+                 beside the choice instead of 600px below it. --}}
+            <div class="flex flex-col gap-4">
+                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Two ways to play</flux:subheading>
 
-                <div class="flex flex-col gap-2 pt-1">
-                    @foreach (ContestMode::cases() as $mode)
-                        <x-mode-door wire:key="door-{{ $mode->value }}" :mode="$mode" />
-                    @endforeach
+                <div class="flex flex-col gap-2">
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Start your own group</flux:subheading>
+                    <flux:subheading>{{ Voice::line('picks.first_run.group') }}</flux:subheading>
+
+                    <div class="flex flex-col gap-2 pt-1">
+                        @foreach (ContestMode::cases() as $mode)
+                            <x-mode-door wire:key="door-{{ $mode->value }}" :mode="$mode" />
+                        @endforeach
+                    </div>
                 </div>
+
+                <div class="flex flex-col gap-2">
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Or take a seat this Saturday</flux:subheading>
+                    <flux:subheading>{{ Voice::line('picks.rooms.subheading') }}</flux:subheading>
+
+                    @include('partials.lobby-door')
+                </div>
+            </div>
+        @endif
+
+        {{-- The public half. Same card, its own heading and its own
+             definition — and a room whose Saturday is gone sorts to the
+             bottom rather than sitting above a card still taking picks. --}}
+        @if ($this->roomCards->isNotEmpty())
+            <div class="flex flex-col gap-2">
+                <div class="flex items-baseline justify-between gap-3">
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Public rooms</flux:subheading>
+                    <a href="{{ route('pickem.lobby') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
+                        Find a room
+                    </a>
+                </div>
+                <flux:subheading>{{ Voice::line('picks.rooms.subheading') }}</flux:subheading>
+
+                @foreach ($this->roomCards as $card)
+                    <x-group-card wire:key="lobby-room-{{ $card['group']->id }}" :card="$card" />
+                @endforeach
+            </div>
+        @endif
+
+        {{-- The always-open tables, under the Lobby's own word for them.
+             Normally empty, and never folded into either zone above. --}}
+        @if ($this->tableCards->isNotEmpty())
+            <div class="flex flex-col gap-2">
+                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Always open</flux:subheading>
+
+                @foreach ($this->tableCards as $card)
+                    <x-group-card wire:key="lobby-table-{{ $card['group']->id }}" :card="$card" />
+                @endforeach
             </div>
         @endif
 
@@ -479,22 +585,14 @@ new class extends Component
             </div>
         </div>
 
-        {{-- THE LOBBY, as a door: a plain count and one line of Voice.
-             The store lives at its own address now — this is the sign
-             above it, not a shelf of it. --}}
-        @php $teaser = Voice::line('lobby.teaser.zinger'); @endphp
-        <x-link-row :href="route('pickem.lobby')" title="The Lobby" data-tour="room">
-            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-                @if ($this->roomsOpen > 0)
-                    {{ $this->roomsOpen }} {{ Str::plural('room', $this->roomsOpen) }} open this Saturday
-                @else
-                    {{ Voice::line('lobby.publics.empty') }}
-                @endif
-            </span>
-            @if ($this->roomsOpen > 0 && $teaser !== '')
-                <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">{{ $teaser }}</span>
-            @endif
-        </x-link-row>
+        {{-- THE LOBBY, as a door — ONE of them. On a first run it has
+             already rendered up beside the mode doors, where the two ways
+             to play sit together; drawing it again down here would be the
+             same destination twice on one screen, which is the mistake
+             the first-run block itself was built to retire. --}}
+        @if ($this->groupCards->isNotEmpty())
+            @include('partials.lobby-door')
+        @endif
     @else
         @include('partials.pickem-promise')
     @endif

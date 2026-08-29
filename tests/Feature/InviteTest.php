@@ -35,6 +35,33 @@ it('shows a guest the whole preview: name, game, people — before any wall', fu
         ->assertSee("You'll sign in or create an account first", escape: false);
 });
 
+it('says which KIND of thing the link opens, before the mode or the count', function () {
+    /*
+     * A link lands somebody who has never seen the app on a name, a mode
+     * chip and a member count — none of which say whether they are being
+     * invited to somebody's whole season or to one Saturday with
+     * strangers. Facts only; join.pitch underneath carries the mood.
+     */
+    Feature::define('pickem', true);
+
+    [, $group] = pickemContest(ContestMode::Tiered);
+
+    Livewire::test('join', ['code' => $group->code])
+        ->assertSee('Private group, all season');
+
+    $room = Group::factory()->create([
+        'kind' => Group::KIND_LOBBY,
+        'week_id' => $group->contests->first()->slates->first()?->week_id
+            ?? pickemSeasonWeek()[1]->id,
+        'member_cap' => 20,
+    ]);
+    Contest::factory()->create(['group_id' => $room->id]);
+
+    Livewire::test('join', ['code' => $room->code])
+        ->assertSee('Public room')
+        ->assertDontSee('Private group');
+});
+
 it('credits a real inviter and silently ignores a fake one', function () {
     Feature::define('pickem', true);
 

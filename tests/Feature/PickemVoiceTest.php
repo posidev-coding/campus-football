@@ -84,6 +84,16 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'lobby.first_run.body',
     'lobby.needs.subheading',
     'lobby.rules.subheading',
+    // The two products, told apart: the definitions under My Picks' two
+    // headings, the first run's group path, the store's own framing, and
+    // the two lines that say what a private group is and what a room
+    // whose Saturday is gone is.
+    'picks.groups.subheading',
+    'picks.rooms.subheading',
+    'picks.first_run.group',
+    'lobby.intro.zinger',
+    'group.private.frame',
+    'group.room.past',
     'contest.room.full',
     'history.empty',
     'leaderboard.empty',

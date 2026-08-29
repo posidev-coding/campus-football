@@ -21,9 +21,14 @@
         <div class="flex min-w-0 items-center gap-2">
             <h1 class="min-w-0 truncate text-xl font-bold leading-tight sm:text-2xl">{{ $group->name }}</h1>
 
-            @if ($group->isLobby())
-                <span class="shrink-0 rounded bg-white/15 px-1.5 py-0.5 text-micro font-semibold">Public</span>
-            @endif
+            {{-- The kind, always — one word. It used to render only for
+                 lobbies, which made "Public" a mark some rooms wore and
+                 said nothing at all about the container a private group
+                 is. A badge only one side of a pair wears is a badge
+                 nobody reads as a pair. --}}
+            <span class="shrink-0 rounded bg-white/15 px-1.5 py-0.5 text-micro font-semibold">
+                {{ $group->isLobby() ? 'Public' : 'Private' }}
+            </span>
         </div>
 
         <p class="truncate pt-0.5 text-sm text-zinc-300">
