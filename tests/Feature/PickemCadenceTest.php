@@ -14,6 +14,7 @@ use App\Models\Week;
 use App\Services\Contests\ContestLine;
 use App\Support\Cadence;
 use Carbon\CarbonImmutable;
+use Livewire\Livewire;
 
 /*
  * The league's weekly clock: the Saturday noon-to-midnight ET window, the
@@ -425,4 +426,53 @@ it('stamps practice on every publish door, the house rooms included', function (
 
     expect($auto)->not->toBeNull()
         ->and($auto->exhibition)->toBeTrue();
+});
+
+// ------------------------------------------------ one slate, one Saturday
+
+it('reads the slate for the card being played, and both screens agree on it', function () {
+    /*
+     * ONE SLATE, ONE SATURDAY — the read half. 2026's Week 1 holds 8/29
+     * and 9/5, and `slates` is unique on (contest_id, saturday), so a
+     * group that carried a Week 0 draft legitimately owns TWO rows inside
+     * one ESPN week.
+     *
+     * Both screens filtered on `week_id` alone and took a different one:
+     * the clubhouse's ->first() returned the older row (the stale draft,
+     * lower id) while My Picks' keyBy() kept the last (the published
+     * card). On launch Saturday that group's clubhouse would have said
+     * "no slate yet" while its card on My Picks showed a live one.
+     *
+     * The draft is created FIRST on purpose: the lower id is exactly what
+     * ->first() used to hand back.
+     */
+    [$commissioner, $group, $contest] = pickemContest();
+    [, $week] = splitPickemWeek();
+
+    $stale = Slate::factory()->create([
+        'contest_id' => $contest->id,
+        'week_id' => $week->id,
+        'saturday' => '2026-08-29',
+        'status' => Slate::DRAFT,
+    ]);
+
+    $playing = pickemDraftSlate($contest);
+    expect(app(PublishSlate::class)->handle($commissioner, $playing))->toBe([]);
+
+    // The clock is on 9/5 — the card in front of everybody.
+    expect(Cadence::activeSaturday($week)?->toDateString())->toBe('2026-09-05')
+        ->and($stale->id)->toBeLessThan($playing->id);
+
+    $clubhouse = Livewire::actingAs($commissioner)->test('group', ['group' => $group])->instance();
+
+    expect($clubhouse->slate?->id)->toBe($playing->id)
+        ->and($clubhouse->slate?->status)->toBe(Slate::PUBLISHED);
+
+    $card = Livewire::actingAs($commissioner)->test('pickem-home')
+        ->instance()->cards->firstWhere('contest.id', $contest->id);
+
+    // The same card, from the other screen: a published ten-game slate to
+    // pick, never the empty draft's 'waiting'.
+    expect($card['state'])->toBe('upcoming')
+        ->and($card['total'])->toBe(10);
 });

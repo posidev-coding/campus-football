@@ -133,9 +133,13 @@ new class extends Component
             ->first();
     }
 
-    /** This week's slate with everything the pick surface renders. */
+    /**
+     * The pick'em week this group is currently playing, resolved once for
+     * every computed that needs it — the slate, and the feasibility of
+     * building one.
+     */
     #[Computed]
-    public function slate(): ?Slate
+    public function currentWeek(): ?Week
     {
         if ($this->contest === null) {
             return null;
@@ -143,7 +147,21 @@ new class extends Component
 
         $weekId = app(CfbCalendar::class)->defaultWeekId($this->contest->season_year);
 
-        if ($weekId === null) {
+        return $weekId === null ? null : Week::find($weekId);
+    }
+
+    /**
+     * THE CARD BEING PLAYED, with everything the pick surface renders.
+     *
+     * Scoped onCard(), not to the week: an ESPN week can hold two
+     * Saturdays, and this used to take whichever row the engine returned
+     * first — which for a group carrying a Week 0 draft is the draft,
+     * while My Picks read the published card. See Slate::scopeOnCard().
+     */
+    #[Computed]
+    public function slate(): ?Slate
+    {
+        if ($this->contest === null || $this->currentWeek === null) {
             return null;
         }
 
@@ -151,7 +169,7 @@ new class extends Component
 
         return Slate::query()
             ->where('contest_id', $this->contest->id)
-            ->where('week_id', $weekId)
+            ->onCard($this->currentWeek)
             ->with([
                 "games.game.homeTeam:{$team}",
                 "games.game.awayTeam:{$team}",
@@ -186,8 +204,7 @@ new class extends Component
             return null;
         }
 
-        $weekId = app(CfbCalendar::class)->defaultWeekId($this->contest->season_year);
-        $week = $weekId === null ? null : Week::find($weekId);
+        $week = $this->currentWeek;
         $saturday = $week === null ? null : Cadence::activeSaturday($week);
 
         if ($week === null || $saturday === null) {
