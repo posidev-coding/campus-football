@@ -203,9 +203,13 @@ class LiveState
     }
 
     /**
+     * Public so the admin dashboard's widgets read the same counts the
+     * telemetry payload does, rather than a second implementation that can
+     * drift from it. `build()`'s payload shape is unchanged.
+     *
      * @return array<string, mixed>
      */
-    private function groups(): array
+    public function groups(): array
     {
         $rows = Group::query()
             ->groupBy('kind')
@@ -232,9 +236,12 @@ class LiveState
      * Counts only, at every register. There is no `$names` branch here on
      * purpose — no shape of this report ever names a person.
      *
+     * Public for the same reason `groups()` is: the admin funnel widget reads
+     * these rather than counting users a second time.
+     *
      * @return array<string, int>
      */
-    private function people(): array
+    public function people(): array
     {
         return [
             'users' => User::query()->count(),
