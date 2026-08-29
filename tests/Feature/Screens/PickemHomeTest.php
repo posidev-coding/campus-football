@@ -315,6 +315,34 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee(Voice::line('group.slate.waiting', for: $viewer));
     });
 
+    it('never tells a room to go rattle a commissioner it does not have', function () {
+        /*
+         * A room with no card on a week that has NOT gone by — its slate
+         * never landed, or was taken away (a rehearsal purge is exactly
+         * how this happened in production). `past` is false, so the card
+         * fell through to the group waiting line and told the reader to
+         * go rattle the cage of a commissioner the house never seats.
+         *
+         * The room keeps its membership and its URL, so the card still
+         * travels; only the words change.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        $viewer = pickemAdmin();
+        [, $week] = pickemHomeWeek();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        app(JoinGroup::class)->handle($viewer, $room);
+
+        // The slate goes, the room stays — on the CURRENT week, which is
+        // what tells this apart from a room whose Saturday is done.
+        Slate::query()->whereIn('contest_id', $room->contests()->pluck('id'))->delete();
+
+        Livewire::actingAs($viewer->fresh())->test('pickem-home')
+            ->assertSee(Voice::line('group.room.no_card', for: $viewer))
+            ->assertDontSee(Voice::line('group.slate.waiting', for: $viewer))
+            ->assertDontSee(Voice::line('group.room.past', for: $viewer));
+    });
+
     it('pays the Monday payoff while it is still the conversation', function () {
         [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
         [, $week] = pickemSeasonWeek();

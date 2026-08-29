@@ -1008,6 +1008,20 @@ class Voice
         ],
 
         /*
+         * A ROOM WITH NO CARD THIS WEEK. Same lie as group.room.past and
+         * a different week: a room has no commissioner, so "the
+         * commissioner is sitting on the week" names somebody who does
+         * not exist. The past line cannot cover it either — that one
+         * promises picks are still in there, and a room whose slate never
+         * landed has none.
+         */
+        'group.room.no_card' => [
+            'pg' => 'This room has no card this week. The Lobby has rooms with games in them.',
+            'pg13' => 'No card in this room. The Lobby is full of ones that have games.',
+            'r' => 'This room has nothing on it. Go find one that does.',
+        ],
+
+        /*
          * The creation wizard: name, THE GAME, the invite moment. The
          * one-season rule rides create.mode.hint — fine print that must
          * stay legible in every register, because it is the rule the
