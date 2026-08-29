@@ -922,18 +922,6 @@ new class extends Component
 
     </div>
 
-    {{-- The room's talk, at the foot of the room and under every tab — it
-         belongs to the GROUP, not to whichever tab you happen to be on. Not
-         a fourth tab: x-plate holds three, and a slate's chatter following
-         you from Slate to Members is the point rather than a side effect. --}}
-    <div class="border-t border-zinc-200 pt-6 dark:border-zinc-800">
-        {{-- `lazy`: the thread is the foot of the page, and its queries
-             belonged to the scroll that reaches it, not to first paint.
-             No permalink anchors into a post (verified), so nothing
-             needs the thread hydrated before its skeleton scrolls in. --}}
-        <livewire:conversation :topic="$group" lazy :key="'talk-group-'.$group->id" />
-    </div>
-
     {{-- THE PIVOT: one deliberate act per season, consequences said
          plainly, and the announcement is a statement — never a checkbox.
          Three live modes made this a radiogroup: pick the new mode, then
