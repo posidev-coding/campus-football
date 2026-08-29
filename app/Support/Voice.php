@@ -1234,6 +1234,43 @@ class Voice
             'r' => 'Your group, your people, one mode all season. Build it and start collecting victims.',
         ],
 
+        /*
+         * THE HERO'S LINE — the one card closest to locking, on My Picks.
+         * Kickoff stakes, said once; the button under it stays plain
+         * ("Make your picks"), because an affordance you cannot read is
+         * a joke that ate its instruction. Roast the SLATE and the blank
+         * pick, never the reader.
+         */
+        /*
+         * THE ENTRY IS IN — the one line the pick surface says of its own
+         * accord, on the act that completes the entry and never again.
+         * Roast the SLATE, never the reader: this fires the moment
+         * somebody has done everything the app asked of them, which is
+         * the worst possible moment to be clever at their expense.
+         */
+        'picks.entry.celebration' => [
+            'pg' => 'Your entry is in — every game picked, tiebreaker called. Good luck Saturday.',
+            'pg13' => "Entry's in. Every game picked, tiebreaker called — now go let this slate embarrass itself.",
+            'r' => "Entry's in. Every game picked, tiebreaker called, and the slate can go do its worst.",
+        ],
+
+        'picks.hero.zinger' => [
+            'pg' => 'Kickoff is the deadline. Get your calls in while they still count.',
+            'pg13' => 'Every game you leave blank grades as a zero. Kickoff does not wait for you.',
+            'r' => 'A blank pick is a zero with your name on it. Go be wrong on purpose instead.',
+        ],
+
+        /*
+         * THE RESULTS TAB, before anything has settled. Not an apology —
+         * a Saturday that has not happened yet, said plainly enough that
+         * nobody reads the empty tab as a broken one.
+         */
+        'picks.results.empty' => [
+            'pg' => 'Nothing settled yet — results land after Saturday.',
+            'pg13' => 'Nothing settled yet. Results land after Saturday, and so does the arguing.',
+            'r' => 'Nothing settled yet. Saturday pays out, and then somebody has some explaining to do.',
+        ],
+
         'lobby.needs.subheading' => [
             'pg' => 'Slates are open — get your picks in before kickoff.',
             'pg13' => "Open slates don't pick themselves. Kickoff is the deadline.",
@@ -1266,6 +1303,20 @@ class Voice
          * find. All render-guarded — an unwritten register is a quieter
          * shelf, never a hole.
          */
+        /*
+         * A SHELF TAB WITH NOTHING ON IT. The tab set is fixed — five
+         * tabs that do not appear and vanish with the Saturday's stock —
+         * so a shelf this week could not seat is still a tab, and this
+         * is what stands where its rooms would be. The way back out ("the
+         * All tab") is the INSTRUCTION and survives every register; only
+         * the shrug around it changes.
+         */
+        'lobby.shelf.empty' => [
+            'pg' => 'Nothing on this shelf this Saturday. The All tab has every room that is open.',
+            'pg13' => 'This shelf came up empty this Saturday. Tap All — that is every room with a seat in it.',
+            'r' => 'Bare shelf. This Saturday did not earn one — tap All, where the rooms actually are.',
+        ],
+
         'lobby.shelf.house' => [
             'pg' => 'The three standard games, every Saturday.',
             'pg13' => 'The house games. No gimmicks, no excuses afterward.',

@@ -44,6 +44,18 @@ trait MakesPicks
     public string $noticeTone = 'neutral';
 
     /**
+     * The slate whose entry was COMPLETED by the mutation this response is
+     * answering, or null.
+     *
+     * PROTECTED on purpose: Livewire serializes public properties only, so
+     * this exists for exactly the one response that completed the entry and
+     * is gone by the next. That is the whole persistence model — there is
+     * no column, no session flag and nothing to clear, and a reload agrees
+     * because completeness itself is derived (see entryComplete()).
+     */
+    protected ?int $entryJustCompleted = null;
+
+    /**
      * The published slates whose games this screen lets the viewer pick.
      *
      * @return Collection<int, Slate>
@@ -96,6 +108,9 @@ trait MakesPicks
 
     public function pick(int $slateGameId, int $teamId, MakePick $action): void
     {
+        $slate = $this->slateOfGame($slateGameId);
+        $wasComplete = $slate !== null && $this->entryComplete($slate);
+
         try {
             $slateGame = SlateGame::query()->findOrFail($slateGameId);
             $action->handle(auth()->user(), $slateGame, $teamId);
@@ -118,6 +133,7 @@ trait MakesPicks
         }
 
         $this->refreshPicks();
+        $this->noteCompletion($slate, $wasComplete);
     }
 
     public function lockPick(int $slateGameId, bool $locked, LockPick $action): void
@@ -146,6 +162,14 @@ trait MakesPicks
     {
         $total = (int) ($this->totals[$slateId] ?? 0);
 
+        $pickable = $this->slateById($slateId);
+        $wasComplete = $pickable !== null && $this->entryComplete($pickable);
+
+        // Held rather than said: when the answer COMPLETES the entry the
+        // celebration below speaks for it, and two banners over one tap is
+        // the app talking to itself.
+        $saved = null;
+
         try {
             $slate = Slate::query()->findOrFail($slateId);
 
@@ -167,7 +191,7 @@ trait MakesPicks
             $this->resetErrorBag("totals.{$slateId}");
 
             $entry = $action->handle(auth()->user(), $slate, $total);
-            $this->say('picks.tiebreaker.saved', ['total' => $entry->tiebreaker_total], tone: 'success');
+            $saved = $entry->tiebreaker_total;
         } catch (PickLocked) {
             // The same kickoff race as pick() — the input rendered enabled.
             $this->say('picks.locked.notice', tone: 'error');
@@ -183,11 +207,93 @@ trait MakesPicks
         }
 
         $this->refreshPicks();
+        $this->noteCompletion($pickable, $wasComplete);
+
+        if ($saved !== null && $this->entryJustCompleted === null) {
+            $this->say('picks.tiebreaker.saved', ['total' => $saved], tone: 'success');
+        }
     }
 
     public function claim(): void
     {
         $this->say('picks.claim.done', ['handle' => $this->claimHandle()], tone: 'success');
+    }
+
+    /**
+     * Is this reader's entry IN? Every game on the slate picked, and the
+     * week's question answered when there is one.
+     *
+     * Derived, and stated exactly once — there is no `submitted_at` and no
+     * submit button, because a stored flag can disagree with the picks it
+     * claims to describe the moment one of them changes. Reads only what
+     * the surface has already loaded. The Woodshed's Lock is a WAGER, not
+     * a step: an entry with no Lock staked is a complete entry.
+     */
+    protected function entryComplete(Slate $slate): bool
+    {
+        $gameIds = $slate->games->pluck('id');
+
+        if ($gameIds->isEmpty() || $gameIds->diff($this->myPicks->keys())->isNotEmpty()) {
+            return false;
+        }
+
+        return $slate->tiebreaker_slate_game_id === null
+            || $this->myEntries->get($slate->id)?->tiebreaker_total !== null;
+    }
+
+    /** Blade's door to it — a view cannot reach a protected method. */
+    public function entryIn(int $slateId): bool
+    {
+        $slate = $this->slateById($slateId);
+
+        return $slate !== null && $this->entryComplete($slate);
+    }
+
+    /**
+     * Did THIS response complete the entry? True for exactly one render —
+     * the property behind it is not serialized — so the celebration fires
+     * on the completing act and never again. Changing a pick afterwards
+     * cannot re-fire it, and nothing un-celebrates: the checklist stays
+     * done because it is derived from the picks themselves.
+     */
+    public function entryCelebrating(int $slateId): bool
+    {
+        return $this->entryJustCompleted === $slateId;
+    }
+
+    /**
+     * The false→true edge, and only that. A refused mutation changes
+     * nothing, so it can never fire; an already-complete entry stays
+     * quiet however many picks are changed after it.
+     */
+    private function noteCompletion(?Slate $slate, bool $wasComplete): void
+    {
+        if ($slate === null || $wasComplete) {
+            return;
+        }
+
+        if ($this->entryComplete($slate)) {
+            $this->entryJustCompleted = $slate->id;
+        }
+    }
+
+    /**
+     * The pickable slate holding this game — resolved from what the
+     * surface already loaded, never re-queried, and never lazily: a slate
+     * fetched fresh by id carries no `games` relation and lazy loading is
+     * off, so reading one would be a 500 on a tap.
+     */
+    private function slateOfGame(int $slateGameId): ?Slate
+    {
+        return $this->pickableSlates()->first(
+            fn (Slate $slate) => $slate->games->contains(fn (SlateGame $game) => $game->id === $slateGameId)
+        );
+    }
+
+    /** Same, by slate id. */
+    private function slateById(int $slateId): ?Slate
+    {
+        return $this->pickableSlates()->first(fn (Slate $slate) => $slate->id === $slateId);
     }
 
     /** One door for the notice, so the tone can never drift from the line. */

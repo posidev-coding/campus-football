@@ -2,6 +2,7 @@
 
 use App\Actions\JoinGroup;
 use App\Enums\ContestMode;
+use App\Enums\LobbyShelf;
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
 use App\Models\Group;
@@ -14,6 +15,7 @@ use App\Support\LobbyCatalog;
 use App\Support\Voice;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
@@ -38,6 +40,32 @@ use Livewire\Component;
  */
 new class extends Component
 {
+    /**
+     * WHICH SHELF is on show: 'all' plus the four LobbyShelf values. A
+     * FILTER, not a split — the default hides nothing, so a reader who
+     * never touches the tabs sees the store exactly as it shipped, and a
+     * tab narrows it to one kind of room.
+     */
+    #[Url(except: 'all')]
+    public string $view = 'all';
+
+    public function mount(): void
+    {
+        $this->view = $this->normalizedView($this->view);
+    }
+
+    /** #[Url] hydrates without firing this hook, hence mount() normalizes too. */
+    public function updatedView(string $value): void
+    {
+        $this->view = $this->normalizedView($value);
+    }
+
+    /** An unknown shelf is the whole store, never an error. */
+    private function normalizedView(string $view): string
+    {
+        return LobbyShelf::tryFrom($view)?->value ?? 'all';
+    }
+
     #[Computed]
     public function showLobby(): bool
     {
@@ -79,6 +107,78 @@ new class extends Component
     public function shelves(): array
     {
         return LobbyCatalog::shelves($this->openRooms);
+    }
+
+    /**
+     * The shelves THIS TAB shows — a pure filter of shelves(), so
+     * openRooms stays the one inventory read and a tab is a lens on it
+     * rather than a second query. A shelf tab carries that shelf's open
+     * rows and its own closed/dashed content, because "what else stocks
+     * here" is a fact about the shelf you are standing at.
+     *
+     * @return list<array<string, mixed>>
+     */
+    #[Computed]
+    public function visibleShelves(): array
+    {
+        if ($this->activeView === 'all') {
+            return $this->shelves;
+        }
+
+        return array_values(array_filter(
+            $this->shelves,
+            fn (array $shelf) => $shelf['shelf']->value === $this->activeView,
+        ));
+    }
+
+    /**
+     * The tab actually in force. With no Saturday shelves there is no tab
+     * ROW either, so a filter carried in on a stale URL would leave a
+     * reader looking at a store that renders nothing, says nothing, and
+     * offers no control to undo it — inert is the honest reading.
+     */
+    #[Computed]
+    public function activeView(): string
+    {
+        return $this->shelves === [] ? 'all' : $this->view;
+    }
+
+    /**
+     * Does the tab in force have anything OPEN on it? A shelf whose whole
+     * stock is dashed rows is, to a reader, an empty shelf: the dashed
+     * line says what could stock here on a better Saturday, never what
+     * they can play today.
+     */
+    #[Computed]
+    public function tabHasRooms(): bool
+    {
+        foreach ($this->visibleShelves as $shelf) {
+            if ($shelf['rooms'] !== []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The subtab row: All, then the four shelves in case order. The set
+     * is FIXED rather than inventory-shaped — a tab that appears and
+     * vanishes with the Saturday's stock is a control nobody can learn,
+     * and an empty tab has an honest line of its own.
+     *
+     * @return array<string, string>
+     */
+    #[Computed]
+    public function viewTabs(): array
+    {
+        $tabs = ['all' => 'All'];
+
+        foreach (LobbyShelf::cases() as $shelf) {
+            $tabs[$shelf->value] = $shelf->tabLabel();
+        }
+
+        return $tabs;
     }
 
     /**
@@ -147,7 +247,7 @@ new class extends Component
             // A race to the last seat: the lobby re-renders without the
             // filled room, and the words say why.
             $this->addError($errorBag, Voice::line('contest.room.full'));
-            unset($this->openRooms, $this->publics, $this->shelves, $this->evergreens, $this->weekContext);
+            unset($this->openRooms, $this->publics, $this->shelves, $this->visibleShelves, $this->tabHasRooms, $this->evergreens, $this->weekContext);
 
             return;
         }
@@ -179,16 +279,36 @@ new class extends Component
             {{-- z-30, the ladder's screen-chrome rung: at z-20 the day-
                  heading tier underneath could win the tie and slide OVER
                  the Saturday band. --}}
-            <div class="sticky z-30 -mx-4 -mt-5 flex items-baseline justify-between gap-3 bg-white px-4 pt-3 pb-2 top-[var(--chrome-offset)] dark:bg-zinc-950">
-                <p class="min-w-0 truncate text-sm font-semibold">
-                    {{ $this->weekContext['label'] }}
-                    @if ($this->weekContext['date'])
-                        <span class="font-normal text-zinc-500 dark:text-zinc-400">· {{ $this->weekContext['date'] }}</span>
-                    @endif
-                </p>
-                <p class="tabular shrink-0 text-micro text-zinc-500 dark:text-zinc-400">
-                    {{ $this->weekContext['count'] }} {{ Str::plural('room', $this->weekContext['count']) }} open
-                </p>
+            <div class="sticky z-30 -mx-4 -mt-5 flex flex-col gap-2 bg-white px-4 pt-3 pb-2 top-[var(--chrome-offset)] dark:bg-zinc-950">
+                <div class="flex items-baseline justify-between gap-3">
+                    <p class="min-w-0 truncate text-sm font-semibold">
+                        {{ $this->weekContext['label'] }}
+                        @if ($this->weekContext['date'])
+                            <span class="font-normal text-zinc-500 dark:text-zinc-400">· {{ $this->weekContext['date'] }}</span>
+                        @endif
+                    </p>
+                    {{-- The count stays GLOBAL — it answers "is there anything
+                         on this Saturday", which a filtered tab must not
+                         re-answer downward. --}}
+                    <p class="tabular shrink-0 text-micro text-zinc-500 dark:text-zinc-400">
+                        {{ $this->weekContext['count'] }} {{ Str::plural('room', $this->weekContext['count']) }} open
+                    </p>
+                </div>
+
+                {{-- WHICH KIND OF ROOM, inside the band on purpose: the band
+                     is the one sticky block on this screen, so the filter
+                     travels with the Saturday it filters and stays reachable
+                     mid-scroll. A second sticky block would be something for
+                     this one to slide under. --}}
+                @if ($this->shelves !== [])
+                    <x-gutter-tabs
+                        :items="$this->viewTabs"
+                        :selected="$this->activeView"
+                        model="view"
+                        label="Room type"
+                        key-prefix="lobby-view"
+                    />
+                @endif
             </div>
         @endif
 
@@ -222,7 +342,7 @@ new class extends Component
 
         {{-- THE SHELVES. Plain headings — people navigate by them — with
              the register line underneath, render-guarded. --}}
-        @foreach ($this->shelves as $shelf)
+        @foreach ($this->visibleShelves as $shelf)
             @php $shelfLine = Voice::line($shelf['shelf']->voiceKey()); @endphp
 
             <div wire:key="shelf-{{ $shelf['shelf']->value }}" class="flex flex-col gap-2">
@@ -279,6 +399,15 @@ new class extends Component
             </div>
         @endforeach
 
+        {{-- A tab with nothing OPEN on it. The tab set is fixed, so a
+             shelf this Saturday could not stock is still a tab, and its
+             dashed rows above say what could stock there — which is not
+             something anybody can play today. The line carries the way
+             back out, in every register. --}}
+        @if ($this->activeView !== 'all' && ! $this->tabHasRooms)
+            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('lobby.shelf.empty') }}</p>
+        @endif
+
         {{-- An honestly empty store, when there is nothing at all. --}}
         @if ($this->shelves === [] && $this->evergreens->isEmpty())
             <flux:callout icon="user-group">
@@ -287,8 +416,11 @@ new class extends Component
             </flux:callout>
         @endif
 
-        {{-- The always-open tables, after the Saturday. --}}
-        @if ($this->evergreens->isNotEmpty())
+        {{-- The always-open tables, after the Saturday. All-tab only: an
+             evergreen has no Saturday, so it belongs to no shelf, and
+             folding it into one would be a label the data does not
+             support. --}}
+        @if ($this->activeView === 'all' && $this->evergreens->isNotEmpty())
             <div class="flex flex-col gap-2">
                 <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Always open</flux:subheading>
 

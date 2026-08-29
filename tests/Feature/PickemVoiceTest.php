@@ -88,6 +88,13 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'lobby.publics.empty',
     'lobby.first_run.body',
     'lobby.needs.subheading',
+    // My Picks' hero and its Results tab: the line over the one card
+    // closest to locking, and the tab before anything has settled.
+    'picks.hero.zinger',
+    // The pick surface's one unprompted line, on the act that finishes
+    // the entry.
+    'picks.entry.celebration',
+    'picks.results.empty',
     'lobby.rules.subheading',
     // The two products, told apart: the definitions under My Picks' two
     // headings, the first run's group path, the store's own framing, and
@@ -116,6 +123,9 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'mode.change.pick_one',
     'picks.publish.featured_metric',
     'lobby.shelf.also',
+    // The lobby's room-type subtabs: a filtered tab with nothing on it,
+    // which has to say where the rooms went in every register.
+    'lobby.shelf.empty',
     'home.pickem.live',
     'onboarding.guest.body_live',
     'picks.tiebreaker.invalid',

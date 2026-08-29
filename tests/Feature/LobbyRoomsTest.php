@@ -159,6 +159,23 @@ it('never dashes a shape the viewer is sitting in', function () {
         ->and(collect($quick['closed'])->pluck('flavor')->all())->toBe([LobbyFlavor::BackPorch]);
 });
 
+it('keeps the subtab labels short enough to share one un-scrolling row', function (LobbyShelf $shelf, string $label) {
+    /*
+     * A PIN, not a preference. Five tabs (All plus these four) share a
+     * 358px row at 390px with nothing to scroll, and the fit was measured
+     * at ~5px of slack — "House rooms" or "Conference rooms" here and the
+     * row scrolls sideways, which reads as the chrome coming apart. The
+     * long names still head the shelves themselves.
+     */
+    expect($shelf->tabLabel())->toBe($label)
+        ->and(mb_strlen($shelf->tabLabel()))->toBeLessThanOrEqual(mb_strlen($shelf->heading()));
+})->with([
+    [LobbyShelf::House, 'House'],
+    [LobbyShelf::QuickHits, 'Quick'],
+    [LobbyShelf::Spotlight, 'Spotlight'],
+    [LobbyShelf::Conference, 'Conference'],
+]);
+
 it('sells each flavor from its own shelf', function (LobbyFlavor $flavor, LobbyShelf $shelf) {
     expect($flavor->shelf())->toBe($shelf);
 })->with([

@@ -41,6 +41,16 @@
 
     $tierGroups = $slate->games->groupBy(fn ($slateGame) => $slateGame->tier ?? 0)->sortKeys();
     $entry = $this->myEntries->get($slate->id);
+
+    /*
+     * THE ENTRY CHECKLIST, in three states. Derived from the picks
+     * themselves rather than a stored flag, so a reload agrees and
+     * changing a pick after the fact cannot un-say it. `picksAllIn`
+     * without `entryIn` can only mean the week's question is unanswered,
+     * which is why the middle state needs no extra read.
+     */
+    $picksAllIn = $gameIds->isNotEmpty() && $made >= $gameIds->count();
+    $entryIn = $interactive && $picksAllIn && $this->entryIn($slate->id);
 @endphp
 
 <div
@@ -80,7 +90,24 @@
                 {{ App\Support\Voice::line('picks.claim.reason') }}
             </span>
         @elseif ($interactive && in_array($surfaceStatus, ['upcoming', 'live'], true))
-            <x-slate-progress :made="$made" :total="$gameIds->count()" class="min-w-0" />
+            {{-- Done, one step short, or still counting — the middle slot
+                 says which, in the band that stays on screen while the
+                 cards scroll. --}}
+            @if ($entryIn)
+                <span class="flex min-w-0 items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                    <flux:icon.check-circle-fill variant="micro" class="size-4 shrink-0" />
+                    Entry in
+                </span>
+            @elseif ($picksAllIn)
+                {{-- Every game picked and the week's question still open.
+                     Amber, because it is the one thing left and nothing
+                     else on the screen is asking for it. --}}
+                <span class="min-w-0 truncate text-sm font-medium text-amber-600 dark:text-amber-500">
+                    Tiebreaker left
+                </span>
+            @else
+                <x-slate-progress :made="$made" :total="$gameIds->count()" class="min-w-0" />
+            @endif
         @endif
 
         {{--
@@ -134,6 +161,40 @@
             </div>
         @endif
     </div>
+
+    {{-- YOUR ENTRY IS IN, said once and only by the act that finished it.
+         The flag behind entryCelebrating() is a protected property, so it
+         survives exactly this response — no toast, no confetti, no stored
+         state to clear, and nothing to fire again when a pick changes
+         later. Guarded on $interactive, which is what keeps it out of the
+         builder's preview and an outsider's read-only view. --}}
+    @if ($interactive && $this->entryCelebrating($slate->id))
+        <div
+            wire:key="entry-in-{{ $slate->id }}"
+            x-data="{ shown: true }"
+            x-show="shown"
+            role="status"
+            aria-live="polite"
+            data-entry-celebration
+            class="flex items-center gap-2.5 rounded-xl bg-emerald-50 py-2 pr-1 pl-3 ring-1 ring-emerald-200 motion-safe:animate-entry-in dark:bg-emerald-950/30 dark:ring-emerald-900"
+        >
+            <flux:icon.check-badge class="size-4 shrink-0 text-emerald-600 dark:text-emerald-500" />
+
+            <p class="min-w-0 flex-1 text-sm text-zinc-700 dark:text-zinc-300">
+                {{ App\Support\Voice::line('picks.entry.celebration') }}
+            </p>
+
+            <flux:button
+                x-on:click="shown = false"
+                size="xs"
+                square
+                variant="ghost"
+                icon="x-mark"
+                class="shrink-0"
+                aria-label="Dismiss"
+            />
+        </div>
+    @endif
 
     {{-- The answer to the reader's last tap, in the surface where they
          tapped — never parked at the top of the page. Tone rides with the
