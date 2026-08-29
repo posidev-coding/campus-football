@@ -21,6 +21,9 @@ class PickemSetting extends Model
             'slate_deadline_dow' => 'integer',
             'official_final_dow' => 'integer',
             'lobby_member_cap' => 'integer',
+            // The first Saturday whose slates count. Null is NO practice
+            // window, not a missing value — see the migration.
+            'counts_from' => 'immutable_date',
         ];
     }
 

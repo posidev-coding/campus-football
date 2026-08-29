@@ -123,10 +123,13 @@ new class extends Component
             ->get()
             ->keyBy('slate_id');
 
+        // Season wins, and a practice week never earned one — the same
+        // ledger rule the clubhouse's season table reads.
         $wins = SlateEntry::query()
             ->join('slates', 'slates.id', '=', 'slate_entries.slate_id')
             ->whereIn('slates.contest_id', $contests->pluck('id'))
             ->where('slates.status', Slate::SETTLED)
+            ->where('slates.exhibition', false)
             ->where('slate_entries.user_id', auth()->id())
             ->groupBy('slates.contest_id')
             ->selectRaw('slates.contest_id, COALESCE(SUM(slate_entries.won), 0) AS wins')

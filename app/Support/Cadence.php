@@ -26,6 +26,10 @@ use Carbon\CarbonInterface;
  *                    window: ESPN occasionally corrects a passing-yards
  *                    total hours after a game, and a tiebreaker must not
  *                    pay out before those land
+ *   counts from      the first Saturday whose slates COUNT; everything
+ *                    before it publishes as practice. Null means no
+ *                    practice window at all, which is every season after
+ *                    a launch one
  */
 class Cadence
 {
@@ -372,6 +376,54 @@ class Cadence
             self::settings()->official_final_dow ?? self::OFFICIAL_DOW,
             self::settings()->official_final_time ?? self::OFFICIAL_TIME,
         );
+    }
+
+    /**
+     * THE PRACTICE WINDOW's boundary: the first Saturday whose slates
+     * count, or null when there is no window and everything counts.
+     *
+     * A date rather than a week number — ESPN's Week 1 can hold two
+     * Saturdays, and a week number means nothing across seasons.
+     */
+    public static function countsFrom(): ?CarbonImmutable
+    {
+        return self::settings()->counts_from;
+    }
+
+    /**
+     * Whether a slate for this Saturday publishes as PRACTICE: real
+     * picks, real grading, real XP, no season credit.
+     *
+     * Compared as plain Y-m-d strings on purpose. `slates.saturday` is a
+     * date column and arrives at UTC midnight; shifting either side
+     * through Eastern lands on 8pm the day before and moves the boundary
+     * by a day — the same trap SuggestSlate's candidate filter documents.
+     *
+     * A Saturday we cannot read is never quietly discounted: no date and
+     * no window both answer "this counts", because the practice flag has
+     * to be a decision somebody made, not a fallback.
+     */
+    public static function isPractice(Week|CarbonInterface|null $saturday): bool
+    {
+        $from = self::countsFrom();
+
+        if ($from === null || $saturday === null) {
+            return false;
+        }
+
+        $day = $saturday instanceof Week ? self::saturdayOf($saturday) : $saturday;
+
+        return $day !== null && $day->format('Y-m-d') < $from->format('Y-m-d');
+    }
+
+    /**
+     * The practice window as a plain label for anything REPORTING the
+     * clock rather than resolving a moment on it — the preflight and the
+     * settings page. Null when no window is configured.
+     */
+    public static function countsFromLabel(): ?string
+    {
+        return self::countsFrom()?->format('M j, Y');
     }
 
     private static function label(int $dow, string $time): string

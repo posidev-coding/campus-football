@@ -7,6 +7,7 @@ use App\Models\PickemSetting;
 use App\Support\Cadence;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\TimePicker;
@@ -30,6 +31,12 @@ use UnitEnum;
  * week's results stop being preliminary — the stat-settling window that
  * lets ESPN's occasional day-after corrections land before a tiebreaker
  * pays the wrong person.
+ *
+ * And one DATE: where the practice window ends. Slates for Saturdays
+ * before it publish as exhibitions — graded, paid in XP, never counted —
+ * which is what a launch's rehearsal weeks are for. It is the only field
+ * on this page whose blank means "off" rather than "the shipped default",
+ * because no practice window IS the normal state of a season.
  *
  * @property-read Schema $form
  */
@@ -110,6 +117,16 @@ class PickemSettings extends Page
                                 ->minValue(2)
                                 ->maxValue(500)
                                 ->placeholder((string) Group::DEFAULT_LOBBY_CAP),
+                        ])
+                        ->columns(2),
+
+                    Section::make('Practice window')
+                        ->description('The first Saturday whose slates COUNT. Every slate before it publishes as practice — real picks, real grading, real XP, no season credit — which is how a launch gets rehearsal weeks. Blank means no practice window: every slate counts.')
+                        ->schema([
+                            DatePicker::make('counts_from')
+                                ->label('Counting starts')
+                                ->helperText('Pick the first Saturday that counts. Set it before that Saturday: the flag is stamped when a slate publishes, so moving this later never rewrites a week people already played.')
+                                ->weekStartsOnSunday(),
                         ])
                         ->columns(2),
 

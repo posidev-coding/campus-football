@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\AutoPublishStandardSlate;
+use App\Actions\PublishSlate;
 use App\Actions\SpawnPublicContest;
 use App\Enums\ContestMode;
 use App\Enums\TiebreakerMetric;
@@ -341,4 +342,87 @@ it('replaces a stale partial draft but never a published slate', function () {
 
     // A published slate is beyond the fallback's reach.
     expect(app(AutoPublishStandardSlate::class)->handle($contest, $week))->toBeNull();
+});
+
+// ------------------------------------------------------ the practice window
+
+it('publishes a Saturday inside the practice window as an exhibition', function () {
+    /*
+     * The launch's rehearsal weeks. `slates.exhibition` has meant "real
+     * picks, real grading, real XP, no season credit" since the Saturday
+     * anchor landed, and nothing ever wrote it — so a launch that meant
+     * to rehearse counted every week anyway.
+     */
+    PickemSetting::current()->update(['counts_from' => '2026-09-12']);
+
+    [$commissioner, , $contest] = pickemContest();
+    $slate = pickemDraftSlate($contest);
+
+    expect(app(PublishSlate::class)->handle($commissioner, $slate))->toBe([]);
+
+    // The fixture Saturday is 9/5 — a week inside the window.
+    expect($slate->fresh()->exhibition)->toBeTrue()
+        ->and($slate->fresh()->counts())->toBeFalse();
+});
+
+it('counts the Saturday counting starts ON, and every Saturday after it', function () {
+    // The boundary is INCLUSIVE: "counting starts 9/5" means 9/5 counts.
+    PickemSetting::current()->update(['counts_from' => '2026-09-05']);
+
+    [$commissioner, , $contest] = pickemContest();
+    $slate = pickemDraftSlate($contest);
+
+    app(PublishSlate::class)->handle($commissioner, $slate);
+
+    expect($slate->fresh()->exhibition)->toBeFalse()
+        ->and($slate->fresh()->counts())->toBeTrue();
+});
+
+it('counts everything when no practice window is configured', function () {
+    /*
+     * Null is NO WINDOW, never a missing value quietly discounting a
+     * week: an unconfigured league counts every slate, which is the
+     * honest state of every season after a launch one.
+     */
+    expect(Cadence::countsFrom())->toBeNull()
+        ->and(Cadence::isPractice(CarbonImmutable::parse('2026-09-05')))->toBeFalse();
+
+    [$commissioner, , $contest] = pickemContest();
+    $slate = pickemDraftSlate($contest);
+
+    app(PublishSlate::class)->handle($commissioner, $slate);
+
+    expect($slate->fresh()->exhibition)->toBeFalse();
+});
+
+it('stamps practice on every publish door, the house rooms included', function () {
+    /*
+     * The stamp lives in PublishSlate::force(), which is the ONE door
+     * every publish comes through — the commissioner's button, the
+     * deadline fallback, and a room's own spawn. A room publishing real
+     * results through the rehearsal weekend is exactly the failure this
+     * pins.
+     */
+    PickemSetting::current()->update(['counts_from' => '2026-09-12']);
+
+    [$season, $week] = pickemSeasonWeek();
+
+    foreach (range(1, 12) as $i) {
+        $game = pickemGame($season, $week);
+        pickemOdd($game);
+        $game->predictor()->create(['matchup_quality' => 90 - $i]);
+    }
+
+    $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+    $roomSlate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $room->id))->sole();
+
+    expect($roomSlate->status)->toBe(Slate::PUBLISHED)
+        ->and($roomSlate->exhibition)->toBeTrue();
+
+    // And the commissioner who overslept gets the same answer.
+    [, , $contest] = pickemContest();
+    $auto = app(AutoPublishStandardSlate::class)->handle($contest, $week);
+
+    expect($auto)->not->toBeNull()
+        ->and($auto->exhibition)->toBeTrue();
 });
