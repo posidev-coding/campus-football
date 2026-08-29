@@ -1266,6 +1266,20 @@ class Voice
          * find. All render-guarded — an unwritten register is a quieter
          * shelf, never a hole.
          */
+        /*
+         * A SHELF TAB WITH NOTHING ON IT. The tab set is fixed — five
+         * tabs that do not appear and vanish with the Saturday's stock —
+         * so a shelf this week could not seat is still a tab, and this
+         * is what stands where its rooms would be. The way back out ("the
+         * All tab") is the INSTRUCTION and survives every register; only
+         * the shrug around it changes.
+         */
+        'lobby.shelf.empty' => [
+            'pg' => 'Nothing on this shelf this Saturday. The All tab has every room that is open.',
+            'pg13' => 'This shelf came up empty this Saturday. Tap All — that is every room with a seat in it.',
+            'r' => 'Bare shelf. This Saturday did not earn one — tap All, where the rooms actually are.',
+        ],
+
         'lobby.shelf.house' => [
             'pg' => 'The three standard games, every Saturday.',
             'pg13' => 'The house games. No gimmicks, no excuses afterward.',

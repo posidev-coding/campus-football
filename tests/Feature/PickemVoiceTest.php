@@ -116,6 +116,9 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'mode.change.pick_one',
     'picks.publish.featured_metric',
     'lobby.shelf.also',
+    // The lobby's room-type subtabs: a filtered tab with nothing on it,
+    // which has to say where the rooms went in every register.
+    'lobby.shelf.empty',
     'home.pickem.live',
     'onboarding.guest.body_live',
     'picks.tiebreaker.invalid',

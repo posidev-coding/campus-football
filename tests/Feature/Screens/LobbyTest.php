@@ -333,6 +333,109 @@ describe('the store (inside the flag)', function () {
             ->assertDontSeeHtml('by=');
     });
 
+    /*
+     * THE ROOM-TYPE SUBTABS. A FILTER with an "All" default, which is the
+     * whole decision: nothing is hidden until a reader asks for it, so the
+     * stacked-shelf tests above keep passing untouched and the tabs are a
+     * lens rather than a split.
+     */
+    it('defaults to All, and shows one shelf when a tab is picked', function () {
+        [, $week] = lobbyScreenWeek();
+
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::TwoMinuteDrill);
+
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            ->assertSet('view', 'all')
+            // The tab row itself, in the shelves' own case order.
+            ->assertSeeInOrder(['All', 'House', 'Quick', 'Spotlight', 'Conference'])
+            ->assertSee('House rooms')
+            ->assertSee('Quick hits')
+            ->set('view', 'quick_hits')
+            ->assertSee('Quick hits')
+            ->assertSee('Two-Minute Drill')
+            ->assertDontSee('House rooms')
+            ->assertDontSee('Hail Mary');
+    });
+
+    it('normalizes a nonsense tab back to All, from the URL and from the wire', function () {
+        /*
+         * BOTH halves: #[Url] hydrates without firing the update hook, so
+         * a bookmarked ?view=nonsense reaches the filter through mount()
+         * alone. Neither half may error — an unknown shelf is the whole
+         * store.
+         */
+        [, $week] = lobbyScreenWeek();
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        Livewire::actingAs(pickemAdmin())
+            ->withQueryParams(['view' => 'nonsense'])
+            ->test('lobby')
+            ->assertSet('view', 'all')
+            ->assertSee('House rooms');
+
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            ->set('view', 'garbage')
+            ->assertSet('view', 'all')
+            ->assertSee('House rooms');
+    });
+
+    it('says where the rooms went on a shelf this Saturday could not stock', function () {
+        // The tab set is fixed, so a shelf with no stock is still a tab.
+        // The line has to carry the way back out, in every register.
+        [, $week] = lobbyScreenWeek();
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        $viewer = pickemAdmin();
+
+        Livewire::actingAs($viewer)->test('lobby')
+            ->set('view', 'conference')
+            ->assertSee(Voice::line('lobby.shelf.empty', for: $viewer))
+            ->assertDontSee('House rooms');
+    });
+
+    it('keeps the evergreens on All — an always-open table sits on no shelf', function () {
+        [, $week] = lobbyScreenWeek();
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        Group::factory()->lobby()->create(['name' => 'The Big Lobby']);
+
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            ->assertSee('Always open')
+            ->assertSee('The Big Lobby')
+            ->set('view', 'house')
+            ->assertDontSee('Always open')
+            ->assertDontSee('The Big Lobby')
+            // The unconditioned chrome stays put on every tab.
+            ->assertSee('Invite a friend')
+            ->assertSee('Want a season-long group?')
+            ->assertSee("How it's played", escape: false);
+    });
+
+    it('lets a stale filter go inert when the Saturday has no shelves at all', function () {
+        /*
+         * A bookmarked ?view=house on a Saturday with nothing transient
+         * open: there is no tab row to undo it with, so a filter left in
+         * force would render a store with nothing in it and no way back.
+         * The evergreen table is not a Saturday product and belongs to no
+         * shelf, so it is what is honestly there.
+         */
+        Group::factory()->lobby()->create(['name' => 'The Big Lobby']);
+
+        Livewire::actingAs(pickemAdmin())
+            ->withQueryParams(['view' => 'house'])
+            ->test('lobby')
+            ->assertSee('Always open')
+            ->assertSee('The Big Lobby')
+            ->assertDontSeeHtml('wire:key="lobby-view-all"');
+    });
+
+    it('offers no tabs over an empty store', function () {
+        // Nothing stocked is not a filtering problem, and five tabs over
+        // one callout is chrome selling nothing.
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            ->assertSee('No open rooms right now')
+            ->assertDontSeeHtml('wire:key="lobby-view-all"');
+    });
+
     it('is nobody\'s dashboard: the personal zones are gone', function () {
         [$commissioner, , $contest] = pickemContest(ContestMode::Tiered);
         app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
