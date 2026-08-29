@@ -1,7 +1,9 @@
 <?php
 
+use App\Actions\EnterTiebreaker;
 use App\Actions\GrantWalletEntry;
 use App\Actions\JoinGroup;
+use App\Actions\MakePick;
 use App\Actions\PublishSlate;
 use App\Actions\SpawnPublicContest;
 use App\Enums\ContentRating;
@@ -526,6 +528,40 @@ describe('my week (inside the flag)', function () {
             ->set('view', 'results')
             ->assertSee(Voice::line('picks.results.empty', for: $reader))
             ->assertSee('Season history');
+    });
+
+    it('says ENTRY IN on the card, and keeps the count while one is missing', function () {
+        /*
+         * A finished entry is not "15 of 15" — it is done, and the card
+         * says the word rather than making a reader do the comparison.
+         * Derived from the same rule the pick surface states, so the two
+         * screens cannot disagree about one entry.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        $slate = pickemDraftSlate($contest);
+        app(PublishSlate::class)->handle($commissioner, $slate);
+
+        $games = $slate->games()->with('game')->orderBy('position')->get();
+
+        foreach ($games->take($games->count() - 1) as $slateGame) {
+            app(MakePick::class)->handle($commissioner, $slateGame, $slateGame->game->home_team_id);
+        }
+
+        app(EnterTiebreaker::class)->handle($commissioner, $slate, 45);
+
+        // One game short: the count stands, and so does the hero's ask.
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('9 of 10')
+            ->assertDontSee('Entry in');
+
+        app(MakePick::class)->handle($commissioner, $games->last(), $games->last()->game->home_team_id);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('Entry in')
+            // ...and the zone that asks for picks has nothing left to ask.
+            ->assertDontSee('Needs your picks');
     });
 
     it('pays the Monday payoff while it is still the conversation', function () {

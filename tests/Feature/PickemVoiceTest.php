@@ -91,6 +91,9 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     // My Picks' hero and its Results tab: the line over the one card
     // closest to locking, and the tab before anything has settled.
     'picks.hero.zinger',
+    // The pick surface's one unprompted line, on the act that finishes
+    // the entry.
+    'picks.entry.celebration',
     'picks.results.empty',
     'lobby.rules.subheading',
     // The two products, told apart: the definitions under My Picks' two
