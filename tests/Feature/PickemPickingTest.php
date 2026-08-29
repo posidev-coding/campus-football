@@ -3,6 +3,8 @@
 use App\Actions\EnterTiebreaker;
 use App\Actions\MakePick;
 use App\Actions\PublishSlate;
+use App\Actions\SpawnPublicContest;
+use App\Enums\ContestMode;
 use App\Exceptions\HandleRequired;
 use App\Exceptions\NotGroupMember;
 use App\Exceptions\PickemParticipationGated;
@@ -332,6 +334,166 @@ describe('the notice speaks where the tap happened', function () {
             ->call('saveTotal', $slate->id)
             ->assertSeeHtml('border-green-200')
             ->assertSee(Voice::line('picks.tiebreaker.saved', ['total' => 45], for: $member));
+    });
+});
+
+describe('the entry is in', function () {
+    /*
+     * COMPLETENESS IS DERIVED. There is no `submitted_at`, no submit
+     * button and no schema change — an entry is in when every game is
+     * picked and the week's question is answered, so a reload agrees and
+     * a stored flag can never disagree with the picks it describes.
+     *
+     * The celebration rides a PROTECTED property, which Livewire does not
+     * serialize: it exists for exactly the response that completed the
+     * entry and is gone by the next one.
+     */
+
+    /** Picks every game on the slate but the last `$leave` of them. */
+    function pickThrough(User $member, $slate, int $leave = 0): void
+    {
+        $games = $slate->games()->with('game')->orderBy('position')->get();
+
+        foreach ($games->take(max(0, $games->count() - $leave)) as $slateGame) {
+            app(MakePick::class)->handle($member, $slateGame, $slateGame->game->home_team_id);
+        }
+    }
+
+    it('celebrates on the completing pick, once, and keeps the checklist done after', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+
+        // Everything but the last game, and the week's question already
+        // answered — so the LAST PICK is the completing act.
+        pickThrough($member, $slate, leave: 1);
+        app(EnterTiebreaker::class)->handle($member, $slate, 45);
+
+        $last = $slate->games()->with('game')->orderBy('position')->get()->last();
+
+        $surface = Livewire::actingAs($member)->test('group', ['group' => $group]);
+
+        // Before: still counting, and nothing is celebrating.
+        $surface->assertDontSeeHtml('data-entry-celebration')
+            ->assertSee('9 of 10');
+
+        $surface->call('pick', $last->id, $last->game->home_team_id)
+            ->assertSeeHtml('data-entry-celebration')
+            ->assertSee(Voice::line('picks.entry.celebration', for: $member))
+            ->assertSee('Entry in');
+
+        // The NEXT response: the row is gone, the checklist is not. One is
+        // a moment, the other is a fact about the picks.
+        $surface->call('$refresh')
+            ->assertDontSeeHtml('data-entry-celebration')
+            ->assertSee('Entry in');
+    });
+
+    it('celebrates when the tiebreaker is the completing act, and says it once', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+
+        pickThrough($member, $slate);
+
+        $surface = Livewire::actingAs($member)->test('group', ['group' => $group]);
+
+        // Every game picked, the question still open: the band names the
+        // one thing left rather than reading "10 of 10" as if it were done.
+        $surface->assertSee('Tiebreaker left')
+            ->assertDontSee('Entry in');
+
+        $surface->set('totals.'.$slate->id, 45)
+            ->call('saveTotal', $slate->id)
+            ->assertSeeHtml('data-entry-celebration')
+            ->assertSee('Entry in')
+            // ONE banner, not two: the routine save notice stands down
+            // when the celebration is speaking for the same act.
+            ->assertSet('notice', null)
+            ->assertDontSee(Voice::line('picks.tiebreaker.saved', ['total' => 45], for: $member));
+    });
+
+    it('completes on the last pick when the slate asks no question', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+
+        // A slate with no tiebreaker designated: the picks ARE the entry.
+        $slate->update(['tiebreaker_slate_game_id' => null]);
+        pickThrough($member, $slate, leave: 1);
+
+        $last = $slate->games()->with('game')->orderBy('position')->get()->last();
+
+        Livewire::actingAs($member)->test('group', ['group' => $group])
+            ->call('pick', $last->id, $last->game->home_team_id)
+            ->assertSeeHtml('data-entry-celebration')
+            ->assertSee('Entry in');
+    });
+
+    it('never re-fires when a pick changes after the entry is already in', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+
+        pickThrough($member, $slate);
+        app(EnterTiebreaker::class)->handle($member, $slate, 45);
+
+        $first = $slate->games()->with('game')->orderBy('position')->first();
+
+        Livewire::actingAs($member)->test('group', ['group' => $group])
+            // A mind changed inside a complete entry is not a completion.
+            ->call('pick', $first->id, $first->game->away_team_id)
+            ->assertDontSeeHtml('data-entry-celebration')
+            // And nothing un-celebrates: the checklist is derived.
+            ->assertSee('Entry in');
+    });
+
+    it('stays quiet when the mutation was refused', function () {
+        [$member, $group, $slate] = pickemLiveSlate();
+
+        pickThrough($member, $slate, leave: 1);
+        app(EnterTiebreaker::class)->handle($member, $slate, 45);
+
+        $last = $slate->games()->with('game')->orderBy('position')->get()->last();
+
+        $surface = Livewire::actingAs($member)->test('group', ['group' => $group]);
+
+        // Kickoff passes between the render and the tap: the pick is
+        // refused, so nothing completed and nothing may celebrate.
+        $this->travelTo('2026-09-05 19:30:01');
+
+        $surface->call('pick', $last->id, $last->game->home_team_id)
+            ->assertSet('notice', Voice::line('picks.locked.notice', for: $member))
+            ->assertDontSeeHtml('data-entry-celebration');
+    });
+
+    it('never celebrates on a surface nobody is picking on', function () {
+        /*
+         * A SOURCE sweep for the guard itself, because the flag is null on
+         * a preview anyway — which means a render assertion alone would
+         * pass with the guard deleted. The builder's preview and an
+         * outsider's read-only view both come through $interactive.
+         */
+        $source = file_get_contents(resource_path('views/partials/pick-slate.blade.php'));
+
+        expect($source)->toContain('@if ($interactive && $this->entryCelebrating($slate->id))');
+
+        /*
+         * And an outsider looking at a real slate. A PUBLIC ROOM, not a
+         * private group: a group 403s a non-member, so that render would
+         * assert nothing at all about the surface — it would be checking
+         * an error page for the absence of a checklist.
+         */
+        [$season, $week] = pickemSeasonWeek();
+
+        foreach (range(1, 16) as $i) {
+            $game = pickemGame($season, $week);
+            pickemOdd($game);
+            $game->predictor()->create(['matchup_quality' => 95 - $i]);
+        }
+
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        Livewire::actingAs(User::factory()->create())->test('group', ['group' => $room->fresh()])
+            // They ARE looking at the slate — the assertions below are
+            // about the checklist, not about an empty screen.
+            ->assertSee("Slate's up")
+            ->assertSeeHtml('-pick-')
+            ->assertDontSeeHtml('data-entry-celebration')
+            ->assertDontSee('Entry in')
+            ->assertDontSee('Tiebreaker left');
     });
 });
 

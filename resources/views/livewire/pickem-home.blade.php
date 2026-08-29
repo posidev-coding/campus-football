@@ -229,6 +229,16 @@ new class extends Component
                 'points' => $state === 'final'
                     ? (int) ($entry->final_points ?? 0)
                     : (int) ($tally->pts ?? 0),
+                // The ENTRY, not just the picks: every game called and the
+                // week's question answered. Derived here from operands
+                // already in scope, the same rule the pick surface states
+                // in MakesPicks::entryComplete() — there is no stored flag
+                // to disagree with the picks it describes.
+                'entryIn' => $slate !== null
+                    && $slate->status === Slate::PUBLISHED
+                    && $slate->games->count() > 0
+                    && (int) ($tally->made ?? 0) >= $slate->games->count()
+                    && ($slate->tiebreaker_slate_game_id === null || $entry?->tiebreaker_total !== null),
                 'won' => (bool) ($entry->won ?? false),
                 'wins' => (int) ($wins[$contest?->id] ?? 0),
                 'firstKick' => $slate?->firstKickoff(),

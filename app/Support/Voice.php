@@ -1241,6 +1241,19 @@ class Voice
          * a joke that ate its instruction. Roast the SLATE and the blank
          * pick, never the reader.
          */
+        /*
+         * THE ENTRY IS IN — the one line the pick surface says of its own
+         * accord, on the act that completes the entry and never again.
+         * Roast the SLATE, never the reader: this fires the moment
+         * somebody has done everything the app asked of them, which is
+         * the worst possible moment to be clever at their expense.
+         */
+        'picks.entry.celebration' => [
+            'pg' => 'Your entry is in — every game picked, tiebreaker called. Good luck Saturday.',
+            'pg13' => "Entry's in. Every game picked, tiebreaker called — now go let this slate embarrass itself.",
+            'r' => "Entry's in. Every game picked, tiebreaker called, and the slate can go do its worst.",
+        ],
+
         'picks.hero.zinger' => [
             'pg' => 'Kickoff is the deadline. Get your calls in while they still count.',
             'pg13' => 'Every game you leave blank grades as a zero. Kickoff does not wait for you.',

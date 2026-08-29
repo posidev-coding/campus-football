@@ -194,6 +194,22 @@
     }
 }
 
+/* The entry-in celebration's one entrance. A KEYFRAME rather than a
+   transition on x-show, so the row is opaque in its own right and a tab that
+   never runs the animation (or a reader who asked for less motion — the
+   caller wears `motion-safe:`) simply sees it arrive. Nothing here may be
+   load-bearing for visibility. */
+@keyframes cfb-entry-in {
+    from {
+        opacity: 0;
+        transform: translateY(-0.25rem);
+    }
+}
+
+@utility animate-entry-in {
+    animation: cfb-entry-in 320ms ease-out;
+}
+
 /* Wide stat tables scroll inside their own container. The page body must never
    scroll sideways — the most common way a data-dense mobile layout breaks. */
 @utility stat-grid {
