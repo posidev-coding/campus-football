@@ -11,6 +11,7 @@ use App\Models\GroupMember;
 use App\Models\User;
 use App\Support\Cadence;
 use App\Support\Voice;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 /*
@@ -293,6 +294,43 @@ describe('the store (inside the flag)', function () {
             ->assertSee('+6 right, −4 wrong')
             ->assertSee('101')
             ->assertSee('no pushes, ever');
+    });
+
+    it('hands the reader a codeless invite link, and no code to read aloud', function () {
+        /*
+         * The share affordance lives HERE because the lobby is the walk-on
+         * destination and the only link that never goes stale: a room code
+         * would rot inside a week and a private group cannot field a thin
+         * Saturday. Codeless means there is nothing to read across a room,
+         * so the group screen's spoken-word fallback has no counterpart.
+         */
+        $viewer = pickemAdmin();
+        $viewer->update(['handle' => 'marcus', 'first_name' => 'Taylor']);
+
+        Livewire::actingAs($viewer)->test('lobby')
+            ->assertSee('Invite a friend')
+            ->assertSee(Voice::line('join.app.hint', for: $viewer))
+            ->assertSeeHtml('/join?by=marcus')
+            // The share sheet composes from the SHARER — their own name is
+            // what makes "somebody is inviting you" credible on a phone.
+            ->assertSeeHtml('navigator.share')
+            ->assertSee('Taylor')
+            ->assertDontSee('Or read them the code');
+    });
+
+    it('still offers a working link to a member who never claimed a handle', function () {
+        // A handle is optional, so an uncredited invite is a real shape.
+        // It opens the same pitch; it just cannot say who sent it — which
+        // beats a `?by=` with nothing after it.
+        $viewer = pickemAdmin();
+        $viewer->update(['handle' => null]);
+
+        Livewire::actingAs($viewer)->test('lobby')
+            ->assertSee('Invite a friend')
+            // The link is printed without its scheme, the way group's
+            // invite card prints it — match the same half.
+            ->assertSeeHtml(Str::after(route('pickem.join'), '://'))
+            ->assertDontSeeHtml('by=');
     });
 
     it('is nobody\'s dashboard: the personal zones are gone', function () {

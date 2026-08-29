@@ -60,6 +60,9 @@ it('speaks every register on the rebuild\'s new families', function (string $key
         'week' => 'Week 1', 'points' => '14', 'xp' => '100', 'place' => '3rd',
         'field' => '9', 'winner' => 'X', 'others' => 'X', 'rival' => 'X',
         'margin' => '4', 'max' => '200', 'list' => 'Triple Option · The Woodshed',
+        // The app invite's share text is personalized by the SHARER's
+        // first name; without this the line renders a literal ":inviter".
+        'inviter' => 'X',
     ];
 
     $pg = Voice::line($key, $replace, for: User::factory()->make(['content_rating' => ContentRating::Pg]));
@@ -103,6 +106,12 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'join.pitch',
     'join.miss',
     'join.room.played',
+    // The app invite — a /join link with no code behind it, where the
+    // copy IS the screen because there is no group to preview.
+    'join.app.heading',
+    'join.app.body',
+    'join.app.hint',
+    'join.app.share_text',
     'mode.change.pick_one',
     'picks.publish.featured_metric',
     'lobby.shelf.also',

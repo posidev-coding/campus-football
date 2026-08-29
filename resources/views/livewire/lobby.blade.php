@@ -7,6 +7,7 @@ use App\Exceptions\PickemParticipationGated;
 use App\Models\Group;
 use App\Models\Week;
 use App\Services\CfbCalendar;
+use App\Support\Brand;
 use App\Support\Cadence;
 use App\Support\Lobby;
 use App\Support\LobbyCatalog;
@@ -113,6 +114,18 @@ new class extends Component
             'date' => $saturday?->format('D M j'),
             'count' => $this->publics->filter(fn (Group $room) => $room->isRoom())->count(),
         ];
+    }
+
+    /**
+     * The reader's OWN invite link — codeless, so it carries nothing but
+     * who is asking. `array_filter` because a handle is optional: an
+     * uncredited link still opens the pitch, it just cannot say who sent
+     * it, and that is better than a `?by=` with nothing after it.
+     */
+    #[Computed]
+    public function inviteUrl(): string
+    {
+        return route('pickem.join', array_filter(['by' => auth()->user()?->handle]));
     }
 
     public function joinLobby(int $groupId, JoinGroup $action)
@@ -289,6 +302,50 @@ new class extends Component
                 @endforeach
             </div>
         @endif
+
+        {{-- BRING SOMEBODY. The lobby is the walk-on destination and the
+             only surface with a link that never goes stale: a room code
+             would rot weekly and a private group's code cannot field a
+             thin Saturday, so the invite worth sending is the codeless
+             one. No code fallback here for the same reason — there is no
+             code to read aloud across a room. --}}
+        <div
+            class="flex flex-col gap-2 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700"
+            x-data="{
+                copied: false,
+                canShare: typeof navigator.share === 'function',
+                copyLink() {
+                    window.cfbClipboard.copy(@js($this->inviteUrl)).then((ok) => {
+                        if (! ok) return;
+
+                        this.copied = true;
+                        setTimeout(() => this.copied = false, 2000);
+                    });
+                },
+                share() {
+                    navigator.share({
+                        title: @js(Brand::name()),
+                        text: @js(Voice::line('join.app.share_text', ['inviter' => auth()->user()->first_name])),
+                        url: @js($this->inviteUrl),
+                    }).catch(() => {});
+                },
+            }"
+        >
+            <flux:heading size="lg">Invite a friend</flux:heading>
+            <flux:subheading>{{ Voice::line('join.app.hint') }}</flux:subheading>
+
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="min-w-0 max-w-full truncate font-mono text-sm font-semibold">{{ Str::after($this->inviteUrl, '://') }}</span>
+                <flux:button x-on:click="copyLink()" size="sm" variant="primary">
+                    <span x-show="! copied">Copy link</span>
+                    <span x-show="copied" x-cloak>Copied</span>
+                </flux:button>
+                <flux:button x-show="canShare" x-cloak x-on:click="share()" size="sm">
+                    <flux:icon.box-arrow-up variant="micro" />
+                    Share
+                </flux:button>
+            </div>
+        </div>
 
         {{-- The other product, one line, and named as what it IS rather
              than as a mood: a reader standing in a store of one-Saturday
