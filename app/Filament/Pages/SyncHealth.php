@@ -45,6 +45,8 @@ class SyncHealth extends Page
 
     protected static string|UnitEnum|null $navigationGroup = 'Operations';
 
+    protected static ?int $navigationSort = 1;
+
     protected static ?string $navigationLabel = 'Sync Health';
 
     protected static ?string $title = 'Sync Health';

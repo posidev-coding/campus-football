@@ -22,3 +22,19 @@
 
 @source '../../../../app/Filament/**/*';
 @source '../../../../resources/views/filament/**/*';
+
+/*
+ * Density: closer to a compact dashboard rail. Only overrides — never a fork
+ * of Filament's sheet. Selectors verified against
+ * vendor/filament/filament/resources/css/components/sidebar.css.
+ */
+@layer components {
+    .fi-sidebar-header { @apply h-14; }
+    .fi-sidebar-nav { @apply gap-y-4 px-3 py-4; }
+    .fi-sidebar-nav-groups { @apply gap-y-4; }
+    .fi-sidebar-group-btn { @apply p-1.5; }
+    .fi-sidebar-group-label { @apply text-xs leading-5; }
+    .fi-sidebar-item-btn { @apply px-2 py-1.5; }
+    .fi-sidebar-item-label { @apply text-[0.8125rem]; }
+    .fi-sidebar-database-notifications-btn { @apply px-2 py-1.5; }
+}
