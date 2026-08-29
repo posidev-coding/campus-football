@@ -62,6 +62,14 @@
                  the words change. --}}
             @if ($card['past'] ?? false)
                 <span class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">{{ App\Support\Voice::line('group.room.past') }}</span>
+            @elseif ($group->isRoom())
+                {{-- A ROOM WITH NO CARD, on a week that has not gone by:
+                     its slate never landed, or was taken away. There is
+                     nobody to go rattle — the house runs these rooms and
+                     no copy inside one may say "your commissioner" — so
+                     this states the room's condition and points at the
+                     Lobby, where the rooms with games in them are. --}}
+                <span class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">{{ App\Support\Voice::line('group.room.no_card') }}</span>
             @elseif ($card['commissioner'] && $card['contest'] && ! $card['buildable'])
                 {{-- A Saturday too thin to seat this mode. The blue call
                      to action would send the commissioner to a wizard
