@@ -31,6 +31,23 @@ enum LobbyShelf: string
     }
 
     /**
+     * The SUBTAB label — deliberately shorter than heading(). Five tabs
+     * share one un-scrolling 358px row at 390px, where "House rooms" and
+     * "Conference rooms" cannot both fit; the heading above the shelf
+     * still says the long name, so nothing is lost. Plain in every
+     * register for the same reason heading() is: people navigate by it.
+     */
+    public function tabLabel(): string
+    {
+        return match ($this) {
+            self::House => 'House',
+            self::QuickHits => 'Quick',
+            self::Spotlight => 'Spotlight',
+            self::Conference => 'Conference',
+        };
+    }
+
+    /**
      * The optional Voice line under the heading. Render-guarded `!== ''`,
      * so an unwritten register is a quieter shelf and never a hole.
      */

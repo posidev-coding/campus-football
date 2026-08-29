@@ -20,6 +20,7 @@ use App\Support\RankLadder;
 use App\Support\Voice;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
@@ -44,6 +45,34 @@ use Livewire\Component;
 new class extends Component
 {
     public string $code = '';
+
+    /**
+     * THIS WEEK or RESULTS — a genuine fork in the screen rather than a
+     * filter: the week is what you can still act on, and results are what
+     * already happened. They shared one scroll until Last week and the
+     * ladder sat below four zones of live cards, where a Monday payoff is
+     * something you have to go looking for.
+     */
+    #[Url(except: 'week')]
+    public string $view = 'week';
+
+    public const VIEWS = ['week', 'results'];
+
+    public function mount(): void
+    {
+        $this->view = $this->normalizedView($this->view);
+    }
+
+    /** #[Url] hydrates without firing this hook, hence mount() normalizes too. */
+    public function updatedView(string $value): void
+    {
+        $this->view = $this->normalizedView($value);
+    }
+
+    private function normalizedView(string $view): string
+    {
+        return in_array($view, self::VIEWS, true) ? $view : 'week';
+    }
 
     #[Computed]
     public function showPersonal(): bool
@@ -208,6 +237,16 @@ new class extends Component
                 'points' => $state === 'final'
                     ? (int) ($entry->final_points ?? 0)
                     : (int) ($tally->pts ?? 0),
+                // The ENTRY, not just the picks: every game called and the
+                // week's question answered. Derived here from operands
+                // already in scope, the same rule the pick surface states
+                // in MakesPicks::entryComplete() — there is no stored flag
+                // to disagree with the picks it describes.
+                'entryIn' => $slate !== null
+                    && $slate->status === Slate::PUBLISHED
+                    && $slate->games->count() > 0
+                    && (int) ($tally->made ?? 0) >= $slate->games->count()
+                    && ($slate->tiebreaker_slate_game_id === null || $entry?->tiebreaker_total !== null),
                 'won' => (bool) ($entry->won ?? false),
                 'wins' => (int) ($wins[$contest?->id] ?? 0),
                 'firstKick' => $slate?->firstKickoff(),
@@ -290,6 +329,90 @@ new class extends Component
                 && $card['total'] > 0
                 && $card['made'] < $card['total'])
             ->values();
+    }
+
+    /**
+     * THE ONE THAT WANTS YOU NOW. A single hero rather than a stack of
+     * them: four cards all shouting is four cards nobody reads, and the
+     * question a reader actually has on Saturday morning is which one is
+     * about to lock.
+     *
+     * A projection of needsPicks(), which is a projection of cards() —
+     * no query of its own, at any depth.
+     *
+     * @return array<string, mixed>|null
+     */
+    #[Computed]
+    public function heroCard(): ?array
+    {
+        return $this->byUrgency()->first();
+    }
+
+    /**
+     * Everything else still taking picks, in the same compact row the
+     * zone has always used. The hero is one card, not a new species.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function needsRest()
+    {
+        return $this->byUrgency()->slice(1)->values();
+    }
+
+    /**
+     * needsPicks() by URGENCY: a slate already under way outranks one
+     * that has not kicked, then soonest kickoff wins.
+     *
+     * A card with no kickoff to read sorts LAST rather than first — an
+     * absent timestamp is missing data, never "kicks at the epoch", and
+     * that is the direction a null sorts if you let it through a
+     * comparison unread.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function byUrgency()
+    {
+        return $this->needsPicks->sort(function (array $a, array $b) {
+            $liveA = $a['state'] === 'live' ? 0 : 1;
+            $liveB = $b['state'] === 'live' ? 0 : 1;
+
+            if ($liveA !== $liveB) {
+                return $liveA <=> $liveB;
+            }
+
+            $kickA = $a['firstKick']?->getTimestamp();
+            $kickB = $b['firstKick']?->getTimestamp();
+
+            if ($kickA === null || $kickB === null) {
+                return $kickA === $kickB ? 0 : ($kickA === null ? 1 : -1);
+            }
+
+            return $kickA <=> $kickB;
+        })->values();
+    }
+
+    /**
+     * Is there a fork to draw at all? A genuinely new reader has no cards
+     * and no settled week, so both tabs would say the same nothing —
+     * they keep the one scroll they have always had, and the plate
+     * appears with their first seat.
+     */
+    #[Computed]
+    public function hasTabs(): bool
+    {
+        return $this->cards->isNotEmpty() || $this->lastWeek->isNotEmpty();
+    }
+
+    /**
+     * The tab in force. With no plate on the screen a bookmarked
+     * ?view=results has no control to undo it, so it normalizes here,
+     * silently, rather than hiding the first run behind an empty tab.
+     */
+    #[Computed]
+    public function activeView(): string
+    {
+        return $this->hasTabs ? $this->view : 'week';
     }
 
     /**
@@ -421,6 +544,25 @@ new class extends Component
             <x-notice tone="success">{{ session('status') }}</x-notice>
         @endif
 
+        {{-- THE FORK. Two areas, so a plate and not a gutter: what you can
+             still act on, and what already happened. Above it sits only
+             chrome that belongs to the whole screen — the callout and the
+             flash both answer for either tab. --}}
+        @if ($this->hasTabs)
+            <x-plate
+                :tabs="['week' => 'This week', 'results' => 'Results']"
+                :selected="$this->activeView"
+                model="view"
+                key-prefix="picks-view"
+            />
+        @endif
+
+        <div
+            wire:loading.class="opacity-60 pointer-events-none"
+            wire:target="view"
+            class="flex flex-col gap-6 motion-safe:transition-opacity"
+        >
+        @if ($this->activeView === 'week')
         {{-- The week's dateline. No calendar entry, no ribbon — never a
              substituted week. --}}
         @if ($this->weekEntry !== null)
@@ -434,7 +576,72 @@ new class extends Component
                 <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Needs your picks</flux:subheading>
                 <flux:subheading>{{ Voice::line('lobby.needs.subheading') }}</flux:subheading>
 
-                @foreach ($this->needsPicks as $card)
+                {{-- ONE HERO, then compact rows. The card closest to
+                     locking wears the mode's own tile and carries the
+                     only button on the zone; four heroes would be four
+                     cards nobody reads. --}}
+                @php
+                    $hero = $this->heroCard;
+                    $heroGroup = $hero['group'];
+                    $heroMode = $hero['contest']?->mode ?? ContestMode::Classic;
+                    $heroPalette = $heroMode->palette();
+                    $heroZinger = Voice::line('picks.hero.zinger');
+                    $heroHref = $heroGroup->isRoom()
+                        ? route('pickem.room', $heroGroup)
+                        : route('pickem.group', $heroGroup);
+                @endphp
+
+                <div
+                    wire:key="hero-{{ $heroGroup->id }}"
+                    class="flex flex-col gap-3 rounded-xl border p-4 {{ $heroPalette['tile'] }}"
+                >
+                    <div class="flex items-center gap-3">
+                        {{-- The mark rides a neutral puck, the way every
+                             mode tile in the house carries it. --}}
+                        <span class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white/60 shadow-sm dark:bg-white/10">
+                            <flux:icon :name="$heroMode->icon()" variant="mini" class="{{ $heroPalette['icon'] }}" />
+                        </span>
+
+                        <span class="min-w-0 flex-1">
+                            <span class="block truncate font-bold leading-tight">{{ $heroGroup->name }}</span>
+                            {{-- The Woodshed's tile is black in both
+                                 schemes, and the count is the number a
+                                 picker acts on — the mode says which
+                                 weight reads on it rather than the screen
+                                 sniffing it out of a class string. --}}
+                            <x-slate-progress
+                                :made="$hero['made']"
+                                :total="$hero['total']"
+                                :tone="$heroPalette['onDark'] ? 'dark' : 'default'"
+                                class="pt-1"
+                            />
+                        </span>
+
+                        {{-- Under way beats a clock: "Live" is the fact
+                             that changes what you do next. --}}
+                        @if ($hero['state'] === 'live')
+                            <x-slate-status status="live" class="text-micro" />
+                        @elseif ($hero['firstKick'])
+                            <span class="shrink-0 text-micro {{ $heroPalette['body'] }}">
+                                kicks {{ $hero['firstKick']->setTimezone(config('cfb.timezone'))->format('D g:ia') }}
+                            </span>
+                        @endif
+                    </div>
+
+                    {{-- Render-guarded: an unwritten register is a quieter
+                         hero, never a hole. --}}
+                    @if ($heroZinger !== '')
+                        <p class="text-sm {{ $heroPalette['body'] }}">{{ $heroZinger }}</p>
+                    @endif
+
+                    {{-- The AFFORDANCE stays plain in every register —
+                         the joke is the line above it. --}}
+                    <flux:button :href="$heroHref" wire:navigate variant="primary" class="w-full">
+                        {{ $hero['made'] === 0 ? 'Make your picks' : 'Finish your picks' }}
+                    </flux:button>
+                </div>
+
+                @foreach ($this->needsRest as $card)
                     <a
                         href="{{ $card['group']->isRoom() ? route('pickem.room', $card['group']) : route('pickem.group', $card['group']) }}"
                         wire:navigate
@@ -537,67 +744,6 @@ new class extends Component
             </div>
         @endif
 
-        {{-- The Monday payoff, compact: last week's settled results while
-             they are still the conversation. --}}
-        @if ($this->lastWeek->isNotEmpty())
-            <div class="flex flex-col gap-2">
-                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Last week</flux:subheading>
-                @foreach ($this->lastWeek as $entry)
-                    <a
-                        href="{{ $entry->slate->contest->group->isRoom() ? route('pickem.room', $entry->slate->contest->group_id) : route('pickem.group', $entry->slate->contest->group_id) }}"
-                        wire:navigate
-                        wire:key="settled-{{ $entry->id }}"
-                        class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-2.5 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
-                    >
-                        <p class="min-w-0 truncate text-sm font-medium">{{ $entry->slate->contest->group->name }}</p>
-                        <p class="flex shrink-0 items-center gap-2 text-sm">
-                            <span class="tabular font-semibold">{{ $entry->final_points ?? 0 }} pts</span>
-                            @if ($entry->won)
-                                <flux:badge size="sm" color="green">Winner</flux:badge>
-                            @endif
-                        </p>
-                    </a>
-                @endforeach
-            </div>
-        @endif
-
-        {{-- THE LADDER, one row. The header chip has room for the rung
-             and nothing else, so this is where the next one is named and
-             the climb has a number on it. --}}
-        @if ($this->rank !== null)
-            <div class="flex flex-col gap-1.5 rounded-xl border border-zinc-200 px-4 py-3 dark:border-zinc-700">
-                <div class="flex items-baseline justify-between gap-3">
-                    <span class="min-w-0 truncate font-semibold">{{ $this->rank['name'] }}</span>
-                    <span class="tabular shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
-                        {{ number_format($this->walletXp) }} XP
-                    </span>
-                </div>
-
-                @if ($this->rank['next'] !== null)
-                    {{-- A share of the CURRENT rung's span, so the bar resets
-                         at each promotion instead of creeping toward Legend
-                         all season. --}}
-                    <div class="h-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                        <div
-                            class="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
-                            style="width: {{ round($this->rank['progress'] * 100, 2) }}%"
-                        ></div>
-                    </div>
-                    <p class="text-micro text-zinc-500 dark:text-zinc-400">
-                        {{ Voice::line('rank.to_next', [
-                            'remaining' => number_format($this->rank['remaining']),
-                            'next' => $this->rank['next'],
-                        ]) }}
-                    </p>
-                @else
-                    {{-- No next rung. `remaining` is null here, never a zero
-                         standing in for it — so the climb line is SKIPPED
-                         rather than rendered as a finished bar with no name. --}}
-                    <p class="text-micro text-zinc-500 dark:text-zinc-400">{{ Voice::line('rank.topped_out') }}</p>
-                @endif
-            </div>
-        @endif
-
         {{-- The code stays as the spoken-word fallback, folded away —
              links are how a group travels now. --}}
         <div
@@ -634,6 +780,92 @@ new class extends Component
         @if ($this->groupCards->isNotEmpty())
             @include('partials.lobby-door')
         @endif
+        @endif
+
+        {{-- ================================ RESULTS ================= --}}
+        @if ($this->activeView === 'results')
+        {{-- The Monday payoff, compact: last week's settled results while
+             they are still the conversation. --}}
+        @if ($this->lastWeek->isNotEmpty())
+            <div class="flex flex-col gap-2">
+                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Last week</flux:subheading>
+                @foreach ($this->lastWeek as $entry)
+                    <a
+                        href="{{ $entry->slate->contest->group->isRoom() ? route('pickem.room', $entry->slate->contest->group_id) : route('pickem.group', $entry->slate->contest->group_id) }}"
+                        wire:navigate
+                        wire:key="settled-{{ $entry->id }}"
+                        class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-2.5 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
+                    >
+                        <p class="min-w-0 truncate text-sm font-medium">{{ $entry->slate->contest->group->name }}</p>
+                        <p class="flex shrink-0 items-center gap-2 text-sm">
+                            <span class="tabular font-semibold">{{ $entry->final_points ?? 0 }} pts</span>
+                            @if ($entry->won)
+                                <flux:badge size="sm" color="green">Winner</flux:badge>
+                            @endif
+                        </p>
+                    </a>
+                @endforeach
+            </div>
+        @else
+            {{-- Nothing settled is not an empty screen to apologize for —
+                 it is a Saturday that has not happened yet, and the line
+                 says so rather than leaving the tab blank. --}}
+            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('picks.results.empty') }}</p>
+        @endif
+        @endif
+
+        {{-- THE LADDER belongs to Results — XP is what a settled week
+             paid. It stays on a TABLESS first run too, because XP is
+             earned before the first slate is and that reader has no
+             Results tab to find it in. --}}
+        @if ($this->activeView === 'results' || ! $this->hasTabs)
+        {{-- THE LADDER, one row. The header chip has room for the rung
+             and nothing else, so this is where the next one is named and
+             the climb has a number on it. --}}
+        @if ($this->rank !== null)
+            <div class="flex flex-col gap-1.5 rounded-xl border border-zinc-200 px-4 py-3 dark:border-zinc-700">
+                <div class="flex items-baseline justify-between gap-3">
+                    <span class="min-w-0 truncate font-semibold">{{ $this->rank['name'] }}</span>
+                    <span class="tabular shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
+                        {{ number_format($this->walletXp) }} XP
+                    </span>
+                </div>
+
+                @if ($this->rank['next'] !== null)
+                    {{-- A share of the CURRENT rung's span, so the bar resets
+                         at each promotion instead of creeping toward Legend
+                         all season. --}}
+                    <div class="h-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                        <div
+                            class="h-full rounded-full bg-zinc-900 dark:bg-zinc-100"
+                            style="width: {{ round($this->rank['progress'] * 100, 2) }}%"
+                        ></div>
+                    </div>
+                    <p class="text-micro text-zinc-500 dark:text-zinc-400">
+                        {{ Voice::line('rank.to_next', [
+                            'remaining' => number_format($this->rank['remaining']),
+                            'next' => $this->rank['next'],
+                        ]) }}
+                    </p>
+                @else
+                    {{-- No next rung. `remaining` is null here, never a zero
+                         standing in for it — so the climb line is SKIPPED
+                         rather than rendered as a finished bar with no name. --}}
+                    <p class="text-micro text-zinc-500 dark:text-zinc-400">{{ Voice::line('rank.topped_out') }}</p>
+                @endif
+            </div>
+        @endif
+        @endif
+
+        {{-- The archive, one row: Results is this week's payoff while it
+             is still the conversation, History is every week that ever
+             settled. --}}
+        @if ($this->activeView === 'results')
+            <x-link-row :href="route('pickem.history')" title="Season history">
+                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Every week you have played, and what it paid.</span>
+            </x-link-row>
+        @endif
+        </div>
     @else
         @include('partials.pickem-promise')
     @endif

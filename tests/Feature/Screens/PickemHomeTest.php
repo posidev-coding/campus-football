@@ -1,7 +1,9 @@
 <?php
 
+use App\Actions\EnterTiebreaker;
 use App\Actions\GrantWalletEntry;
 use App\Actions\JoinGroup;
+use App\Actions\MakePick;
 use App\Actions\PublishSlate;
 use App\Actions\SpawnPublicContest;
 use App\Enums\ContentRating;
@@ -10,8 +12,10 @@ use App\Models\Contest;
 use App\Models\Game;
 use App\Models\Group;
 use App\Models\GroupMember;
+use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateEntry;
+use App\Models\SlateGame;
 use App\Models\User;
 use App\Models\Week;
 use App\Support\Navigation;
@@ -107,10 +111,17 @@ describe('my week (inside the flag)', function () {
                 'Needs your picks',
                 // GROUPS, not "games" — a game is played on a field.
                 'Your groups',
-                'Last week',
                 'Have an invite code?',
                 'The Lobby',
-            ]);
+            ])
+            // The payoff is a FORK away now, not four zones down: the week
+            // is what you can still act on, and it does not carry what
+            // already happened.
+            ->assertDontSee('Last week')
+            ->set('view', 'results')
+            ->assertSeeInOrder(['Last week', 'Season history'])
+            // ...and the fork holds in the other direction.
+            ->assertDontSee('Needs your picks');
     });
 
     it('carries the week\'s state onto each group card, under the week ribbon', function () {
@@ -343,6 +354,216 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee(Voice::line('group.room.past', for: $viewer));
     });
 
+    /*
+     * THE HERO. One card, not a stack of them: the zone used to render
+     * every open slate as an identical compact row, so the card about to
+     * lock looked exactly like the one that kicks on Sunday.
+     */
+    it('leads the zone with one hero card, and names the act on its button', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $group->update(['name' => 'Rocky Top Rejects']);
+        $slate = pickemDraftSlate($contest);
+        app(PublishSlate::class)->handle($commissioner, $slate);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('Rocky Top Rejects')
+            ->assertSee('0 of 10')
+            ->assertSee('Make your picks')
+            // Straight into the clubhouse, which is where picking happens.
+            ->assertSee(route('pickem.group', $group), escape: false);
+
+        // One pick in and it is the same card asking for a different act.
+        // The label is the AFFORDANCE and stays plain in every register.
+        Pick::factory()->create([
+            'slate_game_id' => $slate->games->first()->id,
+            'user_id' => $commissioner->id,
+        ]);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('Finish your picks')
+            ->assertDontSee('Make your picks');
+    });
+
+    it('reads its own count on the Woodshed\'s black tile', function () {
+        /*
+         * The tile is black in BOTH schemes, and zinc-500 on it is 3.4:1 —
+         * unreadable exactly where the number is the point. The mode says
+         * its tile is dark (`onDark`); x-slate-progress takes the weight
+         * from that, opt-in, so no other caller moves. Verifying a color
+         * was applied is not verifying it can be read.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Woodshed);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('0 of 15')
+            ->assertSeeHtml('text-zinc-300')
+            // The light tiles keep the default weight.
+            ->assertDontSeeHtml('bg-zinc-200 sm:w-24');
+
+        expect(ContestMode::Woodshed->palette()['onDark'])->toBeTrue()
+            ->and(ContestMode::Classic->palette()['onDark'])->toBeFalse()
+            ->and(ContestMode::Tiered->palette()['onDark'])->toBeFalse();
+    });
+
+    it('gives the hero to the slate closest to locking, and live outranks a clock', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$reader, $late, $lateContest] = pickemContest(ContestMode::Classic);
+        $late->update(['name' => 'The Late Window']);
+        app(PublishSlate::class)->handle($reader, pickemDraftSlate($lateContest));
+
+        $soon = Group::factory()->create(['name' => 'The Noon Kick']);
+        GroupMember::factory()->commissioner()->create(['group_id' => $soon->id, 'user_id' => $reader->id]);
+        $soonContest = Contest::factory()->create(['group_id' => $soon->id, 'mode' => ContestMode::Classic]);
+        $soonSlate = pickemDraftSlate($soonContest);
+        app(PublishSlate::class)->handle($reader, $soonSlate);
+
+        Game::query()
+            ->whereIn('id', $soonSlate->games->pluck('game_id'))
+            ->update(['kickoff_at' => '2026-09-05 12:00:00']);
+
+        // The earlier kickoff takes the hero; the other keeps its compact
+        // row, which is what the zone has always drawn.
+        Livewire::actingAs($reader)->test('pickem-home')
+            ->assertSeeInOrder(['The Noon Kick', 'Make your picks', 'The Late Window'])
+            ->assertSeeHtml('wire:key="hero-'.$soon->id.'"')
+            ->assertSeeHtml('wire:key="needs-'.$late->id.'"');
+
+        /*
+         * A slate already under way outranks any clock: "Live" is the
+         * fact that changes what you do next, and a game in progress
+         * cannot be read off a kickoff time alone (the feed says so).
+         */
+        Game::query()
+            ->whereIn('id', SlateGame::query()->where('slate_id', $soonSlate->id)->pluck('game_id'))
+            ->update(['kickoff_at' => '2026-09-05 23:00:00']);
+
+        $lateGame = Game::query()->whereIn(
+            'id',
+            SlateGame::query()->whereIn('slate_id', [$lateContest->slates->pluck('id')])->pluck('game_id')
+        )->first();
+
+        Game::query()->whereKey($lateGame->id)->update(['status' => 'in']);
+
+        Livewire::actingAs($reader)->test('pickem-home')
+            ->assertSeeHtml('wire:key="hero-'.$late->id.'"')
+            ->assertSeeHtml('wire:key="needs-'.$soon->id.'"');
+    });
+
+    it('forks into This week and Results, and normalizes a nonsense tab both ways', function () {
+        /*
+         * BOTH halves: #[Url] hydrates without firing the update hook, so
+         * a bookmarked ?view=nonsense reaches the fork through mount()
+         * alone. Neither half may error.
+         */
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSet('view', 'week')
+            ->assertSee('This week')
+            ->assertSee('Results');
+
+        Livewire::actingAs($commissioner)
+            ->withQueryParams(['view' => 'nonsense'])
+            ->test('pickem-home')
+            ->assertSet('view', 'week')
+            ->assertSee('Needs your picks');
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->set('view', 'garbage')
+            ->assertSet('view', 'week')
+            ->assertSee('Needs your picks');
+    });
+
+    it('says so honestly when Results has nothing settled in it yet', function () {
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->set('view', 'results')
+            ->assertSee(Voice::line('picks.results.empty', for: $commissioner))
+            ->assertDontSee('Last week');
+    });
+
+    it('draws no fork on a first run, and a stale ?view=results lands on the week', function () {
+        /*
+         * Two tabs saying the same nothing is worse than the one scroll a
+         * new reader already had. The ladder stays with them — XP is
+         * earned before the first slate is, and they have no Results tab
+         * to find it in.
+         */
+        $reader = pickemAdmin();
+
+        // The stale tab is INERT, not obeyed: there is no plate to undo it
+        // with, so the first run renders exactly as it always has.
+        Livewire::actingAs($reader)
+            ->withQueryParams(['view' => 'results'])
+            ->test('pickem-home')
+            ->assertSee('Two ways to play')
+            ->assertDontSeeHtml('wire:key="picks-view-results"');
+
+        Livewire::actingAs($reader)->test('pickem-home')
+            ->assertSee('Two ways to play')
+            ->assertDontSeeHtml('wire:key="picks-view-results"')
+            // The ladder still reaches them.
+            ->assertSee('Walk-On');
+    });
+
+    it('gives a rooms-only reader the fork too — a seat is a card', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [, $week] = pickemHomeWeek();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        $reader = pickemAdmin();
+        app(JoinGroup::class)->handle($reader, $room);
+
+        Livewire::actingAs($reader->fresh())->test('pickem-home')
+            ->assertSee('This week')
+            ->set('view', 'results')
+            ->assertSee(Voice::line('picks.results.empty', for: $reader))
+            ->assertSee('Season history');
+    });
+
+    it('says ENTRY IN on the card, and keeps the count while one is missing', function () {
+        /*
+         * A finished entry is not "15 of 15" — it is done, and the card
+         * says the word rather than making a reader do the comparison.
+         * Derived from the same rule the pick surface states, so the two
+         * screens cannot disagree about one entry.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        $slate = pickemDraftSlate($contest);
+        app(PublishSlate::class)->handle($commissioner, $slate);
+
+        $games = $slate->games()->with('game')->orderBy('position')->get();
+
+        foreach ($games->take($games->count() - 1) as $slateGame) {
+            app(MakePick::class)->handle($commissioner, $slateGame, $slateGame->game->home_team_id);
+        }
+
+        app(EnterTiebreaker::class)->handle($commissioner, $slate, 45);
+
+        // One game short: the count stands, and so does the hero's ask.
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('9 of 10')
+            ->assertDontSee('Entry in');
+
+        app(MakePick::class)->handle($commissioner, $games->last(), $games->last()->game->home_team_id);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('Entry in')
+            // ...and the zone that asks for picks has nothing left to ask.
+            ->assertDontSee('Needs your picks');
+    });
+
     it('pays the Monday payoff while it is still the conversation', function () {
         [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
         [, $week] = pickemSeasonWeek();
@@ -360,6 +581,7 @@ describe('my week (inside the flag)', function () {
         ]);
 
         Livewire::actingAs($commissioner)->test('pickem-home')
+            ->set('view', 'results')
             ->assertSee('Last week')
             ->assertSee('8 pts')
             ->assertSee('Winner');

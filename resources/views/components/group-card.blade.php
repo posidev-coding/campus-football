@@ -5,9 +5,10 @@
 
     `card` is the lobby's cards() array shape: group, contest,
     commissioner, state (waiting | upcoming | live | prelim | final),
-    made/total, points, won, wins, firstKick, deadline. The five-way state
-    row moved here wholesale from pass 2's inline markup — same states,
-    same words, now beside an identity a thumb can find in a stack.
+    made/total, entryIn, points, won, wins, firstKick, deadline. The
+    five-way state row moved here wholesale from pass 2's inline markup —
+    same states, same words, now beside an identity a thumb can find in a
+    stack.
 --}}
 @props([
     /** @var array<string, mixed> */
@@ -88,7 +89,19 @@
                 <span class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">{{ App\Support\Voice::line('group.slate.waiting') }}</span>
             @endif
         @elseif ($card['state'] === 'upcoming')
-            <x-slate-progress :made="$card['made']" :total="$card['total']" />
+            {{-- A finished entry is not 15 of 15 — it is DONE, and the
+                 card says the word rather than making a reader read a
+                 fraction and do the comparison. The kick time stays:
+                 knowing you are in does not stop you wanting to know
+                 when it starts. --}}
+            @if ($card['entryIn'])
+                <span class="flex min-w-0 items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-400">
+                    <flux:icon.check-circle-fill variant="micro" class="size-3.5 shrink-0" />
+                    Entry in
+                </span>
+            @else
+                <x-slate-progress :made="$card['made']" :total="$card['total']" />
+            @endif
             @if ($card['firstKick'])
                 <span class="shrink-0 text-micro text-zinc-500">
                     kicks {{ $card['firstKick']->setTimezone(config('cfb.timezone'))->format('D g:ia') }}
