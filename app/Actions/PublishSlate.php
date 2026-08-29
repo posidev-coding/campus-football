@@ -7,6 +7,7 @@ use App\Models\Slate;
 use App\Models\User;
 use App\Services\Contests\BearPicks;
 use App\Services\Contests\GameQualityScore;
+use App\Support\Cadence;
 use App\Support\SlateAuthority;
 use Illuminate\Support\Facades\DB;
 
@@ -77,7 +78,24 @@ class PublishSlate
 
             $this->snapshotQuality($slate);
 
-            $slate->update(['status' => Slate::PUBLISHED, 'published_at' => now()]);
+            /*
+             * PRACTICE OR REAL, decided once — here, at the moment the
+             * slate becomes something people can play. Every publish in
+             * the app comes through this method (the commissioner's
+             * button, the deadline fallback, a room's spawn), so the
+             * launch's practice weeks cannot be honored on one path and
+             * forgotten on another.
+             *
+             * Stamped rather than derived on read: `exhibition` is a fact
+             * about a published slate, and moving the window afterwards
+             * must not retroactively rewrite what a settled week was
+             * worth to the people who played it.
+             */
+            $slate->update([
+                'status' => Slate::PUBLISHED,
+                'published_at' => now(),
+                'exhibition' => Cadence::isPractice($slate->saturday),
+            ]);
 
             return [];
         });

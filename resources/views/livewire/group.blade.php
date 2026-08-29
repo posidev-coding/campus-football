@@ -325,10 +325,19 @@ new class extends Component
             return collect();
         }
 
+        /*
+         * THE SEASON LEDGER, and a practice week is not on it. An
+         * exhibition slate grades, pays XP and crowns its own week's
+         * winner — what it never does is move the season, which is the
+         * whole reason a launch can rehearse in front of real people.
+         * Slate::counts() says this in one place; a join cannot call it,
+         * so the column is asked here by the same name.
+         */
         $aggregates = SlateEntry::query()
             ->join('slates', 'slates.id', '=', 'slate_entries.slate_id')
             ->where('slates.contest_id', $this->contest->id)
             ->where('slates.status', Slate::SETTLED)
+            ->where('slates.exhibition', false)
             ->groupBy('slate_entries.user_id')
             ->selectRaw('slate_entries.user_id, COALESCE(SUM(slate_entries.won), 0) AS wins, COALESCE(SUM(slate_entries.final_points), 0) AS pts')
             ->get()
@@ -378,8 +387,14 @@ new class extends Component
     #[Computed]
     public function seasonHasHistory(): bool
     {
+        // Countable history, matching the table it gates: a season of
+        // nothing but practice weeks has an empty ledger, and the empty
+        // state says so rather than printing a table of zeroes.
         return $this->contest !== null
-            && $this->contest->slates()->where('status', Slate::SETTLED)->exists();
+            && $this->contest->slates()
+                ->where('status', Slate::SETTLED)
+                ->where('exhibition', false)
+                ->exists();
     }
 
     #[Computed]

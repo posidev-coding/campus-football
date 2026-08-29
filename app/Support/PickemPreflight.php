@@ -304,11 +304,22 @@ class PickemPreflight
             return $this->row('settings', 'League clock', self::FAIL, 'pickem_settings is missing.', 'migrate');
         }
 
+        /*
+         * The practice window rides this row rather than earning its own:
+         * it is a clock setting, and an unset one is a legitimate state.
+         * It is said OUT LOUD either way, because a launch that meant to
+         * rehearse and forgot to set it looks identical to one that did.
+         */
+        $practice = Cadence::countsFromLabel();
+
         return $this->row(
             'settings',
             'League clock',
             self::OK,
-            'Deadline '.Cadence::deadlineLabel().', official '.Cadence::officialLabel().'.',
+            'Deadline '.Cadence::deadlineLabel().', official '.Cadence::officialLabel().'.'
+                .($practice === null
+                    ? ' No practice window: every slate counts.'
+                    : ' Counting starts '.$practice.'; earlier Saturdays publish as practice.'),
         );
     }
 

@@ -31,5 +31,6 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Actions/GrantWalletEntry.php,app/Actions/EnterFilmRoom.php,app/Support/RankLadder.php,app/Support/PickemPreflight.php | .ai/rules/support-support.md |
 | app/Support/**, app/Actions/**, app/Services/CfbCalendar.php | .ai/rules/support.md |
 | tests/** | .ai/rules/tests.md |
+| app/Actions/PublishSlate.php,app/Support/Cadence.php,app/Models/Slate.php,resources/views/livewire/group.blade.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/views-livewire-views-livewire.md |
 | app/Enums/ContestMode.php,app/Enums/LobbyFlavor.php,resources/views/livewire/group.blade.php,resources/views/livewire/join.blade.php | .ai/rules/views-livewire.md |
 | resources/views/**, resources/css/** | .ai/rules/views.md |

@@ -10,6 +10,7 @@ use App\Models\Slate;
 use App\Models\SlateGame;
 use App\Services\CfbCalendar;
 use App\Services\Contests\GameQualityScore;
+use App\Support\Cadence;
 use App\Support\GameRanks;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -247,6 +248,16 @@ it('costs the same per row however many rows there are', function () {
         Cache::flush();
         GameRanks::flush();
         CfbCalendar::flush();
+
+        /*
+         * The league clock is deliberately NOT flushed with them. Publish
+         * reads it once to decide practice-or-real, Cadence memoizes it
+         * for the request, and the row is created on first ask — so
+         * whichever measurement ran first would wear two extra queries
+         * that scale with nothing. Warm it, then measure the rows.
+         */
+        Cadence::countsFrom();
+
         DB::enableQueryLog();
         DB::flushQueryLog();
 

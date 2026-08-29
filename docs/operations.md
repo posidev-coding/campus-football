@@ -657,6 +657,26 @@ first impression that cannot be taken back.
 
 It never writes, never stocks anything, and never flips the flag.
 
+## The practice window
+
+`pickem_settings.counts_from` is the first Saturday whose slates COUNT.
+Every slate published for an earlier Saturday is stamped `exhibition` —
+real picks, real grading, real XP, no season credit — which is how a launch
+rehearses in front of real people. Set it on the Pick'em Settings page
+before the Saturday it names; blank means no practice window and every
+slate counts, which is the normal state of a season.
+
+A DATE, never a week number: ESPN's Week 1 can hold two Saturdays. The flag
+is written ONCE, by `PublishSlate::force()` — the one door every publish
+comes through, the commissioner's button, the deadline fallback and a
+room's spawn alike — so moving the window afterwards never rewrites a week
+people already played. The season ledger is the three readers that leave an
+exhibition off: the clubhouse's season table, its "no history yet" gate,
+and the group card's wins badge. Everything else (the week's own standings
+and winner, XP, History, the Monday payoff) treats a practice week as the
+real week it was, and the settled notification says which it was. The
+preflight's `League clock` row prints the window, or says there is none.
+
 `--env=testing` does NOT switch databases — there is no `.env.testing`, so
 artisan loads `.env` and `migrate:fresh --env=testing` drops the DEVELOPMENT
 database. phpunit.xml's `<env>` block applies to PHPUnit runs only. Validate

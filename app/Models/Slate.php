@@ -110,7 +110,17 @@ class Slate extends Model
             ->min();
     }
 
-    /** A practice slate: graded and paid, but never counted. */
+    /**
+     * A practice slate: graded, crowned and paid in XP, but never on the
+     * season ledger — the clubhouse's season table, its "no history yet"
+     * gate, and the group card's wins badge all leave it off. Those three
+     * are joins that cannot call this method, so they ask the column by
+     * the same name; change one and change them.
+     *
+     * Written once, at publish, from the configured practice window
+     * (Cadence::isPractice) — moving the window afterwards must not
+     * rewrite what a week people already played was worth.
+     */
     public function counts(): bool
     {
         return ! $this->exhibition;

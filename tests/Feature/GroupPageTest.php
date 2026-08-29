@@ -141,6 +141,45 @@ it('keeps the build door on a Saturday the mode fits, thin week or not', functio
         ->assertDontSee('Not enough games this Saturday');
 });
 
+it('keeps a practice week off the season ledger while still paying its week', function () {
+    /*
+     * What "practice" has to MEAN, end to end. The exhibition flag has
+     * existed since the Saturday anchor landed and nothing read it: a
+     * rehearsal week settled straight into the season table, so the
+     * launch's practice Saturdays would have decided real standings.
+     *
+     * The week itself is untouched — it grades, it crowns its winner and
+     * it pays XP. It just never reaches the ledger.
+     */
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+
+    $slate->update(['status' => Slate::SETTLED, 'exhibition' => true, 'settled_at' => now()]);
+    SlateEntry::factory()->create([
+        'slate_id' => $slate->id,
+        'user_id' => $commissioner->id,
+        'final_points' => 90,
+        'won' => true,
+    ]);
+
+    // A fresh component each read: computed properties memoize, and the
+    // second answer is the one that matters here.
+    $ledger = fn () => Livewire::actingAs($commissioner)
+        ->test('group', ['group' => $group])
+        ->instance();
+
+    // cells => [wins, season points, this week]
+    expect($ledger()->seasonStandings->first()['cells'])->toBe([0, 0, 90])
+        ->and($ledger()->seasonHasHistory)->toBeFalse();
+
+    // The same week, counted: the ledger takes both.
+    $slate->update(['exhibition' => false]);
+
+    expect($ledger()->seasonStandings->first()['cells'])->toBe([1, 90, 90])
+        ->and($ledger()->seasonHasHistory)->toBeTrue();
+});
+
 it('renders result marks and the week standings once games grade', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
     $member = User::factory()->create(['admin' => true]);
