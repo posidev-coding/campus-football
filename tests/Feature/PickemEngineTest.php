@@ -303,9 +303,15 @@ it('names every way a slate is not ready', function () {
     $slate->games()->first()->update(['spread' => null, 'favorite_team_id' => null]);
     expect($engine->validateForPublish($slate->fresh()))->toContain('picks.publish.line_missing');
 
-    // A weeknight game on a Saturday slate.
+    // A weeknight game on a Saturday slate. The KICKOFF moves, not just
+    // the denormalized weekday beside it: the window reads the timestamp,
+    // and a fixture that changes only the column is claiming a Friday it
+    // does not have.
     $slate = pickemSlate(ContestMode::Classic);
-    $slate->games()->first()->game->update(['kickoff_day' => 'Fri']);
+    $slate->games()->first()->game->update([
+        'kickoff_at' => '2026-09-04 23:30:00',
+        'kickoff_day' => 'Fri',
+    ]);
     expect($engine->validateForPublish($slate->fresh()))->toContain('picks.publish.not_saturday');
 
     /*

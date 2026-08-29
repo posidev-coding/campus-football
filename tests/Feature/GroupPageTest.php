@@ -189,9 +189,19 @@ it('renders result marks and the week standings once games grade', function () {
     app(PublishSlate::class)->handle($commissioner, $slate);
     $slate = $slate->fresh();
 
+    /*
+     * Saturday evening, after the card. This used to move every kickoff to
+     * `now()->subDay()` and leave `kickoff_day` saying 'Sat' — so on a
+     * Saturday the games landed on FRIDAY wearing a Saturday's weekday,
+     * and the test's answer depended on the hour it ran at (before noon ET
+     * the hour check excluded them and it passed; after noon it did not).
+     * The games are already pinned to this Saturday; only the clock has to
+     * move for them to be played.
+     */
+    $this->travelTo('2026-09-05 23:30:00');
+
     foreach ($slate->games()->with('game')->get() as $slateGame) {
         $slateGame->game->update([
-            'kickoff_at' => now()->subDay(),
             'completed' => true,
             'status' => 'post',
             'home_score' => 31,

@@ -102,6 +102,14 @@ yet, which is precisely why it would have surfaced as a mystery: it is what
 `cfb.timezone` rather than UTC, matching `SyncGames`. `tests/Feature/FactoryFixturesTest.php`
 holds both factories to the rule.
 
+That column is now explicitly an INDEX and never the truth. `Game::inSlateWindow()`
+asked `kickoff_day` for the weekday and `kickoff_at` for the hour, so a kickoff that
+MOVED without the column following it still answered yes to "Saturday game" — publishable
+onto a Saturday slate, and counted by `Cadence::saturdaysIn()` as one of the week's
+Saturdays. Both halves read the converted timestamp now; `slateEligible()` keeps the
+column as its SQL pre-filter, where a stale value can only over-select a row the PHP
+check then rejects.
+
 **The other half is the fixture's own unpinned columns**, and they do not have
 to be dates. `TeamFactory` mints a random `alt_color`, which drives
 `TeamPalette`'s ladder: a light secondary crosses the 7.0 rung and swaps

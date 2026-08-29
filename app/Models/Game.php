@@ -160,12 +160,25 @@ class Game extends Model
      * Sunday ET, so one boundary check carries both ends of the window —
      * the morning kickoffs it excludes are real (Dublin games kick before
      * breakfast).
+     *
+     * BOTH HALVES READ `kickoff_at`. This asked `kickoff_day` for the
+     * weekday and the timestamp for the hour, which is two sources for one
+     * question — and when a kickoff MOVES without the denormalized column
+     * following it, a Friday night game answers yes: it is publishable
+     * onto a Saturday slate, and Cadence::saturdaysIn() reports its Friday
+     * date as one of the week's Saturdays. `kickoff_day` stays the SQL
+     * pre-filter it was added to be, and never the truth; the sync writes
+     * it from this same converted instant.
      */
     public function inSlateWindow(): bool
     {
-        return $this->kickoff_day === 'Sat'
-            && $this->kickoff_at !== null
-            && $this->kickoff_at->timezone(config('cfb.timezone'))->hour >= 12;
+        if ($this->kickoff_at === null) {
+            return false;
+        }
+
+        $kickoff = $this->kickoff_at->timezone(config('cfb.timezone'));
+
+        return $kickoff->isSaturday() && $kickoff->hour >= 12;
     }
 
     /**

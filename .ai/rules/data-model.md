@@ -62,3 +62,8 @@ seasons carries a (year, type) unique index and SeasonFactory's range is only 12
 It fails on the ALTER that adds the constraint, which runs AFTER `Schema::create` has already made the table, so the migration errors, leaves the table behind, and still reports itself Pending — a confusing second run that dies on "table already exists".
 
 Use `unsignedMediumInteger('team_id')` / `unsignedInteger('game_id')` plus an explicit `$table->foreign(...)->references('id')->on(...)`, the pattern every games/standings/rankings migration already uses. (Hit 2026-08-25 building gameday_weeks.)
+
+## A denormalized column is an INDEX, never the truth
+`games.kickoff_day` is written by `SyncGames` from the ET kickoff, and exists so `slateEligible()` can ask "Saturday?" in SQL, where the timezone conversion cannot go. `Game::inSlateWindow()` used to read the COLUMN for the weekday and `kickoff_at` for the hour — two sources for one question. When a kickoff MOVES and the column does not follow, the game answers yes to "Saturday game": publishable onto a Saturday slate, and counted by `Cadence::saturdaysIn()` as one of the week's Saturdays. That is how a clubhouse came to look for its slate on a Saturday nobody played, and how main went red on 2026-08-29 — with a time-of-day tell, because the hour check only lets the mismatch through after noon ET.
+
+Both halves read the converted timestamp now; the column stays the SQL pre-filter, which can only over-select a row the PHP check then rejects. A fixture that changes only `kickoff_day` is claiming a weekday it does not have — move `kickoff_at` too.
