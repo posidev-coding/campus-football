@@ -2,8 +2,10 @@
 
 use App\Actions\PublishSlate;
 use App\Enums\ContestMode;
+use App\Models\Game;
 use App\Models\Group;
 use App\Models\User;
+use App\Support\Cadence;
 use App\Support\PickemPreflight;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
@@ -89,6 +91,88 @@ it('counts a full room as unavailable inventory', function () {
     ]);
 
     expect(preflight()['rooms']['detail'])->toContain('Shotgun');
+});
+
+it('counts the lined games on the card being played, not the whole split week', function () {
+    /*
+     * THE SPLIT-WEEK TRAP, on the row that gates the flip — the same bug
+     * `slateDeadline` already had, one surface over. ESPN's opening week is
+     * ONE week row spanning two Saturdays, so `where('week_id')` matches
+     * both cards at once. Counting the week answered 19 lined games and lit
+     * the row green, while 8/29 — the card actually in front of people, and
+     * the one the rehearsal runs on — held seven.
+     *
+     * It fails in the safe-looking direction, which is why it survived: the
+     * gate says GO on a number borrowed from a Saturday nobody is playing.
+     */
+    $this->travelTo('2026-08-26 16:00:00');
+
+    [, $week] = splitPickemWeek();
+
+    Game::query()->where('week_id', $week->id)->get()->each(fn (Game $game) => pickemOdd($game));
+
+    $lines = preflight()['lines'];
+
+    // Seven on 8/29, twelve on 9/5, nineteen in the week. Only one of those
+    // three numbers is an answer to the question the row asks.
+    expect($lines['detail'])->toContain('7 lined on Sat Aug 29')
+        ->and($lines['detail'])->not->toContain('19')
+        // Short of fifteen, but a Shotgun room still seats: that is a fact
+        // about the opening Saturday, not a launch failure, so the row is
+        // amber and says which shelves the card exempts.
+        ->and($lines['status'])->toBe(PickemPreflight::WARN)
+        ->and($lines['detail'])->toContain('exempt');
+});
+
+it('follows the card over the turnover, and goes green on a full board', function () {
+    /*
+     * Tuesday 9/1 is the flip's own morning AND the split boundary, so it is
+     * the one day the two readings are guaranteed to disagree. The row has
+     * to move with the lobby.
+     */
+    $this->travelTo('2026-08-26 16:00:00');
+
+    [$season, $week] = splitPickemWeek();
+
+    // Three more on 9/5 takes that card to fifteen — a full board — while
+    // 8/29 is untouched at seven.
+    foreach (range(1, 3) as $i) {
+        pickemGame($season, $week, ['kickoff_at' => '2026-09-05 19:30:00']);
+    }
+
+    Game::query()->where('week_id', $week->id)->get()->each(fn (Game $game) => pickemOdd($game));
+
+    expect(preflight()['lines']['detail'])->toContain('7 lined on Sat Aug 29');
+
+    $this->travelTo('2026-09-01 16:00:00');
+    Cadence::flush();
+
+    $lines = preflight()['lines'];
+
+    expect($lines['detail'])->toContain('15 lined on Sat Sep 5')
+        ->and($lines['status'])->toBe(PickemPreflight::OK);
+});
+
+it('stays red only when the Saturday can seat no room at all', function () {
+    /*
+     * Red has to keep meaning something. Below the catalog's flex minimum
+     * nothing can publish — no downsized Shotgun, no themed room — and that
+     * IS a launch failure. Three lined games is that Saturday.
+     */
+    $this->travelTo('2026-09-02 16:00:00');
+
+    [$season, $week] = pickemSeasonWeek();
+
+    foreach (range(1, 3) as $i) {
+        pickemOdd(pickemGame($season, $week, ['kickoff_at' => '2026-09-05 19:30:00']));
+    }
+
+    $lines = preflight()['lines'];
+
+    expect($lines['status'])->toBe(PickemPreflight::FAIL)
+        ->and($lines['detail'])->toContain('3 lined on Sat Sep 5')
+        ->and($lines['detail'])->toContain('not enough for any room to publish')
+        ->and($lines['remedy'])->toBe('cfb:games --tier=current');
 });
 
 it('reports the flag as closed, and never resolves Pennant to find out', function () {

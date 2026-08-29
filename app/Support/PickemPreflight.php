@@ -37,7 +37,7 @@ class PickemPreflight
 
     public const FAIL = 'fail';
 
-    /** Below this many lined games, next week's slate cannot be built. */
+    /** Below this many lined games, a full slate cannot be built on the card. */
     public const LINED_GAMES_NEEDED = 15;
 
     public function __construct(private CfbCalendar $calendar) {}
@@ -220,7 +220,21 @@ class PickemPreflight
     /**
      * A game with no posted line can never publish (the half-point law), so
      * the real question is not "are there games" but "are there enough LINED
-     * ones in the Saturday window".
+     * ones on the card being sold".
+     *
+     * ONE CARD, ONE SATURDAY — the week is not the card. A split opening
+     * week satisfies the week-id check twice over, so counting the WEEK
+     * answers with 9/5's board while 8/29 is the Saturday in front of
+     * people: the trap `slateDeadline` already fell into, here on the row
+     * that gates the flip. `activeSaturday()` is the one question the
+     * lobby, the stocking sweep and the builder all ask.
+     *
+     * Severity defers to {@see LobbyCatalog}, which owns feasibility. An
+     * opening card that cannot seat the fifteen-game modes is a fact about
+     * the Saturday, not a launch failure — the rooms row EXEMPTS those
+     * shelves rather than failing them, and a red line here for the whole
+     * opening week would teach the reader to ignore red on the one week it
+     * matters. FAIL is reserved for a Saturday that can seat nothing at all.
      *
      * @return array{key: string, label: string, status: string, detail: string, remedy: string|null}
      */
@@ -230,26 +244,55 @@ class PickemPreflight
             return $this->row('lines', 'Lined games', self::FAIL, 'No week to count games in.', 'cfb:games --tier=current');
         }
 
-        // The Saturday half is a PHP check — the ET time-of-day boundary
-        // shifts under DST and cannot be asked in SQL.
+        $saturday = Cadence::activeSaturday($week);
+
+        if ($saturday === null) {
+            return $this->row('lines', 'Lined games', self::FAIL, 'No Saturday to count games on.', 'cfb:games --tier=current');
+        }
+
+        $card = $saturday->toDateString();
+
+        // Both halves are PHP checks. The ET time-of-day boundary shifts
+        // under DST and cannot be asked in SQL, and the DATE is read off
+        // `kickoff_at` converted to ET — never off `kickoff_day`, which is a
+        // weekday name, and never off the UTC date, which drops a 20:00 ET
+        // kickoff into Sunday.
         $lined = Game::query()
             ->where('week_id', $week->id)
             ->whereHas('odds')
             ->get()
             ->filter(fn (Game $game) => $game->inSlateWindow())
+            ->filter(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString() === $card)
             ->count();
 
-        if ($lined < self::LINED_GAMES_NEEDED) {
+        $on = 'Sat '.$saturday->format('M j');
+
+        if ($lined >= self::LINED_GAMES_NEEDED) {
+            return $this->row('lines', 'Lined games', self::OK, "{$lined} lined on {$on}.");
+        }
+
+        // Can this Saturday seat any standard room at all? The catalog owns
+        // that rule; asking it here is what keeps the two rows agreeing.
+        $seatable = collect(ContestMode::cases())
+            ->contains(fn (ContestMode $mode) => LobbyCatalog::resolve($mode, null, $week, $saturday) !== null);
+
+        if ($seatable) {
             return $this->row(
                 'lines',
                 'Lined games',
-                self::FAIL,
-                "{$lined} lined games in the Saturday window; ".self::LINED_GAMES_NEEDED.' needed for a full slate.',
-                'cfb:games --tier=current',
+                self::WARN,
+                "{$lined} lined on {$on} — a room can be seated, but the "
+                    .self::LINED_GAMES_NEEDED.'-game modes are exempt on this card.',
             );
         }
 
-        return $this->row('lines', 'Lined games', self::OK, "{$lined} in the Saturday window.");
+        return $this->row(
+            'lines',
+            'Lined games',
+            self::FAIL,
+            "{$lined} lined on {$on}; not enough for any room to publish.",
+            'cfb:games --tier=current',
+        );
     }
 
     /**
