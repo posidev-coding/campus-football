@@ -394,16 +394,15 @@ it('deletes rather than edits, and the row is really gone', function () {
     expect(ConversationPost::query()->whereKey($post->id)->exists())->toBeFalse();
 });
 
-it('mounts the conversation on all three host screens', function () {
+it('mounts the conversation on both host screens, and never in the clubhouse', function () {
     /*
      * A SOURCE sweep, because no feature test can catch a host that quietly
-     * drops the mount — and because the alternative is standing up three full
+     * drops the mount — and because the alternative is standing up two full
      * screen fixtures to assert one tag. Each host must pass its own topic.
      */
     $hosts = [
         'game' => '<livewire:conversation :topic="$game"',
         'team' => '<livewire:conversation :topic="$team"',
-        'group' => '<livewire:conversation :topic="$group"',
     ];
 
     foreach ($hosts as $screen => $tag) {
@@ -411,15 +410,28 @@ it('mounts the conversation on all three host screens', function () {
 
         expect($source)->toContain($tag);
     }
+
+    /*
+     * The clubhouse dropped its thread on 2026-08-29: a chat foot under the
+     * pick surface read as distraction, not as the room talking. Only the
+     * RENDER SITE went — the group scope stays whitelisted in
+     * PostToConversation and every group post stays moderatable — so the pin
+     * is the inverse of the sweep above, and it is what stops the embed
+     * drifting back in on the next clubhouse edit.
+     */
+    expect(file_get_contents(resource_path('views/livewire/group.blade.php')))
+        ->not->toContain('<livewire:conversation');
 });
 
-it('embeds lazily inside the clubhouse, and hydrates to the real thread', function () {
+it('embeds lazily inside the game screen, and hydrates to the real thread', function () {
     /*
      * `lazy` since the loading pass: the thread is the FOOT of the page,
      * so first paint carries the skeleton and the x-intersect hydrator,
      * and the posts' queries belong to the scroll that reaches them. The
-     * page pin is the SHELL; the hydrated half is proven on the component
-     * itself, which is what the intersect mounts.
+     * page pin is the SHELL — it moved to the game host when the clubhouse
+     * dropped its embed; the hydrated half stays on the GROUP topic, because
+     * the scope is still whitelisted server-side and a group thread that
+     * cannot render is a moderation surface with nothing to moderate.
      */
     [$commissioner, $group] = pickemContest(ContestMode::Classic);
 
@@ -427,7 +439,7 @@ it('embeds lazily inside the clubhouse, and hydrates to the real thread', functi
         'topic_type' => 'group', 'topic_id' => $group->id, 'body' => 'Slate is soft this week.',
     ]);
 
-    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+    Livewire::actingAs($commissioner)->test('game', ['game' => talkGame()])
         ->assertSeeHtml('wire:name="conversation"')
         ->assertSeeHtml('x-intersect')
         ->assertSee('animate-pulse');
