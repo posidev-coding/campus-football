@@ -1377,6 +1377,43 @@ class Voice
         ],
 
         /*
+         * THE APP INVITE — /join?by=handle, a link with no code behind
+         * it. Nothing to preview, so these lines ARE the screen: a group
+         * code sells one group, and this sells the thing itself to
+         * somebody who has never heard of it. The card's two facts stay
+         * plain; the mood is here.
+         */
+        'join.app.heading' => [
+            'pg' => "You're invited to play Pick'em",
+            'pg13' => "You're invited. Bring picks.",
+            'r' => "You're invited. Bring picks, not excuses.",
+        ],
+
+        'join.app.body' => [
+            'pg' => 'Every Saturday, one slate of college football games picked against the spread. Take a seat in a public room, or run a private group all season.',
+            'pg13' => 'One slate of college football every Saturday, against the spread, everyone on the record. Take a seat in a public room, or start a private group and keep the receipts all season.',
+            'r' => 'One slate of college football every Saturday, against the spread, every pick on the record. Sit down with strangers in a public room, or start a private group where every bad pick has a name on it.',
+        ],
+
+        // Beside the share buttons in the Lobby — the sharer is reading
+        // this one, so it says what the link does, not what the app is.
+        'join.app.hint' => [
+            'pg' => 'Share this link to invite a friend to play.',
+            'pg13' => 'No code, no group — just your link. Send it to whoever needs their picks tested.',
+            'r' => 'No code, no group — just your link. Send it to whoever has been talking about their picks all week.',
+        ],
+
+        // Rides the share sheet BESIDE the URL, and carries the whole
+        // reason the message is credible: the sharer's own name, from the
+        // sharer's own number. Rendered in the SHARER's register — they
+        // are composing it, not receiving it.
+        'join.app.share_text' => [
+            'pg' => ":inviter is inviting you to play college football Pick'em — one slate every Saturday.",
+            'pg13' => ':inviter wants your picks on the record. One slate of college football every Saturday.',
+            'r' => ':inviter is daring you to pick better. One slate every Saturday, and every pick on the record.',
+        ],
+
+        /*
          * THE BEAR SPEAKS — one taunt per weekly theme, rendered under his
          * factual theme line (BearPicks::themeLine says WHO he rides; these
          * say it in his voice). He roasts picks and teams, never people —

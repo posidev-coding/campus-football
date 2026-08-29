@@ -50,8 +50,14 @@ Route::permanentRedirect('picks/groups', 'picks')->name('picks.groups');
  * before any wall; the flag check lives in mount() (it scopes to the
  * user, so middleware would 400 every guest), and joining itself rides
  * JoinGroup's own gates.
+ *
+ * The code is OPTIONAL, because /join?by=handle is the app invite — a
+ * personal link with no group behind it, for the message the inviter
+ * actually wants to send. ONE route and one name, so every existing
+ * route('pickem.join', ['code' => …]) is untouched and the codeless form
+ * is the same call with the code left out.
  */
-Route::livewire('join/{code}', 'join')->name('pickem.join');
+Route::livewire('join/{code?}', 'join')->name('pickem.join');
 
 /*
  * Brand artifacts, generated rather than served as static files, because their

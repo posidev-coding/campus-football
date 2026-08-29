@@ -16,19 +16,32 @@ use Livewire\Attributes\Url;
 use Livewire\Component;
 
 /**
- * THE INVITE LANDING — what a shared /join/{CODE} link opens on: the
- * group's name, its game and its people BEFORE any wall, because the
- * moment someone taps a friend's link is the whole acquisition funnel.
+ * THE INVITE LANDING — what a shared /join link opens on, in two shapes.
  *
- * Guests read everything; the join tap walks them through auth and the
- * intended-URL machinery lands them straight back here, one tap from
- * seated. A dead code gets words and a door, never a 404 — and an
- * already-seated member skips the pitch entirely, straight to their
- * clubhouse. `?by=` credits the inviter when the handle is real and says
- * nothing when it is not.
+ * WITH A CODE it is the group's name, its game and its people BEFORE any
+ * wall, because the moment someone taps a friend's link is the whole
+ * acquisition funnel. Guests read everything; the join tap walks them
+ * through auth and the intended-URL machinery lands them straight back
+ * here, one tap from seated. A dead code gets words and a door, never a
+ * 404 — and an already-seated member skips the pitch entirely, straight
+ * to their clubhouse.
+ *
+ * WITHOUT ONE — `/join?by=handle` — it is the APP invite: the message an
+ * inviter actually wants to send. A private group's code cannot carry it
+ * (a group that cannot field a thin Saturday has nothing to sell) and a
+ * room's code would go stale weekly, so a codeless link sells the product
+ * and the door is the Lobby. There is nothing to preview and nothing to
+ * be seated into, which is why the branches are three and not two: the
+ * miss card tells you to ask your friend for a fresh link, and that is
+ * exactly the wrong thing to say to somebody holding a working one.
+ *
+ * `?by=` credits the inviter in both shapes when the handle is real and
+ * says nothing when it is not.
  *
  * The flag check lives HERE, not in middleware: the flag scopes to the
- * user, so a route wall would 400 every guest the product exists for.
+ * user, so a route wall would 400 every guest the product exists for. A
+ * codeless invite therefore bounces to pickem.home while the flag is
+ * closed — the link goes live with the surface it points at.
  */
 new class extends Component
 {
@@ -38,7 +51,7 @@ new class extends Component
     #[Url]
     public ?string $by = null;
 
-    public function mount(string $code): void
+    public function mount(string $code = ''): void
     {
         if (! Feature::active('pickem')) {
             $this->redirectRoute('pickem.home', navigate: true);
@@ -68,6 +81,17 @@ new class extends Component
                 navigate: true,
             );
         }
+    }
+
+    /**
+     * A link with no code behind it — the app invite. Read off the code
+     * rather than off `group`, because "no group" is also what a DEAD
+     * code resolves to and the two get opposite screens.
+     */
+    #[Computed]
+    public function isAppInvite(): bool
+    {
+        return $this->code === '';
     }
 
     #[Computed]
@@ -205,12 +229,72 @@ new class extends Component
             navigate: true,
         );
     }
+
+    /**
+     * The app invite's one door. Mirrors join()'s guest arm — the
+     * intended URL is put by hand for the same reason, and REGISTER for
+     * the same reason — with one difference: there is nothing to be
+     * seated into, so the destination is the LOBBY rather than a return
+     * trip to this screen. Coming back here would only show the pitch a
+     * second time.
+     */
+    public function start()
+    {
+        if (auth()->guest()) {
+            session()->put('url.intended', route('pickem.lobby', absolute: false));
+
+            return $this->redirectRoute('register', navigate: true);
+        }
+
+        return $this->redirectRoute('pickem.lobby', navigate: true);
+    }
 }; ?>
 
 <div class="flex flex-col gap-5 lg:mx-auto lg:w-full lg:max-w-xl">
-    <h1 class="sr-only">Join a group</h1>
+    <h1 class="sr-only">{{ $this->isAppInvite ? "Join Pick'em" : 'Join a group' }}</h1>
 
-    @if ($this->group === null)
+    {{-- THREE branches, and the ORDER is the whole rule. A codeless link
+         is a WORKING invite that resolves no group, which is also what a
+         dead code does — so the app invite is asked FIRST, or the miss
+         card tells somebody holding a good link to go get a fresh one. --}}
+    @if ($this->isAppInvite)
+        {{-- THE APP INVITE: no code, so nothing to preview and nothing to
+             be seated into. The pitch is the product and the door is the
+             Lobby, where the walk-on seats actually are. --}}
+        @if ($this->inviter !== null)
+            {{-- The personal note a link carries and a code never could. --}}
+            <p class="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+                &commat;{{ $this->inviter->handle }} invited you
+            </p>
+        @endif
+
+        <div class="flex flex-col gap-4 rounded-xl border border-zinc-200 p-5 dark:border-zinc-700">
+            <div class="flex flex-col gap-1">
+                <flux:heading size="lg">{{ Voice::line('join.app.heading') }}</flux:heading>
+                <flux:subheading>{{ Voice::line('join.app.body') }}</flux:subheading>
+            </div>
+
+            {{-- The two facts that tell the products apart, plain in every
+                 register — the same pair the lobby leads with, because a
+                 reader who has never seen the app cannot hear a joke about
+                 a room until they know what a room is. --}}
+            <p class="text-sm text-zinc-500 dark:text-zinc-400">
+                Public rooms are open to anyone and play a single Saturday.
+                Private groups are invite-only and run all season.
+            </p>
+
+            <div class="flex flex-col gap-2">
+                <flux:button wire:click="start" variant="primary" class="self-start">
+                    @guest Create your account @else Go to the Lobby @endguest
+                </flux:button>
+
+                @guest
+                    {{-- What the tap does, told straight. --}}
+                    <p class="text-micro text-zinc-500">You'll create an account first — about a minute — and land in the Lobby, where you take a seat.</p>
+                @endguest
+            </div>
+        </div>
+    @elseif ($this->group === null)
         {{-- THE MISS: words and a door, never a 404 — a shared link that
              died deserves an exit that still sells the game. --}}
         <div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center dark:border-zinc-700">

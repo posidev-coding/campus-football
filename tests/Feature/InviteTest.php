@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\RecordUxEvent;
 use App\Enums\ContestMode;
 use App\Models\Contest;
 use App\Models\Group;
@@ -7,6 +8,7 @@ use App\Models\GroupMember;
 use App\Models\Slate;
 use App\Models\User;
 use App\Support\Voice;
+use Illuminate\Support\Facades\Redis;
 use Laravel\Pennant\Feature;
 use Livewire\Livewire;
 
@@ -242,4 +244,129 @@ it('never lets a room advertise a code or a /join link', function () {
 
     expect($html)->not->toContain('/join/')
         ->not->toContain($room->code);
+});
+
+/*
+ * THE APP INVITE — /join?by=handle, the same screen with no code behind
+ * it. A private group's code cannot be sent to a stranger on a thin
+ * Saturday and a room's code would rot inside a week, so the link worth
+ * sending carries only who is asking.
+ *
+ * The load-bearing rule here is BRANCH ORDER. "No group" is what a
+ * codeless link resolves to AND what a dead code resolves to, and the two
+ * get opposite screens: the miss card tells a reader to go ask for a
+ * fresh link, which is exactly the wrong thing to say to somebody holding
+ * a working one.
+ */
+
+it('opens the app pitch on a codeless link, never the miss card', function () {
+    Feature::define('pickem', true);
+
+    Livewire::test('join')
+        ->assertOk()
+        ->assertSee(Voice::line('join.app.heading'))
+        ->assertSee('Public rooms are open to anyone')
+        ->assertSee('Create your account')
+        ->assertDontSee('Invite not found');
+});
+
+it('still answers a DEAD code with the miss card — the branch order IS the feature', function () {
+    /*
+     * The regression this change can actually introduce. Point the app
+     * invite at a non-empty code and this goes red: a dead link would
+     * start selling the app instead of admitting it is dead, and the
+     * reader would never learn to ask for a working one.
+     */
+    Feature::define('pickem', true);
+
+    Livewire::test('join', ['code' => 'NOPENOPE'])
+        ->assertOk()
+        ->assertSee('Invite not found')
+        ->assertSee(Voice::line('join.miss'))
+        ->assertDontSee(Voice::line('join.app.heading'))
+        ->assertDontSee('Public rooms are open to anyone');
+});
+
+it('routes /join with no code at all — the URL a share sheet actually sends', function () {
+    // Livewire::test() mounts past the router, so the optional segment is
+    // only really proven by a request. One route and one name: the same
+    // call without a code is the codeless link.
+    expect(route('pickem.join', ['by' => 'marcus'], absolute: false))->toBe('/join?by=marcus');
+
+    User::factory()->create(['handle' => 'marcus']);
+    config(['cfb.pickem_open' => true]);
+
+    $this->get(route('pickem.join', ['by' => 'marcus']))
+        ->assertOk()
+        ->assertSee('&commat;marcus invited you', escape: false)
+        ->assertSee(Voice::line('join.app.heading'));
+});
+
+it('credits a real inviter on a codeless link and says nothing about a fake one', function () {
+    Feature::define('pickem', true);
+
+    User::factory()->create(['handle' => 'marcus']);
+
+    Livewire::withQueryParams(['by' => 'marcus'])
+        ->test('join')
+        ->assertSeeHtml('&commat;marcus invited you');
+
+    Livewire::withQueryParams(['by' => 'nobody_here'])
+        ->test('join')
+        ->assertOk()
+        ->assertDontSee('invited you');
+});
+
+it('walks a codeless guest to REGISTER, and the intended URL is the LOBBY', function () {
+    /*
+     * Register for the same reason the coded invite does. The difference
+     * is the destination: there is nothing here to be seated into, so
+     * coming back would only show the pitch a second time.
+     */
+    Feature::define('pickem', true);
+
+    Livewire::test('join')
+        ->call('start')
+        ->assertRedirect(route('register'));
+
+    expect(session('url.intended'))->toBe(route('pickem.lobby', absolute: false));
+});
+
+it('sends a signed-in codeless visitor straight to the Lobby', function () {
+    Livewire::actingAs(pickemAdmin())
+        ->test('join')
+        ->call('start')
+        ->assertRedirect(route('pickem.lobby'));
+});
+
+it('bounces a codeless guest to My Picks while the flag is closed', function () {
+    /*
+     * NOT a bug, and the rehearsal is what it proves: the flag gates the
+     * whole pick'em surface before the flip, and a link into a surface
+     * that does not exist yet belongs on the area's own coming-soon page.
+     * The link goes live with the surface it points at.
+     */
+    expect(Feature::for(null)->active('pickem'))->toBeFalse();
+
+    Livewire::withQueryParams(['by' => 'marcus'])
+        ->test('join')
+        ->assertRedirect(route('pickem.home'));
+});
+
+it('counts a codeless open on the signal that already exists', function () {
+    /*
+     * UxSignal is a bounded vocabulary — eight named signals and nothing
+     * else may be counted. InviteOpened fires in mount() BEFORE the group
+     * lookup, so a codeless open is measured for free and this change
+     * adds no case. This is the test that keeps that true.
+     */
+    Feature::define('pickem', true);
+
+    Redis::connection('pulse')->flushdb();
+
+    Livewire::test('join')->assertOk();
+
+    $counts = (array) Redis::connection('pulse')->hgetall(RecordUxEvent::dayKey('2026-09-02'));
+
+    expect(array_map('intval', $counts))->toBe(['invite_opened' => 1]);
 });
