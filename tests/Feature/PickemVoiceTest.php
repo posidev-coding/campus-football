@@ -71,6 +71,7 @@ it('speaks every register on the rebuild\'s new families', function (string $key
 })->with([
     'group.slate.waiting',
     'group.slate.build_prompt',
+    'group.slate.thin',
     'group.season.empty',
     'group.mode_changed',
     'create.subheading',

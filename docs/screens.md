@@ -734,6 +734,19 @@ for the same reason — "Private group, all season · 4 members" /
 has never seen the app on a name, a mode chip and a member count, none of
 which say which thing they were invited to.
 
+A commissioner's clubhouse gates the build door on the SATURDAY, not on
+the calendar: `SlateFeasibility::for()` asks whether this Saturday can seat
+the group's mode, and a Saturday that cannot (Week 0's seven or eight games
+against Shotgun's ten and the Woodshed's fifteen) takes the button away,
+states both numbers and names the Saturday the ritual reopens on. A group
+never downsizes the way a house Shotgun room does — its mode is a
+season-long promise its members chose. The My Picks card drops its blue
+"Build the slate" (and the deadline beside it) for the lobby's own words,
+resolving the Saturday's pool ONCE for every card; the wizard itself
+refuses the same way for a bookmarked URL, before it would have created a
+draft nobody could publish. A null answer — no week, no Saturday — leaves
+the door exactly where it was.
+
 The room screen carries what the old `x-contest-card` used to: the flavor's
 blurb (or the mode's) and its optional zinger render under the room hero,
 where somebody who tapped a row decides whether to sit down. The blurb is

@@ -62,6 +62,15 @@
                  the words change. --}}
             @if ($card['past'] ?? false)
                 <span class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">{{ App\Support\Voice::line('group.room.past') }}</span>
+            @elseif ($card['commissioner'] && $card['contest'] && ! $card['buildable'])
+                {{-- A Saturday too thin to seat this mode. The blue call
+                     to action would send the commissioner to a wizard
+                     whose publish can only refuse, and the deadline
+                     beside it would be a clock on work nobody can do —
+                     so the card states the condition instead, in the
+                     lobby's own words for it. The clubhouse says which
+                     numbers and when. --}}
+                <span class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">Not enough games this Saturday</span>
             @elseif ($card['commissioner'] && $card['contest'])
                 <span class="font-medium text-blue-600 dark:text-blue-400">Build the slate</span>
                 @if ($card['deadline'])

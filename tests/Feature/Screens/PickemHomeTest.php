@@ -7,6 +7,7 @@ use App\Actions\SpawnPublicContest;
 use App\Enums\ContentRating;
 use App\Enums\ContestMode;
 use App\Models\Contest;
+use App\Models\Game;
 use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Slate;
@@ -153,6 +154,31 @@ describe('my week (inside the flag)', function () {
             ->and($card['deadline']->toDateString())->not->toBe('2026-09-03');
 
         unset($slate);
+    });
+
+    it('states the condition instead of selling a build the Saturday cannot seat', function () {
+        /*
+         * Week 0: seven lined games, which fills neither Shotgun's ten
+         * nor the Woodshed's fifteen. The card's blue "Build the slate"
+         * would send the commissioner to a wizard that now refuses to
+         * open, and the deadline beside it would be a clock on work
+         * nobody can do — so the card says the condition in the lobby's
+         * own words and the clubhouse says the numbers.
+         */
+        $this->travelTo('2026-08-26 16:00:00');
+
+        [, $week] = splitPickemWeek();
+
+        foreach (Game::query()->whereDate('kickoff_at', '2026-08-29')->get() as $game) {
+            pickemOdd($game);
+        }
+
+        [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee($group->name)
+            ->assertSee('Not enough games this Saturday')
+            ->assertDontSee('Build the slate');
     });
 
     it('names both ways to play on a first run, and the modes under one of them', function () {
