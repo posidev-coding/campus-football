@@ -45,6 +45,32 @@ it('holds the slate window to Saturday noon-to-midnight Eastern', function () {
     expect(pickemGame($season, $week, ['kickoff_at' => '2026-09-04 23:30:00'])->inSlateWindow())->toBeFalse();
 });
 
+it('reads the window off the kickoff, never the weekday column beside it', function () {
+    /*
+     * THE DISAGREEMENT A RESCHEDULE MAKES: the kickoff moved to Friday
+     * night and `kickoff_day` still says 'Sat'. The window used to ask the
+     * column for the weekday and the timestamp for the hour — two sources
+     * for one question — so this game was publishable onto a Saturday
+     * slate, and saturdaysIn() reported its FRIDAY date as one of the
+     * week's Saturdays. A clubhouse then looked for a slate on a Saturday
+     * nobody was playing and found none.
+     */
+    [$season, $week] = pickemSeasonWeek();
+
+    $moved = pickemGame($season, $week, [
+        // 7:30pm ET on a FRIDAY, wearing Saturday's weekday.
+        'kickoff_at' => '2026-09-04 23:30:00',
+        'kickoff_day' => 'Sat',
+    ]);
+
+    // And a real one, so the week has an honest Saturday to find.
+    pickemGame($season, $week);
+
+    expect($moved->inSlateWindow())->toBeFalse()
+        ->and(collect(Cadence::saturdaysIn($week))->map->toDateString()->all())
+        ->toBe(['2026-09-05']);
+});
+
 it('refuses a slate carrying a pre-noon Saturday game', function () {
     [$commissioner, , $contest] = pickemContest();
     $slate = pickemDraftSlate($contest);
