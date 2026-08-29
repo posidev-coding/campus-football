@@ -19,6 +19,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/views/**, resources/css/** | .ai/rules/css.md |
 | app/Models/**, database/migrations/**, database/factories/** | .ai/rules/data-model.md |
 | app/Services/Espn/**, app/Console/Commands/**, app/Jobs/**, routes/console.php, routes/** | .ai/rules/espn-sync.md |
+| app/Services/Espn/Sync/SyncGames.php,app/Services/Espn/** | .ai/rules/espn.md |
 | resources/views/filament/**,app/Filament/** | .ai/rules/filament.md |
 | routes/**,app/Http/** | .ai/rules/http.md |
 | app/Livewire/**, resources/views/livewire/**, resources/views/components/** | .ai/rules/livewire-alpine.md |
@@ -30,6 +31,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Support/**, app/Services/** | .ai/rules/services.md |
 | app/Actions/GrantWalletEntry.php,app/Actions/EnterFilmRoom.php,app/Support/RankLadder.php,app/Support/PickemPreflight.php | .ai/rules/support-support.md |
 | app/Support/**, app/Actions/**, app/Services/CfbCalendar.php | .ai/rules/support.md |
+| app/Services/Espn/Sync/SyncGames.php,app/Console/Commands/SweepLiveSummariesCommand.php,routes/console.php | .ai/rules/sync-console-commands.md |
 | tests/** | .ai/rules/tests.md |
 | app/Models/Slate.php,resources/views/livewire/group.blade.php,resources/views/livewire/pickem-home.blade.php,app/Support/** | .ai/rules/views-livewire-support.md |
 | app/Actions/PublishSlate.php,app/Support/Cadence.php,app/Models/Slate.php,resources/views/livewire/group.blade.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/views-livewire-views-livewire.md |

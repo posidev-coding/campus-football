@@ -12,6 +12,8 @@ use App\Models\Venue;
 use App\Models\Week;
 use App\Services\Espn\EspnClient;
 use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -118,16 +120,70 @@ class SyncGames
      */
     public function live(int $group = 80): int
     {
-        if (! $this->hasLiveGames()) {
+        $days = $this->liveScoreboardDays();
+
+        if ($days === []) {
             return 0;
         }
 
-        return $this->day(group: $group);
+        // Still ONE request. A range only appears in the after-midnight tail,
+        // where it spans two ET dates rather than two calls.
+        return $this->range($days[0], count($days) > 1 ? end($days) : null, $group);
     }
 
     public function hasLiveGames(): bool
     {
-        return Game::query()->inProgress()->exists();
+        return $this->liveScoreboardDays() !== [];
+    }
+
+    /**
+     * The ET scoreboard days that hold a live game right now — the guard and
+     * the request window, answered by one query so they can never disagree.
+     *
+     * ASKING FOR "TODAY" WAS WRONG AFTER MIDNIGHT. ESPN buckets an event by its
+     * EASTERN date, so a 22:30 ET Saturday kickoff lives on `dates=20251129`
+     * and `dates=20251130` returns zero events — verified against the feed. The
+     * live window deliberately runs to 03:00 precisely to cover that West Coast
+     * night game, but at 00:05 ET `day()` rolled to the new date, fetched an
+     * empty payload and froze the score of exactly the game people were still
+     * awake for. Deriving the date from the GAME instead of from the wall clock
+     * is what makes the 03:00 window mean something.
+     *
+     * Two states qualify, and both are needed. `inProgress()` is what the feed
+     * has confirmed; `expectedLive()` is what the clock says must be true and
+     * is the only thing that can ever START live coverage.
+     *
+     * @return list<string> Ymd, ascending, at most a two-day span
+     */
+    private function liveScoreboardDays(): array
+    {
+        $timezone = config('cfb.timezone');
+
+        $kickoffs = Game::query()
+            ->where(fn (Builder $live) => $live
+                ->inProgress()
+                ->orWhere(fn (Builder $expected) => $expected->expectedLive()))
+            ->pluck('kickoff_at');
+
+        if ($kickoffs->isEmpty()) {
+            return [];
+        }
+
+        $days = $kickoffs->filter()
+            ->map(fn (CarbonInterface $kickoff): string => $kickoff->setTimezone($timezone)->format('Ymd'))
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        /*
+         * A live game with no kickoff time is not a reason to skip the pass —
+         * it is a reason to ask about today. The null is not filled in
+         * anywhere; it just cannot narrow the window.
+         */
+        return $days === []
+            ? [CarbonImmutable::now($timezone)->format('Ymd')]
+            : $days;
     }
 
     /**
