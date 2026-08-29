@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\WalletEntries\Pages;
 
 use App\Filament\Resources\WalletEntries\WalletEntryResource;
-use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ManageRecords;
 
 class ManageWalletEntries extends ManageRecords
@@ -12,8 +11,15 @@ class ManageWalletEntries extends ManageRecords
 
     protected function getHeaderActions(): array
     {
-        return [
-            CreateAction::make(),
-        ];
+        /*
+         * NO CreateAction, and this one matters more than most.
+         *
+         * Filament's create modal writes the row directly, which would walk
+         * straight around `GrantWalletEntry` — the single doorway where the
+         * idempotency rule lives, and the reason a double-fired event pays
+         * nobody twice. The resource's own Grant action is the way in, and it
+         * calls the Action.
+         */
+        return [];
     }
 }

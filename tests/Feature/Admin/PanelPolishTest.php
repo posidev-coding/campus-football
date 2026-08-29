@@ -119,6 +119,42 @@ it('gives every resource table an empty state heading', function () {
     expect($offenders)->toBe([]);
 });
 
+it('offers a create button on exactly one resource, and it is the Workbook', function () {
+    /*
+     * Found in a browser, not in a test — which is why it is now a test.
+     *
+     * A scaffolded `CreateAction` sits in every generated List/Manage page's
+     * header, and removing the `create` PAGE from the resource does not remove
+     * it: the button renders and opens a create modal that writes the row
+     * directly. Every assertion about `getPages()` passes while it does,
+     * because the button lives on the PAGE, not on the resource.
+     *
+     * Two real ones were shipping when this was written. Users offered "New
+     * user", which would mint an account around registration — skipping the
+     * handle rules, the welcome mail and onboarding. Worse, the wallet ledger
+     * offered one, and that modal writes a row straight around
+     * `GrantWalletEntry`, the single doorway the idempotency rule lives in.
+     *
+     * The Workbook is the one legitimate exception: filing an item by hand is
+     * a deliberate, tested feature (`source = human`), and it is a
+     * ManageRecords page whose CreateAction is a modal by design.
+     */
+    $withCreate = [];
+
+    foreach (panelResources() as $resource) {
+        foreach ($resource::getPages() as $registration) {
+            $page = $registration->getPage();
+            $source = file_get_contents((new ReflectionClass($page))->getFileName());
+
+            if (str_contains($source, 'CreateAction::make()')) {
+                $withCreate[] = class_basename($page);
+            }
+        }
+    }
+
+    expect($withCreate)->toBe(['ManageWorkbook']);
+});
+
 it('keeps the 35k-row table out of global search', function () {
     // A contains-LIKE over athletes on every keystroke is the slowest thing
     // the panel could do, and the product solves the same problem with a

@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\Users\Pages;
 
 use App\Filament\Resources\Users\UserResource;
-use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
 
 class ListUsers extends ListRecords
@@ -12,8 +11,15 @@ class ListUsers extends ListRecords
 
     protected function getHeaderActions(): array
     {
-        return [
-            CreateAction::make(),
-        ];
+        /*
+         * No create. An account is made by REGISTERING — a hand-made row skips
+         * password hashing rules, the welcome mail, the handle validation and
+         * the whole onboarding moment.
+         *
+         * Dropping the `create` PAGE from the resource is not enough on its
+         * own: the scaffolded header action still renders a "New user" button
+         * that leads nowhere, and a page-level assertion does not see it.
+         */
+        return [];
     }
 }
