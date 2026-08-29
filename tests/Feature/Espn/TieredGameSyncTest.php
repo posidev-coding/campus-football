@@ -445,3 +445,144 @@ it('does not let one unstorable game take out the rest of the window', function 
         // The one that matters: the good game after it still landed.
         ->and(Game::find(501))->not->toBeNull();
 });
+
+describe('starting and holding the live window', function () {
+    /*
+     * The live tier is the ONLY minute-cadence thing in the schedule, so
+     * whatever it declines to do is invisible for up to an hour — the next
+     * `--tier=current` pass is the fallback. Both tests below are about the
+     * tier declining to do anything at all.
+     */
+
+    function scoreboardDatesSent(): array
+    {
+        $dates = [];
+
+        Http::assertSent(function ($request) use (&$dates): bool {
+            parse_str(parse_url($request->url(), PHP_URL_QUERY) ?? '', $query);
+            $dates[] = $query['dates'] ?? null;
+
+            return true;
+        });
+
+        return $dates;
+    }
+
+    it('starts live coverage for a game whose kickoff has passed', function () {
+        /*
+         * The deadlock this fixes. The guard used to be `inProgress()` alone,
+         * which can only CONTINUE coverage: a game sits at `pre` until a
+         * request says otherwise, and the tier refused to spend one until
+         * something was already `in`. Measured in production on 2026-08-29 —
+         * UNC at TCU was 10-10 in the second quarter on ESPN while
+         * `cfb:games --tier=live` reported "0 changed, 0 requests", and every
+         * `inProgress()`-gated consumer behind it (the box-score sweep, the
+         * `live` queue, the gamecast) stayed empty with it.
+         *
+         * Break-back: restore the old guard and this asserts nothing sent.
+         */
+        $this->travelTo('2025-09-27 20:00:00');
+
+        Game::factory()->create([
+            'id' => 401,
+            'season_id' => $this->season->id,
+            // Kicked off half an hour ago; the feed has not been read since.
+            'kickoff_at' => '2025-09-27 19:30:00',
+            'status' => 'pre',
+            'completed' => false,
+        ]);
+
+        fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 14, 10, completed: false, state: 'in')]);
+
+        app(SyncGames::class)->live();
+
+        Http::assertSentCount(1);
+
+        expect(Game::whereKey(401)->value('status'))->toBe('in')
+            ->and(Game::whereKey(401)->value('home_score'))->toBe(14);
+    });
+
+    it('stops presuming a game is live once the grace window closes', function () {
+        /*
+         * The bound on the other end. A postponed game that never leaves `pre`
+         * must not hold the minute tier open for the rest of the season — the
+         * whole reason this guard is a database check is that a quiet tick is
+         * free.
+         */
+        $this->travelTo('2025-09-28 08:00:00');
+
+        Game::factory()->create([
+            'id' => 401,
+            'season_id' => $this->season->id,
+            'kickoff_at' => '2025-09-27 19:30:00',
+            'status' => 'pre',
+            'completed' => false,
+        ]);
+
+        Http::fake();
+
+        expect(app(SyncGames::class)->live())->toBe(0);
+
+        Http::assertNothingSent();
+    });
+
+    it('asks for the late game\'s own Eastern date after midnight', function () {
+        /*
+         * ESPN buckets an event by its EASTERN date: a 22:30 ET Saturday
+         * kickoff lives on `dates=20250927`, and `dates=20250928` returns zero
+         * events — verified against the feed on 2026-08-29 with a real
+         * 2025-11-29 night game.
+         *
+         * The live window runs to 03:00 precisely so a West Coast night game
+         * keeps updating, but `day()` rolled to the new ET date at midnight and
+         * fetched an empty payload — freezing the score of exactly the game the
+         * window was extended for. The date has to come from the GAME.
+         */
+        // 01:00 ET Sunday. The game kicked at 22:30 ET Saturday and is live.
+        $this->travelTo('2025-09-28 05:00:00');
+
+        Game::factory()->create([
+            'id' => 401,
+            'season_id' => $this->season->id,
+            'kickoff_at' => '2025-09-28 02:30:00',
+            'status' => 'in',
+            'completed' => false,
+        ]);
+
+        fakeScoreboard([scoreboardEvent(401, '2025-09-28T02:30Z', 21, 17, completed: false, state: 'in')]);
+
+        app(SyncGames::class)->live();
+
+        // Saturday, not Sunday. Break-back: `day()` here asks for 20250928.
+        expect(scoreboardDatesSent())->toBe(['20250927']);
+    });
+
+    it('covers both Eastern dates in one request when the slate straddles midnight', function () {
+        // A late Saturday game still playing while an early Sunday game kicks.
+        // Two scoreboard days, still ONE request — the budget is the point.
+        $this->travelTo('2025-09-28 05:00:00');
+
+        Game::factory()->create([
+            'id' => 401,
+            'season_id' => $this->season->id,
+            'kickoff_at' => '2025-09-28 02:30:00',
+            'status' => 'in',
+            'completed' => false,
+        ]);
+
+        Game::factory()->create([
+            'id' => 402,
+            'season_id' => $this->season->id,
+            'kickoff_at' => '2025-09-28 04:45:00',
+            'status' => 'in',
+            'completed' => false,
+        ]);
+
+        fakeScoreboard([scoreboardEvent(401, '2025-09-28T02:30Z', 21, 17, completed: false, state: 'in')]);
+
+        app(SyncGames::class)->live();
+
+        Http::assertSentCount(1);
+        expect(scoreboardDatesSent())->toBe(['20250927-20250928']);
+    });
+});

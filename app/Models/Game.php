@@ -34,6 +34,22 @@ class Game extends Model
     /** Four quarters. ESPN keeps counting, so period 5 is the first overtime. */
     private const REGULATION_PERIODS = 4;
 
+    /**
+     * Every ESPN state that means "the ball is in play right now". Halftime and
+     * end-of-period are live: the clock is stopped, the game is not.
+     *
+     * @var list<string>
+     */
+    public const LIVE_STATUSES = ['in', 'halftime', 'end-period'];
+
+    /**
+     * How long after kickoff a game is still PRESUMED live when the feed has
+     * not caught up. Long enough for a weather delay, short enough that a
+     * postponed game which never leaves `pre` stops holding the live tier
+     * open. See {@see scopeExpectedLive()}.
+     */
+    private const KICKOFF_GRACE_HOURS = 6;
+
     public $incrementing = false;
 
     protected $keyType = 'int';
@@ -224,7 +240,7 @@ class Game extends Model
         // no clock to lock by — only the feed can say it started.
         return $this->completed
             || ($this->kickoff_at !== null && ! $this->kickoff_at->isFuture())
-            || in_array($this->status, ['in', 'halftime', 'end-period'], true);
+            || in_array($this->status, self::LIVE_STATUSES, true);
     }
 
     public function scopeCompleted(Builder $query): Builder
@@ -253,7 +269,34 @@ class Game extends Model
     public function scopeInProgress(Builder $query): Builder
     {
         return $query->where('completed', false)->whereNotNull('status')
-            ->whereIn('status', ['in', 'halftime', 'end-period']);
+            ->whereIn('status', self::LIVE_STATUSES);
+    }
+
+    /**
+     * Games the CLOCK says should be live, whatever the feed last told us.
+     *
+     * The live tier used to guard on {@see scopeInProgress()} alone, which can
+     * only ever CONTINUE live coverage: a game sits at `pre` until a request
+     * says otherwise, and the minute tier refused to spend one until something
+     * was already `in`. The only scheduled tasks that could break the deadlock
+     * were the hourly `--tier=current` and the 04:00 `--tier=recent`, so a noon
+     * kickoff had no score, no clock and no gamecast until 13:00. Measured on
+     * 2026-08-29: UNC at TCU was 10-10 in the second quarter on ESPN while
+     * `cfb:games --tier=live` reported "0 changed, 0 requests".
+     *
+     * Bounded on BOTH ends, and the floor is why. "Any unfinished past
+     * kickoff" would mean a postponed game that never leaves `pre` holds the
+     * live tier open every minute of every window for the rest of the season.
+     * A game genuinely being played goes `in` on the first pass this opens,
+     * and `inProgress()` carries it from there however long it runs.
+     *
+     * A null kickoff is not a zero — an unscheduled fixture has no clock to be
+     * late against, so it is simply not here.
+     */
+    public function scopeExpectedLive(Builder $query): Builder
+    {
+        return $query->where('completed', false)
+            ->whereBetween('kickoff_at', [now()->subHours(self::KICKOFF_GRACE_HOURS), now()]);
     }
 
     public function scopeUpcoming(Builder $query): Builder
@@ -275,7 +318,7 @@ class Game extends Model
     public function isInProgress(): bool
     {
         return ! $this->completed
-            && in_array($this->status, ['in', 'halftime', 'end-period'], true);
+            && in_array($this->status, self::LIVE_STATUSES, true);
     }
 
     /**
