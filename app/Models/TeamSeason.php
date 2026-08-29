@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use Database\Factories\TeamSeasonFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,6 +15,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 #[Fillable(['team_id', 'season_year', 'conference_id', 'division_id', 'classification'])]
 class TeamSeason extends Model
 {
+    /** @use HasFactory<TeamSeasonFactory> */
+    use HasFactory;
+
     public function team(): BelongsTo
     {
         return $this->belongsTo(Team::class);

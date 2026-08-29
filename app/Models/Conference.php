@@ -50,4 +50,23 @@ class Conference extends Model
     {
         return $this->hasMany(TeamSeason::class)->where('season_year', $seasonYear);
     }
+
+    /**
+     * The same rows, UNPARAMETERIZED — and it exists for exactly one reason.
+     *
+     * `withCount()` resolves a relation by calling the method with no
+     * arguments, so `teamSeasons(int $year)` cannot feed it: the count would
+     * be a TypeError. Callers scope the year in the withCount closure instead:
+     *
+     *     ->withCount(['memberships as members_count' =>
+     *         fn ($q) => $q->where('season_year', $year)])
+     *
+     * Never read this one unscoped and call the answer a membership list —
+     * conference membership is season-scoped, and 513 teams changed conference
+     * between 2021 and 2025.
+     */
+    public function memberships(): HasMany
+    {
+        return $this->hasMany(TeamSeason::class);
+    }
 }

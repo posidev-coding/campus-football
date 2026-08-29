@@ -282,7 +282,10 @@ describe('the sidebar', function () {
             ->and(SyncHealth::getNavigationGroup())->toBe('Operations')
             ->and(Branding::getNavigationGroup())->toBe('Configuration')
             ->and(PickemSettings::getNavigationGroup())->toBe('Configuration')
-            ->and(TeamResource::getNavigationGroup())->toBe('Configuration');
+            // Teams moved out of Configuration when Team Branding was absorbed
+            // into a full Team resource — the branding curation is one tab of
+            // a team now, not a settings page.
+            ->and(TeamResource::getNavigationGroup())->toBe('College Football');
     });
 });
 
