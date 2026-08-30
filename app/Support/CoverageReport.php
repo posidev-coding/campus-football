@@ -6,6 +6,7 @@ use App\Enums\SeasonPhase;
 use App\Models\Article;
 use App\Models\AthleteSeasonStat;
 use App\Models\AthleteTeamSeason;
+use App\Models\FeedRun;
 use App\Models\Game;
 use App\Models\GamePredictor;
 use App\Models\Ranking;
@@ -32,6 +33,25 @@ class CoverageReport
     public const WARN = 'warn';
 
     public const FAIL = 'fail';
+
+    /**
+     * Rankings thresholds, in days, set to bound the sync's real cadence.
+     *
+     * `--only=rankings-current` runs Sunday and Tuesday at 19:00, so the
+     * honest worst case between two healthy runs is the five days from Tuesday
+     * to Sunday. Against the old four-day warn this row went amber every
+     * weekend of the season — on the weekend, which is when someone is most
+     * likely to be looking at the board. Six days leaves a day of headroom
+     * over that gap; nine is two consecutive missed runs, which is a sync that
+     * has genuinely stopped.
+     *
+     * The other way to close this was a mid-week run, and it buys nothing:
+     * polls drop Sunday afternoon and Tuesday evening, so a Thursday pass
+     * spends six requests reconciling a poll that cannot have changed.
+     */
+    private const RANKINGS_AGING_DAYS = 6;
+
+    private const RANKINGS_STALE_DAYS = 9;
 
     public function __construct(private CfbCalendar $calendar) {}
 
@@ -226,17 +246,55 @@ class CoverageReport
         );
     }
 
-    /** @return array{key: string, label: string, expected: int|string, actual: int|string, status: string, detail: string, remedy: ?string} */
+    /**
+     * Rankings freshness, measured against when the polls were last CONFIRMED
+     * rather than when a row was last written.
+     *
+     * Those differ, and the gap is not an accident. `SyncRankings` reconciles
+     * with `updateOrCreate`, so Eloquent's `save()` skips the write entirely
+     * when nothing is dirty — the rule that keeps writes off a scale-to-zero
+     * database is exactly what stops any row timestamp recording that a run
+     * happened. Between Tuesday and Sunday the poll does not change, so a
+     * perfectly healthy run writes nothing; in the preseason one poll stands
+     * unchanged for weeks. Read off the rows alone, this check reported six
+     * days stale for data a completed sync had confirmed the day before, and
+     * `created_at` versus `updated_at` was never the difference.
+     *
+     * So a completed rankings run that reconciled rows counts as evidence too.
+     * `records > 0` is doing real work there: the site host answers a
+     * disallowed User-Agent with a 403, which `EspnClient` returns as null and
+     * the sync completes on having written nothing. A run row alone would make
+     * that silence look like freshness — the precise failure this class was
+     * built to catch — so only a run that actually reconciled a poll counts.
+     *
+     * @return array{key: string, label: string, expected: int|string, actual: int|string, status: string, detail: string, remedy: ?string}
+     */
     private function rankings(bool $inSeason): array
     {
-        $latest = Ranking::max('created_at');
+        $written = Ranking::max('updated_at');
+
+        /*
+         * A run refines the age of data we hold; it cannot invent data we do
+         * not. With no ranking rows at all there is nothing for a run row to
+         * be evidence ABOUT, so the ledger is not consulted and the check
+         * stays FAIL — a freshness check that reports a recent date over an
+         * empty table is worse than no check.
+         */
+        $confirmed = $written === null ? null : $this->lastRankingsSyncAt();
+
+        $latest = match (true) {
+            $written === null => null,
+            $confirmed === null => $written,
+            default => max($written, $confirmed),
+        };
+
         $age = $latest ? now()->diffInDays($latest, true) : null;
 
         $status = match (true) {
             ! $inSeason => self::OK,
             $age === null => self::FAIL,
-            $age > 8 => self::FAIL,
-            $age > 4 => self::WARN,
+            $age > self::RANKINGS_STALE_DAYS => self::FAIL,
+            $age > self::RANKINGS_AGING_DAYS => self::WARN,
             default => self::OK,
         };
 
@@ -245,12 +303,31 @@ class CoverageReport
             label: 'Rankings freshness',
             // Not "out of season": in August the scheduler still runs, and a
             // preseason poll is out. The threshold relaxes, the claim does not.
-            expected: $inSeason ? '≤ 4 days' : 'relaxed',
+            expected: $inSeason ? '≤ '.self::RANKINGS_AGING_DAYS.' days' : 'relaxed',
             actual: $age === null ? 'never' : sprintf('%.0f days', $age),
             status: $status,
-            detail: $latest ? "latest poll rows written {$latest}" : 'no ranking rows at all',
+            detail: match (true) {
+                $latest === null => 'no ranking rows at all',
+                $confirmed !== null && $confirmed > $written => "polls last reconciled {$confirmed}, unchanged since {$written}",
+                default => "latest poll rows written {$written}",
+            },
             remedy: 'cfb:sync --only=rankings-current --year=current',
         );
+    }
+
+    /**
+     * When a rankings sync last reconciled an actual poll, or null if the
+     * ledger holds none.
+     *
+     * Both the weekly current-week pass and the full-season backfill are real
+     * evidence; nothing else writes poll rows.
+     */
+    private function lastRankingsSyncAt(): ?string
+    {
+        return FeedRun::whereIn('command', ['sync:rankings-current', 'sync:rankings'])
+            ->where('status', FeedRun::COMPLETE)
+            ->where('records', '>', 0)
+            ->max('finished_at');
     }
 
     /** @return array{key: string, label: string, expected: int|string, actual: int|string, status: string, detail: string, remedy: ?string} */

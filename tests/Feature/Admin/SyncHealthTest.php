@@ -11,11 +11,13 @@ use App\Jobs\SyncTeamSeason;
 use App\Models\Article;
 use App\Models\FeedRun;
 use App\Models\Game;
+use App\Models\Ranking;
 use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\TeamSeasonStat;
 use App\Models\User;
+use App\Models\Week;
 use App\Support\CoverageReport;
 use Illuminate\Foundation\Console\QueuedCommand;
 use Illuminate\Support\Facades\Queue;
@@ -105,6 +107,122 @@ describe('coverage checks', function () {
         $check = collect(app(CoverageReport::class)->checks())->firstWhere('key', 'team-stats');
 
         expect($check['status'])->toBe(CoverageReport::OK);
+    });
+
+    /*
+     * Rankings freshness needs an in-season phase to assert anything: out of
+     * season the check relaxes to OK by design, which would make every case
+     * below pass without measuring a thing.
+     */
+    $inSeason = fn () => Season::factory()->create(['year' => 2026, 'type' => Season::REGULAR]);
+
+    $pollWritten = function (Season $season, string $at): Ranking {
+        /*
+         * The week is built on the PINNED season rather than left to
+         * RankingFactory, which reaches Season::factory() through WeekFactory
+         * and draws a year from a twelve-year range -- one roll in twelve
+         * lands on the 2026 regular season this fixture already created and
+         * dies on the (year, type) unique. It passed under --filter and failed
+         * in the suite, which is the whole shape the factory rule describes.
+         */
+        $week = Week::factory()->create(['season_id' => $season->id]);
+
+        $ranking = Ranking::factory()->create(['week_id' => $week->id]);
+
+        // A poll row's own timestamps are what the check USED to read, so they
+        // have to be placed deliberately rather than left at insert time.
+        $ranking->forceFill(['created_at' => $at, 'updated_at' => $at])->save();
+
+        return $ranking;
+    };
+
+    $rankingsSyncedAt = fn (string $at, int $records = 25) => FeedRun::create([
+        'command' => 'sync:rankings-current', 'season_year' => 2026,
+        'status' => FeedRun::COMPLETE, 'records' => $records,
+        'started_at' => $at, 'finished_at' => $at,
+    ]);
+
+    $rankings = fn () => collect(app(CoverageReport::class)->checks())->firstWhere('key', 'rankings');
+
+    it('counts a poll the sync reconciled today, not the day its rows were last written', function () use ($inSeason, $pollWritten, $rankingsSyncedAt, $rankings) {
+        /*
+         * The reported symptom. SyncRankings reconciles with updateOrCreate,
+         * so an unchanged poll is not written at all and NEITHER row timestamp
+         * moves -- the check read six days stale for data a completed sync had
+         * confirmed the day before.
+         */
+        $season = $inSeason();
+
+        $pollWritten($season, now()->subDays(6)->toDateTimeString());
+        $rankingsSyncedAt(now()->subDay()->toDateTimeString());
+
+        expect($rankings())->toMatchArray([
+            'status' => CoverageReport::OK,
+            'actual' => '1 days',
+        ]);
+
+        expect($rankings()['detail'])->toContain('unchanged since');
+    });
+
+    it('still warns and then fails when the sync itself has stopped', function () use ($inSeason, $pollWritten, $rankingsSyncedAt, $rankings) {
+        // Widening the threshold to the Sun/Tue cadence must not cost the
+        // check its teeth: one missed run is amber, two is red.
+        $season = $inSeason();
+
+        $pollWritten($season, now()->subDays(7)->toDateTimeString());
+        $run = $rankingsSyncedAt(now()->subDays(7)->toDateTimeString());
+
+        expect($rankings()['status'])->toBe(CoverageReport::WARN);
+
+        $run->forceFill(['finished_at' => now()->subDays(11)])->save();
+        Ranking::query()->update(['updated_at' => now()->subDays(11)]);
+
+        expect($rankings()['status'])->toBe(CoverageReport::FAIL);
+    });
+
+    it('does not go amber across a weekend the schedule was never going to fill', function () use ($inSeason, $pollWritten, $rankingsSyncedAt, $rankings) {
+        // Tuesday's run, read the following Sunday: five days, the widest gap
+        // the Sun/Tue cadence can produce while working exactly as designed.
+        $season = $inSeason();
+
+        $pollWritten($season, now()->subDays(5)->toDateTimeString());
+        $rankingsSyncedAt(now()->subDays(5)->toDateTimeString());
+
+        expect($rankings()['status'])->toBe(CoverageReport::OK);
+    });
+
+    it('will not let a run row stand in for rankings that do not exist', function () use ($inSeason, $rankingsSyncedAt, $rankings) {
+        // A run refines the age of data we hold; it cannot invent data we do
+        // not. An empty table stays FAIL however recently the command ran.
+        $inSeason();
+
+        $rankingsSyncedAt(now()->toDateTimeString());
+
+        expect($rankings())->toMatchArray([
+            'status' => CoverageReport::FAIL,
+            'actual' => 'never',
+            'detail' => 'no ranking rows at all',
+        ]);
+    });
+
+    it('does not treat a run that wrote nothing as evidence of a poll', function () use ($inSeason, $pollWritten, $rankingsSyncedAt, $rankings) {
+        /*
+         * The 403 story. The site host answers a disallowed User-Agent with a
+         * 403, EspnClient returns null, and the sync completes having written
+         * nothing -- so a run row alone would dress that silence up as
+         * freshness. Only a run that reconciled a poll counts.
+         */
+        $season = $inSeason();
+
+        $pollWritten($season, now()->subDays(11)->toDateTimeString());
+        $rankingsSyncedAt(now()->toDateTimeString(), records: 0);
+
+        expect($rankings()['status'])->toBe(CoverageReport::FAIL);
+
+        // The same run, having actually reconciled a poll, is evidence.
+        $rankingsSyncedAt(now()->toDateTimeString(), records: 25);
+
+        expect($rankings()['status'])->toBe(CoverageReport::OK);
     });
 
     it('doctor exits non-zero while a check fails, and zero once healthy', function () {
