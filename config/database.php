@@ -59,7 +59,55 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            /*
+             * A FINITE CONNECT TIMEOUT, and this is not tuning.
+             *
+             * Unset, PDO takes the driver default and a connect against a
+             * SLEEPING database blocks for as long as the wake takes —
+             * unbounded, and billed to whichever request happens to arrive
+             * first. Telemetry caught the shape: six requests over 1000ms in
+             * 24h, worst `POST /` at 1992ms over 3 hits, the rest one hit each
+             * on `GET /ops/telemetry` (1522ms), `POST /admin/sync-health`
+             * (1044ms) and `POST /admin/login` (1042ms). Four unrelated
+             * endpoints, each slow EXACTLY ONCE and all clustered just above a
+             * second, is a cold start; a genuinely slow endpoint is slow
+             * repeatedly. `POST /` is guest Home — the first thing a new
+             * visitor touches.
+             *
+             * Five seconds because it must sit ABOVE the wake, not under it.
+             * Observed wakes finish inside ~2s, so 5 never cuts a real one
+             * short — a timeout tighter than the wake would just convert a
+             * slow page into an error page, which is no improvement for a
+             * reader. What it buys is a CEILING the app chose.
+             *
+             * When it fires, `Connectors\Connector::createConnection()` catches
+             * the PDOException and retries the connect ONCE if
+             * `causedByLostConnection()`. On Linux a connect timeout reads
+             * `SQLSTATE[HY000] [2002] Connection timed out`, which is on that
+             * needle list, so the second attempt meets an already-waking
+             * database and succeeds. Worst case is two attempts — ~10s, and
+             * bounded, which is the entire point.
+             *
+             * That retry is NOT the one CFB-8 describes as unavailable. CFB-8
+             * is `Connection::handleQueryException()`, which rethrows outright
+             * at `transactions >= 1`: a connection lost MID-transaction cannot
+             * be retried, because the transaction's writes went with it. This
+             * one is a connect that timed out before any work was done, which
+             * is always safe to repeat — a different call site, correctly left
+             * alone. `handleBeginTransactionException()` reconnects only at
+             * `transactions === 0`, i.e. the same first-connect case.
+             *
+             * NOT reproducible on macOS: BSD renders ETIMEDOUT as `Operation
+             * timed out`, which is absent from that list, so the retry does not
+             * engage locally even though the timeout itself does.
+             *
+             * `array_filter` drops a `DB_CONNECT_TIMEOUT` of 0 along with an
+             * unset `MYSQL_ATTR_SSL_CA`. That is the escape hatch working, not
+             * leaking: pdo_mysql reads 0 as "no timeout", which is exactly the
+             * driver default the dropped key falls back to.
+             */
             'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 5),
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
@@ -79,7 +127,12 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            /*
+             * Same finite connect timeout as `mysql` above, where the
+             * reasoning and the measurement live.
+             */
             'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 5),
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
         ],
