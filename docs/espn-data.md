@@ -531,15 +531,24 @@ summary means the just-final fetch was swallowed, and a live game with a final
 summary means ESPN flipped a game back after briefly reporting it complete,
 which would otherwise freeze that box score for the rest of the game.
 
-**Queues are split by latency class**, since a thousand-game backfill must not
-starve a Saturday: `live` (sweep, view boost, just-final), `default`
-(game logs, coaches, team news), `backfill` (`cfb:summaries` batches). Workers
+**There are exactly two queues, split by latency class**, since a
+thousand-game backfill must not starve a Saturday: `live` (sweep, view boost,
+just-final) and `default` (everything else — game logs, coaches, team news,
+`cfb:summaries` batches, and the bulk mail sends). A third queue named
+`backfill` carried the batches until 2026-08-30 and was removed: it bought no
+isolation the `live`/`default` split did not already buy, and it cost a third
+managed queue plus a third name in every `--queue=` line and runbook. Workers
 want SMALL concurrency — `ThrottleEspn` RELEASES a job when the shared 240/min
-window is spent, so adding workers past ~3 on `backfill` lowers throughput
+window is spent, so adding workers past ~3 on `default` lowers throughput
 rather than raising it.
 
+A queue name fails silently in both directions, which is why the split is
+pinned by a source sweep (`QueueNamesTest`) rather than left to review: a job
+dispatched onto a name no worker consumes never runs and never errors, and
+`Bus::fake()` asserts happily against a queue that does not exist.
+
 **Production queues ride Laravel Cloud managed queues, and deploying one sets
-`QUEUE_CONNECTION=cloud` — do not set it back.** Each of the three names is
+`QUEUE_CONNECTION=cloud` — do not set it back.** Each of the two names is
 its own managed queue (Flex, max 2 workers; 512 MiB where FetchGameSummary
 runs, because it decodes a 544 KB payload). What must NEVER move off redis is
 `CACHE_STORE`: the limiter window, the in-flight locks and the uniqueness

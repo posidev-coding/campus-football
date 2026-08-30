@@ -122,9 +122,9 @@ class SyncHealth extends Page
                     abort_unless(array_key_exists($data['task'], self::runnableTasks()), 422);
 
                     // Queued so the request returns immediately; the command's
-                    // own TracksFeedRun row is the receipt. The backfill queue
+                    // own TracksFeedRun row is the receipt. On `default`, which
                     // keeps a hand-run pass off the live queue a Saturday needs.
-                    Artisan::queue($data['task'])->onQueue('backfill');
+                    Artisan::queue($data['task'])->onQueue('default');
 
                     Notification::make()
                         ->title('Queued')
@@ -189,13 +189,13 @@ class SyncHealth extends Page
                 ->label('Queue missing box scores')
                 ->icon(Heroicon::OutlinedInboxArrowDown)
                 ->requiresConfirmation()
-                ->modalDescription('Queues a fetch for every completed game with no stored summary, on the backfill queue.')
+                ->modalDescription('Queues a fetch for every completed game with no stored summary, on the default queue.')
                 ->action(function (): void {
-                    Artisan::queue('cfb:summaries --missing')->onQueue('backfill');
+                    Artisan::queue('cfb:summaries --missing')->onQueue('default');
 
                     Notification::make()
                         ->title('Queued')
-                        ->body('Missing summaries will drain through the backfill queue; the run lands in the ledger.')
+                        ->body('Missing summaries will drain through the default queue; the run lands in the ledger.')
                         ->success()
                         ->send();
                 }),

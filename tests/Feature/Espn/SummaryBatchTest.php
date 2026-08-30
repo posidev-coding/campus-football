@@ -49,9 +49,9 @@ it('queues one job per game rather than looping in-process', function () {
         && $batch->jobs->every(fn ($job) => $job instanceof FetchGameSummary));
 });
 
-it('drains on the backfill queue, forced past the staleness check', function () {
+it('drains on the default queue, forced past the staleness check', function () {
     /*
-     * `backfill` so a thousand-game drain cannot starve the live queue's
+     * `default` so a thousand-game drain cannot starve the live queue's
      * seconds-level pickup on a game day; forced because --missing targets
      * games with no summary and --force re-fetches deliberately — the
      * staleness re-check must not apply to either.
@@ -60,7 +60,7 @@ it('drains on the backfill queue, forced past the staleness check', function () 
 
     $this->artisan('cfb:summaries --year=2025')->assertSuccessful();
 
-    Bus::assertBatched(fn ($batch) => ($batch->options['queue'] ?? null) === 'backfill'
+    Bus::assertBatched(fn ($batch) => ($batch->options['queue'] ?? null) === 'default'
         && $batch->jobs->every(fn (FetchGameSummary $job) => $job->force === true));
 });
 

@@ -68,7 +68,7 @@ buffered telemetry must never be collateral damage of a clear.
 **`pulse:work` must be running or nothing reaches MySQL, and a stalled drain
 looks exactly like "no traffic."** Locally it rides `composer dev` alongside
 server / queue / pail / vite. In production it is a Cloud daemon, beside the
-three managed queues.
+two managed queues.
 
 **The dashboard's own result cache is the `array` store, not our Redis cache**
 (`PULSE_CACHE_DRIVER=array`), and this is not a preference. Pulse caches each
@@ -603,7 +603,7 @@ while those tables stay empty — the same "looks done, did nothing" shape as a
 
 ```
 for i in $(seq 1 12); do
-  php -d memory_limit=512M artisan queue:work --queue=live,default,backfill \
+  php -d memory_limit=512M artisan queue:work --queue=live,default \
       --memory=200 --stop-when-empty &
 done
 ```

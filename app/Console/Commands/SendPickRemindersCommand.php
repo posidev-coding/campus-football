@@ -97,9 +97,9 @@ class SendPickRemindersCommand extends Command
                     ))->values()->all(),
                 )
                     ->name("Pick reminders ({$wave})")
-                    // Bulk mail drains behind the backfill worker, never on
-                    // `default` where FetchAthleteGameLog holds a spinner.
-                    ->onQueue('backfill')
+                    // Bulk mail drains on `default`, never on `live` where a
+                    // Saturday's scores are waiting on a seconds-level pickup.
+                    ->onQueue('default')
                     // One bad address must not cancel everybody else's nudge.
                     ->allowFailures()
                     ->dispatch();
