@@ -22,6 +22,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Services/Espn/Sync/SyncGames.php,app/Services/Espn/** | .ai/rules/espn.md |
 | resources/views/filament/**,app/Filament/** | .ai/rules/filament.md |
 | routes/**,app/Http/** | .ai/rules/http.md |
+| app/Enums/UxSignal.php,app/Actions/RecordUxEvent.php,app/Listeners/**,resources/views/livewire/** | .ai/rules/listeners-views-livewire.md |
 | app/Livewire/**, resources/views/livewire/**, resources/views/components/** | .ai/rules/livewire-alpine.md |
 | resources/views/livewire/pickem-home.blade.php,resources/views/livewire/lobby.blade.php,app/Support/Lobby.php,routes/web.php | .ai/rules/livewire-support.md |
 | app/Support/SlateFeasibility.php,resources/views/livewire/group.blade.php,resources/views/livewire/slate-builder.blade.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/livewire-views-livewire.md |

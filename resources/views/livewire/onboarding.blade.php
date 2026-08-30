@@ -188,7 +188,13 @@ new class extends Component
          */
         session()->flash('onboarding.moment', true);
 
-        app(RecordUxEvent::class)->handle(UxSignal::OnboardingRegistered);
+        /*
+         * The funnel's `onboarding_registered` is NOT counted here. It rides
+         * the Registered event above, in App\Listeners\CountRegistration, so
+         * the standalone /register form is counted too — emitting it from
+         * this screen made the step measure wizard completions rather than
+         * registrations. One emitter, or it drifts again.
+         */
 
         $this->redirect(route('home'));
     }
