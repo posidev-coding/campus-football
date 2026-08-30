@@ -466,6 +466,85 @@ describe('working a card from the board', function () {
             ->assertMountedActionModalSee('git switch -c '.$item->fresh()->branch);
     });
 
+    it('opens the detail view from a click on the card itself', function () {
+        // The card is a summary, and the thing a reader wants after a summary
+        // is the rest of it. Mounted from the whole <article>, not a button
+        // on it — asserted at the rendered attribute AND driven, because the
+        // attribute proves the doorway and the mount proves what is behind it.
+        $item = WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Planned,
+            'title' => 'The picks screen N+1s',
+            'body' => 'The rail panel renders game cards without the team eager-loaded.',
+            'prompt' => 'Add the eager load to pickem-home and prove it with a query-count test.',
+        ]);
+
+        $page = Livewire::actingAs($this->admin)->test(Workbook::class);
+
+        expect($page->html())->toContain("mountAction('view', { item: {$item->id} })")
+            // Keyboard, because an <article> is not focusable or activatable
+            // on its own and a board nobody can tab through is a regression.
+            ->toContain('role="button"')
+            ->toContain('tabindex="0"');
+
+        $page->mountAction('view', arguments: ['item' => $item->id])
+            ->assertMountedActionModalSee($item->reference)
+            ->assertMountedActionModalSee('The rail panel renders game cards')
+            ->assertMountedActionModalSee('Add the eager load');
+    });
+
+    it('serves the board card exactly the table\'s detail view', function () {
+        // One schema, two modals. Two renderings of one item that disagree is
+        // how a board stops being trusted, so both surfaces read the same
+        // method rather than each keeping a copy.
+        $item = WorkbookItem::factory()->create([
+            'evidence' => ['hits' => 214],
+            'prompt' => 'Add the eager load to pickem-home.',
+        ]);
+
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->mountAction('view', arguments: ['item' => $item->id])
+            ->assertMountedActionModalSee('214')
+            ->assertMountedActionModalSee('Add the eager load');
+    });
+
+    it('keeps the drag handle and every card button out of the modal\'s way', function () {
+        // The handle is the one that bites: without `.stop`, letting go of a
+        // card you had only nudged fires a click that opens a modal over the
+        // board. The buttons already stopped propagation for the drag; the
+        // handle never had to until the card itself became clickable.
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Planned]);
+        app(StartWorkbookItem::class)->handle($item, WorkbookEvent::ACTOR_HUMAN);
+
+        $html = Livewire::actingAs($this->admin)->test(Workbook::class)->html();
+
+        expect($html)->toContain('x-on:click.stop')
+            ->toContain("wire:click.stop=\"mountAction('review', { item: {$item->id} })\"")
+            ->toContain("wire:click.stop=\"mountAction('handoff', { item: {$item->id} })\"");
+
+        // The handle's own stop, read off the handle rather than the page:
+        // `toContain` over the whole board would be satisfied by the copy
+        // button's identical attribute three elements away.
+        $handle = str($html)->after('wire:sort:handle')->before('>')->toString();
+
+        expect($handle)->toContain('x-on:click.stop');
+    });
+
+    it('does not fall over on a card whose item has since been deleted', function () {
+        // The record resolves BEFORE the modal mounts, and ViewAction fills the
+        // schema from a non-nullable `Model $record` — so a stale board would
+        // TypeError on the click rather than shrug. Disabled unmounts cleanly.
+        $item = WorkbookItem::factory()->create();
+        $id = $item->id;
+        $item->delete();
+
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->mountAction('view', arguments: ['item' => $id])
+            ->assertActionNotMounted('view')
+            ->assertOk();
+    });
+
     it('ships a copy button whose handler is real JavaScript', function () {
         /*
          * Shipped inert, and nothing anywhere said so. `@js()` inside a
@@ -1242,6 +1321,49 @@ describe('the detail view, which ships rendered by nothing', function () {
             ->assertMountedActionModalSee('Blocked by')
             ->assertMountedActionModalSee('Fix the feed first')
             ->assertMountedActionModalSee('Worth doing.');
+    });
+
+    it('organizes the whole detail view into tabs, on both surfaces', function () {
+        // Four sections stacked down the page ran past the fold on a laptop,
+        // and the trail — the part a session opens a card to read — was the
+        // part you could never see. Both conditional tabs are asserted too:
+        // a Tab with no components renders to NOTHING, so a label over an
+        // empty pane is the failure mode `visible()` exists to avoid.
+        $blocker = WorkbookItem::factory()->create(['key' => 'the-blocker', 'title' => 'Fix the feed first']);
+        $item = WorkbookItem::factory()->create();
+
+        app(LinkWorkbookItems::class)->handle($item, $blocker, WorkbookLinkType::BlockedBy);
+        app(MoveWorkbookItem::class)->handle($item->id, WorkbookStatus::Planned, note: 'Worth doing.');
+
+        $tabs = ['The finding', 'The work', 'Links', 'Activity'];
+
+        $table = Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->mountAction(TestAction::make(ViewAction::class)->table($item->fresh()));
+
+        $board = Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->mountAction('view', arguments: ['item' => $item->id]);
+
+        foreach ($tabs as $tab) {
+            $table->assertMountedActionModalSee($tab);
+            $board->assertMountedActionModalSee($tab);
+        }
+    });
+
+    it('offers no Links tab on an item that has none', function () {
+        // A Tab with no components renders to NOTHING, so an unconditional
+        // Links tab would be a label over an empty pane. Activity is NOT the
+        // same case and never will be: filing an item writes its first trail
+        // row, so that tab always has something behind it.
+        $item = WorkbookItem::factory()->create();
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->mountAction(TestAction::make(ViewAction::class)->table($item))
+            ->assertMountedActionModalSee('The finding')
+            ->assertMountedActionModalSee('Activity')
+            ->assertMountedActionModalDontSee('Links');
     });
 
     it('renders an item with no links, no claim and no branch', function () {
