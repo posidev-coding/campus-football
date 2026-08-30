@@ -52,7 +52,7 @@ new class extends Component
     public string $q = '';
 
     #[Url]
-    public string $scope = Scope::FBS;
+    public string $scope = '';
 
     /** An ABBREVIATION, never a position id — see positions(). */
     #[Url]
@@ -133,7 +133,19 @@ new class extends Component
      */
     public function mount(): void
     {
+        // A URL scope wins; a bare URL ('' — the declared default, so the two
+        // are distinguishable) adopts the session's remembered pick, vetted
+        // against this menu's own options — no Top 25 here.
+        $this->scope = $this->scope
+            ?: Scope::remembered($this->year, top25: false)
+            ?? Scope::FBS;
+
         $this->normaliseSort();
+    }
+
+    public function updatedScope(): void
+    {
+        Scope::remember($this->scope);
     }
 
     public function updatedSort(): void

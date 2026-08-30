@@ -43,7 +43,7 @@ new class extends Component
     public string $q = '';
 
     #[Url]
-    public string $scope = Scope::FBS;
+    public string $scope = '';
 
     /** An ABBREVIATION, never a position id — ESPN's ids duplicate. */
     #[Url]
@@ -62,7 +62,20 @@ new class extends Component
     {
         $this->year = $year ?? $this->latestClass();
 
+        // A URL scope wins; a bare URL ('' — the declared default, so the two
+        // are distinguishable) adopts the session's remembered pick, vetted
+        // against this menu's own options — no Top 25 here. After $year, since
+        // scopeYear() resolves membership against the class being shown.
+        $this->scope = $this->scope
+            ?: Scope::remembered($this->scopeYear, top25: false)
+            ?? Scope::FBS;
+
         $this->normaliseSort();
+    }
+
+    public function updatedScope(): void
+    {
+        Scope::remember($this->scope);
     }
 
     /**
