@@ -6,6 +6,7 @@ use App\Actions\RecordUxEvent;
 use App\Enums\UxSignal;
 use App\Models\FeedRun;
 use App\Models\UxEvent;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
@@ -160,7 +161,9 @@ describe('the vocabulary', function () {
 });
 
 describe('the flows that emit', function () {
-    it('counts a registration through the wizard', function () {
+    it('counts a registration through the wizard, once and not twice', function () {
+        // Exactly one: the wizard's own screen no longer emits, the Registered
+        // listener does, and a two here would mean both are.
         Livewire::test('onboarding')
             ->set('step', 'credentials')
             ->set('first_name', 'Dolly')
@@ -172,6 +175,57 @@ describe('the flows that emit', function () {
             ->call('register');
 
         expect(funnelCounts()['onboarding_registered'] ?? 0)->toBe(1);
+    });
+
+    it('counts a registration through the standalone form too', function () {
+        /*
+         * The bug this pins shut: `onboarding_registered` was emitted by the
+         * overlay wizard alone, so every account made through /register or
+         * the header's Sign up button was invisible, and the step read as
+         * wizard completions rather than registrations.
+         */
+        Livewire::test('auth.register')
+            ->set('first_name', 'Dolly')
+            ->set('last_name', 'Parton')
+            ->set('email', 'dolly@example.test')
+            ->set('password', 'password-1234')
+            ->set('password_confirmation', 'password-1234')
+            ->call('register')
+            ->assertHasNoErrors();
+
+        expect(funnelCounts()['onboarding_registered'] ?? 0)->toBe(1);
+    });
+
+    it('counts nothing when a registration fails validation', function () {
+        // No account was created, so there is no registration to count. The
+        // signal has to sit past the validate() call, not before it.
+        Livewire::test('auth.register')
+            ->set('first_name', 'Dolly')
+            ->set('last_name', 'Parton')
+            ->set('email', 'not-an-email')
+            ->set('password', 'password-1234')
+            ->set('password_confirmation', 'password-4321')
+            ->call('register')
+            ->assertHasErrors(['email', 'password']);
+
+        expect(funnelCounts())->toBe([]);
+    });
+
+    it('emits the registration signal from exactly one place', function () {
+        /*
+         * Two components emitting one funnel signal is how this drifted the
+         * first time — the count silently became a count of something else.
+         * The listener is the only emitter; a screen reaching for this signal
+         * again fails here rather than in a report six weeks later.
+         */
+        $emitters = collect(File::allFiles(base_path('app')))
+            ->merge(File::allFiles(resource_path('views')))
+            ->filter(fn ($file) => str_contains($file->getContents(), 'UxSignal::OnboardingRegistered'))
+            ->map(fn ($file) => str_replace(base_path().'/', '', $file->getPathname()))
+            ->values()
+            ->all();
+
+        expect($emitters)->toBe(['app/Listeners/CountRegistration.php']);
     });
 
     it('counts an invite link being opened, by a guest', function () {
