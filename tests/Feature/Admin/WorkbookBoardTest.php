@@ -1,7 +1,9 @@
 <?php
 
+use App\Actions\ClaimWorkbookItem;
 use App\Actions\LinkWorkbookItems;
 use App\Actions\MoveWorkbookItem;
+use App\Actions\StartWorkbookItem;
 use App\Enums\WorkbookCategory;
 use App\Enums\WorkbookEffort;
 use App\Enums\WorkbookLinkType;
@@ -272,6 +274,102 @@ describe('the table', function () {
         WorkbookItem::factory()->dismissed()->create();
 
         expect(WorkbookResource::getNavigationBadge())->toBe('2');
+    });
+});
+
+describe('starting from the panel', function () {
+    it('starts a card the way cfb:issue start does', function () {
+        // The same transition through the same action — claim, branch, column,
+        // one `started` row — so the panel and the terminal cannot drift.
+        $item = WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Inbox,
+            'key' => 'picks-n-plus-one',
+        ]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(TestAction::make('start')->table($item));
+
+        $fresh = $item->fresh();
+
+        expect($fresh->status)->toBe(WorkbookStatus::InProgress)
+            ->and($fresh->branch)->toBe($item->branchName())
+            ->and($fresh->claimed_by)->toBe(WorkbookEvent::ACTOR_HUMAN)
+            ->and($fresh->events()->pluck('kind')->all())->toContain(WorkbookEvent::STARTED);
+    });
+
+    it('never steals a claim another session holds', function () {
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Planned]);
+        app(ClaimWorkbookItem::class)->handle($item, 'cloud:nightly');
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(TestAction::make('start')->table($item))
+            ->assertNotified("{$item->reference} is already held");
+
+        expect($item->fresh()->claimed_by)->toBe('cloud:nightly')
+            ->and($item->fresh()->status)->toBe(WorkbookStatus::Planned);
+    });
+
+    it('offers Start only where starting makes sense', function () {
+        // In review is a session finishing, Done and Dismissed are answers —
+        // a Start button on any of them is an invitation to fork the work.
+        $inbox = WorkbookItem::factory()->create(['status' => WorkbookStatus::Inbox]);
+        $done = WorkbookItem::factory()->create(['status' => WorkbookStatus::Done]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->assertActionVisible(TestAction::make('start')->table($inbox))
+            ->assertActionHidden(TestAction::make('start')->table($done));
+    });
+
+    it('carries a copyable session hand-off once started', function () {
+        // The infolist only runs when the modal mounts, so the entry is driven
+        // rather than assumed — the panel's blind spot.
+        $item = WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Inbox,
+            'key' => 'picks-n-plus-one',
+        ]);
+
+        app(StartWorkbookItem::class)->handle($item, WorkbookEvent::ACTOR_HUMAN);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->mountAction(TestAction::make(ViewAction::class)->table($item))
+            ->assertMountedActionModalSee('Session hand-off')
+            ->assertMountedActionModalSee("/work {$item->reference}");
+    });
+
+    it('says to start first while there is no branch to hand off', function () {
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Inbox]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->mountAction(TestAction::make(ViewAction::class)->table($item))
+            ->assertMountedActionModalSee('Start the issue first');
+    });
+
+    it('hands over the whole brief, so a session with no board access can work it', function () {
+        // The paste target is a laptop session working the production board,
+        // which it deliberately cannot reach — the ops token never lives
+        // there. The copy must therefore carry everything `cfb:issue show
+        // --json` would have answered, not a reference to look up.
+        $item = WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Planned,
+            'key' => 'picks-n-plus-one',
+            'body' => 'The rail panel renders game cards without the team eager-loaded.',
+            'prompt' => 'Add the eager load and prove it with a query-count test.',
+        ]);
+
+        app(StartWorkbookItem::class)->handle($item, WorkbookEvent::ACTOR_HUMAN);
+
+        $handoff = WorkbookResource::handoff($item->fresh());
+
+        expect($handoff)->toContain("/work {$item->reference}")
+            ->toContain('cfb:issue show --json')
+            ->toContain($item->body)
+            ->toContain($item->prompt)
+            ->toContain('git switch -c '.$item->fresh()->branch);
     });
 });
 

@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Workbook;
 
 use App\Actions\MoveWorkbookItem;
 use App\Actions\ReadyWorkbookItem;
+use App\Actions\StartWorkbookItem;
 use App\Enums\WorkbookCategory;
 use App\Enums\WorkbookEffort;
 use App\Enums\WorkbookSeverity;
@@ -11,6 +12,7 @@ use App\Enums\WorkbookStatus;
 use App\Filament\Resources\Workbook\Pages\ManageWorkbook;
 use App\Models\WorkbookEvent;
 use App\Models\WorkbookItem;
+use App\Support\IssueBoard;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
@@ -23,6 +25,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\RepeatableEntry\TableColumn;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -211,6 +214,30 @@ class WorkbookResource extends Resource
                     TextEntry::make('branch')->fontFamily('mono')->size('xs')->placeholder('Not started')
                         ->copyable()
                         ->helperText('The durable copy of the reference. Never renamed.'),
+                    /*
+                     * Reads as a summary, COPIES the whole hand-off — the
+                     * `reference` cell's copyableState trick, scaled up. The
+                     * paste target is a Claude Code session on a machine that
+                     * may not reach this board at all, so the copy carries the
+                     * full brief rather than a reference the session would
+                     * have to look up.
+                     */
+                    TextEntry::make('handoff')
+                        ->label('Session hand-off')
+                        ->columnSpanFull()
+                        ->fontFamily('mono')
+                        ->size('xs')
+                        ->state(fn (WorkbookItem $record): ?string => $record->branch === null
+                            ? null
+                            : "/work {$record->reference} + the brief + git switch -c {$record->branch}")
+                        ->placeholder('Start the issue first — the hand-off carries the branch it stores.')
+                        ->copyable()
+                        ->copyableState(fn (WorkbookItem $record): string => $record->branch === null
+                            ? ''
+                            : self::handoff($record))
+                        ->copyMessage('Hand-off copied')
+                        ->copyMessageDuration(1500)
+                        ->helperText('One paste into a Claude Code session: the /work line, the full brief as cfb:issue show --json prints it, and the branch line.'),
                     TextEntry::make('pr_url')->label('Pull request')->placeholder('—')
                         ->url(fn (WorkbookItem $record): ?string => $record->pr_url)
                         ->openUrlInNewTab(),
@@ -358,6 +385,7 @@ class WorkbookResource extends Resource
             ])
             ->recordActions([
                 ViewAction::make(),
+                self::start(),
                 self::edit(),
                 self::move(),
                 self::ready(),
@@ -431,6 +459,85 @@ class WorkbookResource extends Resource
                 actor: WorkbookEvent::ACTOR_HUMAN,
                 note: $data['note'] ?? null,
             ));
+    }
+
+    /**
+     * `cfb:issue start`, as a button — so working a card does not begin in a
+     * cloud console.
+     *
+     * The same transition through the same action: take the claim, store the
+     * branch, move the card to In progress, one `started` row on the trail.
+     * The panel acts as `human`, exactly as it does everywhere else — this is
+     * a person deciding to hand the card to a session they are driving.
+     *
+     * Refusal is a notification, not an exception: somebody else holding the
+     * claim is a normal state of the board, and `StartWorkbookItem` never
+     * steals.
+     */
+    private static function start(): Action
+    {
+        return Action::make('start')
+            ->label('Start')
+            ->icon(Heroicon::OutlinedPlay)
+            ->color('primary')
+            ->visible(fn (WorkbookItem $record): bool => in_array(
+                $record->status, [WorkbookStatus::Inbox, WorkbookStatus::Planned], true,
+            ))
+            ->requiresConfirmation()
+            ->modalHeading(fn (WorkbookItem $record): string => "Start {$record->reference}")
+            ->modalDescription('Takes the claim, stores the branch, and moves the card to In progress — what `cfb:issue start` does at a terminal. The view modal then carries a copyable session hand-off.')
+            ->action(function (WorkbookItem $record): void {
+                $started = app(StartWorkbookItem::class)->handle($record, WorkbookEvent::ACTOR_HUMAN);
+
+                if ($started === null) {
+                    Notification::make()
+                        ->danger()
+                        ->title("{$record->reference} is already held")
+                        ->body("By `{$record->fresh()?->claimed_by}`. The lease frees itself when it lapses; moving the card releases it sooner.")
+                        ->send();
+
+                    return;
+                }
+
+                Notification::make()
+                    ->success()
+                    ->title("{$started->reference} started")
+                    ->body("Branch stored: `{$started->branch}`. Open the item to copy the session hand-off.")
+                    ->send();
+            });
+    }
+
+    /**
+     * Everything a session needs, in one paste.
+     *
+     * Exists because a LOCAL session cannot reach THIS board when this is the
+     * production panel — the ops token deliberately never lives on a laptop —
+     * so `/work CFB-12` alone leaves the session asking for the brief. The
+     * block carries the `/work` line, the brief exactly as
+     * `cfb:issue show --json` prints it, and the stored branch line.
+     *
+     * Public so the test reads the same composer the copy button uses —
+     * `copyableState` renders into a JS attribute no modal assertion can
+     * reach.
+     */
+    public static function handoff(WorkbookItem $record): string
+    {
+        $brief = json_encode(
+            app(IssueBoard::class)->one($record),
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+        );
+
+        return implode("\n", [
+            "/work {$record->reference}",
+            '',
+            'The brief, as `cfb:issue show --json` prints it — this board may not be reachable from the working checkout:',
+            '',
+            $brief,
+            '',
+            'Already started on the board. Cut the branch exactly as stored:',
+            '',
+            "git switch -c {$record->branch}",
+        ]);
     }
 
     /**
