@@ -75,23 +75,60 @@ describe('the feed-run ledger', function () {
 });
 
 describe('coverage checks', function () {
-    it('flags the queued-but-never-drained team stats gap', function () {
+    /*
+     * The team-stats row is measured against teams that have PLAYED, as far as
+     * the weekly stats sync has been asked to reach — so its fixtures need a
+     * season, FBS membership, completed games, and a run in the ledger. These
+     * three helpers keep each case down to the one thing it is pinning.
+     */
+    $fbsTeam = function (int $year): Team {
+        $team = Team::factory()->create();
+
+        TeamSeason::create([
+            'team_id' => $team->id, 'season_year' => $year,
+            'classification' => 'FBS',
+        ]);
+
+        return $team;
+    };
+
+    $playedOn = function (Season $season, Team $home, Team $away, string $kickoff): Game {
+        return Game::factory()->finished()->create([
+            'season_id' => $season->id,
+            'home_team_id' => $home->id,
+            'away_team_id' => $away->id,
+            'kickoff_at' => $kickoff,
+        ]);
+    };
+
+    $statsSyncedAt = function (string $at): FeedRun {
+        return FeedRun::create([
+            'command' => 'players:stats', 'season_year' => 2025,
+            'status' => FeedRun::COMPLETE, 'records' => 138,
+            'started_at' => $at, 'finished_at' => $at,
+        ]);
+    };
+
+    $teamStats = fn () => collect(app(CoverageReport::class)->checks())->firstWhere('key', 'team-stats');
+
+    it('flags the queued-but-never-drained team stats gap', function () use ($fbsTeam, $playedOn, $statsSyncedAt, $teamStats) {
         // The production failure: cfb:players --only=stats exits 0 having
         // queued jobs, and with no worker the table stays empty.
-        Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
+        $season = Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
 
-        $teams = Team::factory()->count(3)->create();
+        $teams = collect(range(1, 4))->map(fn () => $fbsTeam(2025));
 
-        foreach ($teams as $team) {
-            TeamSeason::create([
-                'team_id' => $team->id, 'season_year' => 2025,
-                'classification' => 'FBS',
-            ]);
-        }
+        $playedOn($season, $teams[0], $teams[1], '2025-09-06 19:00:00');
+        $playedOn($season, $teams[2], $teams[3], '2025-09-06 19:00:00');
 
-        $check = collect(app(CoverageReport::class)->checks())->firstWhere('key', 'team-stats');
+        // The sync ran AFTER those games, so it owns them.
+        $statsSyncedAt('2025-09-09 10:40:00');
+
+        $check = $teamStats();
 
         expect($check['status'])->toBe(CoverageReport::FAIL)
+            ->and($check['expected'])->toBe(4)
+            ->and($check['actual'])->toBe(0)
             ->and($check['remedy'])->toContain('cfb:players');
 
         // Stats landing flips it green.
@@ -102,9 +139,98 @@ describe('coverage checks', function () {
             ]);
         }
 
-        $check = collect(app(CoverageReport::class)->checks())->firstWhere('key', 'team-stats');
+        expect($teamStats()['status'])->toBe(CoverageReport::OK);
+    });
 
-        expect($check['status'])->toBe(CoverageReport::OK);
+    it('stays green before anyone has played', function () use ($fbsTeam, $teamStats) {
+        // Week 0. Against the whole FBS roll this row was red on day one of
+        // every season, for a reason that had nothing to do with sync health.
+        Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
+
+        collect(range(1, 3))->each(fn () => $fbsTeam(2025));
+
+        $check = $teamStats();
+
+        expect($check['status'])->toBe(CoverageReport::OK)
+            ->and($check['expected'])->toBe(0)
+            ->and($check['actual'])->toBe(0);
+    });
+
+    it('does not ask for stats the weekly sync has not been run for yet', function () use ($fbsTeam, $playedOn, $statsSyncedAt, $teamStats) {
+        // Saturday's games, read on Sunday. The stats pass is Tuesday-only, so
+        // holding these teams to it is an assertion narrower than the cadence
+        // of the thing it measures.
+        $season = Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
+
+        $home = $fbsTeam(2025);
+        $away = $fbsTeam(2025);
+
+        $playedOn($season, $home, $away, '2025-09-13 19:00:00');
+        $statsSyncedAt('2025-09-09 10:40:00');
+
+        expect($teamStats())->toMatchArray([
+            'status' => CoverageReport::OK,
+            'expected' => 0,
+        ]);
+
+        // A game the sync HAS covered is held to it, on the same fixture.
+        $playedOn($season, $home, $away, '2025-09-06 19:00:00');
+
+        expect($teamStats())->toMatchArray([
+            'status' => CoverageReport::FAIL,
+            'expected' => 2,
+            'actual' => 0,
+        ]);
+    });
+
+    it('makes no allowance when the ledger holds no completed stats sync', function () use ($fbsTeam, $playedOn, $teamStats) {
+        // No run row is not evidence of a window nothing ran in: with nothing
+        // to widen against, every team that has played is expected to have
+        // rows. A run still RUNNING is not a run that finished.
+        $season = Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
+
+        $home = $fbsTeam(2025);
+        $away = $fbsTeam(2025);
+
+        $playedOn($season, $home, $away, '2025-09-13 19:00:00');
+        FeedRun::begin('players:stats', 2025);
+
+        expect($teamStats())->toMatchArray([
+            'status' => CoverageReport::FAIL,
+            'expected' => 2,
+            'actual' => 0,
+        ]);
+    });
+
+    it('will not let a team that never played cover for one that did', function () use ($fbsTeam, $playedOn, $statsSyncedAt, $teamStats) {
+        /*
+         * The way this check passes for the wrong reason. Counting stat rows
+         * across the whole season instead of across the teams being asked
+         * about makes one idle team's leftover row cancel out one played
+         * team's missing one, and the totals still read 1 of 1.
+         */
+        $season = Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
+
+        $played = $fbsTeam(2025);
+        $opponent = $fbsTeam(2025);
+        $idle = $fbsTeam(2025);
+
+        $playedOn($season, $played, $opponent, '2025-09-06 19:00:00');
+        $statsSyncedAt('2025-09-09 10:40:00');
+
+        foreach ([$played, $idle] as $team) {
+            TeamSeasonStat::create([
+                'team_id' => $team->id, 'season_year' => 2025, 'season_type' => 2,
+                'category' => 'passing', 'stats' => [],
+            ]);
+        }
+
+        // The opponent played and has nothing; the idle team's row is not its.
+        expect($teamStats())->toMatchArray([
+            'status' => CoverageReport::FAIL,
+            'expected' => 2,
+            'actual' => 1,
+        ]);
     });
 
     it('doctor exits non-zero while a check fails, and zero once healthy', function () {

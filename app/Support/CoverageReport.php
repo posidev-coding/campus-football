@@ -6,6 +6,7 @@ use App\Enums\SeasonPhase;
 use App\Models\Article;
 use App\Models\AthleteSeasonStat;
 use App\Models\AthleteTeamSeason;
+use App\Models\FeedRun;
 use App\Models\Game;
 use App\Models\GamePredictor;
 use App\Models\Ranking;
@@ -14,6 +15,8 @@ use App\Models\TeamSeason;
 use App\Models\TeamSeasonStat;
 use App\Services\CfbCalendar;
 use App\Services\Stats\AggregateAthleteStats;
+use Carbon\CarbonImmutable;
+use Carbon\CarbonInterface;
 
 /**
  * Expected-versus-actual assertions over the data the sync is supposed to be
@@ -66,13 +69,30 @@ class CoverageReport
      * queues jobs and exits 0, so with no worker the table stays empty while
      * every console line reads success.
      *
+     * Measured against the teams that have actually PLAYED, not the whole FBS
+     * roll, and only as far as the sync has been asked to reach. Against all
+     * 138 this row was red from the first day of every season until ~90% of
+     * the conference had both played and synced — several weeks a year of a
+     * check that could no longer report the thing it was built for, and a
+     * `cfb:doctor` exit code nobody could use.
+     *
+     * The cutoff is the sync's own cadence rather than the calendar's:
+     * `--only=stats` is a weekly Tuesday job and games finish on Saturday, so
+     * without it the row would simply move its red to Sat/Sun/Mon. Closing
+     * that gap by running the command more often is not available — one
+     * request per team, on a weekly cost tier.
+     *
      * @return array{key: string, label: string, expected: int|string, actual: int|string, status: string, detail: string, remedy: ?string}
      */
     private function teamStats(int $year): array
     {
-        $expected = $this->fbsTeamCount($year);
+        $syncedAt = $this->lastTeamStatsSyncAt();
 
-        $actual = TeamSeasonStat::where('season_year', $year)
+        $played = $this->fbsTeamsPlayedBy($year, $syncedAt);
+        $expected = count($played);
+
+        $actual = $played === [] ? 0 : TeamSeasonStat::where('season_year', $year)
+            ->whereIn('team_id', $played)
             ->distinct()
             ->count('team_id');
 
@@ -82,9 +102,72 @@ class CoverageReport
             expected: $expected,
             actual: $actual,
             status: $this->ratioStatus($actual, $expected),
-            detail: "{$actual} of {$expected} FBS teams have stat rows",
+            detail: $syncedAt === null
+                ? "{$actual} of {$expected} FBS teams that have played have stat rows"
+                : sprintf(
+                    '%d of %d FBS teams that had played by the last stats sync (%s) have stat rows',
+                    $actual,
+                    $expected,
+                    $syncedAt->toDateString(),
+                ),
             remedy: 'cfb:players --only=stats --year=results',
         );
+    }
+
+    /**
+     * When the scheduled team-stats pass last finished, or null if the ledger
+     * holds no completed one.
+     *
+     * Null is NOT translated into a cutoff. A run row is the only evidence
+     * that the sync was ever asked for these games, and without it the check
+     * makes no allowance at all — it falls back to every team that has played,
+     * which is the strictest claim it can honestly make. Substituting a date
+     * here would be inventing a window nothing ran in.
+     *
+     * `feed_runs` prunes at a fortnight, so this goes null in the offseason,
+     * when the command is not scheduled. That is the right time for it to:
+     * by then every team has played and every team should have rows.
+     */
+    private function lastTeamStatsSyncAt(): ?CarbonInterface
+    {
+        $latest = FeedRun::where('command', 'players:stats')
+            ->where('status', FeedRun::COMPLETE)
+            ->max('finished_at');
+
+        return $latest ? CarbonImmutable::parse($latest) : null;
+    }
+
+    /**
+     * FBS team ids with a completed game in this season, optionally only those
+     * that had kicked off by `$by`.
+     *
+     * `kickoff_at` rather than a completion time because games carry no
+     * finished-at column; the cutoff is a weekly sync run, so kickoff is
+     * precise enough and errs toward asking for MORE coverage, never less.
+     *
+     * @return list<int>
+     */
+    private function fbsTeamsPlayedBy(int $year, ?CarbonInterface $by): array
+    {
+        $games = Game::completed()
+            ->whereHas('season', fn ($q) => $q->where('year', $year))
+            ->when($by, fn ($q) => $q->where('kickoff_at', '<', $by));
+
+        $played = $games->clone()->pluck('home_team_id')
+            ->merge($games->clone()->pluck('away_team_id'))
+            ->filter()
+            ->unique();
+
+        if ($played->isEmpty()) {
+            return [];
+        }
+
+        return TeamSeason::where('season_year', $year)
+            ->where('classification', 'FBS')
+            ->whereIn('team_id', $played->all())
+            ->distinct()
+            ->pluck('team_id')
+            ->all();
     }
 
     /** @return array{key: string, label: string, expected: int|string, actual: int|string, status: string, detail: string, remedy: ?string} */
