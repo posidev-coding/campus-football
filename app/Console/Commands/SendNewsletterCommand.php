@@ -33,23 +33,32 @@ class SendNewsletterCommand extends Command
 
     public function handle(): int
     {
-        $recipients = $this->recipients();
-
-        if ($recipients->isEmpty()) {
-            $this->info('Nobody to send to.');
-
-            return self::SUCCESS;
-        }
-
+        // A preview is not the scheduled run, so it stays off the ledger.
         if ($this->option('dry')) {
-            $this->info("Would send to {$recipients->count()} reader(s).");
+            $recipients = $this->recipients();
+
+            $recipients->isEmpty()
+                ? $this->info('Nobody to send to.')
+                : $this->info("Would send to {$recipients->count()} reader(s).");
 
             return self::SUCCESS;
         }
 
         $batchId = null;
 
-        $this->trackRun('newsletter', null, function () use ($recipients, &$batchId): array {
+        $queued = $this->trackRun('newsletter', null, function () use (&$batchId): array {
+            $recipients = $this->recipients();
+
+            /*
+             * A week with nobody to mail is still a run. The completed row
+             * with a zero count is what lets the schedule panel tell "ran,
+             * nothing to do" from "never ran" — zero is a measured fact here,
+             * not a substituted default.
+             */
+            if ($recipients->isEmpty()) {
+                return ['records' => 0, 'batch_id' => null];
+            }
+
             $batch = Bus::batch(
                 $recipients->map(fn (int $id) => new SendWeeklyNewsletter($id))->all()
             )
@@ -66,7 +75,9 @@ class SendNewsletterCommand extends Command
             return ['records' => $recipients->count(), 'batch_id' => $batch->id];
         });
 
-        $this->info("Queued {$recipients->count()} email(s). Batch {$batchId}.");
+        $queued === 0
+            ? $this->info('Nobody to send to.')
+            : $this->info("Queued {$queued} email(s). Batch {$batchId}.");
 
         return self::SUCCESS;
     }

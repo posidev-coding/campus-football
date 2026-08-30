@@ -82,6 +82,17 @@ it('records its run in the feed ledger', function () {
         ->toBeTrue();
 });
 
+it('records a completed zero run when nobody is due', function () {
+    // A quiet day is still a run. Without the row, the schedule panel cannot
+    // tell "ran, nothing to do" from "never ran" and reads overdue forever.
+    $this->artisan('cfb:verification-reminders')->assertSuccessful();
+
+    $run = FeedRun::where('command', 'verification-reminders')->latest('id')->first();
+
+    expect($run->status)->toBe(FeedRun::COMPLETE)
+        ->and((int) $run->records)->toBe(0);
+});
+
 it("speaks the reader's own register from the queue", function () {
     // Deliberately NO actingAs: Voice::line falls back to auth()->user() when
     // `for:` is omitted, and a logged-in test recipient would let that bug
