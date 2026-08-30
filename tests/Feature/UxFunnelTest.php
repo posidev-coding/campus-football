@@ -5,6 +5,7 @@ use App\Actions\PublishSlate;
 use App\Actions\RecordUxEvent;
 use App\Enums\UxSignal;
 use App\Models\FeedRun;
+use App\Models\User;
 use App\Models\UxEvent;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Redis;
@@ -226,6 +227,43 @@ describe('the flows that emit', function () {
             ->all();
 
         expect($emitters)->toBe(['app/Listeners/CountRegistration.php']);
+    });
+
+    it('counts a guest who opens the wizard, and not one who merely loads Home', function () {
+        /*
+         * The bug this pins shut: the signal was emitted from the wizard's
+         * `mount()`, and Home renders the wizard for everybody — so a week of
+         * "starts" was 201 guest PAGE LOADS against 5 registrations, and the
+         * one number the funnel exists to produce (of the people who began,
+         * how many finished) was not measured at all. Pressing the front door
+         * is the boundary; loading a page that carries it is not.
+         */
+        $this->get(route('home'))->assertOk();
+
+        expect(funnelCounts())->toBe([]);
+
+        Livewire::test('onboarding')->call('begin');
+
+        expect(funnelCounts())->toBe(['onboarding_opened' => 1]);
+    });
+
+    it('counts one start however often a guest reopens the wizard', function () {
+        // The X and Escape both close the overlay, and the next Home load
+        // mounts it again — reopening is not a second signup.
+        Livewire::test('onboarding')->call('begin')->call('begin');
+        Livewire::test('onboarding')->call('begin');
+
+        expect(funnelCounts())->toBe(['onboarding_opened' => 1]);
+    });
+
+    it('counts nothing when a signed-in member opens the same overlay', function () {
+        // Same component, different errand: for them it is the favorite-team
+        // moment, and there is no signup to be at the top of.
+        Livewire::actingAs(User::factory()->create())
+            ->test('onboarding')
+            ->call('begin');
+
+        expect(funnelCounts())->toBe([]);
     });
 
     it('counts an invite link being opened, by a guest', function () {

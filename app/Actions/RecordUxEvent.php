@@ -76,10 +76,13 @@ class RecordUxEvent
      * re-mounts: without this the numerator inflates and the abandonment rate
      * derived from it reads worse than the truth.
      *
-     * The subject carries a user id, and that is the only place in this
-     * pipeline one appears. It lives in a Redis set with a two-day expiry, is
-     * never persisted, and never reaches `ux_events` or the telemetry
-     * snapshot — it is a deduplication key, not a record of anybody.
+     * The subject carries a user id — or, where the person does not have one
+     * yet, a HASH of their session id, never the raw value, which is the
+     * session cookie. Either way it is the only place in this pipeline
+     * anything identifying appears. It lives in a Redis set with a two-day
+     * expiry, is never persisted, and never reaches `ux_events` or the
+     * telemetry snapshot — it is a deduplication key, not a record of
+     * anybody.
      */
     public function handleOnce(UxSignal $signal, string $subject, ?CarbonInterface $on = null): void
     {
