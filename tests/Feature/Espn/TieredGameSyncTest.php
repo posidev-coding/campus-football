@@ -145,7 +145,7 @@ it('does not queue box scores for a backfill of already-finished games', functio
      * Seeding six seasons this way once queued 4,844 fetches onto the `live`
      * queue — which is the queue a Saturday depends on, and exactly what
      * splitting the queues was meant to protect. Backfills go through
-     * `cfb:summaries --missing`, which queues them on `backfill`.
+     * `cfb:summaries --missing`, which queues them on `default`.
      */
     Queue::fake();
 

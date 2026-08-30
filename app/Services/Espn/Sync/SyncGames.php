@@ -478,7 +478,7 @@ class SyncGames
          * six-season seed queued 4,844 summary fetches onto the `live` queue —
          * defeating the whole point of splitting the queues, since a backfill
          * would then crowd the queue a Saturday depends on. Backfills go
-         * through `cfb:summaries --missing`, which queues them on `backfill`.
+         * through `cfb:summaries --missing`, which queues them on `default`.
          */
         $justFinished = $game->exists && $game->isDirty('completed') && $game->completed;
 

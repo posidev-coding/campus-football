@@ -379,13 +379,13 @@ it('scopes the job\'s re-ask to the one reader it is about', function () {
         ->and(count(PickReminders::owedBy($slates)))->toBe(4);
 });
 
-it('drains behind the backfill worker, off the user-visible default queue', function () {
+it('drains on default, off the live queue a Saturday depends on', function () {
     Bus::fake();
     reminderSlate(members: 1);
 
     $this->artisan('pickem:remind', ['--wave' => PickReminders::WAVE_REMIND])->assertSuccessful();
 
-    Bus::assertBatched(fn ($batch) => $batch->queue() === 'backfill');
+    Bus::assertBatched(fn ($batch) => $batch->queue() === 'default');
 });
 
 it('sends the reminder in-job, never double-queued', function () {

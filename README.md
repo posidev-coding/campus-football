@@ -64,7 +64,7 @@ jobs waiting. Start workers and let the queues drain:
 
 ```bash
 for i in $(seq 1 12); do
-  php -d memory_limit=512M artisan queue:work --queue=live,default,backfill \
+  php -d memory_limit=512M artisan queue:work --queue=live,default \
       --memory=200 --stop-when-empty &
 done
 ```

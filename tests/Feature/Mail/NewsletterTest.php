@@ -274,15 +274,15 @@ describe('the daily budget', function () {
             ->and($job->released)->toBe(1);
     });
 
-    it('drains behind the backfill worker, off the user-visible default queue', function () {
-        // `default` carries FetchAthleteGameLog, which a reader is actively
-        // watching a spinner for — a 300-email drain must never sit ahead of it.
+    it('drains on default, off the live queue a Saturday depends on', function () {
+        // `live` carries the score sweep and the just-final box score, which a
+        // reader is watching — a 300-email drain must never sit ahead of it.
         Bus::fake();
         User::factory()->create(['newsletter_opt_in' => true, 'email_verified_at' => now()]);
 
         $this->artisan('cfb:newsletter')->assertSuccessful();
 
-        Bus::assertBatched(fn ($batch) => $batch->queue() === 'backfill');
+        Bus::assertBatched(fn ($batch) => $batch->queue() === 'default');
     });
 
     it('gives every sender the attempts a release needs to survive', function () {

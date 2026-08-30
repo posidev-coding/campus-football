@@ -265,7 +265,7 @@ it('splits a tied week and says so', function () {
             && $n->result['others'] === '@'.$second->handle);
 });
 
-it('fans the room out behind the backfill worker', function () {
+it('fans the room out on default, off the live queue', function () {
     [$slate] = resultsSlate();
     settleResults($slate);
 
@@ -274,7 +274,7 @@ it('fans the room out behind the backfill worker', function () {
     Bus::fake();
     (new AnnounceSlateResults($slate->id))->handle();
 
-    Bus::assertBatched(fn ($batch) => $batch->queue() === 'backfill');
+    Bus::assertBatched(fn ($batch) => $batch->queue() === 'default');
 });
 
 it('sends the result in-job, never double-queued', function () {
