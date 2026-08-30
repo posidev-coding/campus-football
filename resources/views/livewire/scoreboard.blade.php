@@ -57,21 +57,26 @@ new class extends Component
         }
 
         /*
-         * A URL scope wins (a shared link must show what it says), then the
-         * session's remembered pick, then the season default — Top 25 where a
+         * A URL scope wins (a shared link must show what it says), then this
+         * AREA's remembered pick, then the season default — Top 25 where a
          * poll exists, FBS otherwise. All summer there is no poll — the
          * preseason AP does not land until August — and defaulting to Top 25
          * anyway meant the filter read "Top 25" while resolving to every FBS
          * team.
+         *
+         * Scores keeps its own memory. "Whose games are worth watching this
+         * Saturday" and League's "whose season am I reading" are different
+         * answers held at the same time, so a League visit must not retune
+         * this filter.
          */
         $this->scope = $this->scope
-            ?: Scope::remembered($this->year())
+            ?: Scope::remembered('scoreboard', $this->year())
             ?? Scope::defaultFor($this->year());
     }
 
     public function updatedScope(): void
     {
-        Scope::remember($this->scope);
+        Scope::remember($this->scope, 'scoreboard');
     }
 
     /**

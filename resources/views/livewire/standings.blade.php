@@ -45,7 +45,7 @@ new class extends Component
         $this->year ??= $this->defaultYear($calendar);
 
         $this->scope = $this->scope
-            ?: Scope::remembered($this->year, includeFcs: true, top25: false)
+            ?: Scope::remembered('standings', $this->year, includeFcs: true, top25: false)
             ?? Scope::FBS;
 
         $this->normaliseScope();
@@ -83,7 +83,7 @@ new class extends Component
     {
         $this->normaliseScope();
 
-        Scope::remember($this->scope);
+        Scope::remember($this->scope, 'standings');
     }
 
     private function normaliseScope(): void

@@ -55,7 +55,7 @@ new class extends Component
         // A URL scope wins; a bare URL ('' — the declared default, so the two
         // are distinguishable) adopts the session's remembered pick.
         $this->scope = $this->scope
-            ?: Scope::remembered($this->year, includeFcs: true, top25: false)
+            ?: Scope::remembered('teams', $this->year, includeFcs: true, top25: false)
             ?? Scope::FBS;
 
         $this->normaliseScope();
@@ -70,7 +70,7 @@ new class extends Component
     {
         $this->normaliseScope();
 
-        Scope::remember($this->scope);
+        Scope::remember($this->scope, 'teams');
     }
 
     private function normaliseScope(): void

@@ -137,7 +137,7 @@ new class extends Component
         // are distinguishable) adopts the session's remembered pick, vetted
         // against this menu's own options — no Top 25 here.
         $this->scope = $this->scope
-            ?: Scope::remembered($this->year, top25: false)
+            ?: Scope::remembered('players', $this->year, top25: false)
             ?? Scope::FBS;
 
         $this->normaliseSort();
@@ -145,7 +145,7 @@ new class extends Component
 
     public function updatedScope(): void
     {
-        Scope::remember($this->scope);
+        Scope::remember($this->scope, 'players');
     }
 
     public function updatedSort(): void
