@@ -178,7 +178,12 @@ class IssueCommand extends Command
     {
         $pr = trim((string) $this->option('pr'));
 
-        if ($pr === '' || ! Str::startsWith($pr, 'https://') || mb_strlen($pr) > 255) {
+        // The rule itself lives on the action, because the panel's Review
+        // field validates on the same two constants — one doorway accepting a
+        // URL the other refuses is the board and the terminal disagreeing.
+        if ($pr === ''
+            || ! Str::startsWith($pr, ReviewWorkbookItem::URL_SCHEME)
+            || mb_strlen($pr) > ReviewWorkbookItem::URL_MAX_LENGTH) {
             return $this->refuse('Pass --pr= with the https:// URL of the pull request.');
         }
 

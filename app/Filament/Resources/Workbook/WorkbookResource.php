@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Workbook;
 
 use App\Actions\MoveWorkbookItem;
 use App\Actions\ReadyWorkbookItem;
+use App\Actions\ReviewWorkbookItem;
 use App\Actions\StartWorkbookItem;
 use App\Enums\WorkbookCategory;
 use App\Enums\WorkbookEffort;
@@ -386,6 +387,7 @@ class WorkbookResource extends Resource
             ->recordActions([
                 ViewAction::make(),
                 self::start(),
+                self::review(),
                 self::edit(),
                 self::move(),
                 self::ready(),
@@ -511,6 +513,104 @@ class WorkbookResource extends Resource
             ->success()
             ->title("{$started->reference} started")
             ->body("Branch stored: `{$started->branch}`. Copy the session hand-off from the card or the item view.")
+            ->send();
+    }
+
+    /**
+     * `cfb:issue review --pr=`, as a button — and the only path on this panel
+     * that RECORDS which pull request closed a card.
+     *
+     * Moving a card to In review and REVIEWING one are not the same
+     * transition, and until this existed the panel could only do the first.
+     * The drag and the Move action both go through `MoveWorkbookItem`, which
+     * sets the column and nothing else, so a card handed on from here sat with
+     * `pr_url` null and its claim held until the lease lapsed. The merge
+     * webhook then took it to Done from wherever it sat, and the view modal's
+     * "Pull request" entry stayed at its placeholder forever. (Hit on CFB-5,
+     * PR #33.)
+     *
+     * Only a card with a BRANCH offers it: one that was never started has no
+     * pull request to point at. Prefilled from `pr_url`, so it doubles as the
+     * correction for a URL recorded wrong.
+     *
+     * The drag and the Move modal are left alone. They are the right tool for
+     * every other column, and narrowing them here would break reordering.
+     */
+    private static function review(): Action
+    {
+        return Action::make('review')
+            ->label('Review')
+            ->icon(Heroicon::OutlinedCodeBracketSquare)
+            ->color('info')
+            ->visible(fn (WorkbookItem $record): bool => $record->branch !== null)
+            ->fillForm(fn (WorkbookItem $record): array => ['pr_url' => $record->pr_url])
+            ->schema(self::reviewSchema())
+            ->modalHeading(fn (WorkbookItem $record): string => "Hand {$record->reference} to review")
+            ->modalDescription('Records the pull request, moves the card to In review and releases the claim — what `cfb:issue review --pr=` does at a terminal. Merging is what earns Done.')
+            ->modalSubmitActionLabel('Hand it on')
+            ->action(fn (WorkbookItem $record, array $data) => self::reviewAsHuman(
+                $record, (string) $data['pr_url'], $data['note'] ?? null,
+            ));
+    }
+
+    /**
+     * The one field the transition needs, and its rules — shared with the
+     * board so the two surfaces cannot ask for different things, and validated
+     * off `ReviewWorkbookItem`'s constants so neither can drift from
+     * `cfb:issue review`.
+     *
+     * There is no confirmation step because the form IS one: a misclick on a
+     * board, where this button sits a few pixels from the drag handle, opens a
+     * modal that cannot submit itself without a URL typed into it.
+     *
+     * @return list<TextInput|Textarea>
+     */
+    public static function reviewSchema(): array
+    {
+        return [
+            TextInput::make('pr_url')
+                ->label('Pull request')
+                ->placeholder('https://github.com/posidev-coding/campus-football/pull/33')
+                ->required()
+                ->startsWith(ReviewWorkbookItem::URL_SCHEME)
+                ->maxLength(ReviewWorkbookItem::URL_MAX_LENGTH),
+            Textarea::make('note')->label('Note')->rows(3)
+                ->helperText('Goes on the activity trail beside the pull request.'),
+        ];
+    }
+
+    /**
+     * The transition and its two voices, shared with the board page — the same
+     * shape as `startAsHuman()`, for the same reason.
+     *
+     * The transition itself is never reimplemented here. The claim release and
+     * the `pr_opened` row live in `ReviewWorkbookItem` and nowhere else; a
+     * second copy of them is this bug filed a second time.
+     *
+     * Refusal is a warning, not an exception — the same refusal
+     * `cfb:issue review` gives when somebody else holds the card, and for the
+     * same reason: nothing is written and nobody's work is taken.
+     */
+    public static function reviewAsHuman(WorkbookItem $record, string $prUrl, ?string $note = null): void
+    {
+        $reviewed = app(ReviewWorkbookItem::class)->handle(
+            $record, WorkbookEvent::ACTOR_HUMAN, trim($prUrl), $note,
+        );
+
+        if ($reviewed === null) {
+            Notification::make()
+                ->warning()
+                ->title("{$record->reference} is held by somebody else")
+                ->body("By `{$record->fresh()?->claimed_by}`. Nothing was written — the pull request is theirs to record.")
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->success()
+            ->title("{$reviewed->reference} is in review")
+            ->body('Pull request recorded and the claim released. Merging is what earns Done.')
             ->send();
     }
 

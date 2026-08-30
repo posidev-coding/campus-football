@@ -322,6 +322,47 @@ class Workbook extends Page
     }
 
     /**
+     * `cfb:issue review --pr=`, from a card — the same transition, the same
+     * field and the same two voices as the table's Review action, mounted with
+     * the card's id the way `startAction()` is.
+     *
+     * A drag to In review is NOT this: it sets the column and leaves `pr_url`
+     * null and the claim held, and the merge webhook then closes the card
+     * carrying no record of what closed it. The board needed a doorway that
+     * records the pull request, and this is it.
+     *
+     * The form is also the confirmation. On a board this button sits a few
+     * pixels from the drag handle, and a modal with a required URL in it
+     * cannot be submitted by a misclick.
+     */
+    public function reviewAction(): Action
+    {
+        return Action::make('review')
+            ->modalHeading(function (array $arguments): string {
+                $reference = WorkbookItem::query()->find($arguments['item'] ?? 0)?->reference;
+
+                return 'Hand '.($reference ?? 'this card').' to review';
+            })
+            ->modalDescription('Records the pull request, moves the card to In review and releases the claim — what `cfb:issue review --pr=` does at a terminal. Merging is what earns Done.')
+            ->fillForm(fn (array $arguments): array => [
+                'pr_url' => WorkbookItem::query()->find($arguments['item'] ?? 0)?->pr_url,
+            ])
+            ->schema(WorkbookResource::reviewSchema())
+            ->modalSubmitActionLabel('Hand it on')
+            ->action(function (array $arguments, array $data): void {
+                $record = WorkbookItem::query()->find($arguments['item'] ?? 0);
+
+                if ($record === null) {
+                    return;
+                }
+
+                WorkbookResource::reviewAsHuman($record, (string) $data['pr_url'], $data['note'] ?? null);
+
+                unset($this->columns);
+            });
+    }
+
+    /**
      * The session hand-off, from a card — a modal rather than an inline copy,
      * because composing the block reads the trail and the links, and that
      * must cost queries once on a click, never once per card on render.

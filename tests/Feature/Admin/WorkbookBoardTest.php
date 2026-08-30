@@ -605,6 +605,171 @@ describe('starting from the panel', function () {
     });
 });
 
+describe('handing a card to review', function () {
+    /*
+     * The transition the panel could not perform until this existed.
+     *
+     * Moving a card to In review and REVIEWING one are not the same thing: the
+     * drag and the Move modal both go through `MoveWorkbookItem`, which sets
+     * the column and nothing else, so a card handed on that way kept its claim
+     * and carried no pull request. The merge webhook then closed it from
+     * wherever it sat and the record was gone for good. So every assertion
+     * here is about what a MOVE would NOT have done.
+     */
+    $pr = 'https://github.com/posidev-coding/campus-football/pull/33';
+
+    /** A card somebody has started: claim held, branch stored. */
+    function startedCard(): WorkbookItem
+    {
+        $item = WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Planned,
+            'key' => 'picks-n-plus-one',
+        ]);
+
+        app(StartWorkbookItem::class)->handle($item, WorkbookEvent::ACTOR_HUMAN);
+
+        return $item->fresh();
+    }
+
+    it('records the pull request and RELEASES the claim', function () use ($pr) {
+        $item = startedCard();
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(TestAction::make('review')->table($item), ['pr_url' => $pr]);
+
+        $fresh = $item->fresh();
+
+        expect($fresh->pr_url)->toBe($pr)
+            ->and($fresh->status)->toBe(WorkbookStatus::InReview)
+            /*
+             * The half a column check cannot see. `MoveWorkbookItem` clears a
+             * claim on Done, Inbox and Planned only — In review is deliberately
+             * not on that list — so a test asserting the column alone passes
+             * over a card still held until its lease lapses.
+             */
+            ->and($fresh->claimed_at)->toBeNull()
+            ->and($fresh->claimed_by)->toBeNull()
+            ->and($fresh->claim_expires_at)->toBeNull();
+    });
+
+    it('writes exactly one pr_opened row, carrying the URL', function () use ($pr) {
+        $item = startedCard();
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(TestAction::make('review')->table($item), [
+                'pr_url' => $pr,
+                'note' => 'Tests green, pint clean.',
+            ]);
+
+        $opened = $item->events()->where('kind', WorkbookEvent::PR_OPENED)->get();
+
+        expect($opened)->toHaveCount(1)
+            ->and($opened->first()->context['pr_url'])->toBe($pr)
+            ->and($opened->first()->note)->toBe('Tests green, pint clean.')
+            ->and($opened->first()->actor)->toBe(WorkbookEvent::ACTOR_HUMAN);
+    });
+
+    it('refuses anything that is not a pull request URL, and writes nothing', function () {
+        // The same three rules `cfb:issue review --pr=` applies, off the same
+        // two constants — a URL one doorway takes is one the other takes.
+        $item = startedCard();
+
+        foreach (['', 'github.com/posidev-coding/campus-football/pull/33', 'https://'.str_repeat('x', 250)] as $malformed) {
+            Livewire::actingAs($this->admin)
+                ->test(ManageWorkbook::class)
+                ->callAction(TestAction::make('review')->table($item), ['pr_url' => $malformed])
+                ->assertHasActionErrors(['pr_url']);
+        }
+
+        $fresh = $item->fresh();
+
+        expect($fresh->pr_url)->toBeNull()
+            ->and($fresh->status)->toBe(WorkbookStatus::InProgress)
+            ->and($fresh->claimed_by)->toBe(WorkbookEvent::ACTOR_HUMAN)
+            ->and($fresh->events()->where('kind', WorkbookEvent::PR_OPENED)->count())->toBe(0);
+    });
+
+    it('never records a pull request on a card somebody else holds', function () use ($pr) {
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Planned]);
+        app(StartWorkbookItem::class)->handle($item, 'cloud:nightly');
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->callAction(TestAction::make('review')->table($item->fresh()), ['pr_url' => $pr])
+            ->assertNotified("{$item->reference} is held by somebody else");
+
+        $fresh = $item->fresh();
+
+        expect($fresh->pr_url)->toBeNull()
+            ->and($fresh->status)->toBe(WorkbookStatus::InProgress)
+            ->and($fresh->claimed_by)->toBe('cloud:nightly')
+            ->and($fresh->events()->where('kind', WorkbookEvent::PR_OPENED)->count())->toBe(0);
+    });
+
+    it('offers Review only on a card that has a branch', function () {
+        // A card nobody ever started has no pull request to point at.
+        $started = startedCard();
+        $never = WorkbookItem::factory()->create(['status' => WorkbookStatus::Planned]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->assertActionVisible(TestAction::make('review')->table($started))
+            ->assertActionHidden(TestAction::make('review')->table($never));
+    });
+
+    it('prefills the URL already on the card, so it doubles as a correction', function () use ($pr) {
+        $item = startedCard();
+        $item->forceFill(['pr_url' => $pr])->save();
+
+        Livewire::actingAs($this->admin)
+            ->test(ManageWorkbook::class)
+            ->mountAction(TestAction::make('review')->table($item->fresh()))
+            ->assertActionDataSet(['pr_url' => $pr]);
+    });
+
+    it('hands a card on from the board through the same doorway', function () use ($pr) {
+        // The card action and the row action share one transition and one set
+        // of words, the way Start already does — two surfaces cannot phrase
+        // the same outcome differently.
+        $item = startedCard();
+
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->callAction('review', ['pr_url' => $pr], arguments: ['item' => $item->id])
+            ->assertNotified("{$item->reference} is in review");
+
+        $fresh = $item->fresh();
+
+        expect($fresh->pr_url)->toBe($pr)
+            ->and($fresh->status)->toBe(WorkbookStatus::InReview)
+            ->and($fresh->claimed_by)->toBeNull()
+            ->and($fresh->events()->where('kind', WorkbookEvent::PR_OPENED)->count())->toBe(1);
+    });
+
+    it('prefills the board card\'s field from the card it was mounted on', function () use ($pr) {
+        $item = startedCard();
+        $item->forceFill(['pr_url' => $pr])->save();
+
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->mountAction('review', arguments: ['item' => $item->id])
+            ->assertActionDataSet(['pr_url' => $pr]);
+    });
+
+    it('puts the review button only on cards that have a branch', function () {
+        $started = startedCard();
+        $never = WorkbookItem::factory()->create(['status' => WorkbookStatus::Planned, 'title' => 'Never started']);
+
+        $html = Livewire::actingAs($this->admin)->test(Workbook::class)->html();
+
+        expect(substr_count($html, "mountAction('review'"))->toBe(1)
+            ->and($html)->toContain("mountAction('review', { item: {$started->id} })")
+            ->and($html)->not->toContain("mountAction('review', { item: {$never->id} })");
+    });
+});
+
 describe('the sidebar', function () {
     it('groups the panel instead of one flat list', function () {
         expect(WorkbookResource::getNavigationGroup())->toBe('Work')
