@@ -57,12 +57,21 @@ new class extends Component
         }
 
         /*
-         * Top 25 where a poll exists, FBS otherwise. All summer there is no
-         * poll — the preseason AP does not land until August — and defaulting
-         * to Top 25 anyway meant the filter read "Top 25" while resolving to
-         * every FBS team.
+         * A URL scope wins (a shared link must show what it says), then the
+         * session's remembered pick, then the season default — Top 25 where a
+         * poll exists, FBS otherwise. All summer there is no poll — the
+         * preseason AP does not land until August — and defaulting to Top 25
+         * anyway meant the filter read "Top 25" while resolving to every FBS
+         * team.
          */
-        $this->scope = $this->scope ?: Scope::defaultFor($this->year());
+        $this->scope = $this->scope
+            ?: Scope::remembered($this->year())
+            ?? Scope::defaultFor($this->year());
+    }
+
+    public function updatedScope(): void
+    {
+        Scope::remember($this->scope);
     }
 
     /**

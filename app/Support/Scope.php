@@ -34,7 +34,54 @@ class Scope
 
     public const FCS = 'fcs';
 
+    public const SESSION_KEY = 'scope.selected';
+
     private const CACHE_TTL = 3600;
+
+    /**
+     * Keep the user's last scope selection for the whole session.
+     *
+     * One key, not one per screen: the filter answers the same question —
+     * "who am I looking at" — everywhere it appears, so picking SEC on
+     * Scores should mean SEC on Standings too.
+     *
+     * Stored raw. Validity is a property of the READING screen (Stats has no
+     * Top 25, Scores lists no FCS conferences), so each screen vets the value
+     * against its own menu through remembered() rather than the writer
+     * guessing at every reader's vocabulary.
+     */
+    public static function remember(string $scope): void
+    {
+        session()->put(self::SESSION_KEY, $scope);
+    }
+
+    /**
+     * The remembered scope, provided THIS screen's menu can speak it.
+     *
+     * The flags mirror options(): a remembered value the caller's menu does
+     * not list — Top 25 on a leaderboard, an FCS conference on Scores — is
+     * treated as nothing rather than adopted, because filter-menu renders an
+     * unlisted selection as its first option's label, and a control reading
+     * "Top 25" over one conference's games is worse than forgetting the pick.
+     * A disabled option (Top 25 before the preseason poll) is refused for the
+     * same reason.
+     *
+     * Null means "nothing usable was remembered" — callers fall back to their
+     * own default, never this method. The session entry itself is left alone:
+     * one screen declining a value is not the user un-choosing it.
+     */
+    public static function remembered(int $year, bool $includeFcs = false, bool $top25 = true): ?string
+    {
+        $scope = session()->get(self::SESSION_KEY);
+
+        if (! is_string($scope) || $scope === '') {
+            return null;
+        }
+
+        $option = collect(self::options($year, $includeFcs, $top25))->firstWhere('value', $scope);
+
+        return ($option !== null && ! $option['disabled']) ? $scope : null;
+    }
 
     /**
      * Options for a season, in presentation order.

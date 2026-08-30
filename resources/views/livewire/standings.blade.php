@@ -32,13 +32,21 @@ new class extends Component
      * the same scope vocabulary as every other League screen. This replaced a
      * classification select and a conference select that together were a
      * second dialect for the same question.
+     *
+     * '' as the declared default, not Scope::FBS, so mount() can tell a bare
+     * URL from an explicit ?scope=fbs — only the bare one may adopt the
+     * session's remembered pick.
      */
     #[Url]
-    public string $scope = Scope::FBS;
+    public string $scope = '';
 
     public function mount(CfbCalendar $calendar): void
     {
         $this->year ??= $this->defaultYear($calendar);
+
+        $this->scope = $this->scope
+            ?: Scope::remembered($this->year, includeFcs: true, top25: false)
+            ?? Scope::FBS;
 
         $this->normaliseScope();
     }
@@ -74,6 +82,8 @@ new class extends Component
     public function updatedScope(): void
     {
         $this->normaliseScope();
+
+        Scope::remember($this->scope);
     }
 
     private function normaliseScope(): void

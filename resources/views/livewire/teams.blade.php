@@ -31,7 +31,7 @@ new class extends Component
      * had.
      */
     #[Url]
-    public string $scope = Scope::FBS;
+    public string $scope = '';
 
     #[Url]
     public string $q = '';
@@ -52,6 +52,12 @@ new class extends Component
     {
         $this->year ??= TeamGlance::year();
 
+        // A URL scope wins; a bare URL ('' — the declared default, so the two
+        // are distinguishable) adopts the session's remembered pick.
+        $this->scope = $this->scope
+            ?: Scope::remembered($this->year, includeFcs: true, top25: false)
+            ?? Scope::FBS;
+
         $this->normaliseScope();
     }
 
@@ -63,6 +69,8 @@ new class extends Component
     public function updatedScope(): void
     {
         $this->normaliseScope();
+
+        Scope::remember($this->scope);
     }
 
     private function normaliseScope(): void

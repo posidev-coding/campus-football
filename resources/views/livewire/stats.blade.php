@@ -53,7 +53,7 @@ new class extends Component
     public ?int $year = null;
 
     #[Url]
-    public string $scope = Scope::FBS;
+    public string $scope = '';
 
     #[Url]
     public string $side = StatCatalog::OFFENSE;
@@ -72,6 +72,14 @@ new class extends Component
             $this->year = $this->years[0];
         }
 
+        // A URL scope wins; a bare URL ('' — the declared default, so the two
+        // are distinguishable) adopts the session's remembered pick. Vetted
+        // against THIS menu's options, so a remembered Top 25 is refused here
+        // rather than silently scoping a leaderboard to 25 teams.
+        $this->scope = $this->scope
+            ?: Scope::remembered($this->year, top25: false)
+            ?? Scope::FBS;
+
         $this->normaliseScope();
     }
 
@@ -84,6 +92,8 @@ new class extends Component
     public function updatedScope(): void
     {
         $this->normaliseScope();
+
+        Scope::remember($this->scope);
     }
 
     /**
