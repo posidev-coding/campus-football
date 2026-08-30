@@ -34,25 +34,63 @@ class Scope
 
     public const FCS = 'fcs';
 
-    public const SESSION_KEY = 'scope.selected';
+    public const SESSION_PREFIX = 'scope.selected';
 
     private const CACHE_TTL = 3600;
 
     /**
-     * Keep the user's last scope selection for the whole session.
+     * Keep the user's last scope selection for the rest of the session — one
+     * memory PER AREA, not one for the app.
      *
-     * One key, not one per screen: the filter answers the same question —
-     * "who am I looking at" — everywhere it appears, so picking SEC on
-     * Scores should mean SEC on Standings too.
+     * Scores and League ask the same question in different jobs: on the
+     * scoreboard the scope picks whose games are worth watching this Saturday;
+     * in League it picks whose season you are reading. Those answers are
+     * routinely different — SEC on Scores while League sits on All FBS — and a
+     * single memory made every visit to one silently retune the other. Within
+     * an area it IS one question: narrowing Standings to the SEC and finding
+     * Stats already there is the whole point.
+     *
+     * The bucket comes from the ROUTE through {@see areaOf()}, so the grouping
+     * is Navigation's rather than a second copy of it that drifts.
      *
      * Stored raw. Validity is a property of the READING screen (Stats has no
      * Top 25, Scores lists no FCS conferences), so each screen vets the value
      * against its own menu through remembered() rather than the writer
      * guessing at every reader's vocabulary.
      */
-    public static function remember(string $scope): void
+    public static function remember(string $scope, string $route): void
     {
-        session()->put(self::SESSION_KEY, $scope);
+        session()->put(self::sessionKey($route), $scope);
+    }
+
+    /**
+     * Which memory a screen reads and writes: its AREA's, from Navigation.
+     *
+     * Asked of Navigation rather than restated here, so moving a screen
+     * between areas moves its memory with it. A route no area claims gets a
+     * bucket of its own — never a shared one, because guessing an area is how
+     * two unrelated screens start overwriting each other's filter.
+     *
+     * Navigation's own `routes` lists are the map, NOT `currentArea()`: this
+     * runs inside a Livewire update, where the request is `/livewire/update`
+     * and `routeIs('scoreboard')` is false — the area would resolve to null on
+     * every write and every screen would share one nameless bucket.
+     */
+    public static function areaOf(string $route): string
+    {
+        foreach (Navigation::areas() as $area) {
+            if (in_array($route, $area['routes'], true)) {
+                return $area['key'];
+            }
+        }
+
+        return $route;
+    }
+
+    /** The session key backing one area's memory. */
+    public static function sessionKey(string $route): string
+    {
+        return self::SESSION_PREFIX.'.'.self::areaOf($route);
     }
 
     /**
@@ -69,10 +107,13 @@ class Scope
      * Null means "nothing usable was remembered" — callers fall back to their
      * own default, never this method. The session entry itself is left alone:
      * one screen declining a value is not the user un-choosing it.
+     *
+     * `$route` names the screen asking, which is what selects its AREA's
+     * memory — Scores never reads League's pick, or the other way about.
      */
-    public static function remembered(int $year, bool $includeFcs = false, bool $top25 = true): ?string
+    public static function remembered(string $route, int $year, bool $includeFcs = false, bool $top25 = true): ?string
     {
-        $scope = session()->get(self::SESSION_KEY);
+        $scope = session()->get(self::sessionKey($route));
 
         if (! is_string($scope) || $scope === '') {
             return null;

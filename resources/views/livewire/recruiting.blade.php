@@ -67,7 +67,7 @@ new class extends Component
         // against this menu's own options — no Top 25 here. After $year, since
         // scopeYear() resolves membership against the class being shown.
         $this->scope = $this->scope
-            ?: Scope::remembered($this->scopeYear, top25: false)
+            ?: Scope::remembered('recruiting', $this->scopeYear, top25: false)
             ?? Scope::FBS;
 
         $this->normaliseSort();
@@ -75,7 +75,7 @@ new class extends Component
 
     public function updatedScope(): void
     {
-        Scope::remember($this->scope);
+        Scope::remember($this->scope, 'recruiting');
     }
 
     /**

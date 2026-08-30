@@ -77,7 +77,7 @@ new class extends Component
         // against THIS menu's options, so a remembered Top 25 is refused here
         // rather than silently scoping a leaderboard to 25 teams.
         $this->scope = $this->scope
-            ?: Scope::remembered($this->year, top25: false)
+            ?: Scope::remembered('stats', $this->year, top25: false)
             ?? Scope::FBS;
 
         $this->normaliseScope();
@@ -93,7 +93,7 @@ new class extends Component
     {
         $this->normaliseScope();
 
-        Scope::remember($this->scope);
+        Scope::remember($this->scope, 'stats');
     }
 
     /**
