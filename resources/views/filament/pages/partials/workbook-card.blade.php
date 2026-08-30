@@ -5,13 +5,27 @@
     The sort attributes and the handle come and go TOGETHER with `sortable`:
     a grab cursor on a card that will not move is the board lying about
     itself, which is worse than the affordance disappearing.
+
+    THE WHOLE CARD OPENS THE DETAIL MODAL. A card is a summary, and every
+    button on it stops propagation already — including the drag handle, whose
+    click would otherwise open a modal the moment somebody let go of a card
+    they had only nudged. It is not a <button>, because it CONTAINS buttons
+    and nesting them is invalid HTML that browsers un-nest; `role="button"`
+    plus a tabindex and Livewire's own keydown modifiers buy the keyboard
+    back without the markup.
 --}}
 <article
     @if ($sortable)
         wire:sort:item="{{ $item->id }}"
     @endif
     wire:key="workbook-{{ $item->id }}"
-    class="rounded-lg bg-white p-3 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10"
+    wire:click="mountAction('view', { item: {{ $item->id }} })"
+    wire:keydown.enter="mountAction('view', { item: {{ $item->id }} })"
+    wire:keydown.space.prevent="mountAction('view', { item: {{ $item->id }} })"
+    role="button"
+    tabindex="0"
+    aria-label="Open {{ $item->reference }}"
+    class="cursor-pointer rounded-lg bg-white p-3 shadow-sm ring-1 ring-gray-950/5 hover:ring-gray-950/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 dark:bg-gray-900 dark:ring-white/10 dark:hover:ring-white/25"
 >
     <div class="flex items-start gap-2">
         @if ($sortable)
@@ -20,6 +34,8 @@
                  handle mode on — Alpine detects it, no modifier needed. --}}
             <span
                 wire:sort:handle
+                x-data
+                x-on:click.stop
                 class="mt-0.5 shrink-0 cursor-grab touch-none text-gray-300 active:cursor-grabbing dark:text-gray-600"
                 aria-hidden="true"
             >

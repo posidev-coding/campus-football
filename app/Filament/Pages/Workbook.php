@@ -12,7 +12,9 @@ use App\Models\WorkbookEvent;
 use App\Models\WorkbookItem;
 use BackedEnum;
 use Filament\Actions\Action;
+use Filament\Actions\ViewAction;
 use Filament\Pages\Page;
+use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -289,6 +291,39 @@ class Workbook extends Page
             ->orderBy('position')
             ->orderBy('id')
             ->first();
+    }
+
+    /**
+     * The card's own modal — the SAME detail view the table's View action
+     * opens, because two renderings of one item that disagree is how a board
+     * stops being trusted.
+     *
+     * Mounted by a click anywhere on the card rather than by a button: a card
+     * is a summary, and the thing a reader wants after reading a summary is
+     * the rest of it. The buttons already inside the card all stop
+     * propagation, and so does the drag handle, so the only click that reaches
+     * here is one aimed at the card itself.
+     *
+     * `disabled()` rather than a null check inside: the record resolves before
+     * the modal mounts, and ViewAction fills the schema from a non-nullable
+     * `Model $record`. A card whose item was deleted since the board rendered
+     * would therefore TypeError at the moment somebody clicked it; disabled
+     * unmounts cleanly instead.
+     */
+    public function viewAction(): Action
+    {
+        return ViewAction::make('view')
+            ->disabled(fn (array $arguments): bool => ! WorkbookItem::query()
+                ->whereKey($arguments['item'] ?? 0)
+                ->exists())
+            ->record(fn (array $arguments): ?WorkbookItem => WorkbookItem::query()->find($arguments['item'] ?? 0))
+            ->modalHeading(function (array $arguments): string {
+                $record = WorkbookItem::query()->find($arguments['item'] ?? 0);
+
+                return $record === null ? 'This card' : "{$record->reference} — {$record->title}";
+            })
+            ->modalWidth(Width::ThreeExtraLarge)
+            ->schema(WorkbookResource::detailSchema());
     }
 
     /**

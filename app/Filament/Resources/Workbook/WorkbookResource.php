@@ -28,8 +28,12 @@ use Filament\Infolists\Components\RepeatableEntry\TableColumn;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
-use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Component;
+use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Components\Tabs\Tab;
+use Filament\Schemas\Components\Text;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -121,39 +125,69 @@ class WorkbookResource extends Resource
 
     public static function infolist(Schema $schema): Schema
     {
-        /*
-         * Sections, not a flat `->columns(2)`. With the work, the links and the
-         * trail added, a flat two-column grid is a wall — the reader cannot
-         * tell what the advisor found from what a human decided about it, which
-         * is the one distinction this whole surface is built on.
-         *
-         * Deliberately NOT a relation manager: those render only on
-         * ViewRecord/EditRecord pages, and this resource is a ManageRecords with
-         * modals. And deliberately not a custom blade timeline, tempting as it
-         * is now the panel compiles its own Tailwind — a blade outside
-         * `resources/views/filament/**` compiles to NO CSS at all, silently.
-         */
-        return $schema->components([
-            Section::make('The finding')
-                ->description('What the advisor recomputes every week, and therefore owns.')
-                ->columns(2)
-                ->schema([
-                    TextEntry::make('title')->columnSpanFull()->weight('bold'),
-                    TextEntry::make('category')->badge()
-                        ->formatStateUsing(fn (WorkbookCategory $state): string => $state->label())
-                        ->color(fn (WorkbookCategory $state): string => $state->color()),
-                    TextEntry::make('severity')->badge()
-                        ->formatStateUsing(fn (WorkbookSeverity $state): string => $state->label())
-                        ->color(fn (WorkbookSeverity $state): string => $state->color()),
-                    TextEntry::make('first_seen_at')->label('First seen')->since()
-                        ->helperText('How long this has been true — never reset by a re-propose.'),
-                    TextEntry::make('last_seen_at')->label('Last seen')->since(),
-                    TextEntry::make('body')->label('What was found')->columnSpanFull()->placeholder('—'),
-                    TextEntry::make('evidence')
-                        ->label('Evidence')
-                        ->columnSpanFull()
-                        ->placeholder('—')
-                        /*
+        return $schema->components(self::detailSchema());
+    }
+
+    /**
+     * The detail view, shared by BOTH modals — the table's View action and the
+     * board card's, which is the whole card rather than a button on it.
+     *
+     * TABS, not sections stacked down the page. Four sections read fine when
+     * there were two; with the work, the links and the trail added, the modal
+     * ran past the fold on a laptop and the trail — the part a session opens
+     * the card to read — was the part you could never see. Tabs also keep the
+     * one distinction this surface is built on legible: what the advisor
+     * recomputes every week sits behind a different label from what a human
+     * decided about it.
+     *
+     * Every pane is in the DOM whichever tab is open (Filament switches them
+     * in Alpine, no `livewireProperty` here), so `assertMountedActionModalSee`
+     * still reaches all four. A tab with no components renders to nothing at
+     * all, which is why the two conditional ones carry `visible()` rather than
+     * shipping a label over an empty pane.
+     *
+     * Deliberately NOT a relation manager: those render only on
+     * ViewRecord/EditRecord pages, and this resource is a ManageRecords with
+     * modals. And deliberately not a custom blade timeline, tempting as it is
+     * now the panel compiles its own Tailwind — a blade outside
+     * `resources/views/filament/**` compiles to NO CSS at all, silently.
+     *
+     * @return array<int, Component>
+     */
+    public static function detailSchema(): array
+    {
+        return [
+            Tabs::make('Detail')
+                ->columnSpanFull()
+                ->tabs([
+                    Tab::make('The finding')
+                        ->icon(Heroicon::OutlinedMagnifyingGlass)
+                        ->columns(2)
+                        ->schema([
+                            // The heading already reads `CFB-12 — <title>` on
+                            // both surfaces, so the title entry that used to
+                            // open this pane was the first thing you read
+                            // twice. What survives it is the line that said
+                            // whose half of the card this is.
+                            Text::make('What the advisor recomputes every week, and therefore owns.')
+                                ->color('gray')
+                                ->size('sm')
+                                ->columnSpanFull(),
+                            TextEntry::make('category')->badge()
+                                ->formatStateUsing(fn (WorkbookCategory $state): string => $state->label())
+                                ->color(fn (WorkbookCategory $state): string => $state->color()),
+                            TextEntry::make('severity')->badge()
+                                ->formatStateUsing(fn (WorkbookSeverity $state): string => $state->label())
+                                ->color(fn (WorkbookSeverity $state): string => $state->color()),
+                            TextEntry::make('first_seen_at')->label('First seen')->since()
+                                ->helperText('How long this has been true — never reset by a re-propose.'),
+                            TextEntry::make('last_seen_at')->label('Last seen')->since(),
+                            TextEntry::make('body')->label('What was found')->columnSpanFull()->placeholder('—'),
+                            TextEntry::make('evidence')
+                                ->label('Evidence')
+                                ->columnSpanFull()
+                                ->placeholder('—')
+                                /*
                          * `state()`, NOT `formatStateUsing()`, and the difference is a
                          * TypeError rather than a style choice.
                          *
@@ -170,52 +204,56 @@ class WorkbookResource extends Resource
                          * from a telemetry snapshot and a flat key/value list would
                          * drop everything below the surface.
                          */
-                        ->state(fn (WorkbookItem $record): ?string => $record->evidence === null
-                            ? null
-                            : json_encode($record->evidence, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES))
-                        ->fontFamily('mono')
-                        ->size('xs'),
-                    TextEntry::make('prompt')
-                        ->label('Claude Code prompt')
-                        ->columnSpanFull()
-                        ->placeholder('—')
-                        ->fontFamily('mono')
-                        ->size('xs')
-                        // The point of the whole detail view. Copy, paste into a
-                        // session, done. Needs SSL, which Herd and production both have.
-                        ->copyable()
-                        ->copyMessage('Prompt copied')
-                        ->copyMessageDuration(1500),
-                    TextEntry::make('key')->label('Idempotency key')->fontFamily('mono')->size('xs')
-                        ->helperText('What the advisor re-proposes under. Changing it files a duplicate.'),
-                    TextEntry::make('source')->badge()->color('gray'),
-                ]),
+                                ->state(fn (WorkbookItem $record): ?string => $record->evidence === null
+                                    ? null
+                                    : json_encode($record->evidence, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES))
+                                ->fontFamily('mono')
+                                ->size('xs'),
+                            TextEntry::make('prompt')
+                                ->label('Claude Code prompt')
+                                ->columnSpanFull()
+                                ->placeholder('—')
+                                ->fontFamily('mono')
+                                ->size('xs')
+                                // The point of the whole detail view. Copy, paste into a
+                                // session, done. Needs SSL, which Herd and production both have.
+                                ->copyable()
+                                ->copyMessage('Prompt copied')
+                                ->copyMessageDuration(1500),
+                            TextEntry::make('key')->label('Idempotency key')->fontFamily('mono')->size('xs')
+                                ->helperText('What the advisor re-proposes under. Changing it files a duplicate.'),
+                            TextEntry::make('source')->badge()->color('gray'),
+                        ]),
 
-            Section::make('The work')
-                ->description('What a human decided. The advisor cannot reach any of it.')
-                ->columns(2)
-                ->schema([
-                    TextEntry::make('reference')
-                        ->label('Reference')
-                        ->fontFamily('mono')
-                        // The cell READS `CFB-12` and COPIES `/work CFB-12`,
-                        // which is the entire hand-off: one tap here, one paste
-                        // into a session.
-                        ->copyable()
-                        ->copyableState(fn (WorkbookItem $record): string => "/work {$record->reference}")
-                        ->copyMessage('Hand-off copied')
-                        ->copyMessageDuration(1500),
-                    TextEntry::make('effort')->badge()->placeholder('Not sized')
-                        ->formatStateUsing(fn (WorkbookEffort $state): string => $state->label())
-                        ->color(fn (WorkbookEffort $state): string => $state->color()),
-                    // `labels` has an array cast, so Filament renders it as a
-                    // list and gives one badge per element for free. Do NOT add
-                    // a `?array` formatter here.
-                    TextEntry::make('labels')->badge()->placeholder('—')->columnSpanFull(),
-                    TextEntry::make('branch')->fontFamily('mono')->size('xs')->placeholder('Not started')
-                        ->copyable()
-                        ->helperText('The durable copy of the reference. Never renamed.'),
-                    /*
+                    Tab::make('The work')
+                        ->icon(Heroicon::OutlinedWrenchScrewdriver)
+                        ->columns(2)
+                        ->schema([
+                            Text::make('What a human decided. The advisor cannot reach any of it.')
+                                ->color('gray')
+                                ->size('sm')
+                                ->columnSpanFull(),
+                            TextEntry::make('reference')
+                                ->label('Reference')
+                                ->fontFamily('mono')
+                                // The cell READS `CFB-12` and COPIES `/work CFB-12`,
+                                // which is the entire hand-off: one tap here, one paste
+                                // into a session.
+                                ->copyable()
+                                ->copyableState(fn (WorkbookItem $record): string => "/work {$record->reference}")
+                                ->copyMessage('Hand-off copied')
+                                ->copyMessageDuration(1500),
+                            TextEntry::make('effort')->badge()->placeholder('Not sized')
+                                ->formatStateUsing(fn (WorkbookEffort $state): string => $state->label())
+                                ->color(fn (WorkbookEffort $state): string => $state->color()),
+                            // `labels` has an array cast, so Filament renders it as a
+                            // list and gives one badge per element for free. Do NOT add
+                            // a `?array` formatter here.
+                            TextEntry::make('labels')->badge()->placeholder('—')->columnSpanFull(),
+                            TextEntry::make('branch')->fontFamily('mono')->size('xs')->placeholder('Not started')
+                                ->copyable()
+                                ->helperText('The durable copy of the reference. Never renamed.'),
+                            /*
                      * Reads as a summary, COPIES the whole hand-off — the
                      * `reference` cell's copyableState trick, scaled up. The
                      * paste target is a Claude Code session on a machine that
@@ -223,83 +261,88 @@ class WorkbookResource extends Resource
                      * full brief rather than a reference the session would
                      * have to look up.
                      */
-                    TextEntry::make('handoff')
-                        ->label('Session hand-off')
-                        ->columnSpanFull()
-                        ->fontFamily('mono')
-                        ->size('xs')
-                        ->state(fn (WorkbookItem $record): ?string => $record->branch === null
-                            ? null
-                            : "/work {$record->reference} + the brief + git switch -c {$record->branch}")
-                        ->placeholder('Start the issue first — the hand-off carries the branch it stores.')
-                        ->copyable()
-                        ->copyableState(fn (WorkbookItem $record): string => $record->branch === null
-                            ? ''
-                            : self::handoff($record))
-                        ->copyMessage('Hand-off copied')
-                        ->copyMessageDuration(1500)
-                        ->helperText('One paste into a Claude Code session: the /work line, the full brief as cfb:issue show --json prints it, and the branch line.'),
-                    TextEntry::make('pr_url')->label('Pull request')->placeholder('—')
-                        ->url(fn (WorkbookItem $record): ?string => $record->pr_url)
-                        ->openUrlInNewTab(),
-                    TextEntry::make('ready_at')->label('Ready')->since()->placeholder('Not ready'),
-                    TextEntry::make('started_at')->label('Started')->since()->placeholder('—'),
-                    TextEntry::make('claimed_by')->label('Held by')->badge()->color('warning')
-                        ->visible(fn (WorkbookItem $record): bool => $record->isHeld())
-                        ->helperText(fn (WorkbookItem $record): string => 'Lease ends '
-                            .($record->claim_expires_at?->diffForHumans() ?? 'never')),
-                ]),
+                            TextEntry::make('handoff')
+                                ->label('Session hand-off')
+                                ->columnSpanFull()
+                                ->fontFamily('mono')
+                                ->size('xs')
+                                ->state(fn (WorkbookItem $record): ?string => $record->branch === null
+                                    ? null
+                                    : "/work {$record->reference} + the brief + git switch -c {$record->branch}")
+                                ->placeholder('Start the issue first — the hand-off carries the branch it stores.')
+                                ->copyable()
+                                ->copyableState(fn (WorkbookItem $record): string => $record->branch === null
+                                    ? ''
+                                    : self::handoff($record))
+                                ->copyMessage('Hand-off copied')
+                                ->copyMessageDuration(1500)
+                                ->helperText('One paste into a Claude Code session: the /work line, the full brief as cfb:issue show --json prints it, and the branch line.'),
+                            TextEntry::make('pr_url')->label('Pull request')->placeholder('—')
+                                ->url(fn (WorkbookItem $record): ?string => $record->pr_url)
+                                ->openUrlInNewTab(),
+                            TextEntry::make('ready_at')->label('Ready')->since()->placeholder('Not ready'),
+                            TextEntry::make('started_at')->label('Started')->since()->placeholder('—'),
+                            TextEntry::make('claimed_by')->label('Held by')->badge()->color('warning')
+                                ->visible(fn (WorkbookItem $record): bool => $record->isHeld())
+                                ->helperText(fn (WorkbookItem $record): string => 'Lease ends '
+                                    .($record->claim_expires_at?->diffForHumans() ?? 'never')),
+                        ]),
 
-            Section::make('Links')
-                ->visible(fn (WorkbookItem $record): bool => $record->renderedLinks !== [])
-                ->schema([
-                    RepeatableEntry::make('renderedLinks')
-                        ->hiddenLabel()
-                        ->table([
-                            TableColumn::make('Relation'),
-                            TableColumn::make('Issue'),
-                            TableColumn::make('Title'),
-                            TableColumn::make('Status'),
-                        ])
+                    Tab::make('Links')
+                        ->icon(Heroicon::OutlinedLink)
+                        ->badge(fn (WorkbookItem $record): int => count($record->renderedLinks))
+                        ->visible(fn (WorkbookItem $record): bool => $record->renderedLinks !== [])
                         ->schema([
-                            TextEntry::make('label'),
-                            TextEntry::make('reference')->fontFamily('mono')->size('xs'),
-                            TextEntry::make('title'),
-                            TextEntry::make('status')->badge(),
+                            RepeatableEntry::make('renderedLinks')
+                                ->hiddenLabel()
+                                ->table([
+                                    TableColumn::make('Relation'),
+                                    TableColumn::make('Issue'),
+                                    TableColumn::make('Title'),
+                                    TableColumn::make('Status'),
+                                ])
+                                ->schema([
+                                    TextEntry::make('label'),
+                                    TextEntry::make('reference')->fontFamily('mono')->size('xs'),
+                                    TextEntry::make('title'),
+                                    TextEntry::make('status')->badge(),
+                                ]),
+                        ]),
+
+                    Tab::make('Activity')
+                        ->icon(Heroicon::OutlinedClock)
+                        ->badge(fn (WorkbookItem $record): int => $record->events()->count())
+                        ->visible(fn (WorkbookItem $record): bool => $record->events()->exists())
+                        ->schema([
+                            RepeatableEntry::make('trail')
+                                ->hiddenLabel()
+                                // Newest first, which is how anybody actually reads a
+                                // trail; the relation itself is ordered oldest-first
+                                // because that is how a session replays one.
+                                ->state(fn (WorkbookItem $record): array => $record->events()
+                                    ->latest('created_at')->latest('id')->limit(20)->get()
+                                    ->map(fn (WorkbookEvent $event): array => [
+                                        'kind' => $event->kind,
+                                        'actor' => $event->actor,
+                                        'note' => $event->note ?? '—',
+                                        'when' => $event->created_at?->diffForHumans() ?? '',
+                                    ])
+                                    ->all())
+                                ->table([
+                                    TableColumn::make('What'),
+                                    TableColumn::make('Who'),
+                                    TableColumn::make('Why'),
+                                    TableColumn::make('When'),
+                                ])
+                                ->schema([
+                                    TextEntry::make('kind')->badge()->color('gray'),
+                                    TextEntry::make('actor')->fontFamily('mono')->size('xs'),
+                                    TextEntry::make('note'),
+                                    TextEntry::make('when')->color('gray'),
+                                ]),
                         ]),
                 ]),
-
-            Section::make('Activity')
-                ->visible(fn (WorkbookItem $record): bool => $record->events()->exists())
-                ->schema([
-                    RepeatableEntry::make('trail')
-                        ->hiddenLabel()
-                        // Newest first, which is how anybody actually reads a
-                        // trail; the relation itself is ordered oldest-first
-                        // because that is how a session replays one.
-                        ->state(fn (WorkbookItem $record): array => $record->events()
-                            ->latest('created_at')->latest('id')->limit(20)->get()
-                            ->map(fn (WorkbookEvent $event): array => [
-                                'kind' => $event->kind,
-                                'actor' => $event->actor,
-                                'note' => $event->note ?? '—',
-                                'when' => $event->created_at?->diffForHumans() ?? '',
-                            ])
-                            ->all())
-                        ->table([
-                            TableColumn::make('What'),
-                            TableColumn::make('Who'),
-                            TableColumn::make('Why'),
-                            TableColumn::make('When'),
-                        ])
-                        ->schema([
-                            TextEntry::make('kind')->badge()->color('gray'),
-                            TextEntry::make('actor')->fontFamily('mono')->size('xs'),
-                            TextEntry::make('note'),
-                            TextEntry::make('when')->color('gray'),
-                        ]),
-                ]),
-        ]);
+        ];
     }
 
     public static function table(Table $table): Table
@@ -385,7 +428,11 @@ class WorkbookResource extends Resource
                     )),
             ])
             ->recordActions([
-                ViewAction::make(),
+                // Named and widened to match the board card's modal — one
+                // schema behind two doorways should not read as two views.
+                ViewAction::make()
+                    ->recordTitle(fn (WorkbookItem $record): string => "{$record->reference} — {$record->title}")
+                    ->modalWidth(Width::ThreeExtraLarge),
                 self::start(),
                 self::review(),
                 self::edit(),
