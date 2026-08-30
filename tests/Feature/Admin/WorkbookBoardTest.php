@@ -28,6 +28,7 @@ use Filament\Actions\EditAction;
 use Filament\Actions\Testing\TestAction;
 use Filament\Actions\ViewAction;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Livewire\Livewire;
 
 /*
@@ -463,6 +464,48 @@ describe('working a card from the board', function () {
             ->mountAction('handoff', arguments: ['item' => $item->id])
             ->assertMountedActionModalSee("/work {$item->reference}")
             ->assertMountedActionModalSee('git switch -c '.$item->fresh()->branch);
+    });
+
+    it('ships a copy button whose handler is real JavaScript', function () {
+        /*
+         * Shipped inert, and nothing anywhere said so. `@js()` inside a
+         * COMPONENT TAG's attribute is not template text — the tag compiler
+         * captures it verbatim, so the browser received the literal string
+         * `@js($handoff)`, Alpine failed to parse it, and the button did
+         * nothing with no console error. (A plain <button> compiles it fine,
+         * which is why the card's own copy button always worked and this one
+         * did not.) Same family as "an Alpine expression that starts with a
+         * comment never runs": INERT, not broken.
+         *
+         * Asserted at the rendered attribute, per "test through the layer a
+         * test can hold" — `navigator.clipboard` needs a secure context and
+         * does not exist in the automated tab at all.
+         */
+        // Rendered directly, because the modal body is NOT in the page
+        // component's own html() — the partial IS the layer this bug lives in.
+        $html = view('filament.pages.partials.workbook-handoff', [
+            'handoff' => "/work CFB-1\ngit switch -c CFB-1-picks",
+        ])->render();
+
+        expect($html)->toContain('navigator.clipboard?.writeText(')
+            // The payload really rode along, rather than an empty call.
+            ->toContain('git switch -c CFB-1-picks')
+            // The tell. An uncompiled directive reaches the browser as text.
+            ->not->toContain('@js(');
+    });
+
+    it('keeps every Blade directive out of a component tag\'s attributes', function () {
+        // The general shape of the bug above, swept once rather than
+        // rediscovered per view: a directive in a `<x-…>` attribute never
+        // compiles, and it fails silently every time.
+        $offenders = collect(File::allFiles(resource_path('views')))
+            ->filter(fn ($file): bool => str_ends_with($file->getFilename(), '.blade.php'))
+            ->filter(fn ($file): bool => preg_match('/<x-[^>]*@(js|json)\(/s', file_get_contents($file->getPathname())) === 1)
+            ->map(fn ($file): string => $file->getRelativePathname())
+            ->values()
+            ->all();
+
+        expect($offenders)->toBe([]);
     });
 });
 

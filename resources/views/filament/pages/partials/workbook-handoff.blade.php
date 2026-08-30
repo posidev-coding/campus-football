@@ -1,14 +1,30 @@
-{{--
-    The hand-off modal's body: the block, and a button that copies it whole.
+@php
+    /*
+     * The click handler is composed HERE, in PHP, and passed as a BOUND
+     * attribute — never written as `@js($handoff)` inside the component tag.
+     *
+     * Blade compiles directives in ordinary template text, so `@js()` in a
+     * plain <button x-on:click="…"> works (the card partial relies on it). A
+     * COMPONENT TAG's static attribute value is not template text: the tag
+     * compiler captures it verbatim into the attribute bag, so the directive
+     * ships to the browser as the literal string `@js($handoff)`. Alpine then
+     * fails to parse it and the button is INERT — no console error, no
+     * exception, nothing at the layer anybody is looking at. Same family as
+     * "an Alpine expression that starts with a comment never runs".
+     *
+     * `Js::from` is the same encoder `@js` uses, and it is what the board
+     * page's own header action already does for exactly this reason.
+     */
+    $copy = 'navigator.clipboard?.writeText('.\Illuminate\Support\Js::from($handoff).')';
+@endphp
 
-    The copy is client-side off an already-rendered string — the round trip
-    already happened when the modal mounted, and a clipboard write needs the
-    user's own gesture anyway.
---}}
 <div class="space-y-3">
+    {{-- The copy is client-side off an already-rendered string — the round
+         trip happened when the modal mounted, and a clipboard write needs the
+         user's own gesture anyway. --}}
     <x-filament::button
         x-data=""
-        x-on:click="navigator.clipboard?.writeText(@js($handoff))"
+        :x-on:click="$copy"
         icon="heroicon-m-clipboard-document"
         color="gray"
     >
