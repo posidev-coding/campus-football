@@ -64,10 +64,46 @@ it('renders nothing visible for a guest, with no poll at all', function () {
 });
 
 it('keeps the picks variant: explanation body, no dismissal', function () {
-    Livewire::actingAs(User::factory()->unverified()->create())
+    $html = Livewire::actingAs(User::factory()->unverified()->create())
         ->test('verify-callout', ['bodyKey' => 'verify.picks.body', 'dismissable' => false])
         ->assertSee(Voice::line('verify.picks.body'))
-        ->assertDontSeeHtml('cfb.verify.dismissed');
+        ->html();
+
+    // There it explains a gate, and an explanation you can dismiss becomes a
+    // mystery: nothing hides the row and nothing offers to.
+    expect($html)->not->toContain('x-show')
+        ->and($html)->not->toContain('aria-label="Dismiss"');
+});
+
+it('defines the dismissed scope in BOTH shapes', function () {
+    /*
+     * One component, ONE Alpine scope. The x-data used to live inside the
+     * same `@if ($dismissable)` as the x-show and the dismiss button, so the
+     * row rendered with a scope on Home and Account and with none at all on
+     * the five picks surfaces — one Livewire component, two Alpine scopes,
+     * keyed by a prop. Anything reading `dismissed` without it throws a bare
+     * ReferenceError out of Alpine's evaluator, carrying no element and no
+     * file, and gets reported against whatever path the reader is standing
+     * on: production saw one from /verify-email, a screen with no callout.
+     *
+     * The scope is now unconditional and the flag decides only who reads it.
+     */
+    $reader = User::factory()->unverified()->create();
+
+    $scopeless = [];
+
+    foreach (['dismissable' => true, 'picks' => false] as $shape => $dismissable) {
+        $html = Livewire::actingAs($reader)
+            ->test('verify-callout', ['dismissable' => $dismissable])
+            ->html();
+
+        if (! str_contains($html, 'cfb.verify.dismissed')) {
+            $scopeless[] = $shape;
+        }
+    }
+
+    expect($scopeless)->toBe([], implode(' and ', $scopeless)
+        .' renders the row without an Alpine scope defining `dismissed`.');
 });
 
 it('is embedded in every host with the $refresh forwarder', function () {

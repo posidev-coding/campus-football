@@ -149,3 +149,122 @@ it('passes wire:sort a bare method name, never a call expression', function () {
         .' its 0-based position itself; spelling the call out rewrites $item to'
         .' $wire.$item, which is undefined, and the handler receives null.');
 });
+
+/*
+ * The same failure mode, one attribute over: an `x-data` attached inside a
+ * Blade conditional opened WITHIN the element's own tag.
+ *
+ * A `@if` wrapping whole elements is ordinary and fine — the scope and
+ * everything that reads it appear and disappear together. Opening the
+ * conditional INSIDE a tag is a different animal: the element renders either
+ * way, and only its Alpine scope is keyed by the prop.
+ *
+ * The verify callout shipped that shape, so ONE Livewire component had two
+ * scopes — Home and Account defined `dismissed`, the five picks surfaces
+ * defined nothing — while `x-show="! dismissed"` and the dismiss button's
+ * `dismissed = true` read a variable that existed in only one of them.
+ *
+ * Alpine reports the miss as a bare ReferenceError from its evaluator, with no
+ * element and no file attached, so it surfaces against whatever path the reader
+ * is standing on: the production report landed on /verify-email, a screen that
+ * has no callout on it at all.
+ *
+ * The fix is always the same shape: attach the scope unconditionally and let
+ * the flag decide only who READS it.
+ */
+
+/**
+ * Counts the `x-data` attributes in one Blade source whose own tag opens a
+ * Blade conditional before them.
+ */
+function conditionallyAttachedScopes(string $source): int
+{
+    // A Blade comment is not markup, and the explanations around this trap
+    // name `@if` — counting those would make a commented template look broken.
+    $source = (string) preg_replace('/\{\{--.*?--\}\}/s', '', $source);
+
+    if (preg_match_all('/\bx-data\s*=\s*"/', $source, $scopes, PREG_OFFSET_CAPTURE) === 0) {
+        return 0;
+    }
+
+    $conditional = 0;
+
+    foreach ($scopes[0] as [, $offset]) {
+        $tag = strrpos(substr($source, 0, $offset), '<');
+
+        if ($tag === false) {
+            continue;
+        }
+
+        preg_match_all('/@(if|unless|endif|endunless)\b/', substr($source, $tag, $offset - $tag), $directives);
+
+        $depth = 0;
+
+        foreach ($directives[1] as $directive) {
+            $depth += in_array($directive, ['if', 'unless'], true) ? 1 : -1;
+        }
+
+        if ($depth > 0) {
+            $conditional++;
+        }
+    }
+
+    return $conditional;
+}
+
+/**
+ * Every Blade template that declares an Alpine scope.
+ *
+ * @return list<string>
+ */
+function bladeFilesWithScopes(): array
+{
+    $found = [];
+
+    foreach (Finder::create()->files()->in(resource_path('views'))->name('*.blade.php') as $file) {
+        if (str_contains($file->getContents(), 'x-data')) {
+            $found[] = str_replace(resource_path('views').'/', '', $file->getPathname());
+        }
+    }
+
+    return $found;
+}
+
+it('finds Alpine scopes to check, or that sweep is vacuous too', function () {
+    // Home, the banners and the callout all declare one.
+    expect(bladeFilesWithScopes())->not->toBeEmpty();
+});
+
+it('recognizes a scope keyed to a conditional inside its own tag', function () {
+    // The shape that shipped: the element renders either way, the scope does not.
+    expect(conditionallyAttachedScopes('<div @if ($flag) x-data="{ dismissed: false }" @endif>'))->toBe(1)
+        ->and(conditionallyAttachedScopes('<div @unless ($flag) x-data="{ dismissed: false }" @endunless>'))->toBe(1)
+        // A conditional wrapping whole ELEMENTS is the ordinary case: the
+        // scope and its readers arrive and leave together.
+        ->and(conditionallyAttachedScopes('@if ($flag)<div x-data="{ dismissed: false }"></div>@endif'))->toBe(0)
+        // And the fix: scope unconditional, only the reader behind the flag.
+        ->and(conditionallyAttachedScopes('<div x-data="{ dismissed: false }" @if ($flag) x-show="! dismissed" @endif>'))->toBe(0)
+        // The sweep reads markup, not prose — a comment explaining the trap
+        // must not read as the trap.
+        ->and(conditionallyAttachedScopes('<div {{-- @if ($flag) --}} x-data="{ dismissed: false }">'))->toBe(0);
+});
+
+it('never keys an Alpine scope to a Blade conditional inside a tag', function () {
+    $broken = [];
+
+    foreach (bladeFilesWithScopes() as $file) {
+        $count = conditionallyAttachedScopes(file_get_contents(resource_path("views/{$file}")));
+
+        if ($count > 0) {
+            $broken[] = "{$file} ({$count})";
+        }
+    }
+
+    expect($broken)->toBe([], implode(', ', $broken)
+        .' — attaches x-data inside a Blade conditional in the element\'s own'
+        .' tag, so the same element renders with and without an Alpine scope.'
+        .' Anything reading that scope throws a bare ReferenceError from'
+        .' Alpine\'s evaluator, reported against whatever path the reader is'
+        .' on. Attach the scope unconditionally and put only the READERS'
+        .' behind the flag.');
+});

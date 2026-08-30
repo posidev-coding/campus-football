@@ -69,8 +69,24 @@ new class extends Component
         --}}
         <div
             wire:poll.30s="check"
+            {{--
+                The scope is UNCONDITIONAL and the @if decides only who READS
+                it. Attaching x-data inside the conditional gave ONE Livewire
+                component two different Alpine scopes keyed by a prop: Home
+                and Account defined `dismissed`, the five picks surfaces
+                defined nothing at all, and `x-show="! dismissed"` plus the
+                dismiss button's `dismissed = true` read a variable that
+                existed in only one of them.
+
+                Alpine reports that as a bare `ReferenceError: dismissed is
+                not defined` from its evaluator — Safari phrases it "Can't
+                find variable" — carrying no element and no file, which is how
+                one landed on /verify-email, a screen with no callout on it.
+                Scope first, behavior conditional; `AlpineExpressionsTest`
+                sweeps for an x-data attached inside a Blade conditional.
+            --}}
+            x-data="{ dismissed: $persist(false).using(sessionStorage).as('cfb.verify.dismissed') }"
             @if ($dismissable)
-                x-data="{ dismissed: $persist(false).using(sessionStorage).as('cfb.verify.dismissed') }"
                 x-show="! dismissed"
                 x-cloak
             @endif
