@@ -45,29 +45,41 @@ class SyncSummariesCommand extends Command
 
     public function handle(EspnClient $espn, SyncGameSummary $sync): int
     {
-        $gameIds = $this->gameIds();
+        // The debugging path, never the schedule's, so it stays off the ledger.
+        if ($this->option('now')) {
+            $gameIds = $this->gameIds();
 
-        if ($gameIds->isEmpty()) {
-            $this->info('Nothing to sync.');
+            if ($gameIds->isEmpty()) {
+                $this->info('Nothing to sync.');
 
-            return self::SUCCESS;
+                return self::SUCCESS;
+            }
+
+            return $this->runNow($gameIds, $espn, $sync);
         }
 
-        return $this->option('now')
-            ? $this->runNow($gameIds, $espn, $sync)
-            : $this->queue($gameIds);
+        return $this->queue();
     }
 
     /**
      * Fan out to the queue.
-     *
-     * @param  Collection<int, int>  $gameIds
      */
-    private function queue(Collection $gameIds): int
+    private function queue(): int
     {
         $batch = null;
 
-        $this->trackRun('summaries', $this->option('year') ? (int) $this->option('year') : null, function () use ($gameIds, &$batch): array {
+        $queued = $this->trackRun('summaries', $this->option('year') ? (int) $this->option('year') : null, function () use (&$batch): array {
+            /*
+             * A night with every summary already stored is still a run. The
+             * completed row with a zero count is what lets the schedule panel
+             * tell "ran, nothing to do" from "never ran".
+             */
+            $gameIds = $this->gameIds();
+
+            if ($gameIds->isEmpty()) {
+                return ['records' => 0, 'batch_id' => null];
+            }
+
             // Forced: `--missing` targets games with no summary and `--force`
             // re-fetches deliberately, so the staleness re-check must not apply.
             // The `backfill` queue keeps a thousand-game drain from starving the
@@ -86,7 +98,13 @@ class SyncSummariesCommand extends Command
             return ['records' => $gameIds->count(), 'batch_id' => $batch->id];
         });
 
-        $this->info("Queued {$gameIds->count()} game summaries.");
+        if ($queued === 0) {
+            $this->info('Nothing to sync.');
+
+            return self::SUCCESS;
+        }
+
+        $this->info("Queued {$queued} game summaries.");
         $this->newLine();
         $this->line("  <fg=gray>batch</> {$batch->id}");
         $this->line('  <fg=gray>watch</> php artisan cfb:summaries:status '.$batch->id);

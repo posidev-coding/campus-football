@@ -2,6 +2,7 @@
 
 use App\Jobs\FetchGameSummary;
 use App\Jobs\Middleware\ThrottleEspn;
+use App\Models\FeedRun;
 use App\Models\Game;
 use App\Models\GameDrive;
 use App\Models\GameSummary;
@@ -101,6 +102,14 @@ it('reports nothing to do rather than queueing an empty batch', function () {
         ->assertSuccessful();
 
     Bus::assertNothingBatched();
+
+    // A quiet night is still a run. Without the row, the schedule panel
+    // cannot tell "ran, nothing to do" from "never ran" and reads overdue
+    // forever.
+    $run = FeedRun::where('command', 'summaries')->latest('id')->first();
+
+    expect($run->status)->toBe(FeedRun::COMPLETE)
+        ->and((int) $run->records)->toBe(0);
 });
 
 it('deduplicates on the game, so a double dispatch is one fetch', function () {

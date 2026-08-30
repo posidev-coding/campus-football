@@ -6,6 +6,7 @@ use App\Jobs\Middleware\ThrottleMail;
 use App\Jobs\SendPickReminder;
 use App\Jobs\SendSlateResult;
 use App\Jobs\SendWeeklyNewsletter;
+use App\Models\FeedRun;
 use App\Models\User;
 use App\Notifications\WeeklyNewsletter;
 use App\Support\WeeklyDigest;
@@ -29,6 +30,18 @@ describe('who gets it', function () {
 
         Notification::assertSentTo($wants, WeeklyNewsletter::class);
         Notification::assertNotSentTo($does_not, WeeklyNewsletter::class);
+    });
+
+    it('records a completed zero run when nobody wants it', function () {
+        // A quiet week is still a run. Without the row, the schedule panel
+        // cannot tell "ran, nothing to do" from "never ran" and reads overdue
+        // forever.
+        $this->artisan('cfb:newsletter')->assertSuccessful();
+
+        $run = FeedRun::where('command', 'newsletter')->latest('id')->first();
+
+        expect($run->status)->toBe(FeedRun::COMPLETE)
+            ->and((int) $run->records)->toBe(0);
     });
 
     it('skips an unverified address', function () {
