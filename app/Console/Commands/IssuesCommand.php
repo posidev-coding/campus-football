@@ -48,8 +48,12 @@ class IssuesCommand extends Command
         }
 
         if ($issues === []) {
+            // NAMED, for the same reason `cfb:issue`'s refusals are: an empty
+            // answer from a checkout pointed at another board is unreadable
+            // otherwise. The count separates "this board is empty" from "your
+            // filters are".
             $this->newLine();
-            $this->line('  <fg=gray>Nothing matches.</>');
+            $this->line('  <fg=gray>Nothing matches on the board this checkout reads ('.$board->whereItLooked().').</>');
             $this->newLine();
 
             return self::SUCCESS;

@@ -27,6 +27,36 @@ class IssueBoard
     public const DEFAULT_LIMIT = 25;
 
     /**
+     * WHICH board this process is pointed at, said out loud.
+     *
+     * A checkout wired to a different database answers a card it has never
+     * heard of in exactly the words it uses for a withdrawn one, so a session
+     * that trusts the message concludes the card was pulled. Naming the
+     * connection and the size of the table makes the pointing error the
+     * obvious reading instead.
+     *
+     * ONE board per invocation. Nothing here falls back to a second board —
+     * a command that quietly searches somewhere else is how two sessions end
+     * up believing different things about the same reference.
+     *
+     * Only ever reached from a refusal, which means a query has already
+     * succeeded, so the COUNT cannot be the thing that fails.
+     */
+    public function whereItLooked(): string
+    {
+        $connection = WorkbookItem::query()->getConnection();
+        $items = WorkbookItem::query()->count();
+
+        return sprintf(
+            '%s/%s, %d %s',
+            $connection->getName(),
+            $connection->getDatabaseName(),
+            $items,
+            Str::plural('item', $items),
+        );
+    }
+
+    /**
      * Everything about one issue — the brief a session works from.
      *
      * @return array<string, mixed>

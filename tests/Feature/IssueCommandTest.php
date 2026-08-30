@@ -43,6 +43,18 @@ function readyIssue(array $overrides = []): WorkbookItem
     return $item->refresh();
 }
 
+/**
+ * The board this test process is pointed at, spelled the way a refusal spells
+ * it. Read off the connection rather than restated, or the assertion would
+ * pass on a hardcoded string that no longer matches what anyone reads.
+ */
+function thisBoard(): string
+{
+    $connection = WorkbookItem::query()->getConnection();
+
+    return $connection->getName().'/'.$connection->getDatabaseName();
+}
+
 /** Run the command and decode its machine shape. */
 function issueJson(string $action, array $parameters = []): array
 {
@@ -115,7 +127,58 @@ describe('finding the issue', function () {
 
         expect($exit)->toBe(1)
             ->and($answer['error'])->toContain('some-other-work')
-            ->and($answer['error'])->toContain('does not start with a reference');
+            ->and($answer['error'])->toContain('does not start with a reference')
+            // The third attempt a reader has to make is "am I even on the
+            // right board", and only the message can answer it.
+            ->and($answer['error'])->toContain(thisBoard());
+    });
+
+    it('names the board it searched, so a pointing error cannot read as a missing card', function () {
+        /*
+         * A checkout wired to another database answers a card it has never
+         * heard of in the same words it uses for one that was withdrawn. The
+         * message sent the reader to check the reference, the id and the key —
+         * three things that were all correct — and never mentioned the board.
+         *
+         * The COUNT is half the fix: it says the lookup ran against a
+         * populated table rather than failing to reach one.
+         */
+        $item = readyIssue();
+        WorkbookItem::factory()->count(2)->create();
+
+        // Shaped exactly like a reference, for a row this board does not have.
+        $missing = str_replace('-'.$item->id, '-'.($item->id + 9_000), $item->reference);
+
+        $exit = Artisan::call('cfb:issue', ['action' => 'show', 'issue' => $missing, '--json' => true]);
+        $answer = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+
+        expect($exit)->toBe(1)
+            ->and($answer['error'])->toContain($missing)
+            ->and($answer['error'])->toContain(thisBoard())
+            ->and($answer['error'])->toContain('3 items')
+            ->and($answer['error'])->toContain('another board')
+            // The format hint stays; it is useful once the board is named.
+            ->and($answer['error'])->toContain('the advisor\'s key');
+    });
+
+    it('names one board and never reaches for a second', function () {
+        // A fallback that searched somewhere else would make two sessions
+        // believe different things about one reference. The board is stated
+        // once, in the singular, and that is the whole contract.
+        readyIssue();
+
+        Artisan::call('cfb:issue', ['action' => 'show', 'issue' => 'not-on-this-board', '--json' => true]);
+        $answer = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+
+        expect(substr_count($answer['error'], thisBoard()))->toBe(1);
+    });
+
+    it('says which board came up empty when the list has nothing to show', function () {
+        // Same false conclusion one command over: an empty queue on the wrong
+        // board reads exactly like an empty queue.
+        Artisan::call('cfb:issues', ['--ready' => true]);
+
+        expect(Artisan::output())->toContain(thisBoard());
     });
 
     it('treats a detached HEAD as no answer at all', function () {
