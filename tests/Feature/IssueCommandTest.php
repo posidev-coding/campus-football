@@ -27,6 +27,11 @@ beforeEach(function () {
     // branch inference drivable, which shell_exec never would be.
     Process::preventStrayProcesses();
     Process::fake(['git rev-parse *' => Process::result('main')]);
+
+    // This whole file is the LOCAL board. Pinned rather than assumed: a
+    // developer with a real CFB_BOARD_URL would otherwise send every
+    // assertion below at a deployment. The remote half is RemoteBoardTest.
+    config(['cfb.board_url' => null]);
 });
 
 /** An issue an agent is allowed to pick up. */

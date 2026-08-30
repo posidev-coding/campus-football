@@ -152,6 +152,30 @@ return [
     'ops_token' => env('OPS_TOKEN'),
 
     /*
+     * WHICH BOARD `cfb:issue` and `cfb:issues` talk to.
+     *
+     * Unset — the default, and every environment that has not opted in — means
+     * the LOCAL table, which is the behavior these commands have always had.
+     * Set it to the origin of a deployment (`https://campusfootball.test`) and
+     * both commands work that board over `/ops/issues` instead, carrying
+     * `ops_token` in a header.
+     *
+     * It exists because a working checkout's database is not the board anybody
+     * reads. Cards are filed against production by the advisor, so a session
+     * cutting a branch here could show a card, comment on the trail and hand
+     * it to review — against a table nobody looks at — and believe all three
+     * landed. The remote mode is the fix; NEVER give it a fallback. A request
+     * that fails is a non-zero exit, because quietly writing to the local
+     * table instead is the same bug wearing a hat.
+     *
+     * The ORIGIN only — no path, no query, no credentials. Paths are composed
+     * from named routes on the other side, and the token rides in a header
+     * rather than in this string, so `CFB_BOARD_URL` is safe in a shell
+     * history and this file is not a place a secret can end up by accident.
+     */
+    'board_url' => env('CFB_BOARD_URL'),
+
+    /*
      * The prefix on a workbook item's reference — `CFB-12`, the handle a human
      * types and a session is handed.
      *

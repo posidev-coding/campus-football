@@ -31,6 +31,12 @@
              fallback is config('cfb.season'). Left unpinned, bumping .env for
              a new season silently moved every default year in the suite. -->
         <env name="CFB_SEASON" value="2025"/>
+        <!--
+            The board these commands talk to, pinned OFF for the suite. A
+            developer with a real CFB_BOARD_URL in .env would otherwise have
+            every cfb:issue test try to reach a deployment.
+        -->
+        <env name="CFB_BOARD_URL" value=""/>
         <env name="DB_CONNECTION" value="mysql"/>
         <env name="DB_DATABASE" value="campusfootball_test"/>
         <env name="DB_URL" value=""/>

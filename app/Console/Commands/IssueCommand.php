@@ -16,6 +16,7 @@ use App\Enums\WorkbookStatus;
 use App\Models\WorkbookEvent;
 use App\Models\WorkbookItem;
 use App\Support\IssueBoard;
+use App\Support\RemoteBoard;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -37,6 +38,14 @@ use Illuminate\Support\Str;
  * not run it — a command that reaches into a repository is one that will
  * eventually do it on the wrong branch, which is `AdvisorSetupCommand`'s
  * "prints, never writes" rule applied to git.
+ *
+ * WHICH BOARD is configuration, never a guess. With no `CFB_BOARD_URL` this
+ * reads the local table, which is what it has always done; with one set every
+ * verb below goes to that deployment's `/ops/issues` through
+ * {@see RemoteBoard} instead. The two never mix in one invocation and there is
+ * no fallback in either direction — a session that comments on the wrong board
+ * and is told it succeeded is the whole reason the remote half exists, and a
+ * fallback is that bug wearing a hat.
  */
 class IssueCommand extends Command
 {
@@ -62,6 +71,10 @@ class IssueCommand extends Command
         $action = (string) $this->argument('action');
         $by = trim((string) $this->option('as')) ?: WorkbookEvent::ACTOR_AGENT;
         $note = $this->option('note') === null ? null : trim((string) $this->option('note'));
+
+        if (RemoteBoard::configured()) {
+            return $this->remotely($action, $by, $note);
+        }
 
         $item = $this->resolveIssue($board);
 
@@ -93,6 +106,186 @@ class IssueCommand extends Command
         $this->render($board->one($outcome->refresh()), $action);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The same verbs, against the board `CFB_BOARD_URL` names.
+     *
+     * Deliberately a separate path rather than a driver swapped in behind
+     * {@see IssueBoard}: the two boards do not offer the same set of verbs, and
+     * pretending they do is how `--effort` would look like it landed. What has
+     * no remote route is REFUSED by name here, never dropped.
+     */
+    private function remotely(string $action, string $by, ?string $note): int
+    {
+        $remote = new RemoteBoard;
+
+        if ($this->option('effort') !== null || array_filter((array) $this->option('label')) !== []) {
+            // Silently dropping them is the failure mode this whole card is
+            // about: a session that believes it sized a card it did not.
+            $this->refuse(sprintf(
+                'The board at %s has no route that sizes or labels, so --effort and --label would go nowhere. Drop '
+                .'them and run it again; the size and the labels are the board\'s to set.',
+                $remote->whereItLooked(),
+            ));
+
+            return self::FAILURE;
+        }
+
+        $handle = $this->remoteHandle($remote);
+
+        if ($handle === null) {
+            return self::FAILURE;
+        }
+
+        // Its own path, because the note must survive a failure and the
+        // refusal has to carry it — see remoteComment().
+        if ($action === 'comment') {
+            return $this->remoteComment($remote, $handle, $by, $note);
+        }
+
+        $issue = match ($action) {
+            'show' => $remote->brief($handle),
+            'start' => $remote->start($handle, $by),
+            'claim' => $remote->claim($handle, $by),
+            'release' => $remote->release($handle, $by, $note),
+            'review' => $this->remoteReview($remote, $handle, $by, $note),
+            // Server-side policy, said again here only because the message is
+            // better than a 404: there is no `done` route and there never will
+            // be one. Merging earns Done.
+            'done' => $this->refuse(
+                'Done is a human\'s to give, and no board serves a route for it. A session\'s last move is `review` — '
+                .'merging is what earns Done.'
+            ),
+            'ready', 'link' => $this->refuse(sprintf(
+                '`%s` has no route on the board at %s. Over HTTP a session may show, start, claim, release, comment '
+                .'and review — readying a brief and linking two cards are a human\'s, in the panel.',
+                $action,
+                $remote->whereItLooked(),
+            )),
+            default => $this->refuse("There is no `{$action}`. Try show, start, review, comment, claim or release."),
+        };
+
+        if ($issue === null) {
+            // A local refusal has already said its piece; a remote one has not.
+            if ($remote->refusal !== null) {
+                $this->refuse($remote->refusal);
+            }
+
+            return self::FAILURE;
+        }
+
+        $this->render($issue, $action);
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Which issue, with no database to ask.
+     *
+     * The stored `branch` column is the authority locally, and it lives on the
+     * OTHER board here — so there is nothing in this process to look a branch
+     * up in. What survives is the reference at the FRONT of the branch name,
+     * which `start` minted from that reference in the first place. A branch
+     * carrying none refuses rather than sending a guess to a board that would
+     * answer confidently about a different card.
+     */
+    private function remoteHandle(RemoteBoard $remote): ?string
+    {
+        $handle = $this->argument('issue');
+
+        if ($handle !== null) {
+            return trim((string) $handle);
+        }
+
+        $branch = $this->currentBranch();
+
+        if ($branch === null) {
+            return $this->refuse('No issue given, and no git branch to read one off. Pass CFB-12.');
+        }
+
+        if (preg_match('/^([A-Za-z][A-Za-z0-9]{0,9}-\d+)/', $branch, $matches) !== 1) {
+            return $this->refuse(sprintf(
+                'The branch `%s` does not start with a reference, and the board at %s is not this checkout\'s '
+                .'database — there is no branch column here to read. Pass CFB-12.',
+                $branch,
+                $remote->whereItLooked(),
+            ));
+        }
+
+        return $matches[1];
+    }
+
+    /**
+     * Review, validated here before it travels.
+     *
+     * The same two constants the local path and the panel read, so a URL the
+     * board would refuse is refused before a request is spent on it — and the
+     * message is the one a session already knows.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function remoteReview(RemoteBoard $remote, string $handle, string $by, ?string $note): ?array
+    {
+        $pr = trim((string) $this->option('pr'));
+
+        if ($pr === ''
+            || ! Str::startsWith($pr, ReviewWorkbookItem::URL_SCHEME)
+            || mb_strlen($pr) > ReviewWorkbookItem::URL_MAX_LENGTH) {
+            return $this->refuse('Pass --pr= with the https:// URL of the pull request.');
+        }
+
+        return $remote->review($handle, $by, $pr, $note);
+    }
+
+    /**
+     * The trail comment, and the one refusal that must hand something back.
+     *
+     * A comment is the one verb whose whole content is written by the session
+     * making the call — a failed `start` can simply be run again, but a failed
+     * comment has a paragraph in it that exists nowhere else. So the note comes
+     * BACK, on stdout, next to the refusal, for a human to paste.
+     *
+     * No spool file and no queue: a note replayed later lands out of order on a
+     * trail whose whole value is sequence, and a spool nobody drains is a
+     * second board again.
+     */
+    private function remoteComment(RemoteBoard $remote, string $handle, string $by, ?string $note): int
+    {
+        if ($note === null || $note === '') {
+            $this->refuse('Pass --note= with what you want on the trail.');
+
+            return self::FAILURE;
+        }
+
+        $issue = $remote->comment($handle, $by, $note);
+
+        if ($issue !== null) {
+            $this->render($issue, 'comment');
+
+            return self::SUCCESS;
+        }
+
+        if ($this->option('json')) {
+            // ONE document, still valid JSON and nothing but — the same
+            // contract every other machine shape here holds. Two documents
+            // would be a parse error at the other end, which loses the note
+            // just as thoroughly as swallowing it.
+            $this->output->writeln(json_encode(
+                ['error' => $remote->refusal, 'note' => $note],
+                JSON_UNESCAPED_SLASHES,
+            ));
+
+            return self::FAILURE;
+        }
+
+        $this->refuse((string) $remote->refusal);
+        $this->line('  <fg=yellow>The note did not land. Here it is, to paste:</>');
+        $this->newLine();
+        $this->line('  '.$note);
+        $this->newLine();
+
+        return self::FAILURE;
     }
 
     /**

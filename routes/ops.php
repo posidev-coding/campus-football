@@ -78,6 +78,29 @@ Route::middleware(['throttle:ops', EnsureOpsToken::class])
             ->middleware('signed')
             ->name('issues.index');
 
+        /*
+         * The two reads a client COMPOSES for itself, which is why neither is
+         * signed and both are only tokened.
+         *
+         * `cfb:issue` in remote mode is the caller. It holds an ORIGIN and the
+         * token, and it cannot sign anything — a signature is derived from the
+         * board's own `APP_KEY`, which a working checkout does not have. So
+         * the signed index above stays exactly what it is, the URL that gets
+         * HANDED to the advisor, and these are the ones a terminal builds.
+         *
+         * They grant a token holder nothing new. `ready` is a NARROWER index —
+         * the ready queue and a limit, no filters — and `brief` returns the
+         * same `IssueBoard::one()` array that every write below already sends
+         * back in its response, without the write.
+         *
+         * `issues/ready` is a fixed path in the same segment as `{issue}`, and
+         * it wins because there is deliberately NO route on `issues/{issue}`
+         * itself: every variable path here carries a trailing verb, so a
+         * DELETE or a PATCH at `issues/CFB-12` still finds nothing at all.
+         */
+        Route::get('issues/ready', [IssueController::class, 'ready'])->name('issues.ready');
+        Route::get('issues/{issue}/brief', [IssueController::class, 'brief'])->name('issues.brief');
+
         // POST because it TAKES THE CLAIM, which collapses list-then-claim into
         // one call and removes the race between them.
         Route::post('issues/next', [IssueController::class, 'next'])->name('issues.next');
