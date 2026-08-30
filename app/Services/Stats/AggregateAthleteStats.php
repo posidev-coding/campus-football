@@ -7,6 +7,7 @@ use App\Models\AthleteSeasonStat;
 use App\Models\Game;
 use App\Models\Season;
 use App\Support\Stats\StatCatalog;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -46,6 +47,15 @@ class AggregateAthleteStats
     public const FULL_SEASON = 0;
 
     /**
+     * Games read per page of the fold.
+     *
+     * Sized against the old 2,000-row page: a game averages 83 box-score lines,
+     * so 25 games is ~2,100 rows in flight and the memory ceiling the docblock
+     * on fold() is protecting does not move.
+     */
+    private const GAMES_PER_CHUNK = 25;
+
+    /**
      * Rebuild one season type's totals.
      *
      * Pass FULL_SEASON to fold every type of the year into a single row.
@@ -58,13 +68,13 @@ class AggregateAthleteStats
             ->when($seasonType !== self::FULL_SEASON, fn ($q) => $q->where('type', $seasonType))
             ->pluck('id');
 
-        $gameIds = Game::whereIn('season_id', $seasons)->pluck('id');
+        $games = Game::whereIn('season_id', $seasons);
 
-        if ($gameIds->isEmpty()) {
+        if (! $games->exists()) {
             return 0;
         }
 
-        $totals = $this->fold($gameIds);
+        $totals = $this->fold($games);
 
         return $this->store($totals, $year, $seasonType);
     }
@@ -72,44 +82,71 @@ class AggregateAthleteStats
     /**
      * Fold every box score line into per-athlete, per-category totals.
      *
-     * Streamed with chunkById rather than loaded whole: a season is ~60,000
-     * rows and this is the same class of work that exhausted memory when the
-     * summary sync ran in one process. The accumulator itself stays small —
+     * Streamed a batch of games at a time rather than loaded whole: a season is
+     * ~60,000 rows and this is the same class of work that exhausted memory when
+     * the summary sync ran in one process. The accumulator itself stays small —
      * roughly 15,000 athletes by a handful of categories.
      *
-     * @param  Collection<int, int>  $gameIds
+     * Walked by GAME rather than by stat-row id, which is what makes it cheap.
+     * `chunkById` over `athlete_game_stats` has to re-send the season's entire
+     * game-id list with every page — 912 ids for 2025 — and then satisfy
+     * `order by id limit 2000`, which MySQL serves by scanning the primary key
+     * and throwing away 82% of what it reads. That is both of the app's slowest
+     * logged queries, and measured 270ms of statement time over 2025. Paging
+     * the games instead lets each read be a range scan on
+     * `athlete_game_stats_game_id_foreign` carrying 25 ids: same number of
+     * round trips, same ceiling on rows in flight, 98ms.
+     *
+     * Rewriting the id list as a subquery — the obvious fix — is SLOWER, and
+     * measured so before this was written. MySQL flips the join order to drive
+     * from `games`, which loses the id ordering `chunkById` asked for and buys
+     * a filesort of every matching row on all 38 pages: 1,820ms.
+     *
+     * @param  Builder<Game>  $games
      * @return array<string, array<string, mixed>>
      */
-    private function fold($gameIds): array
+    private function fold(Builder $games): array
     {
         $totals = [];
 
-        AthleteGameStat::query()
-            ->whereIn('game_id', $gameIds)
-            ->select(['id', 'athlete_id', 'team_id', 'category', 'stats'])
-            ->chunkById(2000, function ($rows) use (&$totals) {
-                foreach ($rows as $row) {
-                    $key = $row->athlete_id.':'.$row->category;
+        $games->select(['id', 'kickoff_at'])->chunkById(self::GAMES_PER_CHUNK, function (Collection $games) use (&$totals): void {
+            $kickoffs = $games->pluck('kickoff_at', 'id');
 
-                    $totals[$key] ??= [
-                        'athlete_id' => $row->athlete_id,
-                        'category' => $row->category,
-                        'team_id' => $row->team_id,
-                        'games' => 0,
-                        'stats' => [],
-                    ];
+            $rows = AthleteGameStat::query()
+                ->whereIn('game_id', $games->modelKeys())
+                ->select(['id', 'game_id', 'athlete_id', 'team_id', 'category', 'stats'])
+                ->get();
 
-                    $totals[$key]['games']++;
+            foreach ($rows as $row) {
+                $key = $row->athlete_id.':'.$row->category;
 
-                    // Last team wins: a transfer's later games are the ones a
-                    // reader expects to see them listed under.
-                    if ($row->team_id !== null) {
-                        $totals[$key]['team_id'] = $row->team_id;
-                    }
+                $totals[$key] ??= [
+                    'athlete_id' => $row->athlete_id,
+                    'category' => $row->category,
+                    'team_id' => $row->team_id,
+                    'kickoff_at' => null,
+                    'games' => 0,
+                    'stats' => [],
+                ];
 
-                    $this->accumulate($totals[$key]['stats'], $row->stats ?? []);
+                $totals[$key]['games']++;
+
+                // Last team wins: a transfer's later games are the ones a
+                // reader expects to see them listed under. Decided on the
+                // KICKOFF rather than on whichever row the walk reached last —
+                // the summary sync backfills out of order, so stat-row ids do
+                // not run in the order the games were played, and one 2024
+                // transfer was being listed under the team he left.
+                $kickoff = $kickoffs[$row->game_id];
+
+                if ($row->team_id !== null && ($totals[$key]['kickoff_at'] === null || $kickoff->greaterThan($totals[$key]['kickoff_at']))) {
+                    $totals[$key]['team_id'] = $row->team_id;
+                    $totals[$key]['kickoff_at'] = $kickoff;
                 }
-            });
+
+                $this->accumulate($totals[$key]['stats'], $row->stats ?? []);
+            }
+        });
 
         return $totals;
     }
