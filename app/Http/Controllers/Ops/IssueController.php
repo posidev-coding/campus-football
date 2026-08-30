@@ -65,6 +65,43 @@ class IssueController
     }
 
     /**
+     * The ready queue, for a client that composes its own URL.
+     *
+     * A NARROWER `index()` rather than an unsigned copy of it: the ready queue
+     * and a limit, and no filter vocabulary at all. `cfb:issue` in remote mode
+     * cannot sign a URL — the signature comes off the board's own `APP_KEY`,
+     * which a working checkout does not hold — so the signed index is not
+     * reachable from a terminal, and this is what a terminal reads instead.
+     *
+     * Narrowing is the whole point. `signed` was never the authentication here
+     * (the token is), so what an unsigned read must not do is WIDEN what a
+     * token already reaches, and a queue with no filters cannot.
+     */
+    public function ready(Request $request, IssueBoard $board): JsonResponse
+    {
+        $data = $request->validate(['limit' => ['integer', 'min:1', 'max:100']]);
+
+        return response()->json([
+            'result' => 'ok',
+            'issues' => $board->ready((int) ($data['limit'] ?? IssueBoard::DEFAULT_LIMIT)),
+        ]);
+    }
+
+    /**
+     * One issue, whole — the brief a session works from.
+     *
+     * The same `IssueBoard::one()` array every write below already returns in
+     * its response, minus the write. A token holder could read this by
+     * commenting on the issue; being able to read it WITHOUT touching the
+     * trail is strictly less than that, which is why a read here is not a new
+     * grant and did not need a new guard.
+     */
+    public function brief(IssueBoard $board, string $issue): JsonResponse
+    {
+        return $this->ok('ok', $board->one($this->resolve($issue)));
+    }
+
+    /**
      * Claim the next ready issue and return it.
      *
      * A POST because it TAKES THE CLAIM — which also collapses list-then-claim

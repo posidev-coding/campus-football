@@ -28,6 +28,14 @@ what it found. If both are empty, **stop and say so.** An issue with no brief is
 not ready, whatever `ready_at` says — working from a title is how a session
 builds the wrong thing confidently.
 
+**Which board these commands reach is `CFB_BOARD_URL`.** Unset, they read this
+checkout's own table — which is not where the advisor files, so a card handed to
+you may simply not be there. Set, every verb here goes to that deployment over
+HTTP instead. There is no fallback in either direction on purpose: if a command
+refuses and names a board it could not reach, **the write did not happen**, and
+retrying against the local table is not the repair. Say so and hand the text
+back.
+
 ## 2. Refuse if it is not yours
 
 `cfb:issue start` takes the claim. A non-zero exit means another session holds
@@ -62,7 +70,9 @@ rename breaks every later `cfb:issue` inference. One issue per branch.
 php artisan cfb:issue comment CFB-12 --note='Adding the eager load to pickem-home, then a query-count test.'
 ```
 
-So a human can read what you are about to do without opening a session.
+So a human can read what you are about to do without opening a session. If it
+refuses, it prints the note straight back — that text exists nowhere else, so
+**put it in your reply** rather than moving on.
 
 ## 7. Verify in CLAUDE.md's order
 
