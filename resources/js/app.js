@@ -75,34 +75,48 @@ window.cfbPush = {
     },
 
     /* Resolves 'granted' (subscribed and stored), 'denied', 'default'
-     * (prompt dismissed), or 'error' (the server write failed). */
+     * (prompt dismissed), or 'error' (anything else went wrong).
+     *
+     * The try is that promise made TRUE. requestPermission and subscribe both
+     * reject rather than resolve on some browsers — a wrong VAPID key, a
+     * private window, a permissions policy — and the fetch was the only step
+     * anybody had guarded. push-banner's turnOn() awaits this with no catch of
+     * its own, so an escaping rejection left `busy` stuck true and the Turn on
+     * button disabled for the rest of the session, while reporting itself as
+     * the bare word "Rejected". */
     async enable(publicKey, storeUrl) {
         if (!this.supported()) return 'error';
 
-        const permission = await Notification.requestPermission();
+        try {
+            const permission = await Notification.requestPermission();
 
-        if (permission !== 'granted') return permission;
+            if (permission !== 'granted') return permission;
 
-        const registration = await navigator.serviceWorker.ready;
+            const registration = await navigator.serviceWorker.ready;
 
-        const subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: this.serverKey(publicKey),
-        });
+            const subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: this.serverKey(publicKey),
+            });
 
-        const body = subscription.toJSON();
-        body.content_encoding = (window.PushManager.supportedContentEncodings || [])[0];
+            const body = subscription.toJSON();
+            body.content_encoding = (window.PushManager.supportedContentEncodings || [])[0];
 
-        const response = await fetch(storeUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
-            },
-            body: JSON.stringify(body),
-        }).catch(() => null);
+            const response = await fetch(storeUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                },
+                body: JSON.stringify(body),
+            }).catch(() => null);
 
-        return response && response.ok ? 'granted' : 'error';
+            return response && response.ok ? 'granted' : 'error';
+        } catch (error) {
+            reportFailure('push subscription failed', error);
+
+            return 'error';
+        }
     },
 
     async disable(destroyUrl) {
@@ -252,8 +266,63 @@ window.addEventListener('unhandledrejection', (event) => {
     } catch { /* never let the reporter be the bug */ }
 });
 
+/*
+ * A rejection we catch ourselves, named — reported in the same shape the
+ * unhandledrejection listener above would have used, and swallowing its own
+ * failures for the same reason that listener does.
+ *
+ * `import.meta.url` is this bundle. A rejection carries no filename of its
+ * own, which is why the listener has to go mining in a stack for one; caught
+ * here, the source is simply known.
+ */
+function reportFailure(label, error) {
+    try {
+        window.cfbErrors.report({
+            kind: 'unhandledrejection',
+            message: failureMessage(label, error),
+            source: import.meta.url,
+            line: null,
+            col: null,
+            stack: error?.stack ? String(error.stack) : null,
+        });
+    } catch { /* never let the reporter be the bug */ }
+}
+
+/*
+ * "service-worker registration failed: SecurityError: The operation is
+ * insecure." — what failed, then what the browser said about it.
+ *
+ * Both halves of the detail are optional and NEITHER is ever invented. A
+ * rejection with no name contributes no name; one with neither leaves the
+ * label standing alone rather than padded out with "Unknown error". No data
+ * is no data here as everywhere else — and a placeholder is precisely the
+ * thing this replaces, since "Rejected" is what the browser was already
+ * giving us.
+ */
+function failureMessage(label, error) {
+    const detail = [error?.name, error?.message].filter(Boolean).join(': ');
+
+    return detail ? `${label}: ${detail}` : label;
+}
+
+/*
+ * Registration rejects for reasons that are not code defects — Safari private
+ * browsing, a content blocker, a 404 or a parse error on /sw.js — so this is
+ * not an exception. It is still worth knowing: no service worker means no push
+ * subscription and no offline shell on that device, and the push banner will
+ * go on pitching notifications regardless, because supported() only asks
+ * whether the APIs exist.
+ *
+ * Left bare it was the one promise in this file with no rejection handler, and
+ * it reported itself through the listener above as the useless single word
+ * "Rejected" — burning two of the five reports a page is allowed before a real
+ * bug can get a word in. Swallowing it would have traded a useless signal for
+ * no signal; it is named instead.
+ */
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js');
+        navigator.serviceWorker.register('/sw.js').catch((error) => {
+            reportFailure('service-worker registration failed', error);
+        });
     });
 }
