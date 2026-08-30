@@ -486,25 +486,32 @@ class WorkbookResource extends Resource
             ->requiresConfirmation()
             ->modalHeading(fn (WorkbookItem $record): string => "Start {$record->reference}")
             ->modalDescription('Takes the claim, stores the branch, and moves the card to In progress — what `cfb:issue start` does at a terminal. The view modal then carries a copyable session hand-off.')
-            ->action(function (WorkbookItem $record): void {
-                $started = app(StartWorkbookItem::class)->handle($record, WorkbookEvent::ACTOR_HUMAN);
+            ->action(fn (WorkbookItem $record) => self::startAsHuman($record));
+    }
 
-                if ($started === null) {
-                    Notification::make()
-                        ->danger()
-                        ->title("{$record->reference} is already held")
-                        ->body("By `{$record->fresh()?->claimed_by}`. The lease frees itself when it lapses; moving the card releases it sooner.")
-                        ->send();
+    /**
+     * The transition and its two voices, shared with the board page so the
+     * two surfaces cannot phrase the same outcome differently.
+     */
+    public static function startAsHuman(WorkbookItem $record): void
+    {
+        $started = app(StartWorkbookItem::class)->handle($record, WorkbookEvent::ACTOR_HUMAN);
 
-                    return;
-                }
+        if ($started === null) {
+            Notification::make()
+                ->danger()
+                ->title("{$record->reference} is already held")
+                ->body("By `{$record->fresh()?->claimed_by}`. The lease frees itself when it lapses; moving the card releases it sooner.")
+                ->send();
 
-                Notification::make()
-                    ->success()
-                    ->title("{$started->reference} started")
-                    ->body("Branch stored: `{$started->branch}`. Open the item to copy the session hand-off.")
-                    ->send();
-            });
+            return;
+        }
+
+        Notification::make()
+            ->success()
+            ->title("{$started->reference} started")
+            ->body("Branch stored: `{$started->branch}`. Copy the session hand-off from the card or the item view.")
+            ->send();
     }
 
     /**

@@ -147,7 +147,7 @@ describe('the board', function () {
         Livewire::actingAs($this->admin)->test(Workbook::class)->html();
 
         /*
-         * FOUR, and the number is derived rather than raised:
+         * FIVE, and the number is derived rather than raised:
          *
          *   1. the items, one read for the whole board
          *   2. `linksIn`, eager — a blocked badge that lazy-loads is an N+1
@@ -155,11 +155,14 @@ describe('the board', function () {
          *      eager load
          *   3. `linksIn.from`, the blocker whose status the badge reads
          *   4. the header action's next-ready lookup
+         *   5. the label filter's vocabulary, one pluck for the whole board
          *
          * None of them scale with the number of columns or the number of
-         * cards, which is the property this test exists to hold.
+         * cards, which is the property this test exists to hold — and it is
+         * why a card's session hand-off is a modal: composing the block reads
+         * the trail and the links, which must never run once per card here.
          */
-        expect($queries)->toBe(4);
+        expect($queries)->toBe(5);
     });
 });
 
@@ -274,6 +277,192 @@ describe('the table', function () {
         WorkbookItem::factory()->dismissed()->create();
 
         expect(WorkbookResource::getNavigationBadge())->toBe('2');
+    });
+});
+
+describe('the board controls', function () {
+    it('narrows every column by severity, category, effort and label', function () {
+        WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Inbox, 'title' => 'The critical one',
+            'severity' => WorkbookSeverity::Critical, 'category' => WorkbookCategory::Bug,
+            'effort' => WorkbookEffort::Small, 'labels' => ['frontend'],
+        ]);
+        WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Inbox, 'title' => 'The low one',
+            'severity' => WorkbookSeverity::Low, 'category' => WorkbookCategory::Ux,
+            'effort' => WorkbookEffort::Large, 'labels' => ['performance'],
+        ]);
+
+        $board = Livewire::actingAs($this->admin)->test(Workbook::class);
+
+        $board->set('severity', 'critical')->assertSee('The critical one')->assertDontSee('The low one');
+        $board->set('severity', '')->set('category', 'ux')->assertSee('The low one')->assertDontSee('The critical one');
+        $board->set('category', '')->set('effort', 's')->assertSee('The critical one')->assertDontSee('The low one');
+        $board->set('effort', '')->set('label', 'performance')->assertSee('The low one')->assertDontSee('The critical one');
+    });
+
+    it('shrugs off a nonsense control instead of filtering to an empty board', function () {
+        // `#[Url]` hydrates without firing the update hook, so a bookmarked
+        // `?severity=nonsense` reaches the query on first load — normalized in
+        // mount, it means "everything" rather than "nothing".
+        WorkbookItem::factory()->create(['status' => WorkbookStatus::Inbox, 'title' => 'Still here']);
+
+        Livewire::actingAs($this->admin)
+            ->withQueryParams(['severity' => 'nonsense', 'group' => 'garbage'])
+            ->test(Workbook::class)
+            ->assertSet('severity', '')
+            ->assertSet('group', '')
+            ->assertSee('Still here');
+    });
+
+    it('groups a column in the vocabulary\'s order, skipping empty buckets', function () {
+        WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Inbox, 'title' => 'The low one', 'severity' => WorkbookSeverity::Low,
+        ]);
+        WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Inbox, 'title' => 'The critical one', 'severity' => WorkbookSeverity::Critical,
+        ]);
+
+        // Worst first — position put the low card above the critical one, so
+        // in-order assertions prove the buckets reordered the column.
+        $board = Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->set('group', 'severity')
+            ->assertSeeInOrder(['Critical', 'The critical one', 'Low', 'The low one']);
+
+        // High and Medium hold no cards; a heading over nothing is noise. By
+        // the heading's key, because the word `Medium` legitimately sits in
+        // the severity select above the board.
+        expect($board->html())
+            ->toContain('wire:key="workbook-inbox-critical"')
+            ->not->toContain('wire:key="workbook-inbox-medium"');
+    });
+
+    it('puts the unsized bucket last, named as the answer it is', function () {
+        WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Inbox, 'title' => 'Sized', 'effort' => WorkbookEffort::Small,
+        ]);
+        WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Inbox, 'title' => 'Nobody estimated this', 'effort' => null,
+        ]);
+
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->set('group', 'effort')
+            ->assertSeeInOrder(['Sized', 'Not sized', 'Nobody estimated this']);
+    });
+
+    it('withholds the drag while the board is narrowed or grouped', function () {
+        /*
+         * A filtered column hides cards, so Sortable's index counts visible
+         * ones while positions are measured against the whole column — the
+         * drop lands somewhere the eye did not put it. A grouped column is not
+         * in position order at all. The handle disappears rather than lying.
+         */
+        WorkbookItem::factory()->create(['status' => WorkbookStatus::Inbox]);
+
+        $board = Livewire::actingAs($this->admin)->test(Workbook::class);
+
+        expect($board->html())->toContain('wire:sort=')->toContain('wire:sort:handle');
+
+        $narrowed = $board->set('severity', 'high')->html();
+
+        expect($narrowed)->not->toContain('wire:sort=')->not->toContain('wire:sort:handle');
+
+        $grouped = $board->set('severity', '')->set('group', 'severity')->html();
+
+        expect($grouped)->not->toContain('wire:sort=')
+            ->and($grouped)->toContain('Drag is paused');
+    });
+
+    it('refuses a stale drop server-side while narrowed', function () {
+        // The blade withholds the attributes, but a DOM from before the filter
+        // landed can still fire — and its index counts the cards it could see.
+        [$first, $second] = column(WorkbookStatus::Planned, 2);
+
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->set('severity', 'high')
+            ->call('move', (string) $second->id, 0, WorkbookStatus::Done->value);
+
+        expect($second->fresh()->status)->toBe(WorkbookStatus::Planned);
+    });
+});
+
+describe('working a card from the board', function () {
+    it('starts a card through the same transition as the table', function () {
+        $item = WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Inbox,
+            'key' => 'picks-n-plus-one',
+        ]);
+
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->callAction('start', arguments: ['item' => $item->id]);
+
+        $fresh = $item->fresh();
+
+        expect($fresh->status)->toBe(WorkbookStatus::InProgress)
+            ->and($fresh->branch)->toBe($item->branchName())
+            ->and($fresh->claimed_by)->toBe(WorkbookEvent::ACTOR_HUMAN)
+            ->and($fresh->events()->pluck('kind')->all())->toContain(WorkbookEvent::STARTED);
+    });
+
+    it('never steals a claim from a card either', function () {
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Planned]);
+        app(ClaimWorkbookItem::class)->handle($item, 'cloud:nightly');
+
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->callAction('start', arguments: ['item' => $item->id])
+            ->assertNotified("{$item->reference} is already held");
+
+        expect($item->fresh()->claimed_by)->toBe('cloud:nightly');
+    });
+
+    it('offers Start only on cards a session could actually take', function () {
+        WorkbookItem::factory()->create(['status' => WorkbookStatus::Inbox, 'title' => 'Startable']);
+        $working = WorkbookItem::factory()->create(['status' => WorkbookStatus::InProgress, 'title' => 'Working']);
+
+        $html = Livewire::actingAs($this->admin)->test(Workbook::class)->html();
+
+        expect(substr_count($html, "mountAction('start'"))->toBe(1)
+            ->and($html)->not->toContain("mountAction('start', { item: {$working->id} })");
+    });
+
+    it('swaps the card\'s clipboard from /work to the hand-off once started', function () {
+        $item = WorkbookItem::factory()->create(['status' => WorkbookStatus::Planned, 'key' => 'picks-n-plus-one']);
+
+        $before = Livewire::actingAs($this->admin)->test(Workbook::class)->html();
+
+        expect($before)->toContain('Copy /work '.$item->reference)
+            ->not->toContain('Session hand-off for');
+
+        app(StartWorkbookItem::class)->handle($item, WorkbookEvent::ACTOR_HUMAN);
+
+        $after = Livewire::actingAs($this->admin)->test(Workbook::class)->html();
+
+        expect($after)->toContain('Session hand-off for '.$item->reference)
+            ->not->toContain('Copy /work '.$item->reference);
+    });
+
+    it('serves the whole hand-off from the card\'s modal', function () {
+        // A modal rather than an inline copy on purpose: composing the block
+        // reads the trail and the links, which must cost queries on a click,
+        // never once per card on render — the board's query ceiling holds that.
+        $item = WorkbookItem::factory()->create([
+            'status' => WorkbookStatus::Planned,
+            'key' => 'picks-n-plus-one',
+            'body' => 'The rail panel renders game cards without the team eager-loaded.',
+        ]);
+
+        app(StartWorkbookItem::class)->handle($item, WorkbookEvent::ACTOR_HUMAN);
+
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->mountAction('handoff', arguments: ['item' => $item->id])
+            ->assertMountedActionModalSee("/work {$item->reference}")
+            ->assertMountedActionModalSee('git switch -c '.$item->fresh()->branch);
     });
 });
 
