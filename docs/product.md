@@ -302,6 +302,17 @@ place.
   next load. Account keeps "Replay the tour". Adding a team stamps
   `onboarded_at` too, so the prompt cannot return on a page that now has
   their team.
+- **`onboarding_opened` counts the PRESS, not the render.** The wizard is
+  rendered on every Home load and used to count itself in `mount()`, so the
+  step measured guest page loads — 201 of them in the week to 2026-08-30
+  against 5 registrations, a "2.5% completion rate" that was a traffic number
+  divided by a signup number with no funnel in between. The signal now rides
+  `begin()`, called from the `start-onboarding` handler, guests only and once
+  per browser per day (reopening the overlay is not a second signup). **Counts
+  before 2026-08-30 are not comparable to counts after it** and nothing was
+  backfilled: the old rows mean what they measured, and an estimate written
+  into `ux_events` to make a chart continuous would be a fabricated number in
+  a table read by an advisor that cannot tell the difference.
 
 ## Verification pays first, then the clock runs
 

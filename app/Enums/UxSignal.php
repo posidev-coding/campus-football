@@ -14,8 +14,10 @@ namespace App\Enums;
  *
  * Counted in Redis and rolled up nightly — see App\Actions\RecordUxEvent.
  * Aggregate only: there is deliberately no user id, no session and no free
- * text anywhere in this pipeline, so the snapshot the advisor reads can carry
- * the funnel without carrying anybody's identity.
+ * text in anything this pipeline COUNTS, so the snapshot the advisor reads can
+ * carry the funnel without carrying anybody's identity. The lone exception is
+ * RecordUxEvent's once-a-day dedupe key, which is a TTL'd Redis set member,
+ * is never counted and never persisted — its docblock says so at length.
  *
  * "Slate abandoned with zero picks" is deliberately NOT a case. It is
  * SlateEntered minus FirstPickMade, and a third counter for a difference is a
@@ -23,7 +25,11 @@ namespace App\Enums;
  */
 enum UxSignal: string
 {
-    /** The wizard's first screen rendered for a guest. */
+    /**
+     * A guest OPENED the wizard — pressed the front door, deliberately. Not
+     * "the overlay mounted": it mounts on every Home render, and counting
+     * that made this a traffic number wearing a funnel step's name.
+     */
     case OnboardingOpened = 'onboarding_opened';
 
     /** An account was created through the wizard. */

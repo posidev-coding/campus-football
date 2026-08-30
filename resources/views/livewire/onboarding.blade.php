@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Renderless;
 use Livewire\Component;
 
 /**
@@ -65,12 +66,6 @@ new class extends Component
         // an account first, so auth decides which pane an open overlay shows.
         $this->step = auth()->check() ? 'team' : 'name';
 
-        // The top of the funnel. Counted for GUESTS only, so the number means
-        // "somebody started signing up" rather than "the overlay mounted".
-        if (! auth()->check()) {
-            app(RecordUxEvent::class)->handle(UxSignal::OnboardingOpened);
-        }
-
         /*
          * The PARKED moment: an invite-path registration landed on the
          * group first (intended URL), where the normal hand-off flash died
@@ -82,6 +77,41 @@ new class extends Component
         if (auth()->check() && session()->pull('onboarding.pending', false) && ! auth()->user()->hasOnboarded()) {
             session()->flash('onboarding.moment', true);
         }
+    }
+
+    /**
+     * The top of the funnel: somebody actually opened the wizard.
+     *
+     * Called from the `start-onboarding` handler on the root below — NOT from
+     * mount(), which is where this used to live and where it measured nothing.
+     * The component is rendered on every Home load and mounts whether anybody
+     * touches it or not, so the count was guest page loads: 201 of them
+     * against 5 registrations over a week, read as a 2.5% completion rate that
+     * was never a rate at all. Pressing the front door is the honest boundary
+     * — it is a deliberate act, and every step the funnel counts after it is
+     * part of the same sitting.
+     *
+     * Guests only, as before: a signed-in user opening this overlay is adding
+     * a favorite team, not signing up.
+     *
+     * Once per browser per day, because opening is not a one-way door — the X
+     * and Escape both close the overlay, and somebody who reopens it (or comes
+     * back to Home later and presses again) has not started a second signup.
+     * The dedupe subject is a HASH of the session id and never the id itself:
+     * it sits in Redis for two days as a dedupe key, and the raw value is the
+     * session cookie.
+     */
+    #[Renderless]
+    public function begin(): void
+    {
+        if (auth()->check()) {
+            return;
+        }
+
+        app(RecordUxEvent::class)->handleOnce(
+            UxSignal::OnboardingOpened,
+            hash('sha256', session()->getId()),
+        );
     }
 
     /**
@@ -400,7 +430,11 @@ new class extends Component
          before anything client-side could tidy up. Clearing on the next load
          is what stops a stranger's name sitting in a shared browser. --}}
     x-init="@js(auth()->check()) ? clear() : restore()"
-    @start-onboarding.window="open = true"
+    {{-- Opening the wizard is what the funnel calls "started signing up", so
+         the count rides this event rather than mount(). The auth check is
+         duplicated in begin(), which is the one that is TRUSTED; this copy
+         only spares a signed-in user a round trip that would count nothing. --}}
+    @start-onboarding.window="open = true; if (! @js(auth()->check())) $wire.begin()"
     @close-onboarding.window="open = false; clear()"
     @keydown.escape.window="open = false"
 >
