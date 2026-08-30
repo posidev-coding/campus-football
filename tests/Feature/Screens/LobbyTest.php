@@ -56,12 +56,17 @@ describe('the promise (outside the flag)', function () {
          * Verification's ONE gate is participation — picks and XP — so the
          * explanation lives here, and it is not dismissable: an explanation
          * you can dismiss becomes a mystery next visit.
+         *
+         * The absence to assert is the dismiss CONTROL, not the storage key:
+         * the callout defines its Alpine scope on every render now, because
+         * keying the scope to the prop left `dismissed` undefined here and
+         * put a bare ReferenceError in production.
          */
         $this->actingAs(User::factory()->unverified()->create())
             ->get(route('pickem.lobby'))
             ->assertOk()
             ->assertSee('get in the game')
-            ->assertDontSee('cfb.verify.dismissed');
+            ->assertDontSee('aria-label="Dismiss"', escape: false);
     });
 
     it('shows no gate to the verified or to guests', function () {

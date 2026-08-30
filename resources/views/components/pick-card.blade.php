@@ -79,20 +79,25 @@
     METHOD, the Alpine house rule.
 --}}
 <div
-    {{-- Interactive only: a preview card carries no tap machinery at all,
-         which is also what GroupPageTest's read-only pin asserts. --}}
-    @if ($interactive)
-        x-data="{
-            pending: null,
+    {{-- The SCOPE is unconditional, the tap MACHINERY is not: a preview card
+         carries no optimistic() at all, which is what GroupPageTest's
+         read-only pin asserts, while `pending` — read by the side's
+         x-bind:class — exists on every card. Keying the whole x-data to a
+         prop is the shape that put a bare `dismissed` ReferenceError in
+         production from the verify callout; AlpineExpressionsTest sweeps
+         for it. --}}
+    x-data="{
+        pending: null,
+        @if ($interactive)
 
-            optimistic(slateGameId, teamId) {
-                if (this.pending !== null) return;
+        optimistic(slateGameId, teamId) {
+            if (this.pending !== null) return;
 
-                this.pending = teamId;
-                $wire.pick(slateGameId, teamId).finally(() => this.pending = null);
-            },
-        }"
-    @endif
+            this.pending = teamId;
+            $wire.pick(slateGameId, teamId).finally(() => this.pending = null);
+        },
+        @endif
+    }"
     {{ $attributes->class(['flex min-w-0 flex-col rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900']) }}>
     <div class="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-1.5 text-micro dark:border-zinc-800/60">
         <span class="flex min-w-0 items-center gap-1.5">
