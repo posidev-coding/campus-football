@@ -8,7 +8,6 @@ use App\Models\Game;
 use App\Models\Season;
 use App\Support\Stats\StatCatalog;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Season totals, derived from the box scores we already hold.
@@ -158,35 +157,55 @@ class AggregateAthleteStats
     }
 
     /**
+     * Write each chunk as ONE upsert, with NO transaction around it.
+     *
+     * Deliberate on both counts. Laravel's reconnect-and-retry on a lost
+     * connection only runs while no transaction is open, and this command's
+     * half-hour seed pass is the widest exposure window of anything scheduled
+     * — wrapping the write re-disables the one recovery the platform gives us.
+     * The replay is safe because a chunk is a single statement keyed by
+     * `athlete_season_stats_unique`, and every value in it was computed in
+     * memory before the first write: running it twice writes the same rows.
+     *
+     * A failure that survives the retry propagates — the command's ledger row
+     * must say the run died rather than present a partial total as complete.
+     *
      * @param  array<string, array<string, mixed>>  $totals
      */
     private function store(array $totals, int $year, int $seasonType): int
     {
         $written = 0;
+        $now = now();
 
-        foreach (array_chunk($totals, 500, preserve_keys: true) as $chunk) {
-            DB::transaction(function () use ($chunk, $year, $seasonType, &$written) {
-                foreach ($chunk as $entry) {
-                    $stats = $this->withRates($entry['stats']);
-                    $stats['gamesPlayed'] = $entry['games'];
+        foreach (array_chunk($totals, 500) as $chunk) {
+            $rows = [];
 
-                    AthleteSeasonStat::updateOrCreate(
-                        [
-                            'athlete_id' => $entry['athlete_id'],
-                            'season_year' => $year,
-                            'season_type' => $seasonType,
-                            'category' => $entry['category'],
-                        ],
-                        [
-                            'team_id' => $entry['team_id'],
-                            'stats' => $stats,
-                            'display_stats' => null,
-                        ]
-                    );
+            foreach ($chunk as $entry) {
+                $stats = $this->withRates($entry['stats']);
+                $stats['gamesPlayed'] = $entry['games'];
 
-                    $written++;
-                }
-            });
+                $rows[] = [
+                    'athlete_id' => $entry['athlete_id'],
+                    'season_year' => $year,
+                    'season_type' => $seasonType,
+                    'category' => $entry['category'],
+                    'team_id' => $entry['team_id'],
+                    // upsert() bypasses the model's casts, so the JSON column
+                    // is encoded here.
+                    'stats' => json_encode($stats),
+                    'display_stats' => null,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+            }
+
+            AthleteSeasonStat::upsert(
+                $rows,
+                ['athlete_id', 'season_year', 'season_type', 'category'],
+                ['team_id', 'stats', 'display_stats', 'updated_at'],
+            );
+
+            $written += count($rows);
         }
 
         return $written;
