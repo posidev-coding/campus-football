@@ -88,6 +88,22 @@
                 <x-filament::icon icon="heroicon-m-clipboard-document" class="h-4 w-4" />
             </button>
         @else
+            {{-- `cfb:issue review --pr=`, from the card — the ONLY doorway on
+                 this board that records which pull request closed the work.
+                 A drag to In review sets the column and nothing else, so the
+                 merge webhook then took the card to Done with `pr_url` still
+                 null. Offered wherever there is a branch, Done included: a
+                 card that closed with no pull request on it is exactly the one
+                 worth correcting. --}}
+            <button
+                type="button"
+                wire:click.stop="mountAction('review', { item: {{ $item->id }} })"
+                class="shrink-0 text-gray-300 hover:text-info-600 dark:text-gray-600 dark:hover:text-info-400"
+                title="Hand {{ $item->reference }} to review"
+            >
+                <x-filament::icon icon="heroicon-m-code-bracket-square" class="h-4 w-4" />
+            </button>
+
             {{-- Started, so there is a whole brief to hand over. A modal
                  rather than an inline copy: the hand-off block costs queries
                  (trail, links) that must not run once per card on render. --}}

@@ -22,6 +22,18 @@ use Illuminate\Support\Facades\DB;
  */
 class ReviewWorkbookItem
 {
+    /**
+     * What every doorway agrees a pull request URL is.
+     *
+     * `cfb:issue review --pr=` and the panel's Review action both validate on
+     * these two, so a URL one accepts is a URL the other accepts. Two hand-
+     * written copies of the same rule is how the terminal and the board come
+     * to disagree about the same string.
+     */
+    public const URL_SCHEME = 'https://';
+
+    public const URL_MAX_LENGTH = 255;
+
     /** Null means somebody else holds this issue. Never take their work. */
     public function handle(WorkbookItem $item, string $by, string $prUrl, ?string $note = null): ?WorkbookItem
     {
