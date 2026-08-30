@@ -63,7 +63,7 @@ class IssueCommand extends Command
         $by = trim((string) $this->option('as')) ?: WorkbookEvent::ACTOR_AGENT;
         $note = $this->option('note') === null ? null : trim((string) $this->option('note'));
 
-        $item = $this->resolveIssue();
+        $item = $this->resolveIssue($board);
 
         if ($item === null) {
             return self::FAILURE;
@@ -102,14 +102,25 @@ class IssueCommand extends Command
      * it. The leading-reference fallback covers a branch a human cut by hand
      * before `start` ever ran. Neither matching names BOTH attempts and exits
      * non-zero, because guessing is how a session works the wrong card.
+     *
+     * Every refusal here NAMES THE BOARD it searched. A checkout pointed at a
+     * different database says "nothing matches" about a card that plainly
+     * exists, and a reader sent to check the reference, the id and the key
+     * checks three things that are all correct. The board is the one thing
+     * that is wrong, so it is the thing the message says.
      */
-    private function resolveIssue(): ?WorkbookItem
+    private function resolveIssue(IssueBoard $board): ?WorkbookItem
     {
         $handle = $this->argument('issue');
 
         if ($handle !== null) {
             return WorkbookItem::resolve((string) $handle)
-                ?? $this->refuse("Nothing matches \"{$handle}\" — try CFB-12, a bare id, or the advisor's key.");
+                ?? $this->refuse(sprintf(
+                    'Nothing matches "%s" on the board this checkout reads (%s). A card filed on another '
+                    .'board never resolves here; if it is this one, try CFB-12, a bare id, or the advisor\'s key.',
+                    $handle,
+                    $board->whereItLooked(),
+                ));
         }
 
         $branch = $this->currentBranch();
@@ -128,9 +139,12 @@ class IssueCommand extends Command
             ? WorkbookItem::findByReference($matches[1])
             : null;
 
-        return $leading ?? $this->refuse(
-            "No issue stores the branch `{$branch}`, and its name does not start with a reference. Pass CFB-12."
-        );
+        return $leading ?? $this->refuse(sprintf(
+            'No issue on the board this checkout reads (%s) stores the branch `%s`, and its name does not '
+            .'start with a reference. Pass CFB-12.',
+            $board->whereItLooked(),
+            $branch,
+        ));
     }
 
     /** The branch this working tree is on, or null if there is no answer. */
