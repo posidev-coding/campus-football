@@ -2,7 +2,7 @@
     The board. Columns are statuses; a card drags within a column to reorder
     and across columns to change status.
 
-    THREE ATTRIBUTES CARRY THE WHOLE FEATURE, and two of them are not obvious:
+    THREE ATTRIBUTES CARRY THE WHOLE DRAG, and two of them are not obvious:
 
     - `wire:sort="move"` is a BARE METHOD NAME. Never `move($item, $position)`
       — Livewire rewrites those magics to `$wire.$item`/`$wire.$position`,
@@ -17,11 +17,89 @@
       the drag would silently do nothing. Alpine's own attribute is read by the
       same `getGroupName()` and is not in that loop at all.
 
+    THE DRAG ONLY EXISTS ON THE NATURAL BOARD. Narrow or group it and the sort
+    attributes are withheld (and `move()` refuses server-side): a filtered
+    column hides cards, so Sortable's index counts the visible ones while
+    positions are measured against the whole column, and a grouped column is
+    not in position order at all. The card markup itself lives in
+    partials/workbook-card so both renderings are one file.
+
     No interaction test can reach any of this: SortableJS ignores synthetic
     pointer events. WorkbookBoardTest asserts the rendered attributes and
     proves the outcome through MoveWorkbookItem.
 --}}
 <x-filament-panels::page>
+    {{-- The read controls. Selects rather than pill rows because five
+         vocabularies side by side is a toolbar, not a screen — and the panel
+         is the one place a native select is house style. --}}
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+        <x-filament::input.wrapper class="w-40">
+            <x-filament::input.select wire:model.live="severity">
+                <option value="">All severities</option>
+                @foreach (\App\Enums\WorkbookSeverity::options() as $value => $optionLabel)
+                    <option value="{{ $value }}">{{ $optionLabel }}</option>
+                @endforeach
+            </x-filament::input.select>
+        </x-filament::input.wrapper>
+
+        <x-filament::input.wrapper class="w-40">
+            <x-filament::input.select wire:model.live="category">
+                <option value="">All categories</option>
+                @foreach (\App\Enums\WorkbookCategory::options() as $value => $optionLabel)
+                    <option value="{{ $value }}">{{ $optionLabel }}</option>
+                @endforeach
+            </x-filament::input.select>
+        </x-filament::input.wrapper>
+
+        <x-filament::input.wrapper class="w-36">
+            <x-filament::input.select wire:model.live="effort">
+                <option value="">Any effort</option>
+                {{-- The board speaks effort in the card's own S/M/L, never
+                     the full words — `Large` beside `High` is the collision
+                     the enum's short() exists to avoid, and a sweep holds
+                     the word off this page entirely. --}}
+                @foreach (\App\Enums\WorkbookEffort::cases() as $case)
+                    <option value="{{ $case->value }}">Effort {{ $case->short() }}</option>
+                @endforeach
+            </x-filament::input.select>
+        </x-filament::input.wrapper>
+
+        @if ($this->labelOptions !== [])
+            <x-filament::input.wrapper class="w-40">
+                <x-filament::input.select wire:model.live="label">
+                    <option value="">All labels</option>
+                    @foreach ($this->labelOptions as $option)
+                        <option value="{{ $option }}">{{ $option }}</option>
+                    @endforeach
+                </x-filament::input.select>
+            </x-filament::input.wrapper>
+        @endif
+
+        <x-filament::input.wrapper class="w-44">
+            <x-filament::input.select wire:model.live="group">
+                <option value="">No grouping</option>
+                <option value="severity">Group by severity</option>
+                <option value="category">Group by category</option>
+                <option value="effort">Group by effort</option>
+            </x-filament::input.select>
+        </x-filament::input.wrapper>
+
+        @unless ($this->sortable)
+            <button
+                type="button"
+                wire:click="clearControls"
+                class="text-xs font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400"
+            >
+                Clear
+            </button>
+            {{-- Said out loud, because a handle that silently vanished reads
+                 as the drag breaking rather than a rule. --}}
+            <span class="text-xs text-gray-400 dark:text-gray-500">
+                Drag is paused while the board is narrowed or grouped.
+            </span>
+        @endunless
+    </div>
+
     <div class="flex gap-4 overflow-x-auto pb-4">
         @foreach ($this->columns as $column)
             {{-- w-72, not w-80: five columns, and the fifth one has to be
@@ -37,104 +115,30 @@
                 </header>
 
                 <div
-                    wire:sort="move"
-                    wire:sort:group-id="{{ $column['status']->value }}"
-                    x-sort:group="workbook"
+                    @if ($this->sortable)
+                        wire:sort="move"
+                        wire:sort:group-id="{{ $column['status']->value }}"
+                        x-sort:group="workbook"
+                    @endif
                     class="flex min-h-24 flex-col gap-2"
                 >
-                    @foreach ($column['items'] as $item)
-                        <article
-                            wire:sort:item="{{ $item->id }}"
-                            wire:key="workbook-{{ $item->id }}"
-                            class="rounded-lg bg-white p-3 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10"
-                        >
-                            <div class="flex items-start gap-2">
-                                {{-- The handle makes the CARD draggable without
-                                     swallowing a tap meant for something inside
-                                     it. Its presence is what turns handle mode
-                                     on — Alpine detects it, no modifier needed. --}}
-                                <span
-                                    wire:sort:handle
-                                    class="mt-0.5 shrink-0 cursor-grab touch-none text-gray-300 active:cursor-grabbing dark:text-gray-600"
-                                    aria-hidden="true"
-                                >
-                                    <x-filament::icon icon="heroicon-m-bars-2" class="h-4 w-4" />
-                                </span>
+                    @foreach ($column['groups'] as $subgroup)
+                        @if ($subgroup['label'] !== null)
+                            <h3
+                                wire:key="workbook-{{ $column['status']->value }}-{{ Str::slug($subgroup['label']) }}"
+                                class="mt-2 flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 first:mt-0 dark:text-gray-500"
+                            >
+                                {{ $subgroup['label'] }}
+                                <span class="font-mono normal-case tracking-normal">{{ $subgroup['items']->count() }}</span>
+                            </h3>
+                        @endif
 
-                                <div class="min-w-0 flex-1">
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="font-mono text-[11px] text-gray-400 dark:text-gray-500">
-                                            {{ $item->reference }}
-                                        </span>
-                                        @if ($item->effort)
-                                            {{-- Effort is a MARKER here, not a
-                                                 badge, and that is the whole
-                                                 point. A card has no column
-                                                 header, so a `Large` badge sat
-                                                 beside a `High` badge in the
-                                                 same amber, and `Medium`
-                                                 collided with `Medium` on both
-                                                 the word and the color. It
-                                                 stays a badge on the table and
-                                                 the infolist, where a labelled
-                                                 column says which is which. --}}
-                                            <span
-                                                class="font-mono text-[11px] text-gray-400 dark:text-gray-500"
-                                                data-effort="{{ $item->effort->value }}"
-                                            >&middot; {{ $item->effort->short() }}</span>
-                                        @endif
-                                        @if ($item->isBlocked())
-                                            {{-- Blocked by something nobody has
-                                                 finished. A session reads this
-                                                 and stops. --}}
-                                            <span class="text-xs text-danger-600 dark:text-danger-400" title="Blocked">
-                                                <x-filament::icon icon="heroicon-m-lock-closed" class="h-3 w-3" />
-                                            </span>
-                                        @endif
-                                    </div>
-                                    <p class="text-sm font-medium text-gray-900 dark:text-gray-100">
-                                        {{ $item->title }}
-                                    </p>
-                                </div>
-
-                                {{-- Filament's own copyable() is a table and
-                                     infolist concern, so the card gets four
-                                     lines of Alpine instead.
-
-                                     `.stop` matters: the card is handle-dragged
-                                     today, so a stray click cannot start a drag
-                                     — and stopping propagation keeps that true
-                                     if handle mode ever comes off. --}}
-                                <button
-                                    type="button"
-                                    x-data
-                                    x-on:click.stop="navigator.clipboard?.writeText(@js('/work '.$item->reference))"
-                                    class="shrink-0 text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
-                                    title="Copy /work {{ $item->reference }}"
-                                >
-                                    <x-filament::icon icon="heroicon-m-clipboard-document" class="h-4 w-4" />
-                                </button>
-                            </div>
-
-                            <div class="mt-2 flex flex-wrap items-center gap-1.5 pl-6">
-                                <x-filament::badge :color="$item->category->color()" size="xs">
-                                    {{ $item->category->label() }}
-                                </x-filament::badge>
-                                <x-filament::badge :color="$item->severity->color()" size="xs">
-                                    {{ $item->severity->label() }}
-                                </x-filament::badge>
-                                @foreach ($item->labels ?? [] as $label)
-                                    <x-filament::badge color="gray" size="xs">{{ $label }}</x-filament::badge>
-                                @endforeach
-                                @if ($item->first_seen_at)
-                                    {{-- How long this has been true, which a
-                                         re-propose never resets. --}}
-                                    <span class="text-xs text-gray-400 dark:text-gray-500">
-                                        {{ $item->first_seen_at->diffForHumans(short: true) }}
-                                    </span>
-                                @endif
-                            </div>
-                        </article>
+                        @foreach ($subgroup['items'] as $item)
+                            @include('filament.pages.partials.workbook-card', [
+                                'item' => $item,
+                                'sortable' => $this->sortable,
+                            ])
+                        @endforeach
                     @endforeach
                 </div>
             </section>
