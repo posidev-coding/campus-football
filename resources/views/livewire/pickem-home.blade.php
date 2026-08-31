@@ -641,24 +641,10 @@ new class extends Component
                     </flux:button>
                 </div>
 
+                {{-- The shared compact row — Home's picks strip renders
+                     the very same component, not a copy. --}}
                 @foreach ($this->needsRest as $card)
-                    <a
-                        href="{{ $card['group']->isRoom() ? route('pickem.room', $card['group']) : route('pickem.group', $card['group']) }}"
-                        wire:navigate
-                        wire:key="needs-{{ $card['group']->id }}"
-                        class="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50/50 px-4 py-3 hover:border-blue-300 dark:border-blue-900 dark:bg-blue-950/20 dark:hover:border-blue-800"
-                    >
-                        <span class="min-w-0">
-                            <span class="block truncate font-semibold leading-tight">{{ $card['group']->name }}</span>
-                            <x-slate-progress :made="$card['made']" :total="$card['total']" class="pt-1" />
-                        </span>
-                        <span class="flex shrink-0 items-center gap-1.5 text-micro text-zinc-500">
-                            @if ($card['firstKick'])
-                                kicks {{ $card['firstKick']->setTimezone(config('cfb.timezone'))->format('D g:ia') }}
-                            @endif
-                            <flux:icon name="chevron-right" variant="micro" class="text-zinc-400" />
-                        </span>
-                    </a>
+                    <x-slate-row :card="$card" wire:key="needs-{{ $card['group']->id }}" />
                 @endforeach
             </div>
         @endif

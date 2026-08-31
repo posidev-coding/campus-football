@@ -280,10 +280,12 @@ new class extends Component
     }
 
     /**
-     * Five most recent articles per followed team, from ONE join query.
+     * Three most recent articles per followed team, from ONE join query.
      *
      * Grouped by the pivot's team id because an article can belong to several
-     * teams — a rivalry-week story should appear under both cards.
+     * teams — a rivalry-week story should appear under both cards. Three,
+     * not five: each panel ends in a "More {Place} news" door to the team
+     * page instead of two more headlines.
      *
      * @return array<int, \Illuminate\Support\Collection<int, Article>>
      */
@@ -303,12 +305,12 @@ new class extends Component
             ->limit(150)
             ->get(['articles.*', 'article_team.team_id as for_team_id']);
 
-        // One relation load across every article that survived the take(5)s —
+        // One relation load across every article that survived the take(3)s —
         // x-article-card renders team chips, and lazy loading is off. groupBy
         // demotes to a Support collection, which has no load(), so the kept
         // models are gathered back into an Eloquent one; the loaded relations
         // land on the same instances the groups hold.
-        $kept = $rows->groupBy('for_team_id')->map(fn ($articles) => $articles->take(5));
+        $kept = $rows->groupBy('for_team_id')->map(fn ($articles) => $articles->take(3));
 
         (new \Illuminate\Database\Eloquent\Collection($kept->flatten(1)->all()))
             ->load('teams:id,slug,short_display_name,abbreviation,logo,logo_dark');
@@ -395,11 +397,51 @@ new class extends Component
     #[Computed]
     public function news()
     {
+        // Three, not six: Home leads with the reader's own state now, and
+        // the full feed is one tap away behind the unconditional "More".
         return Article::query()
             ->with('teams:id,slug,short_display_name,abbreviation,logo,logo_dark')
             ->newest()
-            ->limit(6)
+            ->limit(3)
             ->get();
+    }
+
+    /**
+     * THE PICKS STRIP — the viewer's own slates in one PickemPulse read,
+     * urgency-ordered: cards still needing picks first (live before
+     * upcoming, soonest kickoff first), finished entries after. Empty for
+     * guests, the closed flag, or a week with nothing published — the
+     * strip then yields the slot back to the teaser.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function pickemCards()
+    {
+        if (auth()->guest()) {
+            return collect();
+        }
+
+        return \App\Support\PickemPulse::cards(auth()->user())
+            ->sortBy(fn (array $card) => [
+                $card['entryIn'] ? 1 : 0,
+                $card['state'] === 'live' ? 0 : 1,
+                // A missing kickoff is missing data — it sorts last, never
+                // "kicks at the epoch".
+                $card['firstKick']?->getTimestamp() ?? PHP_INT_MAX,
+            ])
+            ->values();
+    }
+
+    /**
+     * The foot door's count — the lean COUNT, never the inventory (the
+     * same read My Picks' lobby door makes). Asked only when the flagged
+     * branch renders.
+     */
+    #[Computed]
+    public function roomsOpen(): int
+    {
+        return \App\Support\Lobby::openRoomCount(auth()->user());
     }
 
     #[Computed]
@@ -820,6 +862,18 @@ new class extends Component
                                     </flux:callout.text>
                                 </flux:callout>
                             @endforelse
+
+                            {{-- The rest of the team's feed lives on its own
+                                 page — a door, not two more headlines. --}}
+                            @if (($this->newsByTeam[$glance['team']->id] ?? collect())->isNotEmpty())
+                                <a
+                                    href="{{ route('team', $glance['team']) }}?tab=news"
+                                    wire:navigate
+                                    class="text-micro self-start font-medium text-zinc-500 hover:underline"
+                                >
+                                    More {{ $glance['team']->placeName() }} news
+                                </a>
+                            @endif
                         </div>
                     @endforeach
 
@@ -850,7 +904,32 @@ new class extends Component
          the week's headline below. Renders nothing at all out of season. --}}
     <x-gameday-card />
 
-    <x-pickem-teaser />
+    {{-- THE PICKS SLOT. A member with slates on the card gets their OWN
+         state — the same compact rows My Picks renders — in place of the
+         static teaser; everyone else keeps the teaser exactly as it was.
+         The section inherits the teaser's tour anchor: the strip only
+         renders while the flag is open for this viewer, which is the same
+         gate the teaser's own data-tour wears. --}}
+    @if ($this->pickemCards->isNotEmpty())
+        <section class="flex flex-col gap-2" data-tour="room">
+            <div class="flex items-baseline justify-between gap-2">
+                <flux:subheading>Your picks</flux:subheading>
+                <a href="{{ route('pickem.home') }}" wire:navigate class="text-micro text-zinc-500 hover:underline">
+                    All your picks
+                </a>
+            </div>
+
+            @foreach ($this->pickemCards->take(2) as $card)
+                <x-slate-row
+                    :card="$card"
+                    :tone="! $card['entryIn'] && in_array($card['state'], ['upcoming', 'live'], true) ? 'needs' : 'default'"
+                    wire:key="home-slate-{{ $card['group']->id }}"
+                />
+            @endforeach
+        </section>
+    @else
+        <x-pickem-teaser />
+    @endif
 
     @if ($this->games->isNotEmpty())
         <section class="flex flex-col gap-2">
@@ -896,6 +975,30 @@ new class extends Component
             <x-article-card :article="$article" wire:key="home-news-{{ $article->id }}" />
         @endforeach
     </section>
+
+    {{-- THE FOOT DOOR. The page never ends on somebody else's articles —
+         the last thing Home says is a way onward: the Lobby while the
+         flag is open, the League otherwise. No data-tour here; the picks
+         slot above already carries the room anchor. --}}
+    @auth
+        @php $footOpen = config('cfb.pickem_open') === true || (bool) auth()->user()?->isAdmin(); @endphp
+
+        @if ($footOpen)
+            <x-link-row :href="route('pickem.lobby')" title="Find a room">
+                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                    @if ($this->roomsOpen > 0)
+                        {{ $this->roomsOpen }} public {{ Str::plural('room', $this->roomsOpen) }} open this Saturday
+                    @else
+                        {{ App\Support\Voice::line('lobby.publics.empty') }}
+                    @endif
+                </span>
+            </x-link-row>
+        @else
+            <x-link-row :href="route('standings')" title="Standings and rankings">
+                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Every team, every conference, every week.</span>
+            </x-link-row>
+        @endif
+    @endauth
 
     {{-- The guided tour, LAST at the page root: `fixed inset-0` must never
          sit inside a sticky/backdrop-filter ancestor (the search-panel
