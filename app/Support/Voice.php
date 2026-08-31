@@ -1261,6 +1261,20 @@ class Voice
         ],
 
         /*
+         * ALL IN — every entry the reader holds is complete, said on the
+         * week tab where the ask used to be. The lead-in ("All in.")
+         * stays plain in every register because it is the STATE; this
+         * line is the part that gets to have a voice. Roast the picks
+         * once they are out of the reader's hands, never the reader who
+         * just did everything the app asked.
+         */
+        'picks.allin.body' => [
+            'pg' => 'Every entry is in. Nothing left to do but watch.',
+            'pg13' => 'Every entry is in. The picks are on their own now.',
+            'r' => 'Every entry is in. Your picks are out there alone, and a couple of them already look nervous.',
+        ],
+
+        /*
          * YOU WON A WEEK — the payoff banner atop Results, and the only
          * celebration in the house that is not on the pick surface. It
          * ARRIVES rather than firing on an act, so the line has to carry

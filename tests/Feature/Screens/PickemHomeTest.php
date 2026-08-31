@@ -647,6 +647,63 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee('Needs your picks');
     });
 
+    /*
+     * ALL IN. The zone that asks for picks simply VANISHED when the last
+     * entry landed, so a reader who finished on Wednesday came back
+     * Saturday to a screen with no word about it either way — and silence
+     * is the one answer a pick'em screen cannot give about your picks.
+     */
+    it('says ALL IN once every entry is complete, and not one pick before', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        $slate = pickemDraftSlate($contest);
+        app(PublishSlate::class)->handle($commissioner, $slate);
+
+        $games = $slate->games()->with('game')->orderBy('position')->get();
+
+        foreach ($games->take($games->count() - 1) as $slateGame) {
+            app(MakePick::class)->handle($commissioner, $slateGame, $slateGame->game->home_team_id);
+        }
+
+        app(EnterTiebreaker::class)->handle($commissioner, $slate, 45);
+
+        // One game short: the zone still asks, and the state card stays away.
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('Needs your picks')
+            ->assertDontSee('All in');
+
+        app(MakePick::class)->handle($commissioner, $games->last(), $games->last()->game->home_team_id);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('All in')
+            ->assertSee(Voice::line('picks.allin.body', for: $commissioner))
+            ->assertSeeHtml('wire:key="all-in"')
+            ->assertDontSee('Needs your picks')
+            /*
+             * A STATE, not an event. The pick surface's celebration fires
+             * on the act that earns it and never again; a card that
+             * animated on every visit would be a party thrown at somebody
+             * for standing still.
+             */
+            ->assertDontSeeHtml('motion-safe:animate-entry-in');
+    });
+
+    it('never says ALL IN to a reader with nothing actually in', function () {
+        /*
+         * The third condition, and the subtle one. "Nothing left to ask"
+         * is equally true of a reader whose group is still waiting on its
+         * commissioner — and telling them they are all in is telling them
+         * they are all in on nothing.
+         */
+        [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee($group->name)
+            ->assertDontSee('Needs your picks')
+            ->assertDontSee('All in');
+    });
+
     it('says TIEBREAKER LEFT on the card when the picks are in and the question is not', function () {
         $this->travelTo('2026-09-02 12:00:00');
 

@@ -100,6 +100,8 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     // the one celebration that arrives rather than firing on an act.
     'picks.payoff.banner',
     'picks.payoff.banner_many',
+    // The week tab's state card, where the ask used to be.
+    'picks.allin.body',
     'picks.results.empty',
     'picks.next.due',
     'picks.next.fresh',

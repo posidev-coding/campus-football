@@ -378,6 +378,28 @@ new class extends Component
     }
 
     /**
+     * EVERYTHING IS IN. Not "nothing to do" — the zone that asks for
+     * picks simply vanished when the last entry landed, and a reader
+     * who finished on Wednesday came back Saturday to a screen with no
+     * word about it either way. Silence is the one answer a pick'em
+     * screen cannot give about your picks.
+     *
+     * All three conditions, deliberately: seats held, nothing left to
+     * ask, and at least one entry actually IN. Without the last one a
+     * reader with only settled weeks — or only rooms whose Saturday is
+     * gone — is told they are all in on nothing.
+     *
+     * A pure projection of cards(). No query, at any depth.
+     */
+    #[Computed]
+    public function allIn(): bool
+    {
+        return $this->cards->isNotEmpty()
+            && $this->needsPicks->isEmpty()
+            && $this->cards->contains(fn (array $card) => $card['entryIn']);
+    }
+
+    /**
      * THE ONE THAT WANTS YOU NOW. A single hero rather than a stack of
      * them: four cards all shouting is four cards nobody reads, and the
      * question a reader actually has on Saturday morning is which one is
@@ -794,6 +816,30 @@ new class extends Component
                 @foreach ($this->needsRest as $card)
                     <x-slate-row :card="$card" wire:key="needs-{{ $card['group']->id }}" />
                 @endforeach
+            </div>
+        @elseif ($this->allIn)
+            {{-- ALL IN. The zone that asks for picks simply vanished when
+                 the last entry landed, so a reader who finished on
+                 Wednesday came back Saturday to a screen with no word
+                 about it either way — and silence is the one answer a
+                 pick'em screen cannot give about your picks.
+
+                 NOT ANIMATED, deliberately: this is a STATE, not an
+                 event. The pick surface's entry-in celebration fires on
+                 the act that earns it and never again; a card that
+                 animated on every visit would be a party thrown at a
+                 reader for standing still. The bold lead-in and the check
+                 are the non-color signal. --}}
+            <div
+                wire:key="all-in"
+                role="status"
+                class="flex items-center gap-2.5 rounded-xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:ring-emerald-900"
+            >
+                <flux:icon.check-circle-fill variant="micro" class="size-4 shrink-0 text-emerald-600 dark:text-emerald-500" />
+                <p class="min-w-0 flex-1 text-sm text-zinc-700 dark:text-zinc-300">
+                    <span class="font-semibold text-zinc-900 dark:text-zinc-100">All in.</span>
+                    {{ Voice::line('picks.allin.body') }}
+                </p>
             </div>
         @endif
 
