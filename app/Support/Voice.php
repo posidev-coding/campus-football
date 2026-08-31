@@ -1818,10 +1818,16 @@ class Voice
             'r' => 'Season, schedule, record — all of it is fair. Everybody reading is not.',
         ],
 
+        /*
+         * Kind-free on purpose: this renders for private groups AND
+         * public rooms through the shared conversation component, and
+         * ROOM is the vocabulary law's word for a public one-Saturday
+         * contest — a private group's thread may not borrow it.
+         */
         'talk.subheading.group' => [
-            'pg' => 'Your group\'s room. Talk about the slate.',
-            'pg13' => 'Your group\'s room. Where the bad picks get remembered.',
-            'r' => 'Your group\'s room. Nothing said here gets forgotten by November.',
+            'pg' => 'Your people\'s thread. Talk about the slate.',
+            'pg13' => 'Your people\'s thread. Where the bad picks get remembered.',
+            'r' => 'Your people\'s thread. Nothing said here gets forgotten by November.',
         ],
 
         'talk.empty.game' => [
