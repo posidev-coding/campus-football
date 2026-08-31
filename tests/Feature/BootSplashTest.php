@@ -2,6 +2,7 @@
 
 use App\Enums\ContentRating;
 use App\Models\User;
+use App\Support\Brand;
 use App\Support\Voice;
 
 /**
@@ -57,6 +58,21 @@ describe('the cold-start stamp', function () {
             ->and($css)->toContain('cfb-boot-bail')
             ->and($css)->toContain('8s');
     });
+
+    it('carries the flare in the stylesheet too, so a frameless tab still paints it', function () {
+        $css = file_get_contents(resource_path('css/app.css'));
+
+        /*
+         * The glow is a plain background, not an animation, because the
+         * curtain is up before Alpine and must look finished in that state.
+         * The rise is `from`-only for the cfb-entry-in reason: a tab that
+         * renders no frames sees the end state, which is the lockup visible.
+         */
+        expect($css)->toContain('.cfb-boot-glow')
+            ->and($css)->toContain('var(--color-brand-lager)')
+            ->and($css)->toContain('@keyframes cfb-boot-rise')
+            ->and(preg_match('/@keyframes cfb-boot-rise \{\s*to\b/', $css))->toBe(0);
+    });
 });
 
 describe('the curtain', function () {
@@ -72,29 +88,59 @@ describe('the curtain', function () {
         $this->get(route('login'))->assertOk()->assertSee('data-boot-splash', escape: false);
     });
 
-    it('pins the hold: three phrases at 750ms, curtain down at 2200, unstamped at +600', function () {
+    it('pins the hold: two phrases at 1400ms, curtain down at 2900, unstamped at +600', function () {
         $html = $this->get(route('home'))->assertOk()->content();
 
-        expect($html)->toContain(', 750)')
-            ->and($html)->toContain('end(), 2200')
-            ->and($html)->toContain("removeAttribute('data-boot'), 600");
+        /*
+         * 1400ms a card, of which the first 400 are still crossfading — the
+         * reason the deck went from three cards to two rather than the hold
+         * going from 2200 to 3300. A card that cannot be read is not a joke,
+         * and a launch beat is not allowed to grow: if a third card is ever
+         * wanted back, it costs seconds, and that is the decision to make.
+         */
+        expect($html)->toContain(', 1400)')
+            ->and($html)->toContain('end(), 2900')
+            ->and($html)->toContain("removeAttribute('data-boot'), 600")
+            ->and($html)->toContain('Math.min(this.i + 1, 1)');
     });
 
-    it('deals exactly three cards off the six-phrase deck', function () {
+    it('deals exactly two cards off the six-phrase deck', function () {
         $html = $this->get(route('home'))->assertOk()->content();
 
         preg_match_all('/wire:key="boot-\d"\s*>([^<]+)</', $html, $matches);
         $dealt = array_map(trim(...), $matches[1]);
 
         // A guest cold start renders the PG-13 deck via line()'s null-user
-        // fallback — resolve the whole pool at that register and the three
+        // fallback — resolve the whole pool at that register and the two
         // dealt must be a subset of it.
         $pool = collect(['gates', 'chains', 'headsets', 'scores', 'turf', 'replay'])
             ->map(fn (string $key) => Voice::line("splash.boot.{$key}"))
             ->all();
 
-        expect($dealt)->toHaveCount(3)
-            ->and(collect($dealt)->every(fn (string $phrase) => in_array($phrase, $pool, true)))->toBeTrue();
+        expect($dealt)->toHaveCount(2)
+            ->and(collect($dealt)->every(fn (string $phrase) => in_array($phrase, $pool, true)))->toBeTrue()
+            // Two cards off a six-card deck, so a launch seen hundreds of
+            // times is not the same launch twice in a row.
+            ->and($dealt[0])->not->toBe($dealt[1]);
+    });
+
+    it('opens on the lockup, the glow and a phrase big enough to read', function () {
+        $html = $this->get(route('home'))->assertOk()->content();
+
+        $curtain = substr($html, strpos($html, 'data-boot-splash'));
+
+        /*
+         * The lockup, not the bare mark: the curtain is up pre-Alpine and
+         * that first paint is what reads as a native launch, so it is the
+         * frame that has to say the app's name. The phrase is `text-lg` in a
+         * two-line slot — the R deck writes sentences, and a slot that grew
+         * to fit one would walk the lockup up the screen mid-beat.
+         */
+        expect($curtain)->toContain('cfb-boot-glow')
+            ->and($curtain)->toContain('motion-safe:animate-boot-rise')
+            ->and($curtain)->toContain('relative h-16 w-full')
+            ->and($curtain)->toContain('text-lg')
+            ->and($html)->toContain(Brand::wordmark()['main']);
     });
 });
 

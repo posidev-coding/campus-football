@@ -702,11 +702,35 @@ complaint by loosening the meta; the complaint the lock answers is worse.
 
 ### The boot splash: stylesheet-shown before Alpine exists
 
-Opening the installed app plays a ~2.7s branded curtain — the signup splash's
-visual grammar (forced-dark `bg-zinc-950`, the mark, crossfading phrases,
-pulsing dots) at launch length, dealing three shuffled cards off the
-`splash.boot.*` deck. It is pure theater over an already-delivered document,
-and deliberate: instantly is indistinguishable from abruptly.
+Opening the installed app plays a ~2.9s branded curtain — the signup splash's
+visual grammar (forced-dark `bg-zinc-950`, crossfading phrases, pulsing dots)
+at launch length, dealing two shuffled cards off the `splash.boot.*` deck. It
+is pure theater over an already-delivered document, and deliberate: instantly
+is indistinguishable from abruptly.
+
+**Two cards, not three** (2026-08-31, CFB-33). Three inside the same hold gave
+each phrase 750ms, of which a 400ms crossfade was still resolving — the deck
+was dealt faster than it could be read, and a joke nobody finishes is worse
+than no joke. Two at 1400ms read, and shuffling two off a SIX-card deck is
+what keeps a launch seen hundreds of times from going static. The hold is
+allowed to move a little (2200 → 2900) but not to grow: a launch beat is not a
+milestone, and a third card back costs seconds rather than splitting the ones
+there are.
+
+The same pass gave the curtain the flare it was missing. It wears the stacked
+`brand.lockup` at `lg` rather than a bare mark — the pre-Alpine paint is what
+reads as a native launch, so it is the frame that should say the app's name —
+over `.cfb-boot-glow`, a Lager radial wash mixed through `color-mix` so App
+Branding retints it with everything else. The glow rides a `-z-10` child:
+the curtain's own `z-50` opens a stacking context, so it lands over
+`bg-zinc-950` and under every in-flow child with no sibling needing
+`relative`. The lockup's entrance is `motion-safe:animate-boot-rise`, a
+`from`-only keyframe on the `cfb-entry-in` contract — a tab that renders no
+frames, and a reader who asked for less motion, both simply see it arrive.
+The phrase went `text-sm` → `text-lg` in a two-line `h-16` slot with each span
+FILLING the slot: the R deck writes sentences ("Untangling whatever the
+coordinator did to the headsets..."), and a slot that grew to fit one would
+walk the lockup up the screen mid-beat.
 
 The lifecycle is the part that cannot be rediscovered by reading one file.
 A pre-paint head script stamps `data-boot` on the root ONLY when
@@ -732,8 +756,8 @@ plays), but a console repro must drive `begin()` directly rather than
 stamping and navigating. The splash renders LAST in `<body>` in both layouts:
 an opaque background does not win a z-index tie, later DOM does, which is
 what puts it over the tour scrim and the pull-to-refresh puck at the same
-z-50. `BootSplashTest` pins the stamp, the CSS gate, the timing literals and
-the three-card deal.
+z-50. `BootSplashTest` pins the stamp, the CSS gate, the timing literals, the
+two-card deal and the flare.
 
 Beside `data-install-only` there is now the mirror, `data-standalone-only` —
 chrome that only makes sense INSIDE the installed app (the push nudge, the
