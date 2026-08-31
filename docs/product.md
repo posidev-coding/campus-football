@@ -16,9 +16,12 @@ personality budget, write all three versions when you write the screen**, not
 later: descriptions, subtext, empty states, button labels, confirmations,
 tooltips, error messages, instructional text, notifications.
 
-    PG     Mild           clean, still warm — never limp
-    PG-13  Locker Room    the default; how the group chat actually talks
-    R      Anything Goes  unfiltered, for the people who asked for it
+    Mild       Light Ribbing  clean, still warm — never limp
+    Medium     Locker Room    the default; how the group chat actually talks
+    Extra Hot  No Mercy       merciless about the picks, for the people who asked for it
+
+The enum's cases are still backed by `pg` / `pg13` / `r` — those are the Voice
+map's keys and the stored column, and only the display names changed.
 
 ### Where it applies, and where it must not
 
@@ -105,12 +108,22 @@ server-side clean leaves the visible text disagreeing with the stored value
 until blur. `x-mask:dynamic` corrects the character as it is typed; the rule
 stays as the guarantee.
 
-**`ContentRating` replaced `TrashTalkIntensity`** — the same axis with borrowed
-vocabulary, because "Mild / Locker Room / No Holds Barred" needed explaining and
-PG / PG-13 / R does not. The old names survive as SUB-labels, except the top
-tier: "No Holds Barred" is wrestling jargon and is now "Anything Goes". Values
-were remapped in place by the migration so nobody's setting reset. Default is
-PG-13, pre-selected at registration rather than blank — an unset radio group
+**`ContentRating` replaced `TrashTalkIntensity`** — the same axis, and it has
+now worn two vocabularies. It borrowed film ratings from the App Store's own
+shorthand, and **that frame was reversed on 2026-08-31 for a heat scale** after
+the registers were measured against each other: across all 239 Voice families,
+PG and PG-13 contain no profanity at all and R contains exactly one mild word,
+with the tiers growing longer and more merciless rather than more explicit. The
+registers differ in ATTITUDE, not vocabulary — so a film rating described a
+scale the roast-the-pick law forbids the app from ever delivering. It
+over-promised to everyone who chose R, warned off the readers who would most
+enjoy the best-written register, and volunteered an "R / Anything Goes" mode to
+App Store review over one "damn": the shorthand borrowed to satisfy the age
+rating was running the wrong way. Mild / Medium / Extra Hot needs no explaining
+either and claims nothing about maturity. Only the display names moved — the
+backing values stayed `pg`/`pg13`/`r` (the Voice map's keys and the stored
+column), so there was no migration and no line was rewritten. Default is
+Medium, pre-selected at registration rather than blank — an unset radio group
 reads as a decision you must research before you are allowed to sign up.
 
 Two Flux details this turned up:

@@ -528,7 +528,7 @@ new class extends Component
                         <flux:radio.group
                             wire:model="content_rating"
                             label="Trash talk"
-                            description="We roast your picks, your team and your record — never you. This sets how hard."
+                            description="We roast your picks, your team and your record — never you. This sets how hot it runs."
                             variant="cards"
                             class="flex-col"
                         >
