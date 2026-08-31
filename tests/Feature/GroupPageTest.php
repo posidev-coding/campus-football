@@ -70,7 +70,10 @@ it('locks a kicked game — the row says so and the tap writes nothing', functio
     $slateGame->game->update(['kickoff_at' => now()->subHour()]);
 
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
-        ->assertSee('Locked')
+        // "Kicked off", not "Locked" — on screen the word Lock belongs to
+        // the Woodshed wager alone.
+        ->assertSee('Kicked off')
+        ->assertDontSee('· Locked')
         ->assertSee('No pick')
         ->call('pick', $slateGame->id, $slateGame->game->home_team_id);
 

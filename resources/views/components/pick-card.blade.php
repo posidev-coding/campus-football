@@ -25,7 +25,9 @@
     renames the tiebreaker chip in the founders' vocabulary, and `lockable`
     grows the Lock footer — the +6/−4 wager on this one game. Two "locked"s
     meet here on purpose: the `locked` PROP is temporal (kickoff passed),
-    `$pick->locked` is the staked wager.
+    `$pick->locked` is the staked wager. The temporal chip RENDERS as
+    "Kicked off" (2026-08-31) so the reader only ever sees "Lock" meaning
+    the wager; the prop names stay.
 --}}
 @props([
     'slateGame',
@@ -113,8 +115,12 @@
                     {{ $game->kickoffLabel('day') ?? 'TBD' }}
                 </span>
                 @if ($locked)
-                    {{-- The state a reader scans for; it stays plain. --}}
-                    <span class="shrink-0 font-semibold text-zinc-500">· Locked</span>
+                    {{-- The state a reader scans for; it stays plain. It
+                         SAYS "Kicked off" so that on screen "Lock" belongs
+                         to the Woodshed wager alone — the two locked's
+                         still meet in the code, but no longer in front of
+                         the reader. --}}
+                    <span class="shrink-0 font-semibold text-zinc-500">· Kicked off</span>
                 @endif
             @endif
         </span>

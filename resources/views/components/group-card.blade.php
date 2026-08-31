@@ -99,6 +99,10 @@
                     <flux:icon.check-circle-fill variant="micro" class="size-3.5 shrink-0" />
                     Entry in
                 </span>
+            @elseif ($card['total'] > 0 && $card['made'] >= $card['total'])
+                {{-- Every game picked, the week's question still open —
+                     the same amber the pick surface's sticky slot wears. --}}
+                <span class="min-w-0 truncate font-medium text-amber-600 dark:text-amber-400">Tiebreaker left</span>
             @else
                 <x-slate-progress :made="$card['made']" :total="$card['total']" />
             @endif

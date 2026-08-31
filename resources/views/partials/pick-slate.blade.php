@@ -101,10 +101,19 @@
             @elseif ($picksAllIn)
                 {{-- Every game picked and the week's question still open.
                      Amber, because it is the one thing left and nothing
-                     else on the screen is asking for it. --}}
-                <span class="min-w-0 truncate text-sm font-medium text-amber-600 dark:text-amber-500">
+                     else on the screen is asking for it — and a BUTTON:
+                     the one thing left walks you to the box that takes it.
+                     Smooth only where motion is welcome. --}}
+                <button
+                    type="button"
+                    x-on:click="document.getElementById('tiebreaker-{{ $slate->id }}')?.scrollIntoView({
+                        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+                        block: 'center',
+                    })"
+                    class="focus-ring min-w-0 truncate text-sm font-medium text-amber-600 dark:text-amber-500"
+                >
                     Tiebreaker left
-                </span>
+                </button>
             @else
                 <x-slate-progress :made="$made" :total="$gameIds->count()" class="min-w-0" />
             @endif
@@ -284,7 +293,7 @@
     @if ($slate->tiebreakerGame)
         @php $tiebreakerLocked = $slate->tiebreakerGame->game->hasKickedOff() || $this->needsHandle; @endphp
 
-        <div class="flex flex-col gap-2 rounded-xl border border-dashed border-zinc-300 px-4 py-3 dark:border-zinc-700">
+        <div id="tiebreaker-{{ $slate->id }}" class="flex flex-col gap-2 rounded-xl border border-dashed border-zinc-300 px-4 py-3 dark:border-zinc-700">
             <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ App\Support\Voice::line('picks.tiebreaker.hint') }}</p>
 
             @if ($interactive)
