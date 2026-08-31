@@ -156,7 +156,7 @@ it('respawns a filled room as the SAME shape: flavor, cap, settings, Saturday', 
         ->and($nextSlate->saturday->toDateString())->toBe('2026-09-05');
 });
 
-it('shelves the lobby in catalog order, with the pitch on the room', function () {
+it('shelves the lobby in catalog order, with the pitch on the shelf and on the room', function () {
     [, $week] = lobbyFlavorWeek();
 
     app(SpawnPublicContest::class)->handle(ContestMode::Woodshed, $week);
@@ -175,11 +175,19 @@ it('shelves the lobby in catalog order, with the pitch on the room', function ()
          * last, so an accidental name sort cannot pass this order.
          */
         ->assertSeeInOrder(['Hail Mary', 'Wishbone', 'The Splinter', 'Two-Minute Drill'])
-        // The shelf sells uniform rows: the pitch moved to the room.
-        ->assertDontSee('The flash card: 5 games, in and out. 10 points a game.');
+        /*
+         * REVERSED 2026-08-31, deliberately. This was an assertDontSee:
+         * the pitch belonged to the room screen because thirteen stacked
+         * pitches is an essay, not a shelf. Right about PARAGRAPHS and
+         * wrong about the shelf — ten flavored rooms shipped with ten
+         * personalities and the store rendered none of them, so the names
+         * sat over identical rows. The pitch is back on the shelf, capped
+         * at ONE truncating line, which is what keeps the rows uniform.
+         */
+        ->assertSee('The flash card: 5 games, in and out. 10 points a game.');
 
-    // And the room itself says what it is — the blurb and its zinger
-    // render HERE now, which is where somebody decides to sit down.
+    // And the room itself still says what it is — the blurb AND its
+    // zinger, which is the half a truncating shelf line cannot carry.
     Livewire::actingAs($viewer)->test('group', ['group' => $flash])
         ->assertSee('The flash card: 5 games, in and out. 10 points a game.')
         ->assertSee(Voice::line('lobby.flavor.zinger.two_minute', for: $viewer));

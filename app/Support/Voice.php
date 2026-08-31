@@ -1200,21 +1200,23 @@ class Voice
         ],
 
         /*
-         * THE TWO PRODUCTS, told apart. My Picks stacks a private group
-         * and a public room under two headings now, and these are the
-         * one-line definitions underneath each — the difference a reader
-         * could not see when both sat under the word "groups".
+         * THE TWO PRODUCTS, told apart. The DEFINITION is the
+         * instruction, so every register keeps its load-bearing facts
+         * intact (invite-only + all season / open to anyone + one
+         * Saturday). The joke rides the end of the line, never the
+         * middle of it.
          *
-         * The heading is the navigation and stays plain; the DEFINITION
-         * is the instruction, so every register keeps its two load-
-         * bearing facts intact (invite-only + all season / open to
-         * anyone + one Saturday). The joke rides the end of the line,
-         * never the middle of it.
+         * `picks.groups.subheading` was retired on 2026-08-31 with the
+         * "Your groups" heading it sat under: My Picks sells every seat
+         * in ONE stack now, and the per-kind definitions moved onto the
+         * cards themselves as plain kind lines. `picks.rooms.subheading`
+         * survives because the FIRST RUN still names the public product
+         * over the lobby door, where there are no cards to say it.
          */
-        'picks.groups.subheading' => [
-            'pg' => 'Invite-only, and the standings run all season.',
-            'pg13' => 'Invite-only, all season. Your people, your mode, one long argument.',
-            'r' => 'Invite-only, all season. The people you picked, and the receipts you can\'t outrun.',
+        'picks.whereplay.subheading' => [
+            'pg' => 'Every seat you hold — season-long groups and one-Saturday rooms.',
+            'pg13' => 'Every seat you hold. Each card says which kind it is; the standings say how it\'s going.',
+            'r' => 'Every seat you hold: the season-long grudges up top, the Saturday flings underneath.',
         ],
 
         'picks.rooms.subheading' => [
@@ -1258,6 +1260,40 @@ class Voice
             'pg' => 'Kickoff is the deadline. Get your calls in while they still count.',
             'pg13' => 'Every game you leave blank grades as a zero. Kickoff does not wait for you.',
             'r' => 'A blank pick is a zero with your name on it. Go be wrong on purpose instead.',
+        ],
+
+        /*
+         * ALL IN — every entry the reader holds is complete, said on the
+         * week tab where the ask used to be. The lead-in ("All in.")
+         * stays plain in every register because it is the STATE; this
+         * line is the part that gets to have a voice. Roast the picks
+         * once they are out of the reader's hands, never the reader who
+         * just did everything the app asked.
+         */
+        'picks.allin.body' => [
+            'pg' => 'Every entry is in. Nothing left to do but watch.',
+            'pg13' => 'Every entry is in. The picks are on their own now.',
+            'r' => 'Every entry is in. Your picks are out there alone, and a couple of them already look nervous.',
+        ],
+
+        /*
+         * YOU WON A WEEK — the payoff banner atop Results, and the only
+         * celebration in the house that is not on the pick surface. It
+         * ARRIVES rather than firing on an act, so the line has to carry
+         * the whole moment on its own: what you won, where, and what it
+         * paid. Roast the field and the recount, never the reader — this
+         * is the one screen where the reader has already won.
+         */
+        'picks.payoff.banner' => [
+            'pg' => 'You won the week in :group — :points points. Take a bow.',
+            'pg13' => 'You took the week in :group. :points points, and the standings agree.',
+            'r' => 'You won the whole week in :group. :points points, and somebody in there is still demanding a recount.',
+        ],
+
+        'picks.payoff.banner_many' => [
+            'pg' => 'You won the week in :count groups. Take the victory lap.',
+            'pg13' => 'Winner in :count groups this week. Act like you expected it.',
+            'r' => ':count groups, :count wins. Go collect your receipts everywhere at once.',
         ],
 
         /*

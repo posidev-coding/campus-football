@@ -18,6 +18,8 @@ use App\Support\Lobby;
 use App\Support\SlateFeasibility;
 use App\Support\RankLadder;
 use App\Support\Voice;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Number;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -102,6 +104,50 @@ new class extends Component
     public function walletXp(): int
     {
         return auth()->check() ? auth()->user()->walletTotals()['xp'] : 0;
+    }
+
+    /**
+     * THE READER'S OWN LINE — the standings' you-strip, second render
+     * site. Below `sm` the app header does not render at all, so a phone
+     * reader saw no rung, no XP and no lattes on either pick'em door:
+     * the gamification the screen is built around was invisible exactly
+     * where the screen starts.
+     *
+     * ZERO new queries. `rank`/`walletXp` are already read for the
+     * ladder, lattes ride the same memoized walletTotals() SUM, and wins
+     * is a projection of cards(). Values are PRE-RENDERED with an em dash
+     * where there is no data — the component never substitutes one.
+     *
+     * @return array{name: string, stats: list<array{label: string, value: string}>}|null
+     */
+    #[Computed]
+    public function youStrip(): ?array
+    {
+        $user = auth()->user();
+
+        if ($user === null) {
+            return null;
+        }
+
+        $wins = $this->cards->sum('wins');
+
+        return [
+            // The clubhouse strip's own rule: the handle when it is
+            // claimed, the name until then.
+            'name' => $user->handle !== null ? '@'.$user->handle : $user->name,
+            'stats' => [
+                ['label' => 'Rank', 'value' => $this->rank['name'] ?? '—'],
+                ['label' => 'XP', 'value' => number_format($this->walletXp)],
+                ['label' => 'Lattes', 'value' => number_format($user->walletTotals()['lattes'])],
+                /*
+                 * A DASH until the first win exists. "0 Wins" every
+                 * Sunday in September is a counter with no decision
+                 * attached to it, and a zero somebody has not earned yet
+                 * reads as a verdict on them.
+                 */
+                ['label' => 'Wins', 'value' => $wins > 0 ? (string) $wins : '—'],
+            ],
+        ];
     }
 
     /**
@@ -315,6 +361,31 @@ new class extends Component
     }
 
     /**
+     * EVERY SEAT YOU HOLD, in one stack: groups alphabetical, then rooms
+     * with past Saturdays last, then the always-open tables.
+     *
+     * The three zones above still exist and are still the thing this
+     * concatenates — the first-run fork and the lobby door both key off
+     * `groupCards`, and each zone's own ordering rule survives inside the
+     * stack. What merged is the HEADINGS: three of them over one thumb of
+     * cards read as three products. The distinction did not merge — every
+     * card leads its micro-line with its kind now, so it is said once per
+     * CARD instead of once per zone.
+     *
+     * A projection of projections of cards(). Never a fourth query.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function whereYouPlay()
+    {
+        return $this->groupCards
+            ->concat($this->roomCards)
+            ->concat($this->tableCards)
+            ->values();
+    }
+
+    /**
      * The zone that answers "what do I do right now": published slates
      * still taking picks where mine are not all in. A pure projection of
      * cards() — no query of its own.
@@ -329,6 +400,28 @@ new class extends Component
                 && $card['total'] > 0
                 && $card['made'] < $card['total'])
             ->values();
+    }
+
+    /**
+     * EVERYTHING IS IN. Not "nothing to do" — the zone that asks for
+     * picks simply vanished when the last entry landed, and a reader
+     * who finished on Wednesday came back Saturday to a screen with no
+     * word about it either way. Silence is the one answer a pick'em
+     * screen cannot give about your picks.
+     *
+     * All three conditions, deliberately: seats held, nothing left to
+     * ask, and at least one entry actually IN. Without the last one a
+     * reader with only settled weeks — or only rooms whose Saturday is
+     * gone — is told they are all in on nothing.
+     *
+     * A pure projection of cards(). No query, at any depth.
+     */
+    #[Computed]
+    public function allIn(): bool
+    {
+        return $this->cards->isNotEmpty()
+            && $this->needsPicks->isEmpty()
+            && $this->cards->contains(fn (array $card) => $card['entryIn']);
     }
 
     /**
@@ -478,6 +571,92 @@ new class extends Component
     }
 
     /**
+     * MY PLACE IN EACH OF LAST WEEK'S FIELDS — "3rd of 9" — from ONE
+     * query across every slate on the tab, never one per row. History's
+     * own pattern, because two screens printing the same sentence must
+     * compute it the same way.
+     *
+     * Read ONLY from the Results branch. Computeds are lazy, so the week
+     * tab never pays for it — and that laziness is pinned by a query
+     * count, because a stray reference from the week's template would be
+     * invisible here and cost every reader a read on every load.
+     *
+     * @return array<int, array{place: int, of: int}> keyed by slate id
+     */
+    #[Computed]
+    public function places(): array
+    {
+        $slateIds = $this->lastWeek->pluck('slate_id');
+
+        if ($slateIds->isEmpty()) {
+            return [];
+        }
+
+        return SlateEntry::query()
+            ->whereIn('slate_id', $slateIds)
+            ->get(['slate_id', 'user_id', 'final_points'])
+            ->groupBy('slate_id')
+            ->map(function (Collection $field) {
+                $ranked = $field->sortByDesc(fn (SlateEntry $entry) => $entry->final_points ?? 0)->values();
+                $mine = $ranked->search(fn (SlateEntry $entry) => $entry->user_id === auth()->id());
+
+                return [
+                    'place' => $mine === false ? $ranked->count() : $mine + 1,
+                    'of' => $ranked->count(),
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * THE WEEKS YOU WON, inside the payoff window. A projection of
+     * lastWeek() — zero new queries — and NULL when there are none,
+     * because the banner is a celebration and there is nothing to
+     * celebrate quietly.
+     *
+     * @return \Illuminate\Support\Collection<int, SlateEntry>|null
+     */
+    #[Computed]
+    public function payoff(): ?Collection
+    {
+        $won = $this->lastWeek->filter(fn (SlateEntry $entry) => $entry->won)->values();
+
+        return $won->isEmpty() ? null : $won;
+    }
+
+    /**
+     * Is this the FIRST time this session has seen these wins?
+     *
+     * The pick surface's celebration is fired by the act that earns it,
+     * so a protected property surviving one response is enough. A payoff
+     * banner ARRIVES instead — the reader did nothing to summon it — so
+     * the entrance has to be spent against the wins themselves, in the
+     * session, or every navigation back to Results replays a party for a
+     * week they already know they won.
+     *
+     * Touched ONLY from the banner's own markup: nothing is marked seen
+     * until the banner has actually rendered.
+     */
+    #[Computed]
+    public function payoffFresh(): bool
+    {
+        if ($this->payoff === null) {
+            // No wins, nothing fresh — and nothing to write down either.
+            return false;
+        }
+
+        $ids = $this->payoff->pluck('id')->all();
+        $seen = session('picks.payoff.seen', []);
+        $fresh = array_diff($ids, $seen) !== [];
+
+        if ($fresh) {
+            session(['picks.payoff.seen' => array_values(array_unique([...$seen, ...$ids]))]);
+        }
+
+        return $fresh;
+    }
+
+    /**
      * HOW MANY rooms are open this Saturday — the teaser's whole payload.
      *
      * A COUNT, never the inventory: the browser owns the graph, and a
@@ -569,6 +748,18 @@ new class extends Component
             <x-week-ribbon :entry="$this->weekEntry" :clock="$this->ribbonClock" />
         @endif
 
+        {{-- YOU, before anything on the screen asks you for something.
+             Below `sm` there is no app header, so this is the only place
+             a phone reader meets their own rung, XP and lattes on the
+             screen the whole ladder is played on.
+
+             Guarded on the FORK, not on the wallet: a first run has no
+             seat and no settled week, and the pitch it gets instead is
+             byte-identical to the one it has always had. --}}
+        @if ($this->hasTabs && $this->youStrip !== null)
+            <x-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
+        @endif
+
         {{-- What needs you right now: slates still taking your picks,
              each row walking straight into its clubhouse. --}}
         @if ($this->needsPicks->isNotEmpty())
@@ -622,9 +813,13 @@ new class extends Component
                         @if ($hero['state'] === 'live')
                             <x-slate-status status="live" class="text-micro" />
                         @elseif ($hero['firstKick'])
-                            <span class="shrink-0 text-micro {{ $heroPalette['body'] }}">
-                                kicks {{ $hero['firstKick']->setTimezone(config('cfb.timezone'))->format('D g:ia') }}
-                            </span>
+                            {{-- Same words days out, a running mm:ss in the
+                                 final hour. The palette's body class flows
+                                 through the attribute bag, because the
+                                 Woodshed's tile is black in both schemes and
+                                 a clock nobody can read on it is a clock
+                                 that is not there. --}}
+                            <x-kick-clock :at="$hero['firstKick']" class="shrink-0 text-micro {{ $heroPalette['body'] }}" />
                         @endif
                     </div>
 
@@ -647,29 +842,37 @@ new class extends Component
                     <x-slate-row :card="$card" wire:key="needs-{{ $card['group']->id }}" />
                 @endforeach
             </div>
+        @elseif ($this->allIn)
+            {{-- ALL IN. The zone that asks for picks simply vanished when
+                 the last entry landed, so a reader who finished on
+                 Wednesday came back Saturday to a screen with no word
+                 about it either way — and silence is the one answer a
+                 pick'em screen cannot give about your picks.
+
+                 NOT ANIMATED, deliberately: this is a STATE, not an
+                 event. The pick surface's entry-in celebration fires on
+                 the act that earns it and never again; a card that
+                 animated on every visit would be a party thrown at a
+                 reader for standing still. The bold lead-in and the check
+                 are the non-color signal. --}}
+            <div
+                wire:key="all-in"
+                role="status"
+                class="flex items-center gap-2.5 rounded-xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:ring-emerald-900"
+            >
+                <flux:icon.check-circle-fill variant="micro" class="size-4 shrink-0 text-emerald-600 dark:text-emerald-500" />
+                <p class="min-w-0 flex-1 text-sm text-zinc-700 dark:text-zinc-300">
+                    <span class="font-semibold text-zinc-900 dark:text-zinc-100">All in.</span>
+                    {{ Voice::line('picks.allin.body') }}
+                </p>
+            </div>
         @endif
 
-        {{-- Your groups — GROUPS, not "games": a game is played on a
-             field. And ONLY groups: a public room used to sit in this
-             stack under this word, which is exactly why nobody could
-             tell the season-long thing from the Saturday thing. The
-             heading navigates and stays plain; the line under it is the
-             definition, and it is the whole point of the zone. --}}
-        @if ($this->groupCards->isNotEmpty())
-            <div class="flex flex-col gap-2">
-                <div class="flex items-baseline justify-between gap-3">
-                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Your groups</flux:subheading>
-                    <a href="{{ route('pickem.create') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
-                        Start a group
-                    </a>
-                </div>
-                <flux:subheading>{{ Voice::line('picks.groups.subheading') }}</flux:subheading>
-
-                @foreach ($this->groupCards as $card)
-                    <x-group-card wire:key="lobby-group-{{ $card['group']->id }}" :card="$card" />
-                @endforeach
-            </div>
-        @else
+        {{-- No PRIVATE groups — which is not no memberships: one public
+             seat must not suppress the pitch. The block below is
+             unchanged; only the fork around it moved, because the stack
+             it used to sit inside now renders for rooms-only readers too. --}}
+        @if ($this->groupCards->isEmpty())
             {{-- FIRST RUN, and the two products said out loud. Path one
                  is the three doors, which remain the ONLY create
                  affordance — the old screen drew the wizard twice, once
@@ -699,36 +902,44 @@ new class extends Component
             </div>
         @endif
 
-        {{-- The public half. Same card, its own heading and its own
-             definition — and a room whose Saturday is gone sorts to the
-             bottom rather than sitting above a card still taking picks. --}}
-        @if ($this->roomCards->isNotEmpty())
+        {{-- WHERE YOU PLAY — every seat the reader holds, in ONE stack:
+             groups first, then rooms with past Saturdays last, then the
+             always-open tables. Three headings over one thumb of cards
+             read as three products; the DISTINCTION did not merge with
+             them, it moved onto every card as a kind-first micro-line.
+             (Amends the two-headings rule in .ai/rules/components.md.)
+
+             The projections behind it are unchanged, so the first-run
+             fork above and the lobby door below still key off groupCards
+             exactly as they did. --}}
+        @if ($this->whereYouPlay->isNotEmpty())
             <div class="flex flex-col gap-2">
                 <div class="flex items-baseline justify-between gap-3">
-                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Public rooms</flux:subheading>
-                    <a href="{{ route('pickem.lobby') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
-                        Find a room
-                    </a>
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Where you play</flux:subheading>
+                    {{-- The small escape to the wizard, for a reader who
+                         already has groups. On a first run the three mode
+                         doors above are the ONLY create affordance, and a
+                         fourth link beside them is the same destination
+                         drawn twice — the mistake that block exists to
+                         retire.
+
+                         There is no "Find a room" beside it either: the
+                         lobby door below is that destination, and one
+                         door is the partial's own rule. --}}
+                    @if ($this->groupCards->isNotEmpty())
+                        <a href="{{ route('pickem.create') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
+                            Start a group
+                        </a>
+                    @endif
                 </div>
-                <flux:subheading>{{ Voice::line('picks.rooms.subheading') }}</flux:subheading>
+                <flux:subheading>{{ Voice::line('picks.whereplay.subheading') }}</flux:subheading>
 
-                @foreach ($this->roomCards as $card)
-                    <x-group-card wire:key="lobby-room-{{ $card['group']->id }}" :card="$card" />
+                @foreach ($this->whereYouPlay as $card)
+                    <x-group-card wire:key="play-{{ $card['group']->id }}" :card="$card" />
                 @endforeach
             </div>
         @endif
 
-        {{-- The always-open tables, under the Lobby's own word for them.
-             Normally empty, and never folded into either zone above. --}}
-        @if ($this->tableCards->isNotEmpty())
-            <div class="flex flex-col gap-2">
-                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Always open</flux:subheading>
-
-                @foreach ($this->tableCards as $card)
-                    <x-group-card wire:key="lobby-table-{{ $card['group']->id }}" :card="$card" />
-                @endforeach
-            </div>
-        @endif
 
         {{-- The code stays as the spoken-word fallback, folded away —
              links are how a group travels now. --}}
@@ -770,6 +981,40 @@ new class extends Component
 
         {{-- ================================ RESULTS ================= --}}
         @if ($this->activeView === 'results')
+        {{-- YOU WON A WEEK. The house's second celebration, and the first
+             one that is not on the pick surface: everything else here
+             reports, and a week you took should not arrive as a row in a
+             list beside a week you lost.
+
+             The entrance is spent ONCE per session against the wins
+             themselves. A celebration fired by an ACT can live on a
+             protected property for one response — this one ARRIVES, so
+             replaying it on every navigation back to Results would be a
+             party for a week the reader already knows they won. The icon
+             and the words carry the state; the emerald is the third
+             signal, never the only one. --}}
+        @if ($this->payoff !== null)
+            @php
+                $payoffLine = $this->payoff->count() === 1
+                    ? Voice::line('picks.payoff.banner', [
+                        'group' => $this->payoff->first()->slate->contest->group->name,
+                        'points' => $this->payoff->first()->final_points ?? 0,
+                    ])
+                    : Voice::line('picks.payoff.banner_many', ['count' => $this->payoff->count()]);
+            @endphp
+
+            @if ($payoffLine !== '')
+                <div
+                    wire:key="payoff-banner"
+                    role="status"
+                    class="flex items-center gap-2.5 rounded-xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:ring-emerald-900 {{ $this->payoffFresh ? 'motion-safe:animate-entry-in' : '' }}"
+                >
+                    <flux:icon.trophy class="size-4 shrink-0 text-emerald-600 dark:text-emerald-500" />
+                    <p class="min-w-0 flex-1 text-sm text-zinc-700 dark:text-zinc-300">{{ $payoffLine }}</p>
+                </div>
+            @endif
+        @endif
+
         {{-- The Monday payoff, compact: last week's settled results while
              they are still the conversation. --}}
         @if ($this->lastWeek->isNotEmpty())
@@ -783,11 +1028,20 @@ new class extends Component
                         class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-2.5 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
                     >
                         <p class="min-w-0 truncate text-sm font-medium">{{ $entry->slate->contest->group->name }}</p>
+                        {{-- WHERE YOU CAME IN, History's own sentence and
+                             History's own precedence: the Winner badge
+                             says it better than "1st of 9" does, so the
+                             place only speaks for the weeks nobody won
+                             for you. Points last, the way the archive
+                             prints them. --}}
+                        @php $place = $this->places[$entry->slate_id] ?? null; @endphp
                         <p class="flex shrink-0 items-center gap-2 text-sm">
-                            <span class="tabular font-semibold">{{ $entry->final_points ?? 0 }} pts</span>
                             @if ($entry->won)
                                 <flux:badge size="sm" color="green">Winner</flux:badge>
+                            @elseif ($place !== null)
+                                <span class="tabular text-micro text-zinc-500">{{ Number::ordinal($place['place']) }} of {{ $place['of'] }}</span>
                             @endif
+                            <span class="tabular font-semibold">{{ $entry->final_points ?? 0 }} pts</span>
                         </p>
                     </a>
                 @endforeach

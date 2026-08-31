@@ -279,13 +279,18 @@ describe('personalization', function () {
          * tour to every family a NEW user meets — the whole onboarding
          * funnel is the audience the sweep protects. Iterating the LINES
          * constant means a key added tomorrow is swept tomorrow.
+         *
+         * `picks.` and `lobby.` joined the list on 2026-08-31: the flag
+         * flips this week, so the pick'em front doors ARE what a new
+         * user meets now. Pre-checked clean at the time — the sweep is
+         * here to hold the ground, not to fix it.
          */
         $lines = (new ReflectionClass(Voice::class))->getConstant('LINES');
 
         $violations = [];
 
         foreach ($lines as $key => $variants) {
-            if (! Str::startsWith($key, ['tour.', 'onboarding.', 'splash.', 'home.'])) {
+            if (! Str::startsWith($key, ['tour.', 'onboarding.', 'splash.', 'home.', 'picks.', 'lobby.'])) {
                 continue;
             }
 

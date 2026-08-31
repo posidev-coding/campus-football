@@ -20,6 +20,8 @@ use App\Models\User;
 use App\Models\Week;
 use App\Support\Navigation;
 use App\Support\Voice;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 /*
@@ -46,6 +48,21 @@ function pickemHomeWeek(): array
     return [$season, $week];
 }
 
+/**
+ * The kick clock's STATIC server-rendered string — the text node, not the
+ * Alpine literal that also carries these words.
+ *
+ * The automated tab produces no rendering frames, so the end state is all
+ * a test can hold: what the server put in the element, and the timestamp
+ * beside it. Never a tick.
+ */
+function heroClockText(string $html): string
+{
+    preg_match('/data-kick-at="\d+".*?x-text="label\(\)"\s*>([^<]*)</s', $html, $matches);
+
+    return trim($matches[1] ?? '');
+}
+
 describe('the promise (outside the flag)', function () {
     it('renders for a guest', function () {
         // Public like every area except Account: the tab is in a guest's
@@ -62,7 +79,7 @@ describe('the promise (outside the flag)', function () {
             ->get(route('pickem.home'))
             ->assertOk()
             ->assertSee('Coming soon')
-            ->assertDontSee('Your groups');
+            ->assertDontSee('Where you play');
     });
 
     it('shows an admin the real screen, at both doors', function () {
@@ -109,8 +126,9 @@ describe('my week (inside the flag)', function () {
             ->assertSeeInOrder([
                 'My Picks',
                 'Needs your picks',
-                // GROUPS, not "games" — a game is played on a field.
-                'Your groups',
+                // ONE stack for every seat: the three container headings
+                // merged, and the kind moved onto each card.
+                'Where you play',
                 'Have an invite code?',
                 'The Lobby',
             ])
@@ -214,7 +232,7 @@ describe('my week (inside the flag)', function () {
             ])
             ->assertSee(route('pickem.create'), escape: false)
             ->assertSee(route('pickem.lobby'), escape: false)
-            ->assertDontSee('Your groups');
+            ->assertDontSee('Where you play');
     });
 
     it('draws the lobby door exactly once on a first run', function () {
@@ -240,7 +258,7 @@ describe('my week (inside the flag)', function () {
         [$commissioner] = pickemContest();
 
         Livewire::actingAs($commissioner)->test('pickem-home')
-            ->assertSee('Your groups')
+            ->assertSee('Where you play')
             ->assertSee('Start a group')
             ->assertSee(route('pickem.create'), escape: false)
             // With groups in hand the doors are the wizard's job, not the
@@ -249,12 +267,21 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee('Start your own group');
     });
 
-    it('files a private group and a joined room under their own headings', function () {
+    it('stacks a private group and a joined room together, each saying which it is', function () {
         /*
-         * THE BUG THIS RETIRES: one heading, "Your groups", over both
+         * THE ORIGINAL BUG: one heading, "Your groups", over both
          * products — a public room joined an hour ago sat in the same
          * stack under the same word as a season-long group, and nothing
          * on the screen said either one was what it was.
+         *
+         * THE 2026-08-31 AMENDMENT: splitting the HEADINGS fixed the
+         * wrong half. Three headings over one thumb of cards read as
+         * three products, so they merged back into one "Where you play"
+         * stack — and the distinction moved onto every CARD as a
+         * kind-first line, in the join landing's own grammar. Said once
+         * per card instead of once per zone.
+         *
+         * Order still carries meaning: groups before rooms.
          */
         $this->travelTo('2026-09-02 12:00:00');
 
@@ -267,16 +294,43 @@ describe('my week (inside the flag)', function () {
 
         Livewire::actingAs($commissioner->fresh())->test('pickem-home')
             ->assertSeeInOrder([
-                'Your groups',
+                'Where you play',
                 'Rocky Top Rejects',
-                'Public rooms',
                 $room->name,
             ])
-            // And each heading carries its definition, which is the whole
-            // point of splitting them.
-            ->assertSee(Voice::line('picks.groups.subheading', for: $commissioner))
-            ->assertSee(Voice::line('picks.rooms.subheading', for: $commissioner))
-            ->assertSee(route('pickem.lobby'), escape: false);
+            // The kind, on each card, leading its own micro-line.
+            ->assertSee('Private group, all season')
+            ->assertSee('Public room · this Saturday', escape: false)
+            // One heading, one definition — and it is Voice.
+            ->assertSee(Voice::line('picks.whereplay.subheading', for: $commissioner))
+            // The lobby door survives as the ONE way to the store.
+            ->assertSee(route('pickem.lobby'), escape: false)
+            ->assertDontSee('Your groups')
+            ->assertDontSee('Public rooms')
+            // "Find a room" is retired: the door below is that same
+            // destination, and one door is the partial's own rule.
+            ->assertDontSee('Find a room');
+    });
+
+    it('calls an always-open table what it is, and never a room', function () {
+        /*
+         * The third kind, and the one the merged stack could most easily
+         * mislabel. An evergreen has no week, so it is not a room that
+         * plays one Saturday — and it is not a private group either. The
+         * house has exactly TWO user-facing container nouns, so the line
+         * says "Always open" and never "table".
+         */
+        $viewer = pickemAdmin();
+        $table = Group::factory()->lobby()->create(['name' => 'The Big Lobby', 'week_id' => null]);
+        GroupMember::factory()->create(['group_id' => $table->id, 'user_id' => $viewer->id]);
+
+        Livewire::actingAs($viewer->fresh())->test('pickem-home')
+            ->assertSee('Where you play')
+            ->assertSee('The Big Lobby')
+            ->assertSee('Always open')
+            ->assertDontSee('Public room')
+            ->assertDontSee('Private group, all season')
+            ->assertDontSee('table');
     });
 
     it('shows the first-run pitch to a reader who holds only a room', function () {
@@ -293,8 +347,14 @@ describe('my week (inside the flag)', function () {
         Livewire::actingAs($viewer->fresh())->test('pickem-home')
             ->assertSee('Two ways to play')
             ->assertSee('Start your own group')
-            ->assertSee('Public rooms')
-            ->assertDontSee('Your groups');
+            // ...and their one seat is still stacked below the pitch. The
+            // stack renders off whereYouPlay(), not off groupCards, or a
+            // rooms-only reader would lose the room they hold.
+            ->assertSee('Where you play')
+            ->assertSee($room->name)
+            ->assertDontSee('Your groups')
+            // No second create affordance beside the three mode doors.
+            ->assertDontSee('Start a group');
     });
 
     it('tells a room whose Saturday is gone from one waiting on a commissioner', function () {
@@ -323,7 +383,16 @@ describe('my week (inside the flag)', function () {
 
         Livewire::actingAs($viewer->fresh())->test('pickem-home')
             ->assertSee(Voice::line('group.room.past', for: $viewer))
-            ->assertDontSee(Voice::line('group.slate.waiting', for: $viewer));
+            ->assertDontSee(Voice::line('group.slate.waiting', for: $viewer))
+            /*
+             * And the kind line agrees with the state row. A room keeps
+             * its URL forever and leaves the inventory when its week
+             * ends, so "this Saturday" over one that already played is a
+             * date nobody is playing — the past branch is tested FIRST on
+             * this card for exactly that reason.
+             */
+            ->assertSee('Public room · Saturday played', escape: false)
+            ->assertDontSee('Public room · this Saturday', escape: false);
     });
 
     it('never tells a room to go rattle a commissioner it does not have', function () {
@@ -386,6 +455,47 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee('Make your picks');
     });
 
+    /*
+     * THE HERO'S CLOCK. Days out it says the same words the static span
+     * always said; inside the final hour it counts. The automated tab
+     * produces no rendering frames, so every assertion here is END-STATE
+     * DOM — the timestamp and the string the SERVER rendered — and never
+     * a tick.
+     */
+    it('says the kickoff in words while it is still days away', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+
+        // 3:30pm in Knoxville — the same sentence the static span it
+        // replaces rendered. The words did not change; only what happens
+        // to them in the last hour did.
+        expect(heroClockText($html))->toBe('kicks Sat 3:30pm')
+            ->and($html)->toContain('data-kick-at="'.Carbon::parse('2026-09-05 19:30:00')->getTimestamp().'"');
+    });
+
+    it('counts the hero down inside the final hour', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        // Thirty minutes out, on the Saturday itself.
+        $this->travelTo('2026-09-05 19:00:00');
+
+        $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+
+        expect(heroClockText($html))->toBe('30:00 to kickoff')
+            ->and($html)->toContain('data-kick-at="'.Carbon::parse('2026-09-05 19:30:00')->getTimestamp().'"')
+            // The handler that tears the interval down on the way out —
+            // pick-slate's own grammar, and the whole reason a countdown
+            // is allowed to hold an interval at all.
+            ->and($html)->toContain('x-on:beforeunload.window="stop()"');
+    });
+
     it('reads its own count on the Woodshed\'s black tile', function () {
         /*
          * The tile is black in BOTH schemes, and zinc-500 on it is 3.4:1 —
@@ -408,6 +518,28 @@ describe('my week (inside the flag)', function () {
         expect(ContestMode::Woodshed->palette()['onDark'])->toBeTrue()
             ->and(ContestMode::Classic->palette()['onDark'])->toBeFalse()
             ->and(ContestMode::Tiered->palette()['onDark'])->toBeFalse();
+    });
+
+    it('reads its own clock on the Woodshed\'s black tile', function () {
+        /*
+         * Break-it-back for a wrong DEFAULT. The clock takes its weight
+         * from the mode's palette through the attribute bag, and the
+         * Woodshed's tile is black in BOTH schemes: zinc-500 on it is the
+         * same 3.4:1 that made the count unreadable. Asserting the clock
+         * rendered is not asserting it can be read — so this pins the
+         * class that actually landed ON the clock element, and pins that
+         * the light-tile default did not.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Woodshed);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+
+        expect($html)->toMatch('/data-kick-at="\d+"\s+class="[^"]*\btext-zinc-400\b[^"]*"/')
+            ->and($html)->not->toMatch('/data-kick-at="\d+"\s+class="[^"]*\btext-zinc-500\b[^"]*"/')
+            ->and(ContestMode::Woodshed->palette()['body'])->toBe('text-zinc-400');
     });
 
     it('gives the hero to the slate closest to locking, and live outranks a clock', function () {
@@ -512,7 +644,10 @@ describe('my week (inside the flag)', function () {
             ->assertSee('Two ways to play')
             ->assertDontSeeHtml('wire:key="picks-view-results"')
             // The ladder still reaches them.
-            ->assertSee('Walk-On');
+            ->assertSee('Walk-On')
+            // ...and the you-strip does not: it is guarded on the fork,
+            // so the first run stays the screen it has always been.
+            ->assertDontSee('Lattes');
     });
 
     it('gives a rooms-only reader the fork too — a seat is a card', function () {
@@ -564,6 +699,63 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee('Needs your picks');
     });
 
+    /*
+     * ALL IN. The zone that asks for picks simply VANISHED when the last
+     * entry landed, so a reader who finished on Wednesday came back
+     * Saturday to a screen with no word about it either way — and silence
+     * is the one answer a pick'em screen cannot give about your picks.
+     */
+    it('says ALL IN once every entry is complete, and not one pick before', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        $slate = pickemDraftSlate($contest);
+        app(PublishSlate::class)->handle($commissioner, $slate);
+
+        $games = $slate->games()->with('game')->orderBy('position')->get();
+
+        foreach ($games->take($games->count() - 1) as $slateGame) {
+            app(MakePick::class)->handle($commissioner, $slateGame, $slateGame->game->home_team_id);
+        }
+
+        app(EnterTiebreaker::class)->handle($commissioner, $slate, 45);
+
+        // One game short: the zone still asks, and the state card stays away.
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('Needs your picks')
+            ->assertDontSee('All in');
+
+        app(MakePick::class)->handle($commissioner, $games->last(), $games->last()->game->home_team_id);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('All in')
+            ->assertSee(Voice::line('picks.allin.body', for: $commissioner))
+            ->assertSeeHtml('wire:key="all-in"')
+            ->assertDontSee('Needs your picks')
+            /*
+             * A STATE, not an event. The pick surface's celebration fires
+             * on the act that earns it and never again; a card that
+             * animated on every visit would be a party thrown at somebody
+             * for standing still.
+             */
+            ->assertDontSeeHtml('motion-safe:animate-entry-in');
+    });
+
+    it('never says ALL IN to a reader with nothing actually in', function () {
+        /*
+         * The third condition, and the subtle one. "Nothing left to ask"
+         * is equally true of a reader whose group is still waiting on its
+         * commissioner — and telling them they are all in is telling them
+         * they are all in on nothing.
+         */
+        [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee($group->name)
+            ->assertDontSee('Needs your picks')
+            ->assertDontSee('All in');
+    });
+
     it('says TIEBREAKER LEFT on the card when the picks are in and the question is not', function () {
         $this->travelTo('2026-09-02 12:00:00');
 
@@ -606,6 +798,170 @@ describe('my week (inside the flag)', function () {
             ->assertSee('Winner');
     });
 
+    /*
+     * MOMENTUM ON RESULTS. Existing data only: where you came in, and
+     * the week you took. No streaks, no new backend concept — the
+     * screen already held both numbers and printed neither.
+     */
+    it('says where you came in on a week nobody won for you', function () {
+        // Two entries, mine second — the Winner badge is not in play, so
+        // the place is the only thing that says how the week went.
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        [, $week] = pickemSeasonWeek();
+        $slate = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'status' => Slate::SETTLED,
+            'settled_at' => now()->subDay(),
+        ]);
+
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $commissioner->id,
+            'final_points' => 40,
+            'won' => false,
+        ]);
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => User::factory()->create()->id,
+            'final_points' => 90,
+            'won' => true,
+        ]);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->set('view', 'results')
+            ->assertSee('2nd of 2')
+            ->assertSee('40 pts')
+            // Somebody ELSE took it, so no badge and no banner here.
+            ->assertDontSee('Winner')
+            ->assertDontSeeHtml('wire:key="payoff-banner"');
+    });
+
+    it('never asks the week tab to pay for the Results tab\'s places', function () {
+        /*
+         * The places query is the ONE read this pass adds to Results, and
+         * a computed is only lazy while nothing on the other branch
+         * touches it. A stray reference from the week's template would be
+         * invisible in review and cost every reader a read on every load.
+         */
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        [, $week] = pickemSeasonWeek();
+        $slate = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'status' => Slate::SETTLED,
+            'settled_at' => now()->subDay(),
+        ]);
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $commissioner->id,
+            'final_points' => 40,
+        ]);
+
+        $placeReads = function (string $view) use ($commissioner): int {
+            DB::enableQueryLog();
+
+            Livewire::actingAs($commissioner)->withQueryParams(['view' => $view])->test('pickem-home');
+
+            $count = collect(DB::getQueryLog())
+                ->filter(fn (array $query) => str_contains($query['query'], 'final_points'))
+                ->count();
+
+            DB::disableQueryLog();
+
+            return $count;
+        };
+
+        expect($placeReads('week'))->toBe(0)
+            ->and($placeReads('results'))->toBe(1);
+    });
+
+    it('celebrates a week you won, once per session', function () {
+        /*
+         * The house's second celebration — and the first that is not on
+         * the pick surface. The entrance is spent against the WINS, in
+         * the session: a banner that arrives rather than firing on an act
+         * would otherwise throw a party on every navigation back to
+         * Results, for a week the reader already knows they won.
+         */
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $group->update(['name' => 'Rocky Top Rejects']);
+        [, $week] = pickemSeasonWeek();
+        $slate = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'status' => Slate::SETTLED,
+            'settled_at' => now()->subDay(),
+        ]);
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $commissioner->id,
+            'final_points' => 92,
+            'won' => true,
+        ]);
+
+        Livewire::actingAs($commissioner)->withQueryParams(['view' => 'results'])->test('pickem-home')
+            ->assertSeeHtml('wire:key="payoff-banner"')
+            ->assertSee(Voice::line('picks.payoff.banner', [
+                'group' => 'Rocky Top Rejects',
+                'points' => 92,
+            ], for: $commissioner))
+            ->assertSeeHtml('motion-safe:animate-entry-in');
+
+        // Same session, same wins: the banner stays — it is the payoff,
+        // not a toast — and the entrance is spent.
+        Livewire::actingAs($commissioner)->withQueryParams(['view' => 'results'])->test('pickem-home')
+            ->assertSeeHtml('wire:key="payoff-banner"')
+            ->assertDontSeeHtml('motion-safe:animate-entry-in');
+    });
+
+    it('says how many when the week was won in more than one room', function () {
+        $commissioner = pickemAdmin();
+        [, $week] = pickemSeasonWeek();
+
+        foreach (['Rocky Top Rejects', 'The Back Porch'] as $name) {
+            $group = Group::factory()->create(['name' => $name]);
+            GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $commissioner->id]);
+            $contest = Contest::factory()->create(['group_id' => $group->id]);
+            $slate = Slate::factory()->create([
+                'contest_id' => $contest->id,
+                'week_id' => $week->id,
+                'status' => Slate::SETTLED,
+                'settled_at' => now()->subDay(),
+            ]);
+            SlateEntry::factory()->create([
+                'slate_id' => $slate->id,
+                'user_id' => $commissioner->id,
+                'final_points' => 92,
+                'won' => true,
+            ]);
+        }
+
+        Livewire::actingAs($commissioner)->withQueryParams(['view' => 'results'])->test('pickem-home')
+            ->assertSee(Voice::line('picks.payoff.banner_many', ['count' => 2], for: $commissioner));
+    });
+
+    it('draws no banner over a week nobody won', function () {
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        [, $week] = pickemSeasonWeek();
+        $slate = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'status' => Slate::SETTLED,
+            'settled_at' => now()->subDay(),
+        ]);
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $commissioner->id,
+            'final_points' => 40,
+            'won' => false,
+        ]);
+
+        Livewire::actingAs($commissioner)->withQueryParams(['view' => 'results'])->test('pickem-home')
+            ->assertSee('Last week')
+            ->assertDontSeeHtml('wire:key="payoff-banner"');
+    });
+
     it('names the next rung and the climb to it, in one compacted row', function () {
         $user = User::factory()->create(['admin' => true, 'content_rating' => ContentRating::Pg13]);
         app(GrantWalletEntry::class)->handle($user, 1000, 0, 'test-seed', 'test-seed');
@@ -623,6 +979,89 @@ describe('my week (inside the flag)', function () {
         Livewire::actingAs($top->fresh())->test('pickem-home')
             ->assertSee('Legend')
             ->assertSee(Voice::line('rank.topped_out', for: $top));
+    });
+
+    /*
+     * THE YOU-STRIP. Below `sm` the app header does not render, so a
+     * phone reader met no rung, no XP and no lattes on either pick'em
+     * door — the whole ladder was invisible exactly where it is played.
+     * The standings' own strip is the second render site, unchanged.
+     */
+    it('puts the reader\'s own line at the top of their week', function () {
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        $commissioner->update(['handle' => 'marcus']);
+        app(GrantWalletEntry::class)->handle($commissioner, 1000, 3, 'test-seed', 'test-seed');
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        Livewire::actingAs($commissioner->fresh())->test('pickem-home')
+            ->assertSee('You')
+            ->assertSee('@marcus')
+            // The four columns, and the rung NAMED rather than a bare
+            // number: the ladder is the thing being sold.
+            ->assertSeeInOrder(['Rank', 'XP', 'Lattes', 'Wins'])
+            ->assertSee('Rotation')
+            ->assertSee('1,000')
+            ->assertSee('3');
+    });
+
+    it('dashes Wins until a week has actually been won', function () {
+        /*
+         * Break-it-back, both directions. "0 Wins" all September is a
+         * counter with no decision attached — and a zero nobody has had
+         * the chance to earn reads as a verdict on the reader. The strip
+         * pre-renders the em dash the component refuses to substitute.
+         */
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $strip = Livewire::actingAs($commissioner)->test('pickem-home')->instance()->youStrip;
+
+        expect($strip['stats'][3])->toBe(['label' => 'Wins', 'value' => '—']);
+
+        // A settled, countable week that the reader took.
+        [, $week] = pickemSeasonWeek();
+        $settled = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'saturday' => '2026-08-29',
+            'status' => Slate::SETTLED,
+            'exhibition' => false,
+            'settled_at' => now()->subDay(),
+        ]);
+        SlateEntry::factory()->create([
+            'slate_id' => $settled->id,
+            'user_id' => $commissioner->id,
+            'final_points' => 90,
+            'won' => true,
+        ]);
+
+        $strip = Livewire::actingAs($commissioner)->test('pickem-home')->instance()->youStrip;
+
+        expect($strip['stats'][3])->toBe(['label' => 'Wins', 'value' => '1']);
+    });
+
+    it('reads the wallet once for the whole strip', function () {
+        /*
+         * The strip's whole cost claim: lattes ride the SAME memoized
+         * walletTotals() SUM the rank chip and the ladder already read,
+         * and wins is a projection of cards(). Four numbers, not four
+         * questions — a second wallet read here is the class of drift
+         * that made the old dashboard heavy.
+         */
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        DB::enableQueryLog();
+
+        Livewire::actingAs($commissioner)->test('pickem-home')->assertSee('Lattes');
+
+        $wallet = collect(DB::getQueryLog())
+            ->filter(fn (array $query) => str_contains($query['query'], 'wallet_entries'))
+            ->count();
+
+        DB::disableQueryLog();
+
+        expect($wallet)->toBe(1);
     });
 });
 

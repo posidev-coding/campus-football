@@ -6,6 +6,8 @@ use App\Enums\LobbyShelf;
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
 use App\Models\Group;
+use App\Models\Slate;
+use App\Models\SlateGame;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Brand;
@@ -13,6 +15,8 @@ use App\Support\Cadence;
 use App\Support\Lobby;
 use App\Support\LobbyCatalog;
 use App\Support\Voice;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -217,6 +221,51 @@ new class extends Component
     }
 
     /**
+     * WHEN THE SATURDAY STARTS — the earliest kickoff still ahead across
+     * every open room's published slate.
+     *
+     * A store selling one Saturday never said when that Saturday began,
+     * so "open" and "opens in forty minutes" read the same to a shopper.
+     * FUTURE-ONLY on purpose: the actionable clock is the next kickoff, and
+     * a games-already-under-way store is one where the answer is "some of
+     * it has started", which the rows themselves say better.
+     *
+     * The slate is resolved off the relations openRooms() already eager-
+     * loads, mirroring LobbyCatalog::shelves() exactly — two reads of the
+     * same Saturday that resolve it differently is how one screen ends up
+     * counting a slate the other one does not.
+     *
+     * ONE aggregate on top of that, and it is the entire cost of this
+     * clock. Null is NO DATA — an empty store, or a Saturday every game of
+     * which has kicked — and a null skips the row rather than inventing a
+     * time.
+     */
+    #[Computed]
+    public function firstKick(): ?CarbonInterface
+    {
+        $slateIds = $this->openRooms
+            ->filter(fn (Group $room) => $room->isRoom())
+            ->map(fn (Group $room) => $room->contests->first()?->slates
+                ->first(fn (Slate $slate) => $slate->week_id === $room->week_id
+                    && $slate->status === Slate::PUBLISHED)
+                ?->id)
+            ->filter()
+            ->values();
+
+        if ($slateIds->isEmpty()) {
+            return null;
+        }
+
+        $min = SlateGame::query()
+            ->join('games', 'games.id', '=', 'slate_games.game_id')
+            ->whereIn('slate_games.slate_id', $slateIds)
+            ->where('games.kickoff_at', '>', now())
+            ->min('games.kickoff_at');
+
+        return $min === null ? null : Carbon::parse($min);
+    }
+
+    /**
      * The reader's OWN invite link — codeless, so it carries nothing but
      * who is asking. `array_filter` because a handle is optional: an
      * uncredited link still opens the pitch, it just cannot say who sent
@@ -247,7 +296,7 @@ new class extends Component
             // A race to the last seat: the lobby re-renders without the
             // filled room, and the words say why.
             $this->addError($errorBag, Voice::line('contest.room.full'));
-            unset($this->openRooms, $this->publics, $this->shelves, $this->visibleShelves, $this->tabHasRooms, $this->evergreens, $this->weekContext);
+            unset($this->openRooms, $this->publics, $this->shelves, $this->visibleShelves, $this->tabHasRooms, $this->evergreens, $this->weekContext, $this->firstKick);
 
             return;
         }
@@ -294,6 +343,22 @@ new class extends Component
                         {{ $this->weekContext['count'] }} {{ Str::plural('room', $this->weekContext['count']) }} open
                     </p>
                 </div>
+
+                {{-- WHEN the Saturday starts, under the Saturday it belongs
+                     to and above the control that filters it: the band is
+                     context, the tabs are a control, and a control reads
+                     best sitting on the edge nearest the content it acts
+                     on. No kickoff still ahead, no row — an empty store and
+                     a Saturday already under way both say nothing here
+                     rather than inventing a time. --}}
+                @if ($this->firstKick !== null)
+                    <x-kick-clock
+                        :at="$this->firstKick"
+                        idle-prefix="First kick"
+                        suffix="to first kick"
+                        class="text-micro text-zinc-500 dark:text-zinc-400"
+                    />
+                @endif
 
                 {{-- WHICH KIND OF ROOM, inside the band on purpose: the band
                      is the one sticky block on this screen, so the filter
@@ -353,6 +418,12 @@ new class extends Component
                     @endif
                 </div>
 
+                {{-- The room's own pitch, one truncating line: the flavor's
+                     when it has one, the mode's when it does not. Enum
+                     reads of a column already loaded and a count already
+                     passed — no query, and no second answer about how many
+                     games a room deals (the CONTEST's number, never the
+                     mode's default). --}}
                 @foreach ($shelf['rooms'] as $entry)
                     <x-room-row
                         wire:key="room-{{ $entry['room']->id }}"
@@ -361,6 +432,7 @@ new class extends Component
                         :game-count="$entry['gameCount']"
                         :seats="$entry['seats']"
                         :seated="$entry['seated']"
+                        :pitch="$entry['room']->flavorEnum()?->blurb($entry['gameCount']) ?? $entry['mode']->blurb($entry['gameCount'])"
                     />
                 @endforeach
 
@@ -463,7 +535,9 @@ new class extends Component
                 },
             }"
         >
-            <flux:heading size="lg">Invite a friend</flux:heading>
+            {{-- Subheading weight, not a heading: the foot of a store is
+                 not where the biggest words on the screen belong. --}}
+            <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Invite a friend</flux:subheading>
             <flux:subheading>{{ Voice::line('join.app.hint') }}</flux:subheading>
 
             <div class="flex flex-wrap items-center gap-2">
@@ -488,24 +562,52 @@ new class extends Component
             <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">Name it, pick its mode, send one link.</span>
         </x-link-row>
 
-        {{-- The rules, one expandable card per mode — the same
-             ruleLines() the docs and the mode doors read. --}}
-        <div class="flex flex-col gap-2">
-            <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">How it's played</flux:subheading>
-            <flux:subheading>{{ Voice::line('lobby.rules.subheading') }}</flux:subheading>
+        {{-- THE RULES, folded away. Sixty-five lines of foot matter — a
+             heading, three expandable mode cards and the shared-laws
+             paragraph — stood between a shopper and the bottom of every
+             visit, on a screen whose job is to seat them in a room. The
+             content is unchanged and every string is still in the DOM;
+             what changed is that it opens when somebody asks.
 
-            <div class="flex flex-col gap-2 pt-1">
+             The invite-code disclosure's exact grammar, because a
+             disclosure that behaves differently from the other one on the
+             same product is two controls: the scope is UNCONDITIONAL (a
+             scope keyed to a Blade conditional is how `dismissed` ended up
+             undefined in production), aria-expanded is bound, the chevron
+             rotates, and the payload is x-show + x-cloak rather than
+             removed. --}}
+        <div
+            x-data="{ open: false }"
+            class="rounded-xl border border-zinc-200 dark:border-zinc-700"
+        >
+            <button
+                type="button"
+                x-on:click="open = ! open"
+                aria-expanded="false"
+                x-bind:aria-expanded="open"
+                class="flex w-full items-center justify-between gap-3 p-4 text-start"
+            >
+                <div class="min-w-0">
+                    <p class="font-semibold">How it's played</p>
+                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('lobby.rules.subheading') }}</p>
+                </div>
+                <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
+            </button>
+
+            <div x-show="open" x-cloak class="flex flex-col gap-2 border-t border-zinc-100 p-4 dark:border-zinc-800/60">
+                {{-- One expandable card per mode — the same ruleLines()
+                     the docs and the mode doors read. --}}
                 @foreach (ContestMode::cases() as $mode)
                     <x-mode-rules wire:key="rules-{{ $mode->value }}" :mode="$mode" />
                 @endforeach
-            </div>
 
-            {{-- The rules every mode shares, stated once and plainly. --}}
-            <p class="pt-1 text-micro leading-relaxed text-zinc-500">
-                Every pick is against the spread, and every line is a half point — no pushes, ever.
-                Picks lock game by game at kickoff. Commissioner slates are due Tuesday night;
-                weeks turn official Sunday noon. Tied weeks share the win.
-            </p>
+                {{-- The rules every mode shares, stated once and plainly. --}}
+                <p class="pt-1 text-micro leading-relaxed text-zinc-500">
+                    Every pick is against the spread, and every line is a half point — no pushes, ever.
+                    Picks lock game by game at kickoff. Commissioner slates are due Tuesday night;
+                    weeks turn official Sunday noon. Tied weeks share the win.
+                </p>
+            </div>
         </div>
     @else
         @include('partials.pickem-promise')

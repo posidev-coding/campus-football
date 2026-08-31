@@ -4,11 +4,16 @@
     (the identity seam) with the week's state on the second row.
 
     `card` is the lobby's cards() array shape: group, contest,
-    commissioner, state (waiting | upcoming | live | prelim | final),
-    made/total, entryIn, points, won, wins, firstKick, deadline. The
-    five-way state row moved here wholesale from pass 2's inline markup —
-    same states, same words, now beside an identity a thumb can find in a
-    stack.
+    commissioner, past, state (waiting | upcoming | live | prelim |
+    final), made/total, entryIn, points, won, wins, firstKick, deadline.
+    The five-way state row moved here wholesale from pass 2's inline
+    markup — same states, same words, now beside an identity a thumb can
+    find in a stack.
+
+    Since 2026-08-31 the card also leads its micro-line with its KIND,
+    because My Picks sells every seat in one "Where you play" stack now
+    and the zone headings that used to carry the distinction are gone.
+    Same props: `group` and `past` were already here.
 --}}
 @props([
     /** @var array<string, mixed> */
@@ -37,9 +42,34 @@
 
             <span class="min-w-0">
                 <span class="block truncate font-semibold leading-tight">{{ $group->name }}</span>
-                @if ($members !== null)
-                    <span class="block text-micro text-zinc-500">{{ $members }} {{ Str::plural('member', $members) }}</span>
-                @endif
+                {{-- THE KIND, said on every CARD. The three zone headings
+                     merged into one stack, and the definitions came with
+                     them: three headings over one thumb of cards read as
+                     three products, but the DISTINCTION between a season
+                     and a Saturday is exactly what a reader needs. So it
+                     is said once per card instead of once per zone, in
+                     the join landing's own grammar.
+
+                     PAST FIRST, as everywhere else on this card: a room
+                     keeps its URL forever and leaves the inventory when
+                     its week ends, so "this Saturday" over a room that
+                     already played is a date nobody is playing.
+
+                     An evergreen is "Always open" — never a room's
+                     one-Saturday label, and never "table". Two
+                     user-facing container nouns, still. --}}
+                <span class="block truncate text-micro text-zinc-500">
+                    @if (! $group->isLobby())
+                        Private group, all season
+                    @elseif ($group->isRoom())
+                        Public room · {{ ($card['past'] ?? false) ? 'Saturday played' : 'this Saturday' }}
+                    @else
+                        Always open
+                    @endif
+                    @if ($members !== null)
+                        · {{ $members }} {{ Str::plural('member', $members) }}
+                    @endif
+                </span>
             </span>
         </span>
 
