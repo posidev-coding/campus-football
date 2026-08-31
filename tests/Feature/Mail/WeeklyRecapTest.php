@@ -161,7 +161,7 @@ describe('the register', function () {
             $instructions = (string) $prompt->agent->instructions();
 
             return str_contains($instructions, "Here's the damage. Read it standing up.")
-                && str_contains($instructions, 'Anything Goes')
+                && str_contains($instructions, 'No Mercy')
                 && ! str_contains($instructions, "Here's how your teams got on. No editorializing. Much.");
         });
     });

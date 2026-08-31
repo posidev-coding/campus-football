@@ -392,7 +392,7 @@ describe('the device draft', function () {
         // stakes of choosing.
         Livewire::test('onboarding')->set('step', 'rating')
             ->assertSee('Trash talk')
-            ->assertSee('This sets how hard.')
+            ->assertSee('This sets how hot it runs.')
             ->assertSee('You can change this any time on Account.');
     });
 

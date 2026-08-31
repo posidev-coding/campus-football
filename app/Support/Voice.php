@@ -612,8 +612,8 @@ class Voice
 
         'profile.rating_description' => [
             'pg' => "We'll have opinions about your picks, your team and your record — never about you. This sets how many.",
-            'pg13' => 'We roast your picks, your team and your record — never you. This sets how hard.',
-            'r' => "We roast your picks, your team and your record — never you. This sets how hard, and you've picked hard.",
+            'pg13' => 'We roast your picks, your team and your record — never you. This sets how hot it runs.',
+            'r' => 'We roast your picks, your team and your record — never you. This sets how hot it runs, and you went straight to the top of the scale.',
         ],
 
         /*

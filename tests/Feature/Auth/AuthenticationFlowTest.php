@@ -127,10 +127,42 @@ it('does not leak whether an email exists on password reset', function () {
  */
 
 describe('content rating', function () {
-    it('starts on PG-13 rather than blank', function () {
+    it('starts on the middle heat rather than blank', function () {
         // A preference with a sensible middle. An unset radio group reads as a
         // decision you must research before you are allowed to sign up.
         Livewire::test('auth.register')->assertSet('content_rating', ContentRating::Pg13->value);
+    });
+
+    it('offers a heat scale, and never a film rating', function () {
+        /*
+         * The 2026-08-31 relabel. Film ratings described a scale this app is
+         * forbidden to deliver — measured across all 239 Voice families, PG
+         * and PG-13 carry no profanity and R carries one mild word — so "R /
+         * Anything Goes" over-promised the reader and volunteered a maturity
+         * claim the copy never cashes. The values behind them are DATA and
+         * stay put; only the names moved.
+         */
+        expect(ContentRating::Pg->label())->toBe('Mild')
+            ->and(ContentRating::Pg13->label())->toBe('Medium')
+            ->and(ContentRating::R->label())->toBe('Extra Hot')
+            ->and(ContentRating::Pg->subLabel())->toBe('Light Ribbing')
+            ->and(ContentRating::Pg13->subLabel())->toBe('Locker Room')
+            ->and(ContentRating::R->subLabel())->toBe('No Mercy')
+            // The stored values are the Voice map's keys and the users column:
+            // renaming them to match the labels is a migration plus 239
+            // rewritten families for nothing anybody can see.
+            ->and(ContentRating::Pg13->value)->toBe('pg13')
+            ->and(ContentRating::R->value)->toBe('r');
+
+        // And the signup card — the first surface a marketed user meets —
+        // shows the scale with no film rating left anywhere on it.
+        $screen = Livewire::test('auth.register');
+
+        $screen->assertSee('Extra Hot')
+            ->assertSee('No Mercy')
+            ->assertSee('how hot it runs')
+            ->assertDontSee('PG-13')
+            ->assertDontSee('Anything Goes');
     });
 
     it('stores the chosen rating', function () {
