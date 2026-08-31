@@ -197,6 +197,37 @@ maximum demand on its own, leaving rung-ups, wins and milestones as pure surplus
 roughly 1.7× oversupply. The balance would become a number that only goes up, which
 is the same failure this whole plan is fixing, pointed the other way.
 
+**The rung-up and milestone amounts, decided.** These are constants in
+`GrantWalletEntry`, so rebalancing is a deploy rather than a migration — the same
+property `RankLadder` was built for. Build these numbers; do not stop to ask.
+
+| Promotion | XP threshold | Credits | Lands roughly |
+| --- | --- | --- | --- |
+| Redshirt | 250 | **2** | week 1 |
+| Rotation | 750 | **3** | week 3 |
+| Starter | 1750 | **4** | week 7 |
+| Captain | 3500 | **5** | end of a strong season |
+| All-American | 7000 | **6** | beyond one season |
+| Legend | 15000 | **8** | multi-season |
+
+| Milestone | Credits | Key shape |
+| --- | --- | --- |
+| First slate ever entered | **1** | once ever |
+| 5 weeks entered | **2** | once ever |
+| 10 weeks entered | **3** | once ever |
+| A perfect week | **3** | per slate |
+| First room won | **2** | once ever |
+
+A verified account starts at 125 XP and a full pick'em week pays about 250, so a
+strong first season collects Redshirt through Captain — 14 credits — on top of the
+top-off. That is deliberately not enough to live on: the top-off is the floor, the
+rungs are the reward for climbing.
+
+**Oversupply is self-correcting, which is why these numbers are safe.** Rung-ups can
+push a balance above 6, and at 6 the top-off stops paying entirely. The cooler
+ceiling absorbs a generous rung without inflating the economy, so there is no second
+mechanism to tune.
+
 **Activated on first Picks visit**, not at signup — the economy starts when the
 reader actually meets it.
 
@@ -294,8 +325,17 @@ has gone wrong.
 
 ### PR 2 — `tallboy-icon`
 
+*Also tracked on the board as **CFB-39**, which carries the same brief. Build it
+here, in sequence — do not wait for that card to be worked separately.*
+
 A new pixel-perfect tallboy mark replacing `beast-latte-*` and the retained
 first-pass `latte-*` in `public/brand/currency/svg/`.
+
+**Design it at 18px first, then scale up** — that is the only size it actually
+renders at, beside the balance in `x-wallet-chips`. A mark that reads at 64px and
+turns to mud at 18px has failed. There is no reference image to wait for; the cue
+list below is the brief, and if one is supplied later it is visual reference only,
+never trade dress to copy.
 
 The current README is a good brief that the art under-delivers on: the four cues that
 read as a tallboy (top rim wider than the neck, long shoulder taper, base rim line, a
@@ -313,8 +353,9 @@ first-Picks-visit activation column. **This ships before any sink**, so there is
 balance to spend before anything asks for one.
 
 Add a `weekly()` sibling to `GrantWalletEntry::daily()`, same key-is-the-cap shape,
-same unverified refusal, same football-day timezone. Per-rung credit amounts are
-front-loaded to match where the rungs actually land.
+same unverified refusal, same football-day timezone. **The rung-up and milestone
+amounts are decided in decision 7 — build those numbers, do not stop to ask for
+them.**
 
 ### PR 4 — `tallboy-entry`
 
