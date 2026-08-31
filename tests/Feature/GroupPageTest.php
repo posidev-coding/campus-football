@@ -9,6 +9,7 @@ use App\Models\GroupMember;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateEntry;
+use App\Models\Team;
 use App\Models\User;
 use App\Support\GameRanks;
 use App\Support\Voice;
@@ -481,4 +482,67 @@ it('reveals the picks grid per game, and never before kickoff', function () {
         ->assertSee('@gridwatcher')
         ->assertSeeHtml('data-cell="hidden"')
         ->assertSeeHtml('data-cell="pick"');
+});
+
+it('shows the movement and the member colors once two weeks have settled', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $member = User::factory()->create(['admin' => true, 'handle' => 'mover']);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    $vols = Team::factory()->create([
+        'location' => 'Tennessee',
+        'display_name' => 'Tennessee Volunteers',
+        'short_display_name' => 'Tennessee',
+        'logo' => 'https://cdn.example.com/vols.png',
+    ]);
+    $member->followedTeams()->attach([$vols->id => ['position' => 1]]);
+
+    [, $week] = pickemSeasonWeek();
+
+    $weekOne = Slate::factory()->create([
+        'contest_id' => $contest->id, 'week_id' => $week->id,
+        'saturday' => '2026-09-05', 'status' => Slate::SETTLED, 'settled_at' => now(),
+    ]);
+    $weekTwo = Slate::factory()->create([
+        'contest_id' => $contest->id, 'week_id' => $week->id,
+        'saturday' => '2026-09-12', 'status' => Slate::SETTLED, 'settled_at' => now(),
+    ]);
+
+    // Week one: the member leads. Week two: the commissioner runs it down.
+    SlateEntry::factory()->create(['slate_id' => $weekOne->id, 'user_id' => $member->id, 'final_points' => 10, 'won' => true]);
+    SlateEntry::factory()->create(['slate_id' => $weekOne->id, 'user_id' => $commissioner->id, 'final_points' => 3, 'won' => false]);
+    SlateEntry::factory()->create(['slate_id' => $weekTwo->id, 'user_id' => $member->id, 'final_points' => 1, 'won' => false]);
+    SlateEntry::factory()->create(['slate_id' => $weekTwo->id, 'user_id' => $commissioner->id, 'final_points' => 20, 'won' => true]);
+
+    $rows = Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->instance()->seasonStandings;
+
+    // Wins tie one apiece; points decide — the commissioner climbed one
+    // from last week's baseline, and the member gave one back. The chip
+    // beside the member's handle is their own first-followed team.
+    expect($rows[0]['user']->id)->toBe($commissioner->id)
+        ->and($rows[0]['delta'])->toBe(1)
+        ->and($rows[0]['team'])->toBeNull()
+        ->and($rows[1]['delta'])->toBe(-1)
+        ->and($rows[1]['team']->id)->toBe($vols->id);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertSee('https://cdn.example.com/vols.png', escape: false)
+        ->assertSee('@mover');
+});
+
+it('keeps the movement quiet with only one settled week behind the table', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    [, $week] = pickemSeasonWeek();
+
+    $only = Slate::factory()->create([
+        'contest_id' => $contest->id, 'week_id' => $week->id,
+        'saturday' => '2026-09-05', 'status' => Slate::SETTLED, 'settled_at' => now(),
+    ]);
+    SlateEntry::factory()->create(['slate_id' => $only->id, 'user_id' => $commissioner->id, 'final_points' => 12, 'won' => true]);
+
+    // One week has no "before" worth inventing: null, never a zero.
+    expect(Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->instance()->seasonStandings->first()['delta'])->toBeNull();
 });
