@@ -61,14 +61,31 @@
                         'bg-blue-50/60 dark:bg-blue-950/30' => $viewer,
                     ])
                 >
-                    <td class="tabular whitespace-nowrap px-3 py-1.5 text-zinc-500">{{ $row['rank'] }}</td>
+                    <td class="tabular whitespace-nowrap px-3 py-1.5 text-zinc-500">
+                        {{ $row['rank'] }}
+                        {{-- Movement since the last settled week. Null and
+                             zero both render NOTHING — a table full of
+                             dashes says less than the silence does. --}}
+                        @if (($row['delta'] ?? 0) > 0)
+                            <span class="text-micro font-semibold text-emerald-600 dark:text-emerald-400"><span class="sr-only">up </span><span aria-hidden="true">▲</span>{{ $row['delta'] }}</span>
+                        @elseif (($row['delta'] ?? 0) < 0)
+                            <span class="text-micro font-semibold text-red-600 dark:text-red-400"><span class="sr-only">down </span><span aria-hidden="true">▼</span>{{ abs($row['delta']) }}</span>
+                        @endif
+                    </td>
                     <td class="w-full max-w-0 truncate py-1.5 pe-3 {{ $viewer ? 'font-semibold' : 'font-medium' }}">
                         @if ($viewer)
                             {{-- The tint is invisible to a screen reader. --}}
                             <span class="sr-only">You — </span>
                         @endif
                         @if ($row['user'] !== null)
-                            {{ $row['user']->handle !== null ? '@'.$row['user']->handle : $row['user']->name }}
+                            <span class="inline-flex max-w-full items-center gap-1.5 align-middle">
+                                {{-- The member's own colors in the room —
+                                     a logo on a neutral puck, never a fill. --}}
+                                @if ($row['team'] ?? null)
+                                    <x-team-logo :team="$row['team']" size="xs" class="shrink-0" />
+                                @endif
+                                <span class="truncate">{{ $row['user']->handle !== null ? '@'.$row['user']->handle : $row['user']->name }}</span>
+                            </span>
                         @else
                             <span class="inline-flex items-center gap-1">
                                 @if ($row['icon'] ?? null)

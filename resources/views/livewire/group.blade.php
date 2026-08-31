@@ -276,6 +276,7 @@ new class extends Component
         $rows = $slate->entries
             ->map(fn (SlateEntry $entry) => [
                 'user' => $entry->user,
+                'team' => $this->memberTeams[$entry->user_id] ?? null,
                 'label' => null,
                 'key' => null,
                 'icon' => null,
@@ -304,6 +305,7 @@ new class extends Component
             ->map(fn (array $row, int $i) => [
                 'rank' => $i + 1,
                 'user' => $row['user'],
+                'team' => $row['team'] ?? null,
                 'label' => $row['label'],
                 'key' => $row['key'],
                 'icon' => $row['icon'],
@@ -376,6 +378,8 @@ new class extends Component
             ->filter(fn (array $row) => $row['user'] !== null)
             ->keyBy(fn (array $row) => $row['user']->id);
 
+        $priorRanks = $this->priorRanks();
+
         return $this->members
             ->map(fn (GroupMember $seat) => [
                 'user' => $seat->user,
@@ -387,10 +391,189 @@ new class extends Component
             ->values()
             ->map(fn (array $row, int $i) => [
                 'rank' => $i + 1,
+                // The movement since the last settled Saturday — null until
+                // two weeks exist to compare, and null renders nothing.
+                'delta' => isset($priorRanks[$row['user']->id])
+                    ? $priorRanks[$row['user']->id] - ($i + 1)
+                    : null,
                 'user' => $row['user'],
+                'team' => $this->memberTeams[$row['user']->id] ?? null,
                 'won' => false,
                 'cells' => [$row['wins'], $row['points'], $row['week'] ?? '—'],
             ]);
+    }
+
+    /**
+     * THE MOVEMENT BASELINE: everyone's rank on the ledger as it stood
+     * BEFORE the latest settled Saturday, so Monday's table can say who
+     * climbed. Empty until two countable weeks exist — one week has no
+     * "before" worth inventing.
+     *
+     * @return array<int, int> user id => prior rank
+     */
+    private function priorRanks(): array
+    {
+        $settled = $this->contest->slates()
+            ->where('status', Slate::SETTLED)
+            ->where('exhibition', false)
+            ->orderByDesc('saturday')
+            ->limit(2)
+            ->pluck('id');
+
+        if ($settled->count() < 2) {
+            return [];
+        }
+
+        $prior = SlateEntry::query()
+            ->join('slates', 'slates.id', '=', 'slate_entries.slate_id')
+            ->where('slates.contest_id', $this->contest->id)
+            ->where('slates.status', Slate::SETTLED)
+            ->where('slates.exhibition', false)
+            ->where('slates.id', '!=', $settled->first())
+            ->groupBy('slate_entries.user_id')
+            ->selectRaw('slate_entries.user_id, COALESCE(SUM(slate_entries.won), 0) AS wins, COALESCE(SUM(slate_entries.final_points), 0) AS pts')
+            ->get()
+            ->keyBy('user_id');
+
+        return $this->members
+            ->map(fn (GroupMember $seat) => [
+                'user_id' => $seat->user_id,
+                'wins' => (int) ($prior[$seat->user_id]->wins ?? 0),
+                'points' => (int) ($prior[$seat->user_id]->pts ?? 0),
+            ])
+            ->sortBy([['wins', 'desc'], ['points', 'desc']])
+            ->values()
+            ->mapWithKeys(fn (array $row, int $i) => [$row['user_id'] => $i + 1])
+            ->all();
+    }
+
+    /**
+     * Each member's FIRST followed team — the identity chip beside the
+     * handle in the standings, the pilot's rivalries made visible. One
+     * query across every member; a member with no follows has no chip,
+     * and nothing is substituted for it.
+     *
+     * @return array<int, \App\Models\Team>
+     */
+    #[Computed]
+    public function memberTeams(): array
+    {
+        return \App\Models\Team::query()
+            ->join('team_follows', 'team_follows.team_id', '=', 'teams.id')
+            ->where('team_follows.position', 1)
+            ->whereIn('team_follows.user_id', $this->members->pluck('user_id'))
+            ->get([
+                'teams.id', 'teams.slug', 'teams.location', 'teams.display_name',
+                'teams.short_display_name', 'teams.logo', 'teams.logo_dark',
+                'team_follows.user_id as follower_id',
+            ])
+            ->keyBy('follower_id')
+            ->all();
+    }
+
+    /**
+     * EVERYBODY'S CALLS, revealed per game — the accountability grid.
+     * Rows are the week's ranked entrants (the viewer hoisted first, the
+     * Bear riding along on a Woodshed slate); columns are the slate's
+     * games; a cell stays a dash until THAT game kicks off, then shows
+     * the picked side, then wears its grade. Our locks are per kickoff,
+     * so the reveal is per game — nobody's late-window pick leaks while
+     * the noon games are already talking.
+     *
+     * ONE pick-level read for the whole room, asked only when the
+     * Standings tab renders and only once the card is playing; null any
+     * other time, and null renders nothing.
+     *
+     * @return array{columns: list<array<string, mixed>>, rows: list<array<string, mixed>>}|null
+     */
+    #[Computed]
+    public function picksGrid(): ?array
+    {
+        $slate = $this->slate;
+
+        if ($slate === null || ! in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true)) {
+            return null;
+        }
+
+        $games = $slate->games;
+
+        $picks = Pick::query()
+            ->whereIn('slate_game_id', $games->pluck('id'))
+            ->get()
+            ->groupBy('user_id');
+
+        $columns = $games->map(fn ($slateGame) => [
+            'key' => $slateGame->id,
+            'away' => $slateGame->game->awayTeam->abbreviation,
+            'home' => $slateGame->game->homeTeam->abbreviation,
+        ])->values()->all();
+
+        $abbreviate = fn ($slateGame, ?int $teamId): ?string => match ($teamId) {
+            $slateGame->game->home_team_id => $slateGame->game->homeTeam->abbreviation,
+            $slateGame->game->away_team_id => $slateGame->game->awayTeam->abbreviation,
+            default => null,
+        };
+
+        $grader = app(SpreadGrader::class);
+        $engine = $this->contest?->mode->engine($this->contest->settings);
+        $bear = $slate->bear_theme !== null && ($engine?->hasBear() ?? false);
+
+        $rows = $this->weekStandings
+            ->map(function (array $standing) use ($games, $picks, $abbreviate, $grader, $bear, $slate) {
+                $isBear = $standing['key'] === 'bear';
+                $mine = $standing['user'] === null
+                    ? collect()
+                    : ($picks->get($standing['user']->id) ?? collect())->keyBy('slate_game_id');
+
+                $cells = $games->map(function ($slateGame) use ($mine, $abbreviate, $grader, $isBear, $bear) {
+                    // The reveal rule: THIS game's kickoff, nothing else's.
+                    if (! $slateGame->game->hasKickedOff()) {
+                        return ['state' => 'hidden', 'abbr' => null, 'tone' => 'neutral'];
+                    }
+
+                    if ($isBear) {
+                        if (! $bear || $slateGame->bear_team_id === null) {
+                            return ['state' => 'none', 'abbr' => null, 'tone' => 'neutral'];
+                        }
+
+                        $tone = $slateGame->game->completed
+                            ? ($grader->resultFor($slateGame, $slateGame->game, $slateGame->bear_team_id) === Pick::WIN ? 'win' : 'loss')
+                            : 'neutral';
+
+                        return ['state' => 'pick', 'abbr' => $abbreviate($slateGame, $slateGame->bear_team_id), 'tone' => $tone];
+                    }
+
+                    $pick = $mine->get($slateGame->id);
+
+                    if ($pick === null) {
+                        // An absent pick on a kicked game is an honest zero.
+                        return ['state' => 'none', 'abbr' => null, 'tone' => 'neutral'];
+                    }
+
+                    return [
+                        'state' => 'pick',
+                        'abbr' => $abbreviate($slateGame, $pick->picked_team_id),
+                        'tone' => $pick->result === null ? 'neutral' : ($pick->result === Pick::WIN ? 'win' : 'loss'),
+                    ];
+                })->values()->all();
+
+                return [
+                    'name' => $standing['user'] !== null
+                        ? ($standing['user']->handle !== null ? '@'.$standing['user']->handle : $standing['user']->name)
+                        : ($standing['label'] ?? '—'),
+                    'viewer' => $standing['user']?->id === auth()->id(),
+                    'icon' => $standing['icon'],
+                    'points' => $standing['cells'][0],
+                    'cells' => $cells,
+                ];
+            })
+            // The viewer's own line first — the row you scan for is the
+            // row you never have to hunt.
+            ->sortBy(fn (array $row) => $row['viewer'] ? 0 : 1)
+            ->values()
+            ->all();
+
+        return $rows === [] ? null : ['columns' => $columns, 'rows' => $rows];
     }
 
     /**
@@ -598,7 +781,7 @@ new class extends Component
         unset(
             $this->contest, $this->pivotChoices, $this->slate, $this->surfaceStatus,
             $this->weekStandings, $this->seasonStandings, $this->seasonHasHistory,
-            $this->youStrip,
+            $this->youStrip, $this->picksGrid,
         );
     }
 
@@ -626,7 +809,7 @@ new class extends Component
     protected function refreshPicks(): void
     {
         $this->refreshPickState();
-        unset($this->slate, $this->surfaceStatus, $this->weekStandings, $this->seasonStandings, $this->youStrip);
+        unset($this->slate, $this->surfaceStatus, $this->weekStandings, $this->seasonStandings, $this->youStrip, $this->picksGrid);
     }
 
     private function normalizedView(string $view): string
@@ -681,6 +864,19 @@ new class extends Component
 
     <x-group-hero :group="$group" :contest="$this->contest" :members-count="$this->members->count()" :meta="$heroMeta">
         <x-slot:actions>
+            @if ($this->isMember)
+                {{-- The thread's door — a destination, never an embed
+                     (the pick surface stays chat-free; Task D stands). --}}
+                <a
+                    href="{{ route('pickem.talk', $group) }}"
+                    wire:navigate
+                    aria-label="{{ $group->isRoom() ? 'Room talk' : 'Group talk' }}"
+                    class="rounded-lg bg-white/10 p-2 transition-colors hover:bg-white/20 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                >
+                    <flux:icon name="chat-bubble-left-right" variant="mini" />
+                </a>
+            @endif
+
             @if ($this->isMember && ! $group->isLobby())
                 {{-- Copies the invite LINK without leaving the hero; the
                      link and the fallback code live on the Members tab. --}}
@@ -904,6 +1100,12 @@ new class extends Component
                 />
             @endif
 
+            {{-- The accountability grid — everybody's calls, revealed
+                 per game, once the card is playing. --}}
+            @if ($this->picksGrid !== null)
+                <x-picks-grid :grid="$this->picksGrid" />
+            @endif
+
             {{-- The season ledger — groups and evergreen tables; a
                  one-Saturday room has no season to stand on. --}}
             @if (! $group->isRoom())
@@ -990,6 +1192,13 @@ new class extends Component
                     :mode="$this->contest->mode"
                     :games="$this->contest->mode->engine($this->contest->settings)->slateSize()"
                 />
+            @endif
+
+            {{-- The thread's second door, where the arguing starts. --}}
+            @if ($this->isMember)
+                <x-link-row :href="route('pickem.talk', $group)" :title="$group->isRoom() ? 'Room talk' : 'Group talk'">
+                    <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('talk.door.hint') }}</span>
+                </x-link-row>
             @endif
         </div>
     @endif

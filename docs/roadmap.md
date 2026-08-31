@@ -67,8 +67,9 @@ My Picks at `/picks` is the reader's own week, the Lobby at `/lobby` is a
 contest browser of shelved uniform rows — pass 3's single scroll was shaped
 for three rooms and the flavored build shipped thirteen. The same pass made
 the pick'em vocabulary law in the code (see [product.md](product.md)). The
-flag is still admin-only: flipping it is a decision, not a slice — and the
-one now scheduled for Sep 5, with Aug 29 rehearsed behind the closed flag.
+flag is still admin-only: flipping it is a decision, not a slice — the flip
+is Tue Sep 1 with the first public Saturday Sep 5, and Aug 29 rehearsed
+behind the closed flag.
 Phase 6's notification loop landed 2026-08-22, ahead of it.
 
 ### Phase 1 — Data foundation ✅
@@ -240,9 +241,13 @@ groups → slate build and publish → picking → scoring and settlement →
 landed; what remains before launch is a decision, not a slice.
 
 **The Conversation shipped 2026-08-20** — one Livewire component at the
-three sanctioned scopes, mounted at the FOOT of Game, Team and Group rather
-than as a tab on any of them. That placement is a constraint, not a
-preference: `x-plate` holds three tabs and Group already has three, and the
+three sanctioned scopes, mounted at the FOOT of Game and Team rather than
+as a tab on either (the Group foot embed was removed 2026-08-29: the
+clubhouse is the pick surface, and a thread under it read as distraction —
+the group scope stays whitelisted server-side, and a dedicated Group Talk
+screen was approved 2026-08-30, see docs/plans/home-and-picks-pass.md).
+That placement is a constraint, not a preference: `x-plate` throws past
+three tabs, and the
 team nav is a measured 358px row with 54px spare that deliberately does not
 scroll. The talk belongs to the screen rather than to whichever tab you are
 on, so it follows you across all of them. Reading is open to everyone

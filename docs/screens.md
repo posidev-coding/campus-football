@@ -15,8 +15,21 @@ sets the active index; the dots and the per-team news lists key off the same
 `glances` array index, so they cannot disagree about which team is showing.
 
 **Every followed team's news renders up front and Alpine toggles it** — at
-most 5 teams × 5 articles. A Livewire round trip per swipe puts a visible
-stall on the one interaction that has to feel instant.
+most 5 teams × 3 articles (trimmed from five on 2026-08-31; each panel now
+ends in a "More {Place} news" door to the team page instead of two more
+headlines). A Livewire round trip per swipe puts a visible stall on the one
+interaction that has to feel instant.
+
+**The 2026-08-31 momentum pass** (docs/plans/home-and-picks-pass.md) gave
+Home the reader's own pick'em state: a member with slates on the card gets
+a "Your picks" section of compact `x-slate-row`s in the teaser's slot
+(guests and card-less members keep the teaser, and the tour's room anchor
+rides whichever renders), a single `x-next-up` nudge card above the fold
+(PickemPulse's priority ladder — one card, never a stack; it yields to the
+onboarding CTA and stays silent for unverified readers), Latest news
+trimmed to three behind its unconditional "More", and a foot door — the
+Lobby's lean room count while the flag is open, the League otherwise — so
+the page never ends on somebody else's articles.
 
 **One query per CONCERN across all teams, never per card.** Completed games
 (form + last result), pending games (live + next), and the news join are each
@@ -658,6 +671,15 @@ wins); `needsPicks` and the ribbon clock filter that collection and never
 query. Section chips: a room or group visit lights **My Picks**, because a
 reader inside one is a seated member playing, not somebody browsing.
 
+**Since the Aug-29 overhaul and the Aug-31 pass**: the screen forks into
+**This week | Results** on an `x-plate` (first-run readers keep the single
+scroll; Results holds Last week, the rank ladder and the Season-history
+door), the needs-picks zone leads with ONE mode-tinted hero card wearing
+the zone's only button, the compact rows beneath it are the shared
+`x-slate-row` component (Home's picks strip renders the very same one),
+and a finished entry says "Entry in" — or amber "Tiebreaker left" when the
+question is the one thing open — instead of a fraction.
+
 ## The Lobby sells the open contests
 
 `/lobby` (`lobby`) is the contest browser and nothing else — no picks, no
@@ -763,6 +785,19 @@ SIZED FROM THE CONTEST — `blurb($contest->mode->engine($contest->settings)
 ->slateSize())`, the same on the invite landing — because Shotgun's size is
 frozen per Saturday and the room screen used to read "10 games, 10 points
 each" over a Week 0 card of seven.
+
+**The clubhouse went two-tab on 2026-08-30** (docs/plans/home-and-picks-
+pass.md): **Slate | Standings** for both kinds, legacy `?view=season|members`
+normalizing across in both hooks. Slate is pure play — the This-week table
+left it and the first pickable card rose ~300px. Standings carries the
+social whole: `x-you-strip` (the viewer's line, em dashes wherever there is
+no data), `x-invite-panel` (groups only — rooms never advertise invites;
+open while the group holds ≤3 members), the week and season tables, the
+roster folded into a Members disclosure, and `x-mode-rules` sized from the
+contest as the scoring panel. A bare visit opens to Standings once the
+entry is in and the card is live-through-final (explicit `?view=` always
+wins; the answer is asked once, at mount), and the tab polls every 30s only
+while a slate game is live, reading only our own database.
 
 ## The invite landing is the acquisition funnel
 
