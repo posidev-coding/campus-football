@@ -108,6 +108,25 @@ new class extends Component
         cardTop: 0,
         cardLeft: 0,
 
+        /* The element the spotlight is currently drawn around, kept so a
+           re-measure can find it again without walking the step list — and
+           null on the targetless install stop, which is centered. */
+        anchor: null,
+
+        /* Live only while the tour is open; see watch()/unwatch(). */
+        onMove: null,
+        observer: null,
+
+        /*
+         * Whether this redraw is FOLLOWING the page rather than stepping to
+         * a new target. The 300ms ease is what makes walking between coach
+         * marks read as one light moving; the same ease applied to a scroll
+         * correction is a spotlight lagging a third of a second behind the
+         * card, which is the same complaint as being offset. So the
+         * transition is bound rather than static, and tracking turns it off.
+         */
+        tracking: false,
+
         standalone() {
             return window.matchMedia('(display-mode: standalone)').matches
                 || window.navigator.standalone === true
@@ -136,7 +155,10 @@ new class extends Component
                 this.installPlatform = 'android'
             }
 
-            this.$nextTick(() => this.autoStart())
+            /* A task, not $nextTick, for the third time and the same
+               reason: a tick held across a Livewire commit would hold the
+               whole tour behind it. */
+            setTimeout(() => this.autoStart())
         },
 
         /*
@@ -184,7 +206,74 @@ new class extends Component
             if (this.open || this.holdoff()) return
 
             this.open = true
-            this.go(0, 1)
+            this.watch()
+
+            /*
+             * The first rect waits a turn on purpose. `x-trap.noscroll` runs
+             * off the same `open` write, and Alpine flushes its effects in a
+             * microtask AFTER this method returns — so a box measured inline
+             * was measured before disableScrolling() put `overflow: hidden`
+             * and a scrollbar's worth of `padding-right` on <html>, and the
+             * reflow that followed slid the page out from under a spotlight
+             * already pinned to the old numbers.
+             *
+             * setTimeout, NOT $nextTick, and not a style choice: Livewire
+             * holds Alpine's tick stack across a commit, and a held tick is
+             * only released by whatever commits next. Deferring the first
+             * measurement onto it lost that race on a cold Home — the tour
+             * opened with a null box, so the scrim covered the page and the
+             * card it was supposed to be spotlighting sat under it, until
+             * some later commit (the verify poll, thirty seconds out) let
+             * the tick go. A task is nobody's to hold, and it still lands
+             * in a tab that renders no frames, which rAF would not.
+             */
+            setTimeout(() => this.go(0, 1))
+        },
+
+        /*
+         * Everything that redraws the spotlight while it is already up, and
+         * nothing that MOVES the page. Re-running go() was the old answer
+         * and it fed itself on a phone: scrollIntoView collapses the iOS URL
+         * bar, the collapse fires resize, resize re-ran go(), which scrolled
+         * again. Re-measuring is idempotent; re-navigating is not.
+         */
+        watch() {
+            this.unwatch()
+
+            this.onMove = () => {
+                if (! this.open) return
+
+                this.tracking = true
+                this.measure()
+            }
+
+            /* Capture, because the page behind the scrim can scroll on its
+               own: `overflow: hidden` on <html> is a desktop scroll lock and
+               iOS Safari does not honor it for touch. A spotlight that does
+               not follow that scroll is the whole reported bug. */
+            window.addEventListener('scroll', this.onMove, { capture: true, passive: true })
+
+            /* And a layout shift with no scroll and no resize at all — an
+               image landing, a Livewire morph, a banner resolving its cloak —
+               moves the target just as far. Observing the body catches the
+               height change those make; observing <html> would not, since it
+               is the viewport's height either way. */
+            if (typeof ResizeObserver !== 'undefined') {
+                this.observer = new ResizeObserver(() => this.onMove())
+                this.observer.observe(document.body)
+            }
+        },
+
+        unwatch() {
+            if (this.onMove) {
+                window.removeEventListener('scroll', this.onMove, { capture: true })
+                this.onMove = null
+            }
+
+            if (this.observer) {
+                this.observer.disconnect()
+                this.observer = null
+            }
         },
 
         target(key) {
@@ -222,6 +311,8 @@ new class extends Component
                 this.$wire.complete()
 
                 this.step = index
+                this.anchor = null
+                this.tracking = false
                 this.box = null
                 this.place()
 
@@ -239,15 +330,41 @@ new class extends Component
             }
 
             this.step = index
+            this.anchor = el
+            this.tracking = false
             el.scrollIntoView({ block: 'center', behavior: 'instant' })
 
-            const r = el.getBoundingClientRect()
+            this.measure()
+        },
+
+        /*
+         * The geometry, and ONLY the geometry — no scrolling, no step
+         * change, so it is safe to run on every scroll and every reflow.
+         * Rounded to whole pixels because the ring is drawn on the device
+         * grid: a rect landing on a half pixel put a soft edge either side
+         * of a 2px ring, which reads as the highlight not quite containing
+         * the card it is around.
+         */
+        measure() {
+            if (this.anchor === null) return
+
+            /* Gone from the page under us — a morph can take the target
+               away. Nothing to point at, so the tour stops pointing rather
+               than framing whatever moved into its coordinates. */
+            if (! this.anchor.isConnected || this.anchor.offsetParent === null) {
+                this.box = null
+                this.place()
+
+                return
+            }
+
+            const r = this.anchor.getBoundingClientRect()
 
             this.box = {
-                top: r.top - 8,
-                left: Math.max(r.left - 8, 8),
-                width: Math.min(r.width + 16, window.innerWidth - 16),
-                height: r.height + 16,
+                top: Math.round(r.top - 8),
+                left: Math.round(Math.max(r.left - 8, 8)),
+                width: Math.round(Math.min(r.width + 16, window.innerWidth - 16)),
+                height: Math.round(r.height + 16),
             }
 
             this.place()
@@ -265,16 +382,20 @@ new class extends Component
             const width = Math.min(window.innerWidth - 32, 384)
             const below = this.box.top + this.box.height + 12
 
-            this.cardTop = below
-            this.cardLeft = Math.min(Math.max(16, this.box.left), Math.max(16, window.innerWidth - width - 16))
+            this.cardTop = Math.round(below)
+            this.cardLeft = Math.round(Math.min(Math.max(16, this.box.left), Math.max(16, window.innerWidth - width - 16)))
 
             /* Correct with the card's real height once it has rendered —
-               above the spotlight when below would run off screen. */
-            this.$nextTick(() => {
+               above the spotlight when below would run off screen. A task
+               rather than $nextTick for the same reason start() uses one:
+               Livewire holds Alpine's tick stack across a commit, and a
+               correction that arrives whenever the next commit happens is a
+               card left hanging off the bottom of the screen until then. */
+            setTimeout(() => {
                 const h = this.$refs.card?.offsetHeight ?? 0
 
                 if (this.box && below + h + 16 > window.innerHeight) {
-                    this.cardTop = Math.max(16, this.box.top - h - 12)
+                    this.cardTop = Math.round(Math.max(16, this.box.top - h - 12))
                 }
             })
         },
@@ -284,8 +405,26 @@ new class extends Component
 
         async finish() {
             this.open = false
+            this.anchor = null
+            this.unwatch()
 
+            /*
+             * Home holds the verify callout down for the length of the walk,
+             * so the end of the walk is what puts it back — and the order
+             * here is the whole of why it works. Home's showTour reads
+             * hasToured() from the database, so the announcement has to
+             * follow the stamp: dispatching first pooled both calls into one
+             * round trip, Home re-rendered against a row not yet written,
+             * and the nudge it was told to restore stayed hidden.
+             *
+             * The dispatch belongs on THIS exit rather than in complete(),
+             * which also fires on merely arriving at the install stop —
+             * refreshing Home there would shift the page behind a scrim the
+             * reader is still standing in front of.
+             */
             await this.$wire.complete()
+
+            this.$dispatch('tour-finished')
         },
     }"
     x-on:start-tour.window="startSoon()"
@@ -295,7 +434,10 @@ new class extends Component
          by the arrival stamp in go(). --}}
     x-on:cfb:install-done.window="if (open) finish()"
     x-on:keydown.escape.window="if (open) finish()"
-    x-on:resize.window="if (open) go(step, 1)"
+    {{-- Re-measure, never re-navigate: go() scrolls, and on a phone the
+         scroll collapses the URL bar, which fires resize, which would run
+         go() again. --}}
+    x-on:resize.window="if (open) measure()"
 >
     {{-- The spotlight: one element whose box-shadow IS the scrim, so the
          cutout needs no SVG mask, and moving between targets is a plain CSS
@@ -305,7 +447,8 @@ new class extends Component
         x-show="open && box !== null"
         x-transition.opacity.duration.300ms
         x-bind:style="box === null ? '' : ('top:' + box.top + 'px;left:' + box.left + 'px;width:' + box.width + 'px;height:' + box.height + 'px')"
-        class="fixed z-50 rounded-xl ring-2 ring-blue-500 transition-all duration-300 [box-shadow:0_0_0_200vmax_rgb(9_9_11_/_0.7)]"
+        x-bind:class="tracking ? '' : 'transition-all duration-300'"
+        class="fixed z-50 rounded-xl ring-2 ring-blue-500 [box-shadow:0_0_0_200vmax_rgb(9_9_11_/_0.7)]"
         aria-hidden="true"
     ></div>
 
@@ -324,11 +467,11 @@ new class extends Component
         x-transition.opacity.duration.300ms
         x-ref="card"
         x-trap.noscroll="open"
-        x-bind:class="centered ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2' : ''"
+        x-bind:class="(centered ? 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ' : '') + (tracking ? '' : 'transition-all duration-300')"
         x-bind:style="centered ? '' : ('top:' + cardTop + 'px;left:' + cardLeft + 'px')"
         {{-- max-h + vertical scroll: the install stop carries a full steps
              card, which on a short phone can outgrow the viewport. --}}
-        class="fixed z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-sm flex-col gap-3 overflow-y-auto rounded-xl bg-white p-4 shadow-xl ring-1 ring-zinc-200 transition-all duration-300 dark:bg-zinc-900 dark:ring-zinc-700"
+        class="fixed z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-sm flex-col gap-3 overflow-y-auto rounded-xl bg-white p-4 shadow-xl ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-700"
         role="dialog"
         aria-modal="true"
         aria-label="App tour"
