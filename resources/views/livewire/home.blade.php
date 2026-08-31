@@ -130,6 +130,22 @@ new class extends Component
      * what mounts the tour — whose own autoStart() then finds the overlay
      * closed and begins, spotlighting the placeholder card.
      */
+    /**
+     * The guided tour finished or was skipped. Clearing the replay flag is
+     * the load-bearing half: `showTour` short-circuits on `$tourReplay`, so
+     * a tour reached from Account's "Replay the tour" would stay "showing"
+     * after its own last card, and the verify callout it holds down would
+     * never come back. Dropping it also strips `?tour=1` from the URL, so a
+     * reload does not restart a walk the reader just closed.
+     */
+    #[On('tour-finished')]
+    public function tourFinished(): void
+    {
+        $this->tourReplay = false;
+
+        unset($this->showTour);
+    }
+
     #[On('team-followed')]
     #[On('onboarding-finished')]
     public function refreshTeams(): void
@@ -485,8 +501,21 @@ new class extends Component
 
     {{-- The verify nudge leads the page for an unverified account: it pays
          (the first Beast Latte and XP), and the clock under it is real. The
-         component renders nothing for guests and the verified. --}}
-    <livewire:verify-callout @email-verified="$refresh" />
+         component renders nothing for guests and the verified.
+
+         It also stands down for the length of the guided tour — the same
+         first-run attention budget the install and push banners wait on
+         below, and for a harder reason than tidiness. The tour's coach marks
+         are client-side geometry measured against a live page, and this row
+         sits directly ABOVE the swiper the first mark points at: a nudge
+         that resolves its cloak, polls, or is dismissed mid-walk moves the
+         glance card out from under its own highlight. Reported from a real
+         phone on 2026-08-31 as the shading not containing the card. The
+         tour's exit dispatches `tour-finished`, which is what puts the row
+         back — no navigation required. --}}
+    @unless ($this->showTour)
+        <livewire:verify-callout @email-verified="$refresh" />
+    @endunless
 
     {{-- The nudge's send-off: a one-load emerald row in the same slot,
          behind the `verify.moment` flash the verify click set. The server

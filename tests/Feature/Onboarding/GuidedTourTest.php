@@ -221,6 +221,215 @@ describe('targets', function () {
     });
 });
 
+describe('the coach marks stay on their target', function () {
+    /*
+     * Reported 2026-08-31 from a real phone: the shading did not contain the
+     * favorite-teams card, and the verify banner above it was the suspect.
+     * Both halves of the fix are client-side geometry, so these hold the
+     * layer a feature test can — the markup and the source shape — and the
+     * reasoning for each lives beside it in tour.blade.php.
+     */
+    it('holds the verify nudge down for the length of the walk', function () {
+        // Unverified AND freshly onboarded: the nudge would render, and the
+        // tour is about to walk to the card directly beneath it.
+        $walker = User::factory()->unverified()->create(['onboarded_at' => now()]);
+        $walker->followedTeams()->attach([2633 => ['position' => 1]]);
+
+        $this->actingAs($walker)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertSee('data-guided-tour', escape: false)
+            ->assertDontSee('data-verify-callout');
+    });
+
+    it('puts it back the moment the walk is finished or skipped', function () {
+        $walker = User::factory()->unverified()->create(['onboarded_at' => now()]);
+        $walker->followedTeams()->attach([2633 => ['position' => 1]]);
+
+        // Same account, one stamp later: still unverified, so the only thing
+        // that changed is the tour being over.
+        $walker->forceFill(['tour_completed_at' => now()])->save();
+
+        $this->actingAs($walker)
+            ->get(route('home'))
+            ->assertOk()
+            ->assertDontSee('data-guided-tour', escape: false)
+            ->assertSee('data-verify-callout', escape: false);
+    });
+
+    it('restores it without a navigation, on the event the tour dispatches', function () {
+        /*
+         * The reader who skips is standing on Home and never reloads it, so
+         * the row has to come back on the event alone. Skipping stamps
+         * first and announces second — see finish() — which is what this
+         * asserts by stamping before dispatching.
+         */
+        $walker = User::factory()->unverified()->create(['onboarded_at' => now()]);
+        $walker->followedTeams()->attach([2633 => ['position' => 1]]);
+
+        $home = Livewire::actingAs($walker)->test('home');
+
+        expect($home->html())->not->toContain('data-verify-callout');
+
+        $walker->forceFill(['tour_completed_at' => now()])->save();
+
+        $home->dispatch('tour-finished');
+
+        expect($home->html())->toContain('data-verify-callout');
+    });
+
+    it('lets a replay end too, rather than holding the nudge down forever', function () {
+        /*
+         * showTour short-circuits on the ?tour=1 replay flag before it ever
+         * reads hasToured(), so a replay that only stamped would leave the
+         * flag — and the hidden nudge — standing after its own last card.
+         * Clearing it also strips ?tour=1, so a reload does not restart a
+         * walk the reader just closed.
+         */
+        $replayer = User::factory()->unverified()->create([
+            'onboarded_at' => now(), 'tour_completed_at' => now(),
+        ]);
+        $replayer->followedTeams()->attach([2633 => ['position' => 1]]);
+
+        // ?tour=1, not a mount argument: #[Url] hydrates from the
+        // querystring, which is the only place the replay flag ever comes
+        // from.
+        $home = Livewire::actingAs($replayer)
+            ->withQueryParams(['tour' => '1'])
+            ->test('home');
+
+        expect($home->get('tourReplay'))->toBeTrue()
+            ->and($home->html())->not->toContain('data-verify-callout');
+
+        $home->dispatch('tour-finished');
+
+        expect($home->get('tourReplay'))->toBeFalse()
+            ->and($home->html())->toContain('data-verify-callout');
+    });
+
+    it('re-measures on movement instead of re-walking the step', function () {
+        /*
+         * go() SCROLLS; measure() only reads. Resize used to re-run go(),
+         * which fed itself on a phone — scrollIntoView collapses the iOS URL
+         * bar, the collapse fires resize, resize scrolled again. The split is
+         * the fix, and the direction of it is what a source sweep can hold:
+         * scrollIntoView must live in go() and nowhere in measure().
+         */
+        $source = file_get_contents(resource_path('views/livewire/tour.blade.php'));
+
+        expect($source)->toContain('x-on:resize.window="if (open) measure()"')
+            ->and($source)->not->toContain('x-on:resize.window="if (open) go(step, 1)"');
+
+        $measure = strpos($source, 'measure() {');
+        $next = strpos($source, 'next() {', $measure);
+        $body = substr($source, $measure, $next - $measure);
+
+        expect($measure)->not->toBeFalse()
+            ->and($body)->not->toContain('scrollIntoView')
+            ->and($body)->toContain('getBoundingClientRect');
+    });
+
+    it('follows a page that moves under it, by scroll and by reflow alike', function () {
+        /*
+         * `overflow: hidden` on <html> is x-trap.noscroll's desktop scroll
+         * lock and iOS Safari does not honor it for touch, so the page
+         * behind the scrim really can move — capture-phase, because the
+         * scroll originates on a descendant. And a reflow with no scroll and
+         * no resize at all (an image landing, a morph, a cloak resolving)
+         * moves the target just as far, which is what the observer is for.
+         * Neither delivers in an automated tab, so the wiring is the
+         * assertion; measure() is pinned as pure by the sweep above.
+         */
+        $source = file_get_contents(resource_path('views/livewire/tour.blade.php'));
+
+        expect($source)->toContain("window.addEventListener('scroll', this.onMove, { capture: true, passive: true })")
+            ->and($source)->toContain('new ResizeObserver')
+            ->and($source)->toContain('this.observer.observe(document.body)')
+            // Torn down with the tour, or the next screen pays for it.
+            ->and($source)->toContain("window.removeEventListener('scroll', this.onMove, { capture: true })")
+            ->and($source)->toContain('this.observer.disconnect()');
+    });
+
+    it('measures the first box only after the scroll lock has reflowed', function () {
+        /*
+         * x-trap.noscroll runs off the same `open` write and Alpine flushes
+         * it a microtask LATER, so a box measured inline was measured before
+         * disableScrolling() put `overflow: hidden` and a scrollbar's worth
+         * of padding-right on <html> — and the reflow that followed slid the
+         * page out from under a spotlight already pinned to the old numbers.
+         *
+         * A plain task, and NOT $nextTick: Livewire holds Alpine's tick
+         * stack across a commit, and a held tick is released only by
+         * whatever commits next. Measured through $nextTick this lost the
+         * race on a cold Home — the tour opened with a null box, the scrim
+         * covered the page, and the card it was spotlighting sat under it
+         * until the verify poll committed thirty seconds later. Caught in
+         * the device harness on 2026-08-31, which is the only place it is
+         * visible; both spellings pass every assertion but this one.
+         */
+        $source = file_get_contents(resource_path('views/livewire/tour.blade.php'));
+
+        expect($source)->toContain('setTimeout(() => this.go(0, 1))')
+            ->and($source)->not->toContain('$nextTick(() => this.go(0, 1))')
+            // Nothing on the tour's path may ride a holdable tick: the
+            // card-height correction arriving whenever the next commit
+            // happens is a card left hanging off the bottom of the screen,
+            // and a held tick at init would hold the whole tour behind it.
+            ->and($source)->not->toContain('$nextTick(')
+            ->and($source)->not->toContain("this.open = true\n            this.go(0, 1)");
+    });
+
+    it('stamps before it announces, so Home reads a written row', function () {
+        /*
+         * Home's showTour reads hasToured() from the database. Dispatching
+         * first pooled both calls into one round trip and Home re-rendered
+         * against a row not yet written, leaving the nudge it was told to
+         * restore hidden. Ordering inside an Alpine method is source, so a
+         * sweep is what holds it.
+         */
+        $source = file_get_contents(resource_path('views/livewire/tour.blade.php'));
+
+        $finish = strpos($source, 'async finish() {');
+        $stamp = strpos($source, 'await this.$wire.complete()', $finish);
+        $announce = strpos($source, "this.\$dispatch('tour-finished')", $finish);
+
+        expect($finish)->not->toBeFalse()
+            ->and($stamp)->not->toBeFalse()
+            ->and($announce)->not->toBeFalse()
+            ->and($stamp)->toBeLessThan($announce);
+    });
+
+    it('rounds the spotlight to whole pixels', function () {
+        // A rect on a half pixel puts a soft edge either side of a 2px ring,
+        // which reads as the highlight not quite containing the card.
+        $source = file_get_contents(resource_path('views/livewire/tour.blade.php'));
+
+        expect($source)->toContain('top: Math.round(r.top - 8)')
+            ->and($source)->toContain('height: Math.round(r.height + 16)');
+    });
+
+    it('eases between marks but tracks movement instantly', function () {
+        /*
+         * The 300ms ease is what makes walking between coach marks read as
+         * one light moving; the same ease applied to a scroll correction is
+         * a spotlight lagging a third of a second behind the card — the same
+         * complaint as being offset. So the transition is BOUND, not static.
+         */
+        $source = file_get_contents(resource_path('views/livewire/tour.blade.php'));
+
+        expect($source)->toContain("x-bind:class=\"tracking ? '' : 'transition-all duration-300'\"")
+            ->and($source)->toContain('this.tracking = true')
+            ->and($source)->toContain('this.tracking = false');
+
+        // And the spotlight must not also carry it statically, or the
+        // binding removes a class the element keeps anyway.
+        $spotlight = strpos($source, 'ring-2 ring-blue-500');
+        $line = substr($source, $spotlight, 120);
+
+        expect($line)->not->toContain('transition-all');
+    });
+});
+
 describe('personalization', function () {
     it("names the reader's own team in the search stop, and nobody when they skipped", function () {
         /*
