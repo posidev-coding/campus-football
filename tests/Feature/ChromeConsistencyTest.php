@@ -172,6 +172,14 @@ it('speaks the merged idioms through their components, never inlined', function 
             'components/slate-status.blade.php',
             '<x-slate-status>',
         ],
+        // The countdown has one home now. Two of them would be two
+        // answers about the same kickoff — one formatting in the browser
+        // and one on the server — and only the client-side copy is
+        // invisible to the suite.
+        'data-kick-at=' => [
+            'components/kick-clock.blade.php',
+            '<x-kick-clock>',
+        ],
     ];
 
     $violations = [];

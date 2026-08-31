@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Models\Week;
 use App\Support\Navigation;
 use App\Support\Voice;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
@@ -45,6 +46,21 @@ function pickemHomeWeek(): array
     }
 
     return [$season, $week];
+}
+
+/**
+ * The kick clock's STATIC server-rendered string — the text node, not the
+ * Alpine literal that also carries these words.
+ *
+ * The automated tab produces no rendering frames, so the end state is all
+ * a test can hold: what the server put in the element, and the timestamp
+ * beside it. Never a tick.
+ */
+function heroClockText(string $html): string
+{
+    preg_match('/data-kick-at="\d+".*?x-text="label\(\)"\s*>([^<]*)</s', $html, $matches);
+
+    return trim($matches[1] ?? '');
 }
 
 describe('the promise (outside the flag)', function () {
@@ -387,6 +403,47 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee('Make your picks');
     });
 
+    /*
+     * THE HERO'S CLOCK. Days out it says the same words the static span
+     * always said; inside the final hour it counts. The automated tab
+     * produces no rendering frames, so every assertion here is END-STATE
+     * DOM — the timestamp and the string the SERVER rendered — and never
+     * a tick.
+     */
+    it('says the kickoff in words while it is still days away', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+
+        // 3:30pm in Knoxville — the same sentence the static span it
+        // replaces rendered. The words did not change; only what happens
+        // to them in the last hour did.
+        expect(heroClockText($html))->toBe('kicks Sat 3:30pm')
+            ->and($html)->toContain('data-kick-at="'.Carbon::parse('2026-09-05 19:30:00')->getTimestamp().'"');
+    });
+
+    it('counts the hero down inside the final hour', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        // Thirty minutes out, on the Saturday itself.
+        $this->travelTo('2026-09-05 19:00:00');
+
+        $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+
+        expect(heroClockText($html))->toBe('30:00 to kickoff')
+            ->and($html)->toContain('data-kick-at="'.Carbon::parse('2026-09-05 19:30:00')->getTimestamp().'"')
+            // The handler that tears the interval down on the way out —
+            // pick-slate's own grammar, and the whole reason a countdown
+            // is allowed to hold an interval at all.
+            ->and($html)->toContain('x-on:beforeunload.window="stop()"');
+    });
+
     it('reads its own count on the Woodshed\'s black tile', function () {
         /*
          * The tile is black in BOTH schemes, and zinc-500 on it is 3.4:1 —
@@ -409,6 +466,28 @@ describe('my week (inside the flag)', function () {
         expect(ContestMode::Woodshed->palette()['onDark'])->toBeTrue()
             ->and(ContestMode::Classic->palette()['onDark'])->toBeFalse()
             ->and(ContestMode::Tiered->palette()['onDark'])->toBeFalse();
+    });
+
+    it('reads its own clock on the Woodshed\'s black tile', function () {
+        /*
+         * Break-it-back for a wrong DEFAULT. The clock takes its weight
+         * from the mode's palette through the attribute bag, and the
+         * Woodshed's tile is black in BOTH schemes: zinc-500 on it is the
+         * same 3.4:1 that made the count unreadable. Asserting the clock
+         * rendered is not asserting it can be read — so this pins the
+         * class that actually landed ON the clock element, and pins that
+         * the light-tile default did not.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Woodshed);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+
+        expect($html)->toMatch('/data-kick-at="\d+"\s+class="[^"]*\btext-zinc-400\b[^"]*"/')
+            ->and($html)->not->toMatch('/data-kick-at="\d+"\s+class="[^"]*\btext-zinc-500\b[^"]*"/')
+            ->and(ContestMode::Woodshed->palette()['body'])->toBe('text-zinc-400');
     });
 
     it('gives the hero to the slate closest to locking, and live outranks a clock', function () {

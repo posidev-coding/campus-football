@@ -766,9 +766,13 @@ new class extends Component
                         @if ($hero['state'] === 'live')
                             <x-slate-status status="live" class="text-micro" />
                         @elseif ($hero['firstKick'])
-                            <span class="shrink-0 text-micro {{ $heroPalette['body'] }}">
-                                kicks {{ $hero['firstKick']->setTimezone(config('cfb.timezone'))->format('D g:ia') }}
-                            </span>
+                            {{-- Same words days out, a running mm:ss in the
+                                 final hour. The palette's body class flows
+                                 through the attribute bag, because the
+                                 Woodshed's tile is black in both schemes and
+                                 a clock nobody can read on it is a clock
+                                 that is not there. --}}
+                            <x-kick-clock :at="$hero['firstKick']" class="shrink-0 text-micro {{ $heroPalette['body'] }}" />
                         @endif
                     </div>
 
