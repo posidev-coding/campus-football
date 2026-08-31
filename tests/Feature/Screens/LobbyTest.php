@@ -8,9 +8,13 @@ use App\Enums\LobbyFlavor;
 use App\Models\Game;
 use App\Models\Group;
 use App\Models\GroupMember;
+use App\Models\Slate;
+use App\Models\SlateGame;
 use App\Models\User;
 use App\Support\Cadence;
 use App\Support\Voice;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 
@@ -125,6 +129,99 @@ describe('the store (inside the flag)', function () {
             ->assertSee('Sat Aug 29')
             ->assertSee('1 room open')
             ->assertDontSee('Aug 22');
+    });
+
+    /*
+     * WHEN the Saturday starts. A store selling one Saturday never said
+     * when that Saturday began, so "open" and "opens in forty minutes"
+     * read the same to a shopper. One aggregate is the whole cost, and
+     * every assertion here is END-STATE DOM — the automated tab produces
+     * no rendering frames, so nothing waits on a tick.
+     */
+    it('pins the first kickoff inside the band', function () {
+        [, $week] = lobbyScreenWeek();
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        $html = Livewire::actingAs(pickemAdmin())->test('lobby')->html();
+
+        expect($html)->toContain('data-kick-at="'.Carbon::parse('2026-09-05 19:30:00')->getTimestamp().'"')
+            // The band's own words for it — the hero says "kicks", a store
+            // says when its Saturday opens.
+            ->and($html)->toMatch('/data-kick-at="\d+".*?x-text="label\(\)"\s*>First kick Sat 3:30pm</s');
+    });
+
+    it('says nothing about a kickoff when the store is empty', function () {
+        /*
+         * The Saturday is real and the band renders — this is the case
+         * that matters, because a band with a row missing is where a
+         * substituted time would hide. Null is NO DATA: no rooms, no
+         * slate, no clock, and never a countdown to the epoch.
+         */
+        lobbyScreenWeek();
+
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            ->assertSee('0 rooms open')
+            ->assertSee('No open rooms right now')
+            ->assertDontSeeHtml('data-kick-at');
+    });
+
+    it('says nothing about a kickoff once the Saturday is under way', function () {
+        /*
+         * FUTURE-ONLY. The actionable clock is the next kickoff; a store
+         * whose games have all started is one where "some of it has
+         * begun", which the rows themselves say better than a clock
+         * counting up from zero would.
+         */
+        [, $week] = lobbyScreenWeek();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        Game::query()
+            ->whereIn('id', SlateGame::query()
+                ->whereIn('slate_id', Slate::query()->whereIn('contest_id', $room->contests()->pluck('id'))->pluck('id'))
+                ->pluck('game_id'))
+            ->update(['kickoff_at' => '2026-09-01 19:30:00']);
+
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            // The room is still open and still for sale...
+            ->assertSee($room->name)
+            // ...and the clock says nothing rather than something wrong.
+            ->assertDontSeeHtml('data-kick-at');
+    });
+
+    it('asks for the first kickoff exactly once, and not at all with nothing open', function () {
+        /*
+         * The +1 pinned query is the ENTIRE cost of this clock. The slate
+         * ids come off the relations openRooms() already eager-loads, so
+         * a per-room read here would be the class of drift the shelves
+         * were built to avoid — and with nothing open there is nothing to
+         * aggregate, so the question is never asked.
+         */
+        $kickReads = function (): int {
+            DB::enableQueryLog();
+
+            Livewire::actingAs(pickemAdmin())->test('lobby');
+
+            $count = collect(DB::getQueryLog())
+                ->filter(fn (array $query) => str_contains($query['query'], 'min(')
+                    && str_contains($query['query'], 'kickoff_at'))
+                ->count();
+
+            DB::disableQueryLog();
+
+            return $count;
+        };
+
+        // The Saturday exists in both halves, so what changes between
+        // them is the STOCK and nothing else.
+        [, $week] = lobbyScreenWeek();
+
+        expect($kickReads())->toBe(0);
+
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::TwoMinuteDrill);
+
+        // TWO rooms, still one question.
+        expect($kickReads())->toBe(1);
     });
 
     it('shelves the rooms under plain headings, house first', function () {

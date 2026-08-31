@@ -6,6 +6,8 @@ use App\Enums\LobbyShelf;
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
 use App\Models\Group;
+use App\Models\Slate;
+use App\Models\SlateGame;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Brand;
@@ -13,6 +15,8 @@ use App\Support\Cadence;
 use App\Support\Lobby;
 use App\Support\LobbyCatalog;
 use App\Support\Voice;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -217,6 +221,51 @@ new class extends Component
     }
 
     /**
+     * WHEN THE SATURDAY STARTS — the earliest kickoff still ahead across
+     * every open room's published slate.
+     *
+     * A store selling one Saturday never said when that Saturday began,
+     * so "open" and "opens in forty minutes" read the same to a shopper.
+     * FUTURE-ONLY on purpose: the actionable clock is the next kickoff, and
+     * a games-already-under-way store is one where the answer is "some of
+     * it has started", which the rows themselves say better.
+     *
+     * The slate is resolved off the relations openRooms() already eager-
+     * loads, mirroring LobbyCatalog::shelves() exactly — two reads of the
+     * same Saturday that resolve it differently is how one screen ends up
+     * counting a slate the other one does not.
+     *
+     * ONE aggregate on top of that, and it is the entire cost of this
+     * clock. Null is NO DATA — an empty store, or a Saturday every game of
+     * which has kicked — and a null skips the row rather than inventing a
+     * time.
+     */
+    #[Computed]
+    public function firstKick(): ?CarbonInterface
+    {
+        $slateIds = $this->openRooms
+            ->filter(fn (Group $room) => $room->isRoom())
+            ->map(fn (Group $room) => $room->contests->first()?->slates
+                ->first(fn (Slate $slate) => $slate->week_id === $room->week_id
+                    && $slate->status === Slate::PUBLISHED)
+                ?->id)
+            ->filter()
+            ->values();
+
+        if ($slateIds->isEmpty()) {
+            return null;
+        }
+
+        $min = SlateGame::query()
+            ->join('games', 'games.id', '=', 'slate_games.game_id')
+            ->whereIn('slate_games.slate_id', $slateIds)
+            ->where('games.kickoff_at', '>', now())
+            ->min('games.kickoff_at');
+
+        return $min === null ? null : Carbon::parse($min);
+    }
+
+    /**
      * The reader's OWN invite link — codeless, so it carries nothing but
      * who is asking. `array_filter` because a handle is optional: an
      * uncredited link still opens the pitch, it just cannot say who sent
@@ -247,7 +296,7 @@ new class extends Component
             // A race to the last seat: the lobby re-renders without the
             // filled room, and the words say why.
             $this->addError($errorBag, Voice::line('contest.room.full'));
-            unset($this->openRooms, $this->publics, $this->shelves, $this->visibleShelves, $this->tabHasRooms, $this->evergreens, $this->weekContext);
+            unset($this->openRooms, $this->publics, $this->shelves, $this->visibleShelves, $this->tabHasRooms, $this->evergreens, $this->weekContext, $this->firstKick);
 
             return;
         }
@@ -294,6 +343,22 @@ new class extends Component
                         {{ $this->weekContext['count'] }} {{ Str::plural('room', $this->weekContext['count']) }} open
                     </p>
                 </div>
+
+                {{-- WHEN the Saturday starts, under the Saturday it belongs
+                     to and above the control that filters it: the band is
+                     context, the tabs are a control, and a control reads
+                     best sitting on the edge nearest the content it acts
+                     on. No kickoff still ahead, no row — an empty store and
+                     a Saturday already under way both say nothing here
+                     rather than inventing a time. --}}
+                @if ($this->firstKick !== null)
+                    <x-kick-clock
+                        :at="$this->firstKick"
+                        idle-prefix="First kick"
+                        suffix="to first kick"
+                        class="text-micro text-zinc-500 dark:text-zinc-400"
+                    />
+                @endif
 
                 {{-- WHICH KIND OF ROOM, inside the band on purpose: the band
                      is the one sticky block on this screen, so the filter
