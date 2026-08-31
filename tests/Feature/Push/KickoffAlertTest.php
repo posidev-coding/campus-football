@@ -154,6 +154,39 @@ describe('the run itself', function () {
         expect($game->fresh()->kickoff_alert_sent_at)->toBeNull();
     });
 
+    it('records a completed zero run on a tick with nothing kicking off', function () {
+        Notification::fake();
+
+        // Pinned three hours out, so the WINDOW is what finds nothing rather
+        // than an empty table. A quiet tick is the common tick here -- the
+        // sweep fires every five minutes across the whole live window -- and
+        // without the row the schedule panel cannot tell "ran, nothing to do"
+        // from "never ran", so it reads overdue nearly all the time.
+        kickoffFixture(minutesOut: 180);
+
+        $this->artisan('cfb:kickoff-alerts')->assertSuccessful();
+
+        Notification::assertNothingSent();
+
+        $run = FeedRun::where('command', 'kickoff-alerts')->latest('id')->first();
+
+        expect($run)->not->toBeNull()
+            ->and($run->status)->toBe(FeedRun::COMPLETE)
+            ->and((int) $run->records)->toBe(0);
+    });
+
+    it('keeps --dry off the ledger, kickoffs in the window or not', function () {
+        Notification::fake();
+
+        kickoffFixture();
+
+        $this->artisan('cfb:kickoff-alerts', ['--dry' => true])->assertSuccessful();
+
+        // A preview is not the scheduled run. A row here would move the
+        // panel's "last run" on a tick that sent nothing.
+        expect(FeedRun::where('command', 'kickoff-alerts')->exists())->toBeFalse();
+    });
+
     it('queues, and writes the run ledger', function () {
         Notification::fake();
 

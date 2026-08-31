@@ -36,20 +36,18 @@ class SendKickoffAlertsCommand extends Command
 
     public function handle(): int
     {
-        $games = Game::query()
-            ->startingSoon()
-            ->whereNull('kickoff_alert_sent_at')
-            ->get();
-
-        if ($games->isEmpty()) {
-            $this->info('Nothing kicks off inside the window.');
-
-            return self::SUCCESS;
-        }
-
-        $recipients = $this->recipients($games);
-
+        // A preview is not the scheduled run, so it stays off the ledger.
         if ($this->option('dry')) {
+            $games = $this->window();
+
+            if ($games->isEmpty()) {
+                $this->info('Nothing kicks off inside the window.');
+
+                return self::SUCCESS;
+            }
+
+            $recipients = $this->recipients($games);
+
             $this->table(['game', 'kickoff', 'reachable followers'], $games->map(fn (Game $game) => [
                 $game->name, $game->kickoff_at->toDateTimeString(),
                 $recipients->filter(fn (User $user) => $this->favoriteSide($user, $game) !== null)->count(),
@@ -58,7 +56,25 @@ class SendKickoffAlertsCommand extends Command
             return self::SUCCESS;
         }
 
-        $sent = $this->trackRun('kickoff-alerts', null, function () use ($games, $recipients) {
+        $alerted = 0;
+
+        $sent = $this->trackRun('kickoff-alerts', null, function () use (&$alerted): int {
+            /*
+             * A tick with nothing kicking off is still a run, and here it is
+             * the COMMON tick: the sweep fires every five minutes across the
+             * whole live window and only the handful inside a kickoff have
+             * anything to send. The completed row with a zero count is what
+             * lets the schedule panel tell "ran, nothing to do" from "never
+             * ran" -- zero is a measured fact, not a substituted default.
+             */
+            $games = $this->window();
+
+            if ($games->isEmpty()) {
+                return 0;
+            }
+
+            $alerted = $games->count();
+            $recipients = $this->recipients($games);
             $total = 0;
 
             foreach ($games as $game) {
@@ -80,9 +96,29 @@ class SendKickoffAlertsCommand extends Command
             return $total;
         });
 
-        $this->info("Alerted {$sent} ".str('follower')->plural($sent).' across '.$games->count().' '.str('game')->plural($games->count()).'.');
+        if ($alerted === 0) {
+            $this->info('Nothing kicks off inside the window.');
+
+            return self::SUCCESS;
+        }
+
+        $this->info("Alerted {$sent} ".str('follower')->plural($sent).' across '.$alerted.' '.str('game')->plural($alerted).'.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The games this tick is answering for: kicking off inside the next
+     * fifteen minutes and not yet stamped.
+     *
+     * @return Collection<int, Game>
+     */
+    private function window()
+    {
+        return Game::query()
+            ->startingSoon()
+            ->whereNull('kickoff_alert_sent_at')
+            ->get();
     }
 
     /**
