@@ -49,20 +49,33 @@ class GamedayCommand extends Command
         $saturday = $this->targetSaturday();
         $year = $calendar->currentYear();
 
-        $existing = GamedayWeek::query()
-            ->where('season_year', $year)
-            ->whereDate('saturday', $saturday->toDateString())
-            ->first();
+        $this->trackRun('gameday', $year, function () use ($force, $feed, $resolver, $saturday, $year): int {
+            $existing = GamedayWeek::query()
+                ->where('season_year', $year)
+                ->whereDate('saturday', $saturday->toDateString())
+                ->first();
 
-        if (! $force && $existing?->status->isKnown()) {
-            // The whole point of stopping early: no request, no parse, no
-            // chance of a later run disagreeing with a good answer.
-            $this->info("{$saturday->toDateString()} already resolved to {$existing->site} — nothing to do.");
+            /*
+             * THE EARLY RETURN, MOVED RATHER THAN REMOVED. The whole point of
+             * stopping here is that a resolved week costs no request, no parse
+             * and no chance of a later run disagreeing with a good answer — so
+             * this stays the first thing in the closure, above resolveWeek().
+             * Recording a run is bookkeeping; a fix that fetched in order to
+             * report that it did not need to fetch would be worse than the bug.
+             *
+             * What the row buys: the command runs five mornings a week and the
+             * first success resolves the Saturday, so this is the path four of
+             * them take. Without a row the schedule panel cannot tell "ran,
+             * already resolved" from "never ran" and reads overdue for the rest
+             * of the week, every week. Zero is a measured fact here, not a
+             * substituted default.
+             */
+            if (! $force && $existing?->status->isKnown()) {
+                $this->info("{$saturday->toDateString()} already resolved to {$existing->site} — nothing to do.");
 
-            return self::SUCCESS;
-        }
+                return 0;
+            }
 
-        $this->trackRun('gameday', $year, function () use ($feed, $resolver, $saturday, $year, $existing): int {
             [$attributes, $reason] = $this->resolveWeek($feed, $resolver, $saturday, $existing);
 
             if ($attributes === null) {
