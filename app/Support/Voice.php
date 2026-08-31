@@ -1271,6 +1271,73 @@ class Voice
             'r' => 'Nothing settled yet. Saturday pays out, and then somebody has some explaining to do.',
         ],
 
+        /*
+         * THE NEXT-UP SLOT — Home's one prioritized nudge, resolved by
+         * PickemPulse's ladder. The line carries the count or the stakes;
+         * the CTA under it stays plain in every register (never let the
+         * joke eat the instruction). Roast the empty slate, the blank
+         * box, the quiet group — never the reader.
+         */
+        'picks.next.due' => [
+            'pg' => ':picks still open. The games will not wait.',
+            'pg13' => ':picks sitting there blank. Kickoff does not care about your weekend plans.',
+            'r' => ':picks left and the clock has zero chill. Half-finished slates lose whole weeks.',
+        ],
+
+        'picks.next.fresh' => [
+            'pg' => 'The new slate is up in :group.',
+            'pg13' => "Fresh slate just dropped in :group. The spreads aren't getting any friendlier.",
+            'r' => 'New slate in :group, and every game on it is ready to embarrass somebody.',
+        ],
+
+        'picks.next.tiebreaker' => [
+            'pg' => 'One number between you and a finished entry.',
+            'pg13' => "Everything's picked but the tiebreaker. Don't lose a week to a blank box.",
+            'r' => 'A full slate of picks and a blank tiebreaker — half-point weeks die on that box. Type the number.',
+        ],
+
+        'picks.next.build' => [
+            'pg' => ':group is waiting on this week\'s slate.',
+            'pg13' => 'Commissioner, :group has nothing to pick. The slate will not build itself.',
+            'r' => ':group is staring at an empty week. Build the slate before somebody starts a committee.',
+        ],
+
+        'picks.next.invite' => [
+            'pg' => ':group is quiet. Invite your people.',
+            'pg13' => 'Right now :group is a group chat with extra steps. Send the link.',
+            'r' => 'A trash-talk group with nobody in it is a diary with standings. :group needs bodies — send the link.',
+        ],
+
+        'picks.next.live' => [
+            'pg' => 'Games are live. See where your picks stand.',
+            'pg13' => 'The scores are moving and your picks are out there fending for themselves.',
+            'r' => 'Your picks are live and a couple of them are already letting you down. Go look.',
+        ],
+
+        'picks.next.won' => [
+            'pg' => 'You won the week in :group. Take a bow.',
+            'pg13' => 'You won the week in :group. Modesty is optional and not recommended.',
+            'r' => 'You won the whole damn week in :group. Somebody in there needs to hear about it.',
+        ],
+
+        'picks.next.settled' => [
+            'pg' => 'The week is official. See where you landed.',
+            'pg13' => "The week's official, and the standings don't lie.",
+            'r' => 'Results are in and the receipts are on the table. Go collect, or go quiet.',
+        ],
+
+        'picks.next.locked' => [
+            'pg' => "Entry's in. First kickoff :time.",
+            'pg13' => "Entry's in. Nothing left to do but doubt every pick until :time.",
+            'r' => "Entry's in. Sit there and marinate in those picks until :time.",
+        ],
+
+        'picks.next.join' => [
+            'pg' => ':rooms open this Saturday. Grab a seat.',
+            'pg13' => ":rooms open and your name's on none of them. Saturday is coming either way.",
+            'r' => ":rooms open and you're loitering in the parking lot. Get in there and pick some games.",
+        ],
+
         'lobby.needs.subheading' => [
             'pg' => 'Slates are open — get your picks in before kickoff.',
             'pg13' => "Open slates don't pick themselves. Kickoff is the deadline.",
@@ -1723,6 +1790,16 @@ class Voice
          * affordance, and a joke standing between a writer and the box they
          * type in is friction, not voice.
          */
+        /*
+         * THE TALK DOORS — the link-row into a contest's own thread.
+         * Kind-free on purpose: one line serves groups and rooms both.
+         */
+        'talk.door.hint' => [
+            'pg' => 'Argue the calls with your people.',
+            'pg13' => 'Where the calls get argued. Bring receipts.',
+            'r' => 'Where the calls get argued and the receipts get read. Come armed.',
+        ],
+
         'talk.house_rule' => [
             'pg' => 'Roast the pick, the team, the record. Never the person.',
             'pg13' => 'Roast the pick, the team, the record — never the person.',

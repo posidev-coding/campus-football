@@ -1,13 +1,16 @@
 <?php
 
 use App\Actions\GrantWalletEntry;
+use App\Actions\PublishSlate;
 use App\Actions\ReorderFollowedTeams;
 use App\Enums\ContentRating;
+use App\Enums\ContestMode;
 use App\Jobs\SyncTeamNews;
 use App\Models\Article;
 use App\Models\Conference;
 use App\Models\Game;
 use App\Models\GamePredictor;
+use App\Models\GroupMember;
 use App\Models\Season;
 use App\Models\Standing;
 use App\Models\Team;
@@ -868,5 +871,111 @@ describe('the wallet pays', function () {
             ->assertOk()
             ->assertSee('125 XP')
             ->assertSee('1 Beast Latte —');
+    });
+});
+
+describe('the picks slot and the foot door', function () {
+    it('shows a member their own slates instead of the teaser', function () {
+        config()->set('cfb.pickem_open', true);
+
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $this->actingAs($commissioner)->get(route('home'))
+            ->assertOk()
+            ->assertSee('Your picks')
+            ->assertSee($group->name)
+            ->assertSee('All your picks')
+            // The strip inherits the teaser's tour anchor.
+            ->assertSee('data-tour="room"', escape: false)
+            ->assertDontSee('Coming soon');
+    });
+
+    it('keeps the teaser for guests and for members with no cards', function () {
+        config()->set('cfb.pickem_open', false);
+
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee('Coming soon')
+            ->assertDontSee('Your picks');
+
+        // Flag open, signed in, but no memberships: still the teaser, and
+        // still the tour anchor.
+        config()->set('cfb.pickem_open', true);
+
+        $this->actingAs(User::factory()->create())->get(route('home'))
+            ->assertOk()
+            ->assertSee('data-tour="room"', escape: false)
+            ->assertDontSee('Your picks');
+    });
+
+    it('ends the page on a door, not an article', function () {
+        config()->set('cfb.pickem_open', true);
+        $member = User::factory()->create();
+
+        $this->actingAs($member)->get(route('home'))
+            ->assertOk()
+            ->assertSee('Find a room');
+
+        config()->set('cfb.pickem_open', false);
+
+        $this->actingAs(User::factory()->create())->get(route('home'))
+            ->assertOk()
+            ->assertSee('Standings and rankings')
+            ->assertDontSee('Find a room');
+    });
+
+    it('trims Latest news to three, with the More door intact', function () {
+        foreach (range(1, 5) as $i) {
+            Article::create([
+                'espn_id' => 900 + $i,
+                'headline' => 'Story number '.$i,
+                'published_at' => now()->subMinutes($i),
+            ]);
+        }
+
+        $this->get(route('home'))
+            ->assertOk()
+            ->assertSee('Story number 1')
+            ->assertSee('Story number 3')
+            ->assertDontSee('Story number 4')
+            ->assertSee('More');
+    });
+});
+
+describe('the next-up slot', function () {
+    it('shows a member with picks due the one thing to do next', function () {
+        config()->set('cfb.pickem_open', true);
+
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+        // The onboarding CTA owns the slot's spot at zero follows — stamp
+        // the commissioner onboarded so the ladder gets the floor.
+        $commissioner->forceFill(['onboarded_at' => now()])->save();
+
+        $this->actingAs($commissioner)->get(route('home'))
+            ->assertOk()
+            // The plain CTA, and the fresh-slate line naming the group.
+            ->assertSee('Make your picks')
+            ->assertSee(Voice::line('picks.next.fresh', ['group' => $group->name], for: $commissioner))
+            // The bottom nav's Picks tab wears the presence dot too.
+            ->assertSee('Picks waiting');
+    });
+
+    it('yields the slot to the onboarding CTA at zero follows', function () {
+        config()->set('cfb.pickem_open', true);
+
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $member = User::factory()->create();
+        GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+        // Zero follows, never onboarded: following a team IS the next
+        // thing, and the two cards must not stack.
+        $this->actingAs($member)->get(route('home'))
+            ->assertOk()
+            ->assertSee('Add your team')
+            ->assertDontSee('Make your picks');
     });
 });

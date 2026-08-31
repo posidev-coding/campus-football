@@ -13,6 +13,7 @@ use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateEntry;
 use App\Models\SlateGame;
+use App\Support\PickemPulse;
 use App\Support\Voice;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
@@ -274,6 +275,10 @@ trait MakesPicks
 
         if ($this->entryComplete($slate)) {
             $this->entryJustCompleted = $slate->id;
+
+            // The nav dot's cache may buy five minutes of anything except
+            // a nag over this finished entry.
+            PickemPulse::forgetAttention(auth()->user());
         }
     }
 
