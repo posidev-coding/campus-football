@@ -404,6 +404,23 @@ describe('the Sync Health page', function () {
             ->assertSee('cfb:summaries:live');
     });
 
+    it('renders the pickem sweeps on the panel, not merely in the reader', function () {
+        /*
+         * The card's own claim was about the PANEL, and a task reaching
+         * SyncSchedule::tasks() is not yet a row somebody can see — the
+         * widget builds its records in a closure. So the sweeps that keep the
+         * weekly loop honest are asserted where an operator would look for
+         * them, on the surface that is supposed to answer "did this run".
+         */
+        Livewire::actingAs($this->admin)
+            ->test(ScheduledSyncTasks::class)
+            ->assertOk()
+            ->assertSee('pickem:remind')
+            ->assertSee('pickem:settle')
+            ->assertSee('pickem:publish-slates')
+            ->assertSee('pickem:open-lobbies');
+    });
+
     it('shows the request spend and a coverage verdict', function () {
         Livewire::actingAs($this->admin)
             ->test(SyncSpend::class)

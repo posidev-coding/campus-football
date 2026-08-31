@@ -4,6 +4,7 @@ use App\Actions\PublishSlate;
 use App\Enums\ContentRating;
 use App\Enums\ContestMode;
 use App\Jobs\SendPickReminder;
+use App\Models\FeedRun;
 use App\Models\Game;
 use App\Models\Group;
 use App\Models\GroupMember;
@@ -296,6 +297,41 @@ it('says nothing to anyone MakePick would refuse', function () {
 
     Notification::assertNotSentTo($unverified, PickReminderNotification::class);
     Notification::assertNotSentTo($handleless, PickReminderNotification::class);
+});
+
+it('records a completed zero run on a tick with no slate due', function () {
+    [$slate] = reminderSlate(members: 1);
+
+    // Thirty-two hours out — outside wave one's 24-hour lead, so the WINDOW
+    // is what finds nothing rather than an empty table. This is most ticks:
+    // the sweep fires every fifteen minutes from 08:00 to 23:45 in season.
+    $this->travelTo('2026-09-04 08:00:00');
+
+    $this->artisan('pickem:remind', ['--wave' => PickReminders::WAVE_REMIND])->assertSuccessful();
+
+    Notification::assertNothingSent();
+    expect($slate->fresh()->picks_reminded_at)->toBeNull();
+
+    // Without the row the schedule panel cannot tell "ran, nothing due" from
+    // "never ran" — and this sweep only reaches that panel at all now that
+    // `pickem:` is a reported prefix, so it would have arrived reading
+    // overdue on nearly every tick.
+    $run = FeedRun::latestFor('pick-reminders');
+
+    expect($run)->not->toBeNull()
+        ->and($run->status)->toBe(FeedRun::COMPLETE)
+        ->and((int) $run->records)->toBe(0);
+});
+
+it('keeps a dry run off the ledger, slates due or not', function () {
+    reminderSlate(members: 1);
+    $this->travelTo('2026-09-04 20:00:00');
+
+    $this->artisan('pickem:remind', ['--dry' => true])->assertSuccessful();
+
+    // A preview is not the scheduled run. A row here would move the panel's
+    // "last run" on a tick that sent nothing and stamped nothing.
+    expect(FeedRun::where('command', 'pick-reminders')->exists())->toBeFalse();
 });
 
 it('sends nothing and stamps nothing on a dry run', function () {

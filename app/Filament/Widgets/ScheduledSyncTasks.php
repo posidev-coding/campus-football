@@ -9,7 +9,7 @@ use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
 
 /**
- * Every cfb entry in the schedule, with its latest ledger row.
+ * Every cfb and pick'em entry in the schedule, with its latest ledger row.
  *
  * Introspected from `Schedule::events()` rather than a hand-kept list, so a
  * task added to routes/console.php appears here without anyone remembering a
