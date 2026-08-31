@@ -1261,6 +1261,26 @@ class Voice
         ],
 
         /*
+         * YOU WON A WEEK — the payoff banner atop Results, and the only
+         * celebration in the house that is not on the pick surface. It
+         * ARRIVES rather than firing on an act, so the line has to carry
+         * the whole moment on its own: what you won, where, and what it
+         * paid. Roast the field and the recount, never the reader — this
+         * is the one screen where the reader has already won.
+         */
+        'picks.payoff.banner' => [
+            'pg' => 'You won the week in :group — :points points. Take a bow.',
+            'pg13' => 'You took the week in :group. :points points, and the standings agree.',
+            'r' => 'You won the whole week in :group. :points points, and somebody in there is still demanding a recount.',
+        ],
+
+        'picks.payoff.banner_many' => [
+            'pg' => 'You won the week in :count groups. Take the victory lap.',
+            'pg13' => 'Winner in :count groups this week. Act like you expected it.',
+            'r' => ':count groups, :count wins. Go collect your receipts everywhere at once.',
+        ],
+
+        /*
          * THE RESULTS TAB, before anything has settled. Not an apology —
          * a Saturday that has not happened yet, said plainly enough that
          * nobody reads the empty tab as a broken one.

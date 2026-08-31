@@ -610,6 +610,170 @@ describe('my week (inside the flag)', function () {
             ->assertSee('Winner');
     });
 
+    /*
+     * MOMENTUM ON RESULTS. Existing data only: where you came in, and
+     * the week you took. No streaks, no new backend concept — the
+     * screen already held both numbers and printed neither.
+     */
+    it('says where you came in on a week nobody won for you', function () {
+        // Two entries, mine second — the Winner badge is not in play, so
+        // the place is the only thing that says how the week went.
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        [, $week] = pickemSeasonWeek();
+        $slate = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'status' => Slate::SETTLED,
+            'settled_at' => now()->subDay(),
+        ]);
+
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $commissioner->id,
+            'final_points' => 40,
+            'won' => false,
+        ]);
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => User::factory()->create()->id,
+            'final_points' => 90,
+            'won' => true,
+        ]);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->set('view', 'results')
+            ->assertSee('2nd of 2')
+            ->assertSee('40 pts')
+            // Somebody ELSE took it, so no badge and no banner here.
+            ->assertDontSee('Winner')
+            ->assertDontSeeHtml('wire:key="payoff-banner"');
+    });
+
+    it('never asks the week tab to pay for the Results tab\'s places', function () {
+        /*
+         * The places query is the ONE read this pass adds to Results, and
+         * a computed is only lazy while nothing on the other branch
+         * touches it. A stray reference from the week's template would be
+         * invisible in review and cost every reader a read on every load.
+         */
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        [, $week] = pickemSeasonWeek();
+        $slate = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'status' => Slate::SETTLED,
+            'settled_at' => now()->subDay(),
+        ]);
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $commissioner->id,
+            'final_points' => 40,
+        ]);
+
+        $placeReads = function (string $view) use ($commissioner): int {
+            DB::enableQueryLog();
+
+            Livewire::actingAs($commissioner)->withQueryParams(['view' => $view])->test('pickem-home');
+
+            $count = collect(DB::getQueryLog())
+                ->filter(fn (array $query) => str_contains($query['query'], 'final_points'))
+                ->count();
+
+            DB::disableQueryLog();
+
+            return $count;
+        };
+
+        expect($placeReads('week'))->toBe(0)
+            ->and($placeReads('results'))->toBe(1);
+    });
+
+    it('celebrates a week you won, once per session', function () {
+        /*
+         * The house's second celebration — and the first that is not on
+         * the pick surface. The entrance is spent against the WINS, in
+         * the session: a banner that arrives rather than firing on an act
+         * would otherwise throw a party on every navigation back to
+         * Results, for a week the reader already knows they won.
+         */
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $group->update(['name' => 'Rocky Top Rejects']);
+        [, $week] = pickemSeasonWeek();
+        $slate = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'status' => Slate::SETTLED,
+            'settled_at' => now()->subDay(),
+        ]);
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $commissioner->id,
+            'final_points' => 92,
+            'won' => true,
+        ]);
+
+        Livewire::actingAs($commissioner)->withQueryParams(['view' => 'results'])->test('pickem-home')
+            ->assertSeeHtml('wire:key="payoff-banner"')
+            ->assertSee(Voice::line('picks.payoff.banner', [
+                'group' => 'Rocky Top Rejects',
+                'points' => 92,
+            ], for: $commissioner))
+            ->assertSeeHtml('motion-safe:animate-entry-in');
+
+        // Same session, same wins: the banner stays — it is the payoff,
+        // not a toast — and the entrance is spent.
+        Livewire::actingAs($commissioner)->withQueryParams(['view' => 'results'])->test('pickem-home')
+            ->assertSeeHtml('wire:key="payoff-banner"')
+            ->assertDontSeeHtml('motion-safe:animate-entry-in');
+    });
+
+    it('says how many when the week was won in more than one room', function () {
+        $commissioner = pickemAdmin();
+        [, $week] = pickemSeasonWeek();
+
+        foreach (['Rocky Top Rejects', 'The Back Porch'] as $name) {
+            $group = Group::factory()->create(['name' => $name]);
+            GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $commissioner->id]);
+            $contest = Contest::factory()->create(['group_id' => $group->id]);
+            $slate = Slate::factory()->create([
+                'contest_id' => $contest->id,
+                'week_id' => $week->id,
+                'status' => Slate::SETTLED,
+                'settled_at' => now()->subDay(),
+            ]);
+            SlateEntry::factory()->create([
+                'slate_id' => $slate->id,
+                'user_id' => $commissioner->id,
+                'final_points' => 92,
+                'won' => true,
+            ]);
+        }
+
+        Livewire::actingAs($commissioner)->withQueryParams(['view' => 'results'])->test('pickem-home')
+            ->assertSee(Voice::line('picks.payoff.banner_many', ['count' => 2], for: $commissioner));
+    });
+
+    it('draws no banner over a week nobody won', function () {
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        [, $week] = pickemSeasonWeek();
+        $slate = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'status' => Slate::SETTLED,
+            'settled_at' => now()->subDay(),
+        ]);
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $commissioner->id,
+            'final_points' => 40,
+            'won' => false,
+        ]);
+
+        Livewire::actingAs($commissioner)->withQueryParams(['view' => 'results'])->test('pickem-home')
+            ->assertSee('Last week')
+            ->assertDontSeeHtml('wire:key="payoff-banner"');
+    });
+
     it('names the next rung and the climb to it, in one compacted row', function () {
         $user = User::factory()->create(['admin' => true, 'content_rating' => ContentRating::Pg13]);
         app(GrantWalletEntry::class)->handle($user, 1000, 0, 'test-seed', 'test-seed');

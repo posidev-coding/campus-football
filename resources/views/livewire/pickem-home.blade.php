@@ -18,6 +18,8 @@ use App\Support\Lobby;
 use App\Support\SlateFeasibility;
 use App\Support\RankLadder;
 use App\Support\Voice;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Number;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -522,6 +524,92 @@ new class extends Component
     }
 
     /**
+     * MY PLACE IN EACH OF LAST WEEK'S FIELDS — "3rd of 9" — from ONE
+     * query across every slate on the tab, never one per row. History's
+     * own pattern, because two screens printing the same sentence must
+     * compute it the same way.
+     *
+     * Read ONLY from the Results branch. Computeds are lazy, so the week
+     * tab never pays for it — and that laziness is pinned by a query
+     * count, because a stray reference from the week's template would be
+     * invisible here and cost every reader a read on every load.
+     *
+     * @return array<int, array{place: int, of: int}> keyed by slate id
+     */
+    #[Computed]
+    public function places(): array
+    {
+        $slateIds = $this->lastWeek->pluck('slate_id');
+
+        if ($slateIds->isEmpty()) {
+            return [];
+        }
+
+        return SlateEntry::query()
+            ->whereIn('slate_id', $slateIds)
+            ->get(['slate_id', 'user_id', 'final_points'])
+            ->groupBy('slate_id')
+            ->map(function (Collection $field) {
+                $ranked = $field->sortByDesc(fn (SlateEntry $entry) => $entry->final_points ?? 0)->values();
+                $mine = $ranked->search(fn (SlateEntry $entry) => $entry->user_id === auth()->id());
+
+                return [
+                    'place' => $mine === false ? $ranked->count() : $mine + 1,
+                    'of' => $ranked->count(),
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * THE WEEKS YOU WON, inside the payoff window. A projection of
+     * lastWeek() — zero new queries — and NULL when there are none,
+     * because the banner is a celebration and there is nothing to
+     * celebrate quietly.
+     *
+     * @return \Illuminate\Support\Collection<int, SlateEntry>|null
+     */
+    #[Computed]
+    public function payoff(): ?Collection
+    {
+        $won = $this->lastWeek->filter(fn (SlateEntry $entry) => $entry->won)->values();
+
+        return $won->isEmpty() ? null : $won;
+    }
+
+    /**
+     * Is this the FIRST time this session has seen these wins?
+     *
+     * The pick surface's celebration is fired by the act that earns it,
+     * so a protected property surviving one response is enough. A payoff
+     * banner ARRIVES instead — the reader did nothing to summon it — so
+     * the entrance has to be spent against the wins themselves, in the
+     * session, or every navigation back to Results replays a party for a
+     * week they already know they won.
+     *
+     * Touched ONLY from the banner's own markup: nothing is marked seen
+     * until the banner has actually rendered.
+     */
+    #[Computed]
+    public function payoffFresh(): bool
+    {
+        if ($this->payoff === null) {
+            // No wins, nothing fresh — and nothing to write down either.
+            return false;
+        }
+
+        $ids = $this->payoff->pluck('id')->all();
+        $seen = session('picks.payoff.seen', []);
+        $fresh = array_diff($ids, $seen) !== [];
+
+        if ($fresh) {
+            session(['picks.payoff.seen' => array_values(array_unique([...$seen, ...$ids]))]);
+        }
+
+        return $fresh;
+    }
+
+    /**
      * HOW MANY rooms are open this Saturday — the teaser's whole payload.
      *
      * A COUNT, never the inventory: the browser owns the graph, and a
@@ -826,6 +914,40 @@ new class extends Component
 
         {{-- ================================ RESULTS ================= --}}
         @if ($this->activeView === 'results')
+        {{-- YOU WON A WEEK. The house's second celebration, and the first
+             one that is not on the pick surface: everything else here
+             reports, and a week you took should not arrive as a row in a
+             list beside a week you lost.
+
+             The entrance is spent ONCE per session against the wins
+             themselves. A celebration fired by an ACT can live on a
+             protected property for one response — this one ARRIVES, so
+             replaying it on every navigation back to Results would be a
+             party for a week the reader already knows they won. The icon
+             and the words carry the state; the emerald is the third
+             signal, never the only one. --}}
+        @if ($this->payoff !== null)
+            @php
+                $payoffLine = $this->payoff->count() === 1
+                    ? Voice::line('picks.payoff.banner', [
+                        'group' => $this->payoff->first()->slate->contest->group->name,
+                        'points' => $this->payoff->first()->final_points ?? 0,
+                    ])
+                    : Voice::line('picks.payoff.banner_many', ['count' => $this->payoff->count()]);
+            @endphp
+
+            @if ($payoffLine !== '')
+                <div
+                    wire:key="payoff-banner"
+                    role="status"
+                    class="flex items-center gap-2.5 rounded-xl bg-emerald-50 px-3 py-2.5 ring-1 ring-emerald-200 dark:bg-emerald-950/30 dark:ring-emerald-900 {{ $this->payoffFresh ? 'motion-safe:animate-entry-in' : '' }}"
+                >
+                    <flux:icon.trophy class="size-4 shrink-0 text-emerald-600 dark:text-emerald-500" />
+                    <p class="min-w-0 flex-1 text-sm text-zinc-700 dark:text-zinc-300">{{ $payoffLine }}</p>
+                </div>
+            @endif
+        @endif
+
         {{-- The Monday payoff, compact: last week's settled results while
              they are still the conversation. --}}
         @if ($this->lastWeek->isNotEmpty())
@@ -839,11 +961,20 @@ new class extends Component
                         class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-2.5 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600"
                     >
                         <p class="min-w-0 truncate text-sm font-medium">{{ $entry->slate->contest->group->name }}</p>
+                        {{-- WHERE YOU CAME IN, History's own sentence and
+                             History's own precedence: the Winner badge
+                             says it better than "1st of 9" does, so the
+                             place only speaks for the weeks nobody won
+                             for you. Points last, the way the archive
+                             prints them. --}}
+                        @php $place = $this->places[$entry->slate_id] ?? null; @endphp
                         <p class="flex shrink-0 items-center gap-2 text-sm">
-                            <span class="tabular font-semibold">{{ $entry->final_points ?? 0 }} pts</span>
                             @if ($entry->won)
                                 <flux:badge size="sm" color="green">Winner</flux:badge>
+                            @elseif ($place !== null)
+                                <span class="tabular text-micro text-zinc-500">{{ Number::ordinal($place['place']) }} of {{ $place['of'] }}</span>
                             @endif
+                            <span class="tabular font-semibold">{{ $entry->final_points ?? 0 }} pts</span>
                         </p>
                     </a>
                 @endforeach

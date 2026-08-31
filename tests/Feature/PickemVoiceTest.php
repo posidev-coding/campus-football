@@ -96,6 +96,10 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     // The pick surface's one unprompted line, on the act that finishes
     // the entry.
     'picks.entry.celebration',
+    // The weekly-win payoff banner atop Results, singular and plural —
+    // the one celebration that arrives rather than firing on an act.
+    'picks.payoff.banner',
+    'picks.payoff.banner_many',
     'picks.results.empty',
     'picks.next.due',
     'picks.next.fresh',
