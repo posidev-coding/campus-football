@@ -957,7 +957,9 @@ describe('the next-up slot', function () {
             ->assertOk()
             // The plain CTA, and the fresh-slate line naming the group.
             ->assertSee('Make your picks')
-            ->assertSee(Voice::line('picks.next.fresh', ['group' => $group->name], for: $commissioner));
+            ->assertSee(Voice::line('picks.next.fresh', ['group' => $group->name], for: $commissioner))
+            // The bottom nav's Picks tab wears the presence dot too.
+            ->assertSee('Picks waiting');
     });
 
     it('yields the slot to the onboarding CTA at zero follows', function () {

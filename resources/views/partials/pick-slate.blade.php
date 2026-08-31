@@ -191,6 +191,13 @@
 
             <p class="min-w-0 flex-1 text-sm text-zinc-700 dark:text-zinc-300">
                 {{ App\Support\Voice::line('picks.entry.celebration') }}
+                {{-- The highest-intent moment the surface produces walks
+                     straight into the thread. Plain words, own door. --}}
+                <a
+                    href="{{ route('pickem.talk', $slate->contest->group) }}"
+                    wire:navigate
+                    class="font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+                >Talk it over</a>
             </p>
 
             <flux:button
