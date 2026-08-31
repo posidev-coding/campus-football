@@ -194,6 +194,36 @@
     }
 }
 
+/* The launch glow — the curtain's only flare, and the reason the boot splash
+   no longer reads as a black screen with a logo dropped on it. Painted in
+   Lager through `color-mix` so the App Branding page retints it with
+   everything else, and sized in `rem` rather than percentages so it stays the
+   same soft wash on a phone and a tablet. Wear it on a `-z-10` child: the
+   curtain's own `z-50` opens a stacking context, so the glow lands over
+   `bg-zinc-950` and under every in-flow child without a single `relative`. */
+.cfb-boot-glow {
+    background: radial-gradient(
+        38rem 24rem at 50% 42%,
+        color-mix(in oklab, var(--color-brand-lager) 22%, transparent),
+        transparent 70%
+    );
+}
+
+/* The mark's entrance. Same contract as cfb-entry-in: a `from`-only keyframe,
+   so the automated tab (which renders no frames) and a reader who asked for
+   less motion both simply see the lockup arrive. Nothing here may be
+   load-bearing for visibility — the curtain is up before Alpine exists. */
+@keyframes cfb-boot-rise {
+    from {
+        opacity: 0;
+        transform: scale(0.94);
+    }
+}
+
+@utility animate-boot-rise {
+    animation: cfb-boot-rise 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* The entry-in celebration's one entrance. A KEYFRAME rather than a
    transition on x-show, so the row is opaque in its own right and a tab that
    never runs the animation (or a reader who asked for less motion — the
