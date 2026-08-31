@@ -90,6 +90,53 @@ it('skips games that already have a summary', function () {
     Bus::assertBatched(fn ($batch) => $batch->jobs->count() === 2);
 });
 
+it('refuses --missing and --force together rather than picking one', function () {
+    /*
+     * `--missing` used to be a flag nothing read: the selector inferred it
+     * from the ABSENCE of `--force`, so the pair silently resolved to
+     * refetch-everything — the opposite of what the operator asked for, on
+     * the one feed where being wrong costs a request and 544 KB per game.
+     * A contradiction is an operator error, not a preference to resolve.
+     */
+    GameSummary::create([
+        'game_id' => $this->games->first()->id,
+        'is_final' => true,
+        'synced_at' => now(),
+    ]);
+
+    Bus::fake();
+
+    $this->artisan('cfb:summaries --year=2025 --missing --force')
+        ->expectsOutputToContain('--missing and --force are opposites')
+        ->assertFailed();
+
+    // Nothing queued and nothing spent — the refusal is before the selector.
+    Bus::assertNothingBatched();
+});
+
+it('still takes each flag on its own, which is what every caller passes', function () {
+    /*
+     * The guard must not cost the two forms the scheduler, Sync Health, the
+     * coverage remedy and `cfb:migrate` actually use. One game already has a
+     * summary, so the two answers differ: 2 games missing, 3 games forced.
+     */
+    GameSummary::create([
+        'game_id' => $this->games->first()->id,
+        'is_final' => true,
+        'synced_at' => now(),
+    ]);
+
+    Bus::fake();
+
+    $this->artisan('cfb:summaries --year=2025 --missing')->assertSuccessful();
+    Bus::assertBatched(fn ($batch) => $batch->jobs->count() === 2);
+
+    Bus::fake();
+
+    $this->artisan('cfb:summaries --year=2025 --force')->assertSuccessful();
+    Bus::assertBatched(fn ($batch) => $batch->jobs->count() === 3);
+});
+
 it('reports nothing to do rather than queueing an empty batch', function () {
     foreach ($this->games as $game) {
         GameSummary::create(['game_id' => $game->id, 'is_final' => true, 'synced_at' => now()]);
