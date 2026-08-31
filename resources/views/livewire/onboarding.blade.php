@@ -167,6 +167,43 @@ new class extends Component
         $index = array_search($this->step, self::STEPS, true);
 
         $this->step = self::STEPS[$index + 1] ?? 'credentials';
+
+        if ($this->step === 'credentials') {
+            $this->reachedCredentials();
+        }
+    }
+
+    /**
+     * The middle of the funnel: they answered everything we ask BEFORE the
+     * email and password, and the credentials form is now in front of them.
+     *
+     * There was nothing between `onboarding_opened` and
+     * `onboarding_registered`, so a week reading 225 opened and 5 registered
+     * could not say whether 220 people balked at their own name, at being
+     * asked to pick a trash-talk register before anything was asked of them,
+     * or at the password rules. This one boundary splits that in two, and two
+     * halves is what makes it actionable.
+     *
+     * Here and nowhere else: `next()` is the only door into the credentials
+     * pane — `back()` cannot reach it from the picker, which sits past
+     * registration, and `register()` is the only way out of it. UxFunnelTest
+     * sweeps app/ and resources/views/ and fails on a second emitter.
+     *
+     * Guests only and once per browser per day, on the same session-id hash
+     * `begin()` dedupes with, so the pair divides honestly: somebody who
+     * backs up to fix a typo and comes forward again has arrived here once,
+     * exactly as they opened the wizard once.
+     */
+    private function reachedCredentials(): void
+    {
+        if (auth()->check()) {
+            return;
+        }
+
+        app(RecordUxEvent::class)->handleOnce(
+            UxSignal::OnboardingCredentialsReached,
+            hash('sha256', session()->getId()),
+        );
     }
 
     public function back(): void
@@ -377,17 +414,49 @@ new class extends Component
                 if (draft[field]) $wire.set(field, draft[field], false)
             }
 
-            /*
-             * The STEP survives too — mount() resets to 'name', so a
-             * returning visitor re-clicked through screens they had
-             * already answered. 'rating' is the only value worth
-             * restoring: 'name' is the default, and 'credentials'/'team'
-             * stay excluded BY CONSTRUCTION — a draft must never
-             * deep-link past the registration door.
-             */
-            if (draft.step === 'rating') $wire.set('step', 'rating', false)
-
             $wire.$watch('step', (value) => this.saveStep(value))
+        },
+
+        /*
+         * Put a returning visitor back on the screen they reached — mount()
+         * resets to 'name', so otherwise they re-click through questions they
+         * have already answered. 'rating' is the only value worth restoring:
+         * 'name' is the default, and 'credentials'/'team' stay excluded BY
+         * CONSTRUCTION — a draft must never deep-link past the registration
+         * door.
+         *
+         * A LIVE set, and that is the whole repair. The fields above are
+         * BOUND to elements, so a deferred set repaints them for free; `step`
+         * is bound to nothing — it picks a server-rendered pane — so a
+         * deferred set moved the component's state and repainted NOTHING. The
+         * reader was left looking at the FIRST pane and its counter while the
+         * server already believed they were on 'rating', so one press of
+         * Continue validated the RATING rules and dropped them onto the
+         * credentials form: the trash-talk question skipped outright, the
+         * name they had just retyped never checked, and the funnel counting a
+         * credentials arrival for somebody who never saw the pane before it.
+         * Only a browser at a real width shows this; both sets look identical
+         * in the component's state.
+         *
+         * On OPEN rather than at boot, because restore() runs on every guest
+         * Home load and this one costs a round trip — only somebody who came
+         * back to finish should spend it.
+         *
+         * AFTER begin() resolves, not beside it. Livewire batches calls made
+         * in the same tick into ONE commit, and begin() is #[Renderless] —
+         * which suppresses the render for the whole commit, not just its own
+         * call, so a set batched alongside it moves `step` and paints nothing,
+         * which is the same silent failure over again. Chaining puts the set
+         * in its own commit, and reads in the right order besides: count the
+         * open, then restore the screen.
+         */
+        resume() {
+            if (@js(auth()->check())) return
+
+            let draft = {}
+            try { draft = JSON.parse(localStorage.getItem(this.key) || '{}') } catch (e) { return }
+
+            if (draft.step === 'rating') $wire.set('step', 'rating')
         },
 
         saveStep(value) {
@@ -434,7 +503,7 @@ new class extends Component
          the count rides this event rather than mount(). The auth check is
          duplicated in begin(), which is the one that is TRUSTED; this copy
          only spares a signed-in user a round trip that would count nothing. --}}
-    @start-onboarding.window="open = true; if (! @js(auth()->check())) $wire.begin()"
+    @start-onboarding.window="open = true; if (! @js(auth()->check())) $wire.begin().then(() => resume())"
     @close-onboarding.window="open = false; clear()"
     @keydown.escape.window="open = false"
 >

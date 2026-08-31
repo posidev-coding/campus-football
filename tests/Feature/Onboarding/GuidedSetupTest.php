@@ -123,6 +123,33 @@ describe('the guest flow', function () {
             ->assertSet('step', 'name');
     });
 
+    it('says what is wrong on the pane that asked, never behind a dead button', function () {
+        /*
+         * The classic silent wall in a split form: validation refuses, the
+         * step does not move, and nothing on screen says why — the reader
+         * presses the button again and then leaves. Every field here is a
+         * labelled Flux control, so each one renders its own message; this
+         * pins that the two rejections most likely to stop a stranger — an
+         * empty name and a password under the default rules — are both
+         * VISIBLE on the pane that asked the question.
+         */
+        Livewire::test('onboarding')
+            ->call('next')
+            ->assertSee('The first name field is required.')
+            ->assertSee('The last name field is required.')
+            ->assertSet('step', 'name');
+
+        Livewire::test('onboarding')
+            ->set('first_name', 'Dolly')->set('last_name', 'Parton')
+            ->call('next')->call('next')
+            ->assertSet('step', 'credentials')
+            ->set('email', 'dolly@example.com')
+            ->set('password', 'short')->set('password_confirmation', 'short')
+            ->call('register')
+            ->assertSee('The password field must be at least 8 characters.')
+            ->assertSet('step', 'credentials');
+    });
+
     it('catches a duplicate email on the credentials screen', function () {
         User::factory()->create(['email' => 'taken@example.com']);
 
@@ -384,6 +411,35 @@ describe('the device draft', function () {
             ->toContain("draft.step === 'rating'")
             ->toContain("['name', 'rating'].includes(value)")
             ->toContain('saveStep');
+    });
+
+    it('puts them back on that step with a LIVE set, which is the only kind that repaints', function () {
+        /*
+         * Caught in the browser at 390px, and invisible anywhere else. The
+         * restored FIELDS are bound to elements, so a deferred set repaints
+         * them for free; `step` is bound to nothing — it picks a
+         * server-rendered pane — so the deferred set this used to do moved
+         * the component's state and repainted nothing at all. The reader saw
+         * "Step 1 of 3" while the server already believed they were on
+         * 'rating', and one press of Continue validated the RATING rules and
+         * landed them on the credentials form: the trash-talk question
+         * skipped outright, the retyped name never checked, and
+         * `onboarding_credentials_reached` counted for somebody who never saw
+         * the pane before it.
+         *
+         * It also has to run on OPEN, not at boot (restore() runs on every
+         * guest Home load and a live set is a round trip), and AFTER begin()
+         * RESOLVES rather than beside it: Livewire batches same-tick calls
+         * into one commit, and begin() is #[Renderless], which suppresses the
+         * render for the whole commit — a set batched alongside it repaints
+         * nothing, which is the identical failure wearing a live set.
+         */
+        $html = Livewire::test('onboarding')->html();
+
+        expect($html)
+            ->toContain("if (draft.step === 'rating') \$wire.set('step', 'rating')")
+            ->not->toContain("\$wire.set('step', 'rating', false)")
+            ->toContain('$wire.begin().then(() => resume())');
     });
 
     it('frames the rating step the way the register screen does', function () {

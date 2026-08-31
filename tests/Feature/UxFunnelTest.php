@@ -150,6 +150,7 @@ describe('the vocabulary', function () {
         // disagree with the other two.
         expect(array_map(fn (UxSignal $s) => $s->value, UxSignal::cases()))->toBe([
             'onboarding_opened',
+            'onboarding_credentials_reached',
             'onboarding_registered',
             'onboarding_team_picked',
             'onboarding_skipped',
@@ -264,6 +265,71 @@ describe('the flows that emit', function () {
             ->call('begin');
 
         expect(funnelCounts())->toBe([]);
+    });
+
+    it('counts a guest reaching the credentials pane, once however often they back up', function () {
+        /*
+         * The step this was added for: a week read 225 opened against 5
+         * registered with NOTHING in between, so the 220 who left could have
+         * been balking at their own name, at the trash-talk register, or at
+         * the password rules, and the product could not tell which. Arriving
+         * at the email and password form is the boundary that splits those.
+         *
+         * Deduped like `onboarding_opened`, on the same session hash: backing
+         * up to fix a typo and coming forward again is one arrival, or the
+         * numerator inflates and this step reads better than the truth.
+         */
+        Livewire::test('onboarding')
+            ->set('first_name', 'Dolly')->set('last_name', 'Parton')
+            ->call('next')->assertSet('step', 'rating')
+            ->call('next')->assertSet('step', 'credentials')
+            ->call('back')->assertSet('step', 'rating')
+            ->call('next')->assertSet('step', 'credentials');
+
+        expect(funnelCounts())->toBe(['onboarding_credentials_reached' => 1]);
+    });
+
+    it('counts nothing for a guest who never gets past the first question', function () {
+        // The other half of the same pair, and the half that makes it
+        // actionable: they left before anything was asked of them.
+        Livewire::test('onboarding')
+            ->call('next')
+            ->assertHasErrors(['first_name', 'last_name'])
+            ->assertSet('step', 'name');
+
+        expect(funnelCounts())->toBe([]);
+    });
+
+    it('counts nothing when a signed-in member walks the same pane', function () {
+        // Same component, different errand — for them the overlay is the
+        // favorite-team moment, and there is no signup to be halfway through.
+        // Posted straight at 'rating', because a member's own mount() opens on
+        // the picker and could never reach this by hand.
+        Livewire::actingAs(User::factory()->create())
+            ->test('onboarding')
+            ->set('step', 'rating')
+            ->call('next')
+            ->assertSet('step', 'credentials');
+
+        expect(funnelCounts())->toBe([]);
+    });
+
+    it('emits the credentials-reached signal from exactly one place', function () {
+        /*
+         * `next()` is the only door into that pane — back() cannot reach it
+         * from the picker, which sits past registration, and register() is
+         * the only way out. A second emitter would make this a count of
+         * something other than what it is named after, exactly as
+         * `onboarding_registered` once was.
+         */
+        $emitters = collect(File::allFiles(base_path('app')))
+            ->merge(File::allFiles(resource_path('views')))
+            ->filter(fn ($file) => str_contains($file->getContents(), 'UxSignal::OnboardingCredentialsReached'))
+            ->map(fn ($file) => str_replace(base_path().'/', '', $file->getPathname()))
+            ->values()
+            ->all();
+
+        expect($emitters)->toBe(['resources/views/livewire/onboarding.blade.php']);
     });
 
     it('counts an invite link being opened, by a guest', function () {

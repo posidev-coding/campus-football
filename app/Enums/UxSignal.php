@@ -3,7 +3,7 @@
 namespace App\Enums;
 
 /**
- * The product funnel's whole vocabulary — eight named signals, and nothing
+ * The product funnel's whole vocabulary — nine named signals, and nothing
  * else may be counted.
  *
  * BOUNDED ON PURPOSE. This is the one telemetry surface no off-the-shelf APM
@@ -22,6 +22,19 @@ namespace App\Enums;
  * "Slate abandoned with zero picks" is deliberately NOT a case. It is
  * SlateEntered minus FirstPickMade, and a third counter for a difference is a
  * third counter that can disagree with the other two.
+ *
+ * OnboardingCredentialsReached is the ninth, added 2026-08-31 against a week
+ * that read 225 opened, 5 registered and nothing at all in between: everyone
+ * who registers finishes (5/5/5 through the team pick and the tour), so the
+ * whole loss sat inside three wizard steps the funnel could not tell apart.
+ * It earns a case on the rule this docblock already states, not around it —
+ * it is a THING THAT HAPPENED at a boundary, not a DIFFERENCE of two things
+ * that happened, so there is no second arithmetic path to disagree with. And
+ * it is the one boundary worth a counter, because it splits the two halves
+ * that call for opposite fixes: "left before we asked them for anything" is a
+ * question about the name and rating panes, "left at the email and password
+ * form" is a question about the form. One case answers it; a case per step
+ * would be three counters for a bar chart nobody reads.
  */
 enum UxSignal: string
 {
@@ -31,6 +44,16 @@ enum UxSignal: string
      * that made this a traffic number wearing a funnel step's name.
      */
     case OnboardingOpened = 'onboarding_opened';
+
+    /**
+     * A guest REACHED the credentials pane — they answered their name and
+     * their register, and the next thing asked of them is an email and a
+     * password. Counted at the step boundary in the wizard's next(), guests
+     * only, once per browser per day on the same session hash
+     * OnboardingOpened uses: backing up to fix a name and coming forward
+     * again is the same arrival, not a second one.
+     */
+    case OnboardingCredentialsReached = 'onboarding_credentials_reached';
 
     /** An account was created through the wizard. */
     case OnboardingRegistered = 'onboarding_registered';
