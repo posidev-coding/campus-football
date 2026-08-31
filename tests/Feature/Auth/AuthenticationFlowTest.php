@@ -144,7 +144,7 @@ describe('content rating', function () {
          */
         expect(ContentRating::Pg->label())->toBe('Mild')
             ->and(ContentRating::Pg13->label())->toBe('Medium')
-            ->and(ContentRating::R->label())->toBe('Extra Hot')
+            ->and(ContentRating::R->label())->toBe('Spicy')
             ->and(ContentRating::Pg->subLabel())->toBe('Light Ribbing')
             ->and(ContentRating::Pg13->subLabel())->toBe('Locker Room')
             ->and(ContentRating::R->subLabel())->toBe('No Mercy')
@@ -158,7 +158,7 @@ describe('content rating', function () {
         // shows the scale with no film rating left anywhere on it.
         $screen = Livewire::test('auth.register');
 
-        $screen->assertSee('Extra Hot')
+        $screen->assertSee('Spicy')
             ->assertSee('No Mercy')
             ->assertSee('how hot it runs')
             ->assertDontSee('PG-13')

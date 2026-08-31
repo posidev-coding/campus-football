@@ -16,9 +16,9 @@ personality budget, write all three versions when you write the screen**, not
 later: descriptions, subtext, empty states, button labels, confirmations,
 tooltips, error messages, instructional text, notifications.
 
-    Mild       Light Ribbing  clean, still warm — never limp
-    Medium     Locker Room    the default; how the group chat actually talks
-    Extra Hot  No Mercy       merciless about the picks, for the people who asked for it
+    Mild    Light Ribbing  clean, still warm — never limp
+    Medium  Locker Room    the default; how the group chat actually talks
+    Spicy   No Mercy       merciless about the picks, for the people who asked for it
 
 The enum's cases are still backed by `pg` / `pg13` / `r` — those are the Voice
 map's keys and the stored column, and only the display names changed.
@@ -119,8 +119,11 @@ scale the roast-the-pick law forbids the app from ever delivering. It
 over-promised to everyone who chose R, warned off the readers who would most
 enjoy the best-written register, and volunteered an "R / Anything Goes" mode to
 App Store review over one "damn": the shorthand borrowed to satisfy the age
-rating was running the wrong way. Mild / Medium / Extra Hot needs no explaining
-either and claims nothing about maturity. Only the display names moved — the
+rating was running the wrong way. Mild / Medium / Spicy needs no explaining
+either and claims nothing about maturity — and the top rung is deliberately
+"Spicy" rather than a "Nuclear" or a "Ghost Pepper", because an over-promising
+top tier is the very fault being repaired and would land the same way in a new
+vocabulary. Only the display names moved — the
 backing values stayed `pg`/`pg13`/`r` (the Voice map's keys and the stored
 column), so there was no migration and no line was rewritten. Default is
 Medium, pre-selected at registration rather than blank — an unset radio group
