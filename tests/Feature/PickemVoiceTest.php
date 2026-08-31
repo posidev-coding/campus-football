@@ -115,11 +115,12 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'picks.next.join',
     'talk.door.hint',
     'lobby.rules.subheading',
-    // The two products, told apart: the definitions under My Picks' two
-    // headings, the first run's group path, the store's own framing, and
-    // the two lines that say what a private group is and what a room
-    // whose Saturday is gone is.
-    'picks.groups.subheading',
+    // The two products, told apart: the definition under My Picks' one
+    // "Where you play" heading, the public half named over the first
+    // run's lobby door, the first run's group path, the store's own
+    // framing, and the two lines that say what a private group is and
+    // what a room whose Saturday is gone is.
+    'picks.whereplay.subheading',
     'picks.rooms.subheading',
     'picks.first_run.group',
     'lobby.intro.zinger',

@@ -1200,21 +1200,23 @@ class Voice
         ],
 
         /*
-         * THE TWO PRODUCTS, told apart. My Picks stacks a private group
-         * and a public room under two headings now, and these are the
-         * one-line definitions underneath each — the difference a reader
-         * could not see when both sat under the word "groups".
+         * THE TWO PRODUCTS, told apart. The DEFINITION is the
+         * instruction, so every register keeps its load-bearing facts
+         * intact (invite-only + all season / open to anyone + one
+         * Saturday). The joke rides the end of the line, never the
+         * middle of it.
          *
-         * The heading is the navigation and stays plain; the DEFINITION
-         * is the instruction, so every register keeps its two load-
-         * bearing facts intact (invite-only + all season / open to
-         * anyone + one Saturday). The joke rides the end of the line,
-         * never the middle of it.
+         * `picks.groups.subheading` was retired on 2026-08-31 with the
+         * "Your groups" heading it sat under: My Picks sells every seat
+         * in ONE stack now, and the per-kind definitions moved onto the
+         * cards themselves as plain kind lines. `picks.rooms.subheading`
+         * survives because the FIRST RUN still names the public product
+         * over the lobby door, where there are no cards to say it.
          */
-        'picks.groups.subheading' => [
-            'pg' => 'Invite-only, and the standings run all season.',
-            'pg13' => 'Invite-only, all season. Your people, your mode, one long argument.',
-            'r' => 'Invite-only, all season. The people you picked, and the receipts you can\'t outrun.',
+        'picks.whereplay.subheading' => [
+            'pg' => 'Every seat you hold — season-long groups and one-Saturday rooms.',
+            'pg13' => 'Every seat you hold. Each card says which kind it is; the standings say how it\'s going.',
+            'r' => 'Every seat you hold: the season-long grudges up top, the Saturday flings underneath.',
         ],
 
         'picks.rooms.subheading' => [

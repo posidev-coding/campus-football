@@ -611,29 +611,61 @@ urgency:
    taking picks the reader hasn't finished; each row is name + progress +
    first kick, walking into the clubhouse. This zone is why the screen
    works: it answers "what do I do right now" before anything else talks.
-3. **Your groups** and **Public rooms** — two zones, not one. Both render
-   `x-group-card` with its mode mark, palette and pass 2's five-way state
-   row (waiting / upcoming / live / prelim / final) intact; what changed
-   (2026-08-29) is that they are no longer the same list. One heading over
-   both products meant a public room joined an hour ago sat under the word
-   "groups" beside a season-long league, and nothing on the screen said
-   either was what it was. Each heading now carries a one-line DEFINITION
-   (`picks.groups.subheading` / `picks.rooms.subheading`) and its own
-   escape — "Start a group" to the wizard, "Find a room" to the store. A
-   third zone, **Always open**, holds evergreen house lobbies (`kind =
-   lobby` with no week) under the Lobby's own word for them: neither of
-   the other two headings is true of an always-open table, and filing it
-   under one is a label the data does not support. All three are pure
-   projections of `cards()` (`groupCards` / `roomCards` / `tableCards`) —
-   no query is added.
+3. **Where you play** — ONE stack of every seat the reader holds, each
+   card an `x-group-card` with its mode mark, palette and pass 2's
+   five-way state row (waiting / upcoming / live / prelim / final) intact.
+
+   Two corrections, in order. 2026-08-29 SPLIT one "Your groups" heading
+   into three, because a public room joined an hour ago sat under the
+   season-long word beside a league and nothing said either was what it
+   was. 2026-08-31 merged the headings back and moved the distinction onto
+   the cards: three headings over one thumb of cards read as three
+   products, which is a different way of failing at the same job. The
+   split fixed the wrong half.
+
+   So there is one heading, one Voice definition
+   (`picks.whereplay.subheading`), and a KIND-FIRST micro-line on every
+   card in the join landing's own grammar — "Private group, all season ·
+   12 members", "Public room · this Saturday · 8 of 20 seats", "Always
+   open · 40 members". The kind is said once per CARD instead of once per
+   zone. Kind lines are product facts and stay plain in every register;
+   only the definition under the heading is Voice.
+
+   Order still carries meaning, and the three projections still exist:
+   `whereYouPlay()` concatenates `groupCards` (alphabetical) then
+   `roomCards` (past Saturdays last) then `tableCards` (evergreen house
+   lobbies, `kind = lobby` with no week). All projections of `cards()` —
+   no query is added. An evergreen is "Always open", never a room's
+   one-Saturday label and never "table": the house has exactly two
+   user-facing container nouns.
+
+   The heading row keeps ONE escape, "Start a group" to the wizard, and
+   only for a reader who already has groups — on a first run the three
+   mode doors are the only create affordance. "Find a room" is retired:
+   the Lobby door at the foot is the same destination, and one door is
+   that partial's own rule.
 
    A room's `week_id` is compared against the current `defaultWeekId` into
    a `past` flag, because a room keeps its URL forever and leaves the
    inventory when its week ends: with no slate on the current week it fell
    through the state match to `waiting` and told the reader their PUBLIC
    room was waiting on a commissioner it never had, on a week that was
-   never coming. `group.room.past` replaces that line and `roomCards`
-   sorts past rooms to the bottom.
+   never coming. `group.room.past` replaces that line, `roomCards` sorts
+   past rooms to the bottom, and the kind line says "Saturday played"
+   rather than "this Saturday" — the past branch is tested first on both.
+
+   **The you-strip** sits above all of it, at the top of This week
+   (`x-you-strip`, the standings component unchanged): rung, XP, lattes
+   and wins. Below `sm` the app header does not render, so this is the
+   only place a phone reader meets their own ladder on the screen the
+   ladder is played on. Wins renders an em dash until a week has been won.
+   Zero new queries — `rank`/`walletXp` are already read, lattes ride the
+   memoized `walletTotals()` SUM, wins is a projection of `cards()`.
+
+   **All in** replaces the ask when every entry is complete
+   (`picks.allin.body`): a static emerald card, NOT animated, because it
+   is a state rather than an event. Three conditions — seats held, nothing
+   left to ask, and at least one entry actually in.
 
    First-run readers — meaning no PRIVATE groups, so one public seat does
    not suppress the pitch — get **Two ways to play**: "Start your own
@@ -643,9 +675,13 @@ urgency:
    a full-width card underneath them); what is new is that the block says
    what the doors are doors TO, and puts the weekly public alternative
    beside the choice instead of 600px below it.
-4. **Last week** — the Monday payoff, compact: settled entries from the past
-   seven days. Below Your groups because on Monday nothing needs picks — the
-   recap IS the top of the useful screen.
+4. **Last week** — the Monday payoff, compact: settled entries from the
+   past seven days, each row carrying the Winner badge or, failing that,
+   your place in the field ("2nd of 12", `places()`, History's own
+   one-query pattern read only from this branch). A week you WON is called
+   out above them by the emerald payoff banner
+   (`picks.payoff.banner` / `_many`) — the house's second celebration, and
+   its entrance is spent once per session against the wins themselves.
 5. **The ladder**, one bordered row: rung name, tabular XP, an `h-1` bar and
    the climb line. `RankLadder` returns NULL at the top rung, so the climb
    line is skipped rather than drawn as a finished bar under a promotion
@@ -688,18 +724,43 @@ lobby is where you browse and enter contests.
 
 - **A sticky band** pins the Saturday being sold: `Cadence::displayWeekLabel`
   left with the card's own date ("Week 0 · Sat Aug 29"), the open-room count
-  right. Opaque, `-mx-4 -mt-5` with the spacing moved inside so it has
-  nothing to travel through, at `top-[env(safe-area-inset-top)]` /
-  `sm:top-[var(--header-offset)]`. The WEEK'S range is never printed — 2026's
-  Week 1 opens on an empty 8/22, and no one is playing that date.
+  right, then a micro-row saying WHEN that Saturday starts, then the
+  room-type tabs. Opaque, `-mx-4 -mt-5` with the spacing moved inside so it
+  has nothing to travel through, at `top-[var(--chrome-offset)]` (see
+  `.ai/rules/css.md`). The WEEK'S range is never printed — 2026's Week 1
+  opens on an empty 8/22, and no one is playing that date.
+
+  The clock is `x-kick-clock` (`idle-prefix="First kick"`), fed by ONE
+  aggregate over the open rooms' published slates — resolved off the
+  relations `openRooms()` already eager-loads, mirroring
+  `LobbyCatalog::shelves()` so two reads cannot disagree about the same
+  Saturday. FUTURE-ONLY: a store whose games have all kicked shows no clock,
+  because the actionable answer is the next kickoff. Null is no data and
+  skips the row. It is the one query this screen added; a test pins it at
+  exactly 1 with rooms open and 0 with none.
 - **Shelves** (`LobbyShelf`, case order = display order): House rooms, Quick
   hits, Spotlight, Conference rooms. Headings are PLAIN in every register —
   people navigate by them — with the register line (`lobby.shelf.*`)
   render-guarded underneath.
-- **Uniform rows** (`x-room-row`, ~64px): mode tile, truncating name, one
-  tabular micro-line ("Shotgun · 10 games · 0 of 20 seats"), Join. Mode
-  identity is the tile plus the micro-line and never a right-hand chip: at
-  390px a chip and a button together starve the name. Stretched-anchor
+- **Uniform rows** (`x-room-row`): mode tile, truncating name, ONE
+  truncating pitch line, one tabular micro-line ("Shotgun · 10 games · 0 of
+  20 seats"), Join. Mode identity is the tile plus the micro-line and never
+  a right-hand chip: at 390px a chip and a button together starve the name.
+
+  The pitch line came BACK on 2026-08-31, reversing the pass-4 decision that
+  moved blurbs to the room screen. That decision was right about paragraphs
+  and wrong about the shelf: ten flavored rooms shipped with ten
+  personalities and the store rendered none of them, so two names sat over
+  two identical rows. `LobbyFlavor::blurb()` when the room has a flavor,
+  `ContestMode::blurb()` when it does not, both sized from the CONTEST's
+  slate — capped at one truncating line, which is what keeps thirteen rows a
+  shelf. Zero queries: an enum read of the loaded `flavor` column. Evergreens
+  pass nothing — no Saturday, no pitch.
+
+  With two seats or fewer left and the reader not already seated, the seat
+  count becomes "{n} seats left" in WEIGHT, never color: rows repeat, the
+  amber budget is one per viewport, and dark mode un-brands. A fact, not
+  Voice. Stretched-anchor
   grammar from `x-game-card` (a button may not nest in an anchor) — the row
   opens the room, Join seats you in place. A row the reader is already
   SEATED in trades the primary Join for a flat "View picks" cue (`seated`,
@@ -727,10 +788,14 @@ lobby is where you browse and enter contests.
   standings run all season", because "Rather run your own?" asked a
   question of somebody who had never been told the season-long thing
   exists — then
-  **How it's played** — one expandable `x-mode-rules` card per mode reading
-  `ContestMode::ruleLines()` (the same source as the docs), plus the shared
-  law in one plain paragraph. Collapsed content is x-show, not removed, so a
-  test asserts the stakes without driving the disclosure.
+  **How it's played**, itself FOLDED into one disclosure since 2026-08-31 in
+  the invite-code disclosure's exact grammar: sixty-five lines of foot matter
+  stood between a shopper and the bottom of every visit on a screen whose job
+  is to seat them in a room. Inside it, one expandable `x-mode-rules` card
+  per mode reading `ContestMode::ruleLines()` (the same source as the docs),
+  plus the shared law in one plain paragraph. Collapsed content is x-show,
+  never removed, so a test asserts the stakes without driving the
+  disclosure — and nothing was cut, only folded.
 
 The whole screen is ONE inventory read (`Lobby::openRooms`) projected by
 `LobbyCatalog::shelves()`; feasibility is never asked at render time, because

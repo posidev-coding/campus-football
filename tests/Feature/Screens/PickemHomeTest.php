@@ -79,7 +79,7 @@ describe('the promise (outside the flag)', function () {
             ->get(route('pickem.home'))
             ->assertOk()
             ->assertSee('Coming soon')
-            ->assertDontSee('Your groups');
+            ->assertDontSee('Where you play');
     });
 
     it('shows an admin the real screen, at both doors', function () {
@@ -126,8 +126,9 @@ describe('my week (inside the flag)', function () {
             ->assertSeeInOrder([
                 'My Picks',
                 'Needs your picks',
-                // GROUPS, not "games" — a game is played on a field.
-                'Your groups',
+                // ONE stack for every seat: the three container headings
+                // merged, and the kind moved onto each card.
+                'Where you play',
                 'Have an invite code?',
                 'The Lobby',
             ])
@@ -231,7 +232,7 @@ describe('my week (inside the flag)', function () {
             ])
             ->assertSee(route('pickem.create'), escape: false)
             ->assertSee(route('pickem.lobby'), escape: false)
-            ->assertDontSee('Your groups');
+            ->assertDontSee('Where you play');
     });
 
     it('draws the lobby door exactly once on a first run', function () {
@@ -257,7 +258,7 @@ describe('my week (inside the flag)', function () {
         [$commissioner] = pickemContest();
 
         Livewire::actingAs($commissioner)->test('pickem-home')
-            ->assertSee('Your groups')
+            ->assertSee('Where you play')
             ->assertSee('Start a group')
             ->assertSee(route('pickem.create'), escape: false)
             // With groups in hand the doors are the wizard's job, not the
@@ -266,12 +267,21 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee('Start your own group');
     });
 
-    it('files a private group and a joined room under their own headings', function () {
+    it('stacks a private group and a joined room together, each saying which it is', function () {
         /*
-         * THE BUG THIS RETIRES: one heading, "Your groups", over both
+         * THE ORIGINAL BUG: one heading, "Your groups", over both
          * products — a public room joined an hour ago sat in the same
          * stack under the same word as a season-long group, and nothing
          * on the screen said either one was what it was.
+         *
+         * THE 2026-08-31 AMENDMENT: splitting the HEADINGS fixed the
+         * wrong half. Three headings over one thumb of cards read as
+         * three products, so they merged back into one "Where you play"
+         * stack — and the distinction moved onto every CARD as a
+         * kind-first line, in the join landing's own grammar. Said once
+         * per card instead of once per zone.
+         *
+         * Order still carries meaning: groups before rooms.
          */
         $this->travelTo('2026-09-02 12:00:00');
 
@@ -284,16 +294,43 @@ describe('my week (inside the flag)', function () {
 
         Livewire::actingAs($commissioner->fresh())->test('pickem-home')
             ->assertSeeInOrder([
-                'Your groups',
+                'Where you play',
                 'Rocky Top Rejects',
-                'Public rooms',
                 $room->name,
             ])
-            // And each heading carries its definition, which is the whole
-            // point of splitting them.
-            ->assertSee(Voice::line('picks.groups.subheading', for: $commissioner))
-            ->assertSee(Voice::line('picks.rooms.subheading', for: $commissioner))
-            ->assertSee(route('pickem.lobby'), escape: false);
+            // The kind, on each card, leading its own micro-line.
+            ->assertSee('Private group, all season')
+            ->assertSee('Public room · this Saturday', escape: false)
+            // One heading, one definition — and it is Voice.
+            ->assertSee(Voice::line('picks.whereplay.subheading', for: $commissioner))
+            // The lobby door survives as the ONE way to the store.
+            ->assertSee(route('pickem.lobby'), escape: false)
+            ->assertDontSee('Your groups')
+            ->assertDontSee('Public rooms')
+            // "Find a room" is retired: the door below is that same
+            // destination, and one door is the partial's own rule.
+            ->assertDontSee('Find a room');
+    });
+
+    it('calls an always-open table what it is, and never a room', function () {
+        /*
+         * The third kind, and the one the merged stack could most easily
+         * mislabel. An evergreen has no week, so it is not a room that
+         * plays one Saturday — and it is not a private group either. The
+         * house has exactly TWO user-facing container nouns, so the line
+         * says "Always open" and never "table".
+         */
+        $viewer = pickemAdmin();
+        $table = Group::factory()->lobby()->create(['name' => 'The Big Lobby', 'week_id' => null]);
+        GroupMember::factory()->create(['group_id' => $table->id, 'user_id' => $viewer->id]);
+
+        Livewire::actingAs($viewer->fresh())->test('pickem-home')
+            ->assertSee('Where you play')
+            ->assertSee('The Big Lobby')
+            ->assertSee('Always open')
+            ->assertDontSee('Public room')
+            ->assertDontSee('Private group, all season')
+            ->assertDontSee('table');
     });
 
     it('shows the first-run pitch to a reader who holds only a room', function () {
@@ -310,8 +347,14 @@ describe('my week (inside the flag)', function () {
         Livewire::actingAs($viewer->fresh())->test('pickem-home')
             ->assertSee('Two ways to play')
             ->assertSee('Start your own group')
-            ->assertSee('Public rooms')
-            ->assertDontSee('Your groups');
+            // ...and their one seat is still stacked below the pitch. The
+            // stack renders off whereYouPlay(), not off groupCards, or a
+            // rooms-only reader would lose the room they hold.
+            ->assertSee('Where you play')
+            ->assertSee($room->name)
+            ->assertDontSee('Your groups')
+            // No second create affordance beside the three mode doors.
+            ->assertDontSee('Start a group');
     });
 
     it('tells a room whose Saturday is gone from one waiting on a commissioner', function () {
@@ -340,7 +383,16 @@ describe('my week (inside the flag)', function () {
 
         Livewire::actingAs($viewer->fresh())->test('pickem-home')
             ->assertSee(Voice::line('group.room.past', for: $viewer))
-            ->assertDontSee(Voice::line('group.slate.waiting', for: $viewer));
+            ->assertDontSee(Voice::line('group.slate.waiting', for: $viewer))
+            /*
+             * And the kind line agrees with the state row. A room keeps
+             * its URL forever and leaves the inventory when its week
+             * ends, so "this Saturday" over one that already played is a
+             * date nobody is playing — the past branch is tested FIRST on
+             * this card for exactly that reason.
+             */
+            ->assertSee('Public room · Saturday played', escape: false)
+            ->assertDontSee('Public room · this Saturday', escape: false);
     });
 
     it('never tells a room to go rattle a commissioner it does not have', function () {

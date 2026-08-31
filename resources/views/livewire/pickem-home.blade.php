@@ -361,6 +361,31 @@ new class extends Component
     }
 
     /**
+     * EVERY SEAT YOU HOLD, in one stack: groups alphabetical, then rooms
+     * with past Saturdays last, then the always-open tables.
+     *
+     * The three zones above still exist and are still the thing this
+     * concatenates — the first-run fork and the lobby door both key off
+     * `groupCards`, and each zone's own ordering rule survives inside the
+     * stack. What merged is the HEADINGS: three of them over one thumb of
+     * cards read as three products. The distinction did not merge — every
+     * card leads its micro-line with its kind now, so it is said once per
+     * CARD instead of once per zone.
+     *
+     * A projection of projections of cards(). Never a fourth query.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function whereYouPlay()
+    {
+        return $this->groupCards
+            ->concat($this->roomCards)
+            ->concat($this->tableCards)
+            ->values();
+    }
+
+    /**
      * The zone that answers "what do I do right now": published slates
      * still taking picks where mine are not all in. A pure projection of
      * cards() — no query of its own.
@@ -843,27 +868,11 @@ new class extends Component
             </div>
         @endif
 
-        {{-- Your groups — GROUPS, not "games": a game is played on a
-             field. And ONLY groups: a public room used to sit in this
-             stack under this word, which is exactly why nobody could
-             tell the season-long thing from the Saturday thing. The
-             heading navigates and stays plain; the line under it is the
-             definition, and it is the whole point of the zone. --}}
-        @if ($this->groupCards->isNotEmpty())
-            <div class="flex flex-col gap-2">
-                <div class="flex items-baseline justify-between gap-3">
-                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Your groups</flux:subheading>
-                    <a href="{{ route('pickem.create') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
-                        Start a group
-                    </a>
-                </div>
-                <flux:subheading>{{ Voice::line('picks.groups.subheading') }}</flux:subheading>
-
-                @foreach ($this->groupCards as $card)
-                    <x-group-card wire:key="lobby-group-{{ $card['group']->id }}" :card="$card" />
-                @endforeach
-            </div>
-        @else
+        {{-- No PRIVATE groups — which is not no memberships: one public
+             seat must not suppress the pitch. The block below is
+             unchanged; only the fork around it moved, because the stack
+             it used to sit inside now renders for rooms-only readers too. --}}
+        @if ($this->groupCards->isEmpty())
             {{-- FIRST RUN, and the two products said out loud. Path one
                  is the three doors, which remain the ONLY create
                  affordance — the old screen drew the wizard twice, once
@@ -893,36 +902,44 @@ new class extends Component
             </div>
         @endif
 
-        {{-- The public half. Same card, its own heading and its own
-             definition — and a room whose Saturday is gone sorts to the
-             bottom rather than sitting above a card still taking picks. --}}
-        @if ($this->roomCards->isNotEmpty())
+        {{-- WHERE YOU PLAY — every seat the reader holds, in ONE stack:
+             groups first, then rooms with past Saturdays last, then the
+             always-open tables. Three headings over one thumb of cards
+             read as three products; the DISTINCTION did not merge with
+             them, it moved onto every card as a kind-first micro-line.
+             (Amends the two-headings rule in .ai/rules/components.md.)
+
+             The projections behind it are unchanged, so the first-run
+             fork above and the lobby door below still key off groupCards
+             exactly as they did. --}}
+        @if ($this->whereYouPlay->isNotEmpty())
             <div class="flex flex-col gap-2">
                 <div class="flex items-baseline justify-between gap-3">
-                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Public rooms</flux:subheading>
-                    <a href="{{ route('pickem.lobby') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
-                        Find a room
-                    </a>
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Where you play</flux:subheading>
+                    {{-- The small escape to the wizard, for a reader who
+                         already has groups. On a first run the three mode
+                         doors above are the ONLY create affordance, and a
+                         fourth link beside them is the same destination
+                         drawn twice — the mistake that block exists to
+                         retire.
+
+                         There is no "Find a room" beside it either: the
+                         lobby door below is that destination, and one
+                         door is the partial's own rule. --}}
+                    @if ($this->groupCards->isNotEmpty())
+                        <a href="{{ route('pickem.create') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
+                            Start a group
+                        </a>
+                    @endif
                 </div>
-                <flux:subheading>{{ Voice::line('picks.rooms.subheading') }}</flux:subheading>
+                <flux:subheading>{{ Voice::line('picks.whereplay.subheading') }}</flux:subheading>
 
-                @foreach ($this->roomCards as $card)
-                    <x-group-card wire:key="lobby-room-{{ $card['group']->id }}" :card="$card" />
+                @foreach ($this->whereYouPlay as $card)
+                    <x-group-card wire:key="play-{{ $card['group']->id }}" :card="$card" />
                 @endforeach
             </div>
         @endif
 
-        {{-- The always-open tables, under the Lobby's own word for them.
-             Normally empty, and never folded into either zone above. --}}
-        @if ($this->tableCards->isNotEmpty())
-            <div class="flex flex-col gap-2">
-                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Always open</flux:subheading>
-
-                @foreach ($this->tableCards as $card)
-                    <x-group-card wire:key="lobby-table-{{ $card['group']->id }}" :card="$card" />
-                @endforeach
-            </div>
-        @endif
 
         {{-- The code stays as the spoken-word fallback, folded away —
              links are how a group travels now. --}}
