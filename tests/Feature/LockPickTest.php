@@ -133,10 +133,12 @@ it('wears the wager on the surface: the Bear announced, his paw on cards, one to
 
     expect(Pick::where('user_id', $member->id)->sole()->locked)->toBeTrue();
 
-    // A kicked game puts the Bear in the This-week standings.
+    // A kicked game puts the Bear in the This-week standings, which live
+    // on the Standings tab now — the play tab stays pure.
     $featured->game->update(['home_score' => 28, 'away_score' => 7, 'status' => 'in']);
 
     Livewire\Livewire::actingAs($member)->test('group', ['group' => $group])
+        ->set('view', 'standings')
         ->assertSee('This week')
         ->assertSee('The Bear');
 });

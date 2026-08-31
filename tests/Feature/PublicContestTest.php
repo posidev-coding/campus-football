@@ -176,7 +176,7 @@ it('wears its own address: rooms at /contests, groups at /groups', function () {
         ->assertRedirect(route('pickem.group', $group));
 });
 
-it('shows a room its week, its seats, and no Season tab', function () {
+it('shows a room its week, its seats, and no season ledger', function () {
     [, $week] = publicContestWeek();
     $viewer = pickemAdmin();
 
@@ -187,8 +187,13 @@ it('shows a room its week, its seats, and no Season tab', function () {
         ->assertSee('Week 1')
         ->assertSee('1 of 20 seats')
         ->assertSee('Slate')
+        ->assertSee('Standings')
+        // The roster folds into Standings; a one-Saturday room still has
+        // no season to stand on and no invite to advertise.
+        ->set('view', 'standings')
         ->assertSee('Members')
-        ->assertDontSee('Season');
+        ->assertDontSee('Season')
+        ->assertDontSee('Or read them the code');
 });
 
 it('answers a full room in Voice, from the screen', function () {

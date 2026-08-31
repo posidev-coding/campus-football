@@ -235,12 +235,13 @@ it('walks a handleless member through the claim, then opens the surface', functi
 it('locks a kicked-off row on the surface', function () {
     [$member, $group, $slate] = pickemLiveSlate();
 
-    // Locked BY CLOCK, feed still quiet: the card says "Locked" plainly.
+    // Locked BY CLOCK, feed still quiet: the card says "Kicked off"
+    // plainly — on screen "Lock" belongs to the Woodshed wager alone.
     // (A game live by feed shows the Live pulse instead — the state a
     // reader actually scans for once play starts.)
     $slate->games()->with('game')->first()->game->update(['kickoff_at' => now()->subHour()]);
 
-    Livewire::actingAs($member)->test('group', ['group' => $group])->assertSee('Locked');
+    Livewire::actingAs($member)->test('group', ['group' => $group])->assertSee('Kicked off');
 });
 
 describe('the kickoff race', function () {
@@ -398,6 +399,12 @@ describe('the entry is in', function () {
         // one thing left rather than reading "10 of 10" as if it were done.
         $surface->assertSee('Tiebreaker left')
             ->assertDontSee('Entry in');
+
+        // And the amber chip is a BUTTON wired to the box it names — the
+        // automated tab renders no frames, so assert the end state: the
+        // target id and the handler both in the DOM.
+        $surface->assertSeeHtml('id="tiebreaker-'.$slate->id.'"')
+            ->assertSeeHtml("getElementById('tiebreaker-{$slate->id}')");
 
         $surface->set('totals.'.$slate->id, 45)
             ->call('saveTotal', $slate->id)

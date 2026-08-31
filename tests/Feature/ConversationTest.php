@@ -511,3 +511,30 @@ it('never names a school in the conversation copy', function () {
         }
     }
 });
+
+it('gives the group thread its own door: the Talk screen, members only', function () {
+    /*
+     * 2026-08-30: Task D took the embed out from under the picks; this
+     * screen is where the thread went. The clubhouse pin below stands
+     * BESIDE this — the pick surface stays chat-free, and the dedicated
+     * screen is the one sanctioned group render site.
+     */
+    $group = Group::factory()->create(['name' => 'The Loud Ones']);
+    $member = User::factory()->create();
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    app(PostToConversation::class)->handle($member, $group, 'First flag planted.');
+
+    Livewire::actingAs($member)->test('group-talk', ['group' => $group])
+        ->assertSee('The Loud Ones')
+        ->assertSee('Group talk')
+        ->assertSee('First flag planted.');
+
+    // An outsider gets the wall, not the thread — through the open flag,
+    // so it is the SCREEN's membership check answering, not the gate.
+    config()->set('cfb.pickem_open', true);
+
+    $this->actingAs(User::factory()->create())
+        ->get(route('pickem.talk', $group))
+        ->assertForbidden();
+});

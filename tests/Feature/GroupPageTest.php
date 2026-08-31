@@ -9,6 +9,7 @@ use App\Models\GroupMember;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateEntry;
+use App\Models\Team;
 use App\Models\User;
 use App\Support\GameRanks;
 use App\Support\Voice;
@@ -70,7 +71,10 @@ it('locks a kicked game — the row says so and the tap writes nothing', functio
     $slateGame->game->update(['kickoff_at' => now()->subHour()]);
 
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
-        ->assertSee('Locked')
+        // "Kicked off", not "Locked" — on screen the word Lock belongs to
+        // the Woodshed wager alone.
+        ->assertSee('Kicked off')
+        ->assertDontSee('· Locked')
         ->assertSee('No pick')
         ->call('pick', $slateGame->id, $slateGame->game->home_team_id);
 
@@ -224,16 +228,123 @@ it('renders result marks and the week standings once games grade', function () {
     SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $member->id]);
     $slate->update(['status' => Slate::PRELIM]);
 
+    // The play tab answers picks; the standings moved to their own tab.
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate')
         ->assertSee('Preliminary')
+        ->assertSee('+1')
+        ->assertSee('No pick')
+        ->assertDontSee('This week')
+        ->set('view', 'standings')
         ->assertSee('This week')
         // The winner leads the loser in the room.
-        ->assertSeeInOrder(['@'.$commissioner->handle, '@'.$member->handle])
-        ->assertSee('+1')
-        ->assertSee('No pick');
+        ->assertSeeInOrder(['@'.$commissioner->handle, '@'.$member->handle]);
 });
 
-it('aggregates settled weeks on the Season tab, wins before points', function () {
+it('opens to Standings once the entry is in and the card is playing', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate = $slate->fresh();
+
+    // A complete entry: every game picked, the tiebreaker answered.
+    $games = $slate->games()->with('game')->get();
+
+    foreach ($games as $slateGame) {
+        Pick::factory()->create([
+            'slate_game_id' => $slateGame->id,
+            'user_id' => $commissioner->id,
+            'picked_team_id' => $slateGame->game->home_team_id,
+        ]);
+    }
+    SlateEntry::factory()->create([
+        'slate_id' => $slate->id,
+        'user_id' => $commissioner->id,
+        'tiebreaker_total' => 48,
+    ]);
+
+    // Not playing yet: a bare visit still opens to the pick surface.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate');
+
+    // Kickoff: the card is live, the entry is in — the answers tab wins.
+    $games->first()->game->update(['kickoff_at' => now()->subHour()]);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'standings');
+
+    // An explicit address is somebody's stated intent and always wins.
+    Livewire::withQueryParams(['view' => 'slate'])
+        ->actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate');
+
+    // An INCOMPLETE entry keeps the pick surface up even mid-game.
+    Pick::query()->where('user_id', $commissioner->id)->latest('id')->first()->delete();
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate');
+});
+
+it('normalizes the three-tab era\'s addresses onto the merged plate', function () {
+    [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+    // Mount half: bookmarked ?view= values from before the merge.
+    Livewire::withQueryParams(['view' => 'members'])
+        ->actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'standings');
+
+    Livewire::withQueryParams(['view' => 'nonsense'])
+        ->actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate');
+
+    // Hook half: an in-session set.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'season')
+        ->assertSet('view', 'standings')
+        ->set('view', 'garbage')
+        ->assertSet('view', 'slate');
+});
+
+it('shows the Standings tab its whole room: you-strip, invite, members, rules', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        // Nothing has been played: every figure is a dash, never a zero.
+        ->assertSee('Wk rank')
+        ->assertSee('—')
+        // The invite panel carries the link and the spoken-word code.
+        ->assertSee($group->code)
+        ->assertSee('Or read them the code')
+        // The roster disclosure and its management affordances.
+        ->assertSee('Members')
+        ->assertSee('Commissioner')
+        // The scoring panel, sized from the contest.
+        ->assertSee('Triple Option')
+        // The thread's doors: the hero button and the foot link-row.
+        ->assertSee('Group talk')
+        ->assertSee(route('pickem.talk', $group), escape: false);
+});
+
+it('polls the Standings tab only while the card is live', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate = $slate->fresh();
+
+    // Upcoming: nothing to poll, no poll.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertDontSee('wire:poll.30s.visible', escape: false);
+
+    $slate->games()->with('game')->get()->first()->game->update(['kickoff_at' => now()->subHour()]);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertSee('wire:poll.30s.visible', escape: false);
+});
+
+it('aggregates settled weeks on the Standings tab, wins before points', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
     $member = User::factory()->create(['admin' => true]);
     GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
@@ -255,7 +366,7 @@ it('aggregates settled weeks on the Season tab, wins before points', function ()
     ]);
 
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
-        ->set('view', 'season')
+        ->set('view', 'standings')
         ->assertSee('Wins')
         // The week's winner outranks the commissioner's seat order.
         ->assertSeeInOrder(['@'.$member->handle, '@'.$commissioner->handle]);
@@ -272,7 +383,9 @@ it('previews the surface read-only for a lobby outsider', function () {
     Livewire::actingAs($outsider)->test('group', ['group' => $group])
         ->assertSee('Join this lobby')
         ->assertDontSee('optimistic(', escape: false)
-        ->assertDontSee('No pick');
+        ->assertDontSee('No pick')
+        // No seat, no thread door.
+        ->assertDontSee('Room talk');
 });
 
 it('301s the old nested URL to the clubhouse', function () {
@@ -315,4 +428,121 @@ it('keeps the query count flat however big the slate gets', function () {
     $queries($groupA);
 
     expect($queries($groupB))->toBe($queries($groupA));
+});
+
+it('reveals the picks grid per game, and never before kickoff', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $member = User::factory()->create(['admin' => true, 'handle' => 'gridwatcher']);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate = $slate->fresh();
+
+    $games = $slate->games()->with('game')->orderBy('position')->get();
+
+    foreach ([$commissioner, $member] as $player) {
+        foreach ($games->take(2) as $slateGame) {
+            Pick::factory()->create([
+                'slate_game_id' => $slateGame->id,
+                'user_id' => $player->id,
+                'picked_team_id' => $slateGame->game->home_team_id,
+            ]);
+        }
+
+        SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $player->id]);
+    }
+
+    // Nothing kicked: an upcoming card renders NO grid — nothing to reveal.
+    expect(Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->instance()->picksGrid)->toBeNull();
+
+    // The first game kicks; the second stays put.
+    $games[0]->game->update(['kickoff_at' => now()->subHour()]);
+
+    $grid = Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->instance()->picksGrid;
+
+    $kicked = array_search($games[0]->id, array_column($grid['columns'], 'key'), true);
+    $waiting = array_search($games[1]->id, array_column($grid['columns'], 'key'), true);
+
+    // The viewer's row leads; the kicked column shows the side; the
+    // unkicked column stays HIDDEN even though a pick exists on it —
+    // the leak test.
+    expect($grid['rows'][0]['viewer'])->toBeTrue()
+        ->and($grid['rows'][0]['cells'][$kicked]['state'])->toBe('pick')
+        ->and($grid['rows'][0]['cells'][$kicked]['abbr'])->not->toBeNull()
+        ->and($grid['rows'][0]['cells'][$waiting]['state'])->toBe('hidden')
+        ->and($grid['rows'][0]['cells'][$waiting]['abbr'])->toBeNull();
+
+    // And the Standings tab carries it, reveal rule said out loud.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertSee('Picks show at kickoff.')
+        ->assertSee('@gridwatcher')
+        ->assertSeeHtml('data-cell="hidden"')
+        ->assertSeeHtml('data-cell="pick"');
+});
+
+it('shows the movement and the member colors once two weeks have settled', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $member = User::factory()->create(['admin' => true, 'handle' => 'mover']);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    $vols = Team::factory()->create([
+        'location' => 'Tennessee',
+        'display_name' => 'Tennessee Volunteers',
+        'short_display_name' => 'Tennessee',
+        'logo' => 'https://cdn.example.com/vols.png',
+    ]);
+    $member->followedTeams()->attach([$vols->id => ['position' => 1]]);
+
+    [, $week] = pickemSeasonWeek();
+
+    $weekOne = Slate::factory()->create([
+        'contest_id' => $contest->id, 'week_id' => $week->id,
+        'saturday' => '2026-09-05', 'status' => Slate::SETTLED, 'settled_at' => now(),
+    ]);
+    $weekTwo = Slate::factory()->create([
+        'contest_id' => $contest->id, 'week_id' => $week->id,
+        'saturday' => '2026-09-12', 'status' => Slate::SETTLED, 'settled_at' => now(),
+    ]);
+
+    // Week one: the member leads. Week two: the commissioner runs it down.
+    SlateEntry::factory()->create(['slate_id' => $weekOne->id, 'user_id' => $member->id, 'final_points' => 10, 'won' => true]);
+    SlateEntry::factory()->create(['slate_id' => $weekOne->id, 'user_id' => $commissioner->id, 'final_points' => 3, 'won' => false]);
+    SlateEntry::factory()->create(['slate_id' => $weekTwo->id, 'user_id' => $member->id, 'final_points' => 1, 'won' => false]);
+    SlateEntry::factory()->create(['slate_id' => $weekTwo->id, 'user_id' => $commissioner->id, 'final_points' => 20, 'won' => true]);
+
+    $rows = Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->instance()->seasonStandings;
+
+    // Wins tie one apiece; points decide — the commissioner climbed one
+    // from last week's baseline, and the member gave one back. The chip
+    // beside the member's handle is their own first-followed team.
+    expect($rows[0]['user']->id)->toBe($commissioner->id)
+        ->and($rows[0]['delta'])->toBe(1)
+        ->and($rows[0]['team'])->toBeNull()
+        ->and($rows[1]['delta'])->toBe(-1)
+        ->and($rows[1]['team']->id)->toBe($vols->id);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertSee('https://cdn.example.com/vols.png', escape: false)
+        ->assertSee('@mover');
+});
+
+it('keeps the movement quiet with only one settled week behind the table', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    [, $week] = pickemSeasonWeek();
+
+    $only = Slate::factory()->create([
+        'contest_id' => $contest->id, 'week_id' => $week->id,
+        'saturday' => '2026-09-05', 'status' => Slate::SETTLED, 'settled_at' => now(),
+    ]);
+    SlateEntry::factory()->create(['slate_id' => $only->id, 'user_id' => $commissioner->id, 'final_points' => 12, 'won' => true]);
+
+    // One week has no "before" worth inventing: null, never a zero.
+    expect(Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->instance()->seasonStandings->first()['delta'])->toBeNull();
 });

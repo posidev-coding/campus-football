@@ -386,7 +386,9 @@ it('shows the room its standings: live, then final with the winner named', funct
     $this->travelTo('2026-09-05 20:00:00');
     pickemScore($slate, 1, 28, 7);
 
+    // The tables live on the Standings tab since the 2026-08-30 merge.
     Livewire\Livewire::actingAs($alice)->test('group', ['group' => $group])
+        ->set('view', 'standings')
         ->assertSee('This week')
         ->assertSee('Live')
         ->assertSee('@alice');
@@ -398,6 +400,7 @@ it('shows the room its standings: live, then final with the winner named', funct
     $this->artisan('pickem:settle')->assertSuccessful();
 
     Livewire\Livewire::actingAs($bob)->test('group', ['group' => $group])
+        ->set('view', 'standings')
         ->assertSee('Final')
         ->assertSee('Winner');
 });

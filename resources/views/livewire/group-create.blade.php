@@ -174,55 +174,19 @@ new class extends Component
             </div>
         </div>
     @else
-        <div
-            wire:key="create-step-invite"
-            class="flex flex-col gap-4"
-            x-data="{
-                copied: false,
-                canShare: typeof navigator.share === 'function',
-                copy() {
-                    window.cfbClipboard.copy(@js($this->joinUrl)).then((ok) => {
-                        if (! ok) return;
-
-                        this.copied = true;
-                        setTimeout(() => this.copied = false, 2000);
-                    });
-                },
-                share() {
-                    navigator.share({
-                        title: @js($name),
-                        text: @js(Voice::line('groups.invite.share_text', ['group' => $name])),
-                        url: @js($this->joinUrl),
-                    }).catch(() => {});
-                },
-            }"
-        >
+        <div wire:key="create-step-invite" class="flex flex-col gap-4">
             <flux:subheading>{{ Voice::line('groups.created', ['group' => $name]) }}</flux:subheading>
 
             {{-- THE INVITE MOMENT: the link is the product here — one tap
-                 and it travels. The code stays beneath as the spoken-word
-                 fallback for a friend across the room. --}}
-            <div class="flex flex-col items-center gap-3 rounded-xl border border-zinc-200 px-4 py-6 dark:border-zinc-700">
-                <p class="text-micro font-medium uppercase tracking-wide text-zinc-400">Invite link</p>
-                <p class="max-w-full truncate font-mono text-sm font-semibold">{{ Str::after($this->joinUrl, '://') }}</p>
-
-                <div class="flex items-center gap-2">
-                    <flux:button x-on:click="copy()" size="sm" variant="primary">
-                        <span x-show="! copied">Copy link</span>
-                        <span x-show="copied" x-cloak>Copied</span>
-                    </flux:button>
-
-                    <flux:button x-show="canShare" x-cloak x-on:click="share()" size="sm">
-                        <flux:icon.box-arrow-up variant="micro" />
-                        Share
-                    </flux:button>
-                </div>
-
-                <div class="flex flex-col items-center gap-1 border-t border-zinc-100 pt-3 dark:border-zinc-800/60">
-                    <p class="text-micro text-zinc-400">Or read them the code</p>
-                    <p class="font-mono text-2xl font-bold tracking-[0.3em]">{{ $code }}</p>
-                </div>
-            </div>
+                 and it travels. x-invite-panel owns the copy/share/code
+                 handlers for every invite surface. --}}
+            <x-invite-panel
+                variant="moment"
+                :url="$this->joinUrl"
+                :code="$code"
+                :title="$name"
+                :share-text="Voice::line('groups.invite.share_text', ['group' => $name])"
+            />
 
             <p class="text-sm text-zinc-500 dark:text-zinc-400">
                 {{ Voice::line('groups.invite.hint', ['group' => $name]) }}
