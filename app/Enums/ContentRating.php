@@ -5,7 +5,10 @@ namespace App\Enums;
 /**
  * How hard the app is allowed to roast a given user.
  *
- * A HEAT SCALE — Mild, Medium, Extra Hot. The film ratings this wore until
+ * A HEAT SCALE — Mild, Medium, Spicy. The top rung is "Spicy" rather than a
+ * "Nuclear" or a "Ghost Pepper" on purpose: an over-promising top tier is the
+ * exact failure being repaired here, and it would land the same way in any
+ * vocabulary. The film ratings this wore until
  * 2026-08-31 were reversed after the registers were measured against each
  * other: across all 239 Voice families, PG and PG-13 contain no profanity at
  * all and R contains exactly one mild word. The registers differ in ATTITUDE,
@@ -44,7 +47,7 @@ enum ContentRating: string
         return match ($this) {
             self::Pg => 'Mild',
             self::Pg13 => 'Medium',
-            self::R => 'Extra Hot',
+            self::R => 'Spicy',
         };
     }
 
