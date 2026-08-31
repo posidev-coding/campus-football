@@ -418,6 +418,12 @@ new class extends Component
                     @endif
                 </div>
 
+                {{-- The room's own pitch, one truncating line: the flavor's
+                     when it has one, the mode's when it does not. Enum
+                     reads of a column already loaded and a count already
+                     passed — no query, and no second answer about how many
+                     games a room deals (the CONTEST's number, never the
+                     mode's default). --}}
                 @foreach ($shelf['rooms'] as $entry)
                     <x-room-row
                         wire:key="room-{{ $entry['room']->id }}"
@@ -426,6 +432,7 @@ new class extends Component
                         :game-count="$entry['gameCount']"
                         :seats="$entry['seats']"
                         :seated="$entry['seated']"
+                        :pitch="$entry['room']->flavorEnum()?->blurb($entry['gameCount']) ?? $entry['mode']->blurb($entry['gameCount'])"
                     />
                 @endforeach
 
@@ -528,7 +535,9 @@ new class extends Component
                 },
             }"
         >
-            <flux:heading size="lg">Invite a friend</flux:heading>
+            {{-- Subheading weight, not a heading: the foot of a store is
+                 not where the biggest words on the screen belong. --}}
+            <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Invite a friend</flux:subheading>
             <flux:subheading>{{ Voice::line('join.app.hint') }}</flux:subheading>
 
             <div class="flex flex-wrap items-center gap-2">
@@ -553,24 +562,52 @@ new class extends Component
             <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">Name it, pick its mode, send one link.</span>
         </x-link-row>
 
-        {{-- The rules, one expandable card per mode — the same
-             ruleLines() the docs and the mode doors read. --}}
-        <div class="flex flex-col gap-2">
-            <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">How it's played</flux:subheading>
-            <flux:subheading>{{ Voice::line('lobby.rules.subheading') }}</flux:subheading>
+        {{-- THE RULES, folded away. Sixty-five lines of foot matter — a
+             heading, three expandable mode cards and the shared-laws
+             paragraph — stood between a shopper and the bottom of every
+             visit, on a screen whose job is to seat them in a room. The
+             content is unchanged and every string is still in the DOM;
+             what changed is that it opens when somebody asks.
 
-            <div class="flex flex-col gap-2 pt-1">
+             The invite-code disclosure's exact grammar, because a
+             disclosure that behaves differently from the other one on the
+             same product is two controls: the scope is UNCONDITIONAL (a
+             scope keyed to a Blade conditional is how `dismissed` ended up
+             undefined in production), aria-expanded is bound, the chevron
+             rotates, and the payload is x-show + x-cloak rather than
+             removed. --}}
+        <div
+            x-data="{ open: false }"
+            class="rounded-xl border border-zinc-200 dark:border-zinc-700"
+        >
+            <button
+                type="button"
+                x-on:click="open = ! open"
+                aria-expanded="false"
+                x-bind:aria-expanded="open"
+                class="flex w-full items-center justify-between gap-3 p-4 text-start"
+            >
+                <div class="min-w-0">
+                    <p class="font-semibold">How it's played</p>
+                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('lobby.rules.subheading') }}</p>
+                </div>
+                <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
+            </button>
+
+            <div x-show="open" x-cloak class="flex flex-col gap-2 border-t border-zinc-100 p-4 dark:border-zinc-800/60">
+                {{-- One expandable card per mode — the same ruleLines()
+                     the docs and the mode doors read. --}}
                 @foreach (ContestMode::cases() as $mode)
                     <x-mode-rules wire:key="rules-{{ $mode->value }}" :mode="$mode" />
                 @endforeach
-            </div>
 
-            {{-- The rules every mode shares, stated once and plainly. --}}
-            <p class="pt-1 text-micro leading-relaxed text-zinc-500">
-                Every pick is against the spread, and every line is a half point — no pushes, ever.
-                Picks lock game by game at kickoff. Commissioner slates are due Tuesday night;
-                weeks turn official Sunday noon. Tied weeks share the win.
-            </p>
+                {{-- The rules every mode shares, stated once and plainly. --}}
+                <p class="pt-1 text-micro leading-relaxed text-zinc-500">
+                    Every pick is against the spread, and every line is a half point — no pushes, ever.
+                    Picks lock game by game at kickoff. Commissioner slates are due Tuesday night;
+                    weeks turn official Sunday noon. Tied weeks share the win.
+                </p>
+            </div>
         </div>
     @else
         @include('partials.pickem-promise')
