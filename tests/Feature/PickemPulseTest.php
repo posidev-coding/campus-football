@@ -1,11 +1,14 @@
 <?php
 
 use App\Actions\PublishSlate;
+use App\Actions\SpawnPublicContest;
 use App\Enums\ContestMode;
 use App\Models\GroupMember;
 use App\Models\Pick;
+use App\Models\Slate;
 use App\Models\SlateEntry;
 use App\Models\User;
+use App\Support\Cadence;
 use App\Support\PickemPulse;
 use Illuminate\Support\Facades\DB;
 
@@ -119,4 +122,205 @@ it('costs the same for three groups as for one, and nothing when memoized', func
     expect(count(DB::getQueryLog()))->toBe(0);
 
     DB::disableQueryLog();
+});
+
+describe('the next-up ladder', function () {
+    beforeEach(function () {
+        config()->set('cfb.pickem_open', true);
+        // Pin the clock inside the deadline window (Monday noon ET before
+        // the Sep 5 card): the build rung and the 24-hour calm are both
+        // clock-derived, and an unpinned "now" flips branches midweek.
+        $this->travelTo('2026-08-31 16:00:00');
+        Cadence::flush();
+    });
+
+    it('walks a member from fresh slate to due picks to the tiebreaker to calm', function () {
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $slate = pickemDraftSlate($contest);
+        app(PublishSlate::class)->handle($commissioner, $slate);
+        $slate = $slate->fresh();
+
+        $member = User::factory()->create();
+        GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+        expect(PickemPulse::nudge($member)['key'])->toBe('picks.next.fresh');
+
+        $games = $slate->games()->with('game')->get();
+        Pick::factory()->create([
+            'slate_game_id' => $games[0]->id,
+            'user_id' => $member->id,
+            'picked_team_id' => $games[0]->game->home_team_id,
+        ]);
+
+        PickemPulse::flush();
+        $nudge = PickemPulse::nudge($member);
+
+        expect($nudge['key'])->toBe('picks.next.due')
+            ->and($nudge['replace']['picks'])->toBe('9 picks')
+            ->and($nudge['cta'])->toBe('Finish your picks');
+
+        foreach ($games->slice(1) as $slateGame) {
+            Pick::factory()->create([
+                'slate_game_id' => $slateGame->id,
+                'user_id' => $member->id,
+                'picked_team_id' => $slateGame->game->home_team_id,
+            ]);
+        }
+
+        PickemPulse::flush();
+        expect(PickemPulse::nudge($member)['key'])->toBe('picks.next.tiebreaker');
+
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $member->id,
+            'tiebreaker_total' => 48,
+        ]);
+
+        // Entry in, kickoff five days out: nothing worth saying — the
+        // done thing is the dismissal.
+        PickemPulse::flush();
+        expect(PickemPulse::nudge($member))->toBeNull();
+
+        // Inside a day of kickoff: the calm locked-in line.
+        $this->travelTo('2026-09-05 12:00:00');
+        Cadence::flush();
+        PickemPulse::flush();
+
+        expect(PickemPulse::nudge($member)['key'])->toBe('picks.next.locked');
+    });
+
+    it('sends a commissioner through the build door only inside the window', function () {
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+
+        // A buildable Saturday: lined games, nothing published.
+        [$season, $week] = pickemSeasonWeek();
+
+        foreach (range(1, 12) as $i) {
+            pickemOdd(pickemGame($season, $week));
+        }
+
+        $nudge = PickemPulse::nudge($commissioner);
+
+        expect($nudge['key'])->toBe('picks.next.build')
+            ->and($nudge['cta'])->toBe('Build the slate');
+
+        // Past the Thursday-noon deadline the door closes, and the ladder
+        // falls through to the quiet-group ask, not a stale build call.
+        $this->travelTo('2026-09-03 20:00:00');
+        Cadence::flush();
+        PickemPulse::flush();
+
+        expect(PickemPulse::nudge($commissioner)['key'])->toBe('picks.next.invite');
+    });
+
+    it('celebrates the settled week, the win louder than the placing', function () {
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $slate = pickemDraftSlate($contest);
+        app(PublishSlate::class)->handle($commissioner, $slate);
+        $slate = $slate->fresh();
+
+        $slate->update(['status' => Slate::SETTLED, 'settled_at' => now()]);
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $commissioner->id,
+            'final_points' => 90,
+            'won' => true,
+        ]);
+
+        $nudge = PickemPulse::nudge($commissioner);
+
+        expect($nudge['key'])->toBe('picks.next.won')
+            ->and($nudge['href'])->toContain('view=results');
+
+        SlateEntry::query()->update(['won' => false]);
+        PickemPulse::flush();
+
+        expect(PickemPulse::nudge($commissioner)['key'])->toBe('picks.next.settled');
+    });
+
+    it('stays silent for the unverified, and shows a seatless reader the way in', function () {
+        $unverified = User::factory()->unverified()->create();
+
+        expect(PickemPulse::nudge($unverified))->toBeNull();
+
+        // Verified but seatless with no rooms open: zero open rooms is a
+        // count with no decision attached, so it says nothing.
+        $reader = User::factory()->create();
+
+        expect(PickemPulse::nudge($reader))->toBeNull();
+
+        // One open room turns the silence into a door. The spawn wants the
+        // played week's own clock (the PublicContestTest fixture's date).
+        $this->travelTo('2026-09-02 12:00:00');
+        Cadence::flush();
+
+        [$season, $week] = pickemSeasonWeek();
+
+        foreach (range(1, 16) as $i) {
+            $game = pickemGame($season, $week);
+            pickemOdd($game);
+            $game->predictor()->create(['matchup_quality' => 95 - $i]);
+        }
+
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        PickemPulse::flush();
+        $nudge = PickemPulse::nudge($reader);
+
+        expect($nudge['key'])->toBe('picks.next.join')
+            ->and($nudge['replace']['rooms'])->toBe('1 public room');
+    });
+});
+
+describe('the nav dot', function () {
+    beforeEach(fn () => config()->set('cfb.pickem_open', true));
+
+    it('marks a week that still needs the reader, until the completing act clears it', function () {
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $slate = pickemDraftSlate($contest);
+        app(PublishSlate::class)->handle($commissioner, $slate);
+        $slate = $slate->fresh();
+
+        expect(PickemPulse::needsAttention($commissioner))->toBeTrue();
+
+        // Everything but the last pick lands behind the cached answer...
+        $games = $slate->games()->with('game')->get();
+
+        foreach ($games->take($games->count() - 1) as $slateGame) {
+            Pick::factory()->create([
+                'slate_game_id' => $slateGame->id,
+                'user_id' => $commissioner->id,
+                'picked_team_id' => $slateGame->game->home_team_id,
+            ]);
+        }
+
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $commissioner->id,
+            'tiebreaker_total' => 40,
+        ]);
+
+        // ...and the dot honestly still nags: the entry is not in.
+        PickemPulse::flush();
+        expect(PickemPulse::needsAttention($commissioner))->toBeTrue();
+
+        // The COMPLETING act through the surface busts the cache on the
+        // same response — no five-minute nag over a finished entry.
+        Livewire\Livewire::actingAs($commissioner)
+            ->test('group', ['group' => $group])
+            ->call('pick', $games->last()->id, $games->last()->game->home_team_id);
+
+        expect(PickemPulse::needsAttention($commissioner))->toBeFalse();
+    });
+
+    it('stays dark for the unverified and behind the closed flag', function () {
+        $unverified = User::factory()->unverified()->create();
+
+        expect(PickemPulse::needsAttention($unverified))->toBeFalse();
+
+        config()->set('cfb.pickem_open', false);
+        $reader = User::factory()->create();
+
+        expect(PickemPulse::needsAttention($reader))->toBeFalse();
+    });
 });

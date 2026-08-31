@@ -294,6 +294,14 @@ Route::middleware(['auth'])->group(function () {
         Route::livewire('groups/{group}/build', 'slate-builder')->name('pickem.build');
 
         /*
+         * The thread's own door (2026-08-30): one address for both kinds
+         * — Talk is reached from inside a clubhouse, never by shared
+         * link, so the kind is already resolved on arrival. Members only;
+         * the screen 403s everyone else.
+         */
+        Route::livewire('groups/{group}/talk', 'group-talk')->name('pickem.talk');
+
+        /*
          * A public room is the same clubhouse component wearing its own
          * address — the screen redirects each kind to its home, so a
          * shared link always reads /contests/... for a room and

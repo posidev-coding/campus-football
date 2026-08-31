@@ -444,6 +444,18 @@ new class extends Component
         return \App\Support\Lobby::openRoomCount(auth()->user());
     }
 
+    /**
+     * THE ONE THING TO DO NEXT — PickemPulse's ladder, or null when
+     * there is nothing worth saying (and null renders nothing).
+     *
+     * @return array<string, mixed>|null
+     */
+    #[Computed]
+    public function nextUp(): ?array
+    {
+        return auth()->guest() ? null : \App\Support\PickemPulse::nudge(auth()->user());
+    }
+
     #[Computed]
     public function hasLiveGame(): bool
     {
@@ -508,6 +520,17 @@ new class extends Component
             aria-label="Dismiss"
         />
     </div>
+
+    {{-- THE NEXT-UP SLOT: the one thing to do next, from PickemPulse's
+         ladder. One card, tone-tinted, whole-card CTA. It yields to the
+         onboarding CTA below (following a team IS the next thing at zero
+         follows), and the resolver itself stays silent for unverified
+         readers — the verify callout above never has to compete. --}}
+    @auth
+        @if (! $this->showOnboardingCta && $this->nextUp !== null)
+            <x-next-up :nudge="$this->nextUp" />
+        @endif
+    @endauth
 
     {{-- One blue button is the whole front door at zero teams. The swiper's
          own quiet slot takes over once they have at least one — that is a

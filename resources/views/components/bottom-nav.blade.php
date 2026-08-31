@@ -32,12 +32,25 @@
             {{-- `data-tour` marks the guided tour's spotlight targets; the
                  tour picks whichever element wearing a key is visible, so
                  these tabs serve below `sm` and the header chips above. --}}
+            @php
+                // Two dots, two meanings: unread notes on Account, and a
+                // week still waiting on the reader behind Picks — the
+                // latter answered from PickemPulse's five-minute cache,
+                // never a fresh read per page.
+                $dot = match ($area['key']) {
+                    'account' => (auth()->user()?->unreadNoteCount() ?? 0) > 0,
+                    'picks' => auth()->check() && App\Support\PickemPulse::needsAttention(auth()->user()),
+                    default => false,
+                };
+            @endphp
+
             <x-nav-tab
                 :href="Navigation::href($area)"
                 :icon="$area['icon']"
                 :label="Navigation::label($area)"
                 :active="Navigation::isCurrent($area)"
-                :badge="$area['key'] === 'account' && (auth()->user()?->unreadNoteCount() ?? 0) > 0"
+                :badge="$dot"
+                :badge-label="$area['key'] === 'picks' ? 'Picks waiting' : 'Unread notifications'"
                 wire:key="area-{{ $area['key'] }}"
                 data-tour="{{ $area['key'] }}"
             />

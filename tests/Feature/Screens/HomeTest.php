@@ -10,6 +10,7 @@ use App\Models\Article;
 use App\Models\Conference;
 use App\Models\Game;
 use App\Models\GamePredictor;
+use App\Models\GroupMember;
 use App\Models\Season;
 use App\Models\Standing;
 use App\Models\Team;
@@ -939,5 +940,42 @@ describe('the picks slot and the foot door', function () {
             ->assertSee('Story number 3')
             ->assertDontSee('Story number 4')
             ->assertSee('More');
+    });
+});
+
+describe('the next-up slot', function () {
+    it('shows a member with picks due the one thing to do next', function () {
+        config()->set('cfb.pickem_open', true);
+
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+        // The onboarding CTA owns the slot's spot at zero follows — stamp
+        // the commissioner onboarded so the ladder gets the floor.
+        $commissioner->forceFill(['onboarded_at' => now()])->save();
+
+        $this->actingAs($commissioner)->get(route('home'))
+            ->assertOk()
+            // The plain CTA, and the fresh-slate line naming the group.
+            ->assertSee('Make your picks')
+            ->assertSee(Voice::line('picks.next.fresh', ['group' => $group->name], for: $commissioner))
+            // The bottom nav's Picks tab wears the presence dot too.
+            ->assertSee('Picks waiting');
+    });
+
+    it('yields the slot to the onboarding CTA at zero follows', function () {
+        config()->set('cfb.pickem_open', true);
+
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $member = User::factory()->create();
+        GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+        // Zero follows, never onboarded: following a team IS the next
+        // thing, and the two cards must not stack.
+        $this->actingAs($member)->get(route('home'))
+            ->assertOk()
+            ->assertSee('Add your team')
+            ->assertDontSee('Make your picks');
     });
 });

@@ -564,6 +564,25 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee('Needs your picks');
     });
 
+    it('says TIEBREAKER LEFT on the card when the picks are in and the question is not', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        $slate = pickemDraftSlate($contest);
+        app(PublishSlate::class)->handle($commissioner, $slate);
+
+        foreach ($slate->games()->with('game')->get() as $slateGame) {
+            app(MakePick::class)->handle($commissioner, $slateGame, $slateGame->game->home_team_id);
+        }
+
+        // The same amber the pick surface's sticky slot wears — never a
+        // "10 of 10" reading as if the entry were done.
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('Tiebreaker left')
+            ->assertDontSee('Entry in')
+            ->assertDontSee('10 of 10');
+    });
+
     it('pays the Monday payoff while it is still the conversation', function () {
         [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
         [, $week] = pickemSeasonWeek();
