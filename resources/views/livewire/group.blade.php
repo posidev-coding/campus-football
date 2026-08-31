@@ -394,6 +394,111 @@ new class extends Component
     }
 
     /**
+     * EVERYBODY'S CALLS, revealed per game — the accountability grid.
+     * Rows are the week's ranked entrants (the viewer hoisted first, the
+     * Bear riding along on a Woodshed slate); columns are the slate's
+     * games; a cell stays a dash until THAT game kicks off, then shows
+     * the picked side, then wears its grade. Our locks are per kickoff,
+     * so the reveal is per game — nobody's late-window pick leaks while
+     * the noon games are already talking.
+     *
+     * ONE pick-level read for the whole room, asked only when the
+     * Standings tab renders and only once the card is playing; null any
+     * other time, and null renders nothing.
+     *
+     * @return array{columns: list<array<string, mixed>>, rows: list<array<string, mixed>>}|null
+     */
+    #[Computed]
+    public function picksGrid(): ?array
+    {
+        $slate = $this->slate;
+
+        if ($slate === null || ! in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true)) {
+            return null;
+        }
+
+        $games = $slate->games;
+
+        $picks = Pick::query()
+            ->whereIn('slate_game_id', $games->pluck('id'))
+            ->get()
+            ->groupBy('user_id');
+
+        $columns = $games->map(fn ($slateGame) => [
+            'key' => $slateGame->id,
+            'away' => $slateGame->game->awayTeam->abbreviation,
+            'home' => $slateGame->game->homeTeam->abbreviation,
+        ])->values()->all();
+
+        $abbreviate = fn ($slateGame, ?int $teamId): ?string => match ($teamId) {
+            $slateGame->game->home_team_id => $slateGame->game->homeTeam->abbreviation,
+            $slateGame->game->away_team_id => $slateGame->game->awayTeam->abbreviation,
+            default => null,
+        };
+
+        $grader = app(SpreadGrader::class);
+        $engine = $this->contest?->mode->engine($this->contest->settings);
+        $bear = $slate->bear_theme !== null && ($engine?->hasBear() ?? false);
+
+        $rows = $this->weekStandings
+            ->map(function (array $standing) use ($games, $picks, $abbreviate, $grader, $bear, $slate) {
+                $isBear = $standing['key'] === 'bear';
+                $mine = $standing['user'] === null
+                    ? collect()
+                    : ($picks->get($standing['user']->id) ?? collect())->keyBy('slate_game_id');
+
+                $cells = $games->map(function ($slateGame) use ($mine, $abbreviate, $grader, $isBear, $bear) {
+                    // The reveal rule: THIS game's kickoff, nothing else's.
+                    if (! $slateGame->game->hasKickedOff()) {
+                        return ['state' => 'hidden', 'abbr' => null, 'tone' => 'neutral'];
+                    }
+
+                    if ($isBear) {
+                        if (! $bear || $slateGame->bear_team_id === null) {
+                            return ['state' => 'none', 'abbr' => null, 'tone' => 'neutral'];
+                        }
+
+                        $tone = $slateGame->game->completed
+                            ? ($grader->resultFor($slateGame, $slateGame->game, $slateGame->bear_team_id) === Pick::WIN ? 'win' : 'loss')
+                            : 'neutral';
+
+                        return ['state' => 'pick', 'abbr' => $abbreviate($slateGame, $slateGame->bear_team_id), 'tone' => $tone];
+                    }
+
+                    $pick = $mine->get($slateGame->id);
+
+                    if ($pick === null) {
+                        // An absent pick on a kicked game is an honest zero.
+                        return ['state' => 'none', 'abbr' => null, 'tone' => 'neutral'];
+                    }
+
+                    return [
+                        'state' => 'pick',
+                        'abbr' => $abbreviate($slateGame, $pick->picked_team_id),
+                        'tone' => $pick->result === null ? 'neutral' : ($pick->result === Pick::WIN ? 'win' : 'loss'),
+                    ];
+                })->values()->all();
+
+                return [
+                    'name' => $standing['user'] !== null
+                        ? ($standing['user']->handle !== null ? '@'.$standing['user']->handle : $standing['user']->name)
+                        : ($standing['label'] ?? '—'),
+                    'viewer' => $standing['user']?->id === auth()->id(),
+                    'icon' => $standing['icon'],
+                    'points' => $standing['cells'][0],
+                    'cells' => $cells,
+                ];
+            })
+            // The viewer's own line first — the row you scan for is the
+            // row you never have to hunt.
+            ->sortBy(fn (array $row) => $row['viewer'] ? 0 : 1)
+            ->values()
+            ->all();
+
+        return $rows === [] ? null : ['columns' => $columns, 'rows' => $rows];
+    }
+
+    /**
      * The modes this group could pivot TO — every live mode but the one
      * it plays. The Woodshed's arrival grew the old single-answer seam
      * into this choice, so the modal is a radiogroup now.
@@ -598,7 +703,7 @@ new class extends Component
         unset(
             $this->contest, $this->pivotChoices, $this->slate, $this->surfaceStatus,
             $this->weekStandings, $this->seasonStandings, $this->seasonHasHistory,
-            $this->youStrip,
+            $this->youStrip, $this->picksGrid,
         );
     }
 
@@ -626,7 +731,7 @@ new class extends Component
     protected function refreshPicks(): void
     {
         $this->refreshPickState();
-        unset($this->slate, $this->surfaceStatus, $this->weekStandings, $this->seasonStandings, $this->youStrip);
+        unset($this->slate, $this->surfaceStatus, $this->weekStandings, $this->seasonStandings, $this->youStrip, $this->picksGrid);
     }
 
     private function normalizedView(string $view): string
@@ -915,6 +1020,12 @@ new class extends Component
                     :headings="['Pts']"
                     title="This week"
                 />
+            @endif
+
+            {{-- The accountability grid — everybody's calls, revealed
+                 per game, once the card is playing. --}}
+            @if ($this->picksGrid !== null)
+                <x-picks-grid :grid="$this->picksGrid" />
             @endif
 
             {{-- The season ledger — groups and evergreen tables; a

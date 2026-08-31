@@ -428,3 +428,57 @@ it('keeps the query count flat however big the slate gets', function () {
 
     expect($queries($groupB))->toBe($queries($groupA));
 });
+
+it('reveals the picks grid per game, and never before kickoff', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $member = User::factory()->create(['admin' => true, 'handle' => 'gridwatcher']);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate = $slate->fresh();
+
+    $games = $slate->games()->with('game')->orderBy('position')->get();
+
+    foreach ([$commissioner, $member] as $player) {
+        foreach ($games->take(2) as $slateGame) {
+            Pick::factory()->create([
+                'slate_game_id' => $slateGame->id,
+                'user_id' => $player->id,
+                'picked_team_id' => $slateGame->game->home_team_id,
+            ]);
+        }
+
+        SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $player->id]);
+    }
+
+    // Nothing kicked: an upcoming card renders NO grid — nothing to reveal.
+    expect(Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->instance()->picksGrid)->toBeNull();
+
+    // The first game kicks; the second stays put.
+    $games[0]->game->update(['kickoff_at' => now()->subHour()]);
+
+    $grid = Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->instance()->picksGrid;
+
+    $kicked = array_search($games[0]->id, array_column($grid['columns'], 'key'), true);
+    $waiting = array_search($games[1]->id, array_column($grid['columns'], 'key'), true);
+
+    // The viewer's row leads; the kicked column shows the side; the
+    // unkicked column stays HIDDEN even though a pick exists on it —
+    // the leak test.
+    expect($grid['rows'][0]['viewer'])->toBeTrue()
+        ->and($grid['rows'][0]['cells'][$kicked]['state'])->toBe('pick')
+        ->and($grid['rows'][0]['cells'][$kicked]['abbr'])->not->toBeNull()
+        ->and($grid['rows'][0]['cells'][$waiting]['state'])->toBe('hidden')
+        ->and($grid['rows'][0]['cells'][$waiting]['abbr'])->toBeNull();
+
+    // And the Standings tab carries it, reveal rule said out loud.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertSee('Picks show at kickoff.')
+        ->assertSee('@gridwatcher')
+        ->assertSeeHtml('data-cell="hidden"')
+        ->assertSeeHtml('data-cell="pick"');
+});
