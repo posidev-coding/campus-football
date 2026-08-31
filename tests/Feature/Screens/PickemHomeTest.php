@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Models\Week;
 use App\Support\Navigation;
 use App\Support\Voice;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 /*
@@ -512,7 +513,10 @@ describe('my week (inside the flag)', function () {
             ->assertSee('Two ways to play')
             ->assertDontSeeHtml('wire:key="picks-view-results"')
             // The ladder still reaches them.
-            ->assertSee('Walk-On');
+            ->assertSee('Walk-On')
+            // ...and the you-strip does not: it is guarded on the fork,
+            // so the first run stays the screen it has always been.
+            ->assertDontSee('Lattes');
     });
 
     it('gives a rooms-only reader the fork too — a seat is a card', function () {
@@ -623,6 +627,89 @@ describe('my week (inside the flag)', function () {
         Livewire::actingAs($top->fresh())->test('pickem-home')
             ->assertSee('Legend')
             ->assertSee(Voice::line('rank.topped_out', for: $top));
+    });
+
+    /*
+     * THE YOU-STRIP. Below `sm` the app header does not render, so a
+     * phone reader met no rung, no XP and no lattes on either pick'em
+     * door — the whole ladder was invisible exactly where it is played.
+     * The standings' own strip is the second render site, unchanged.
+     */
+    it('puts the reader\'s own line at the top of their week', function () {
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        $commissioner->update(['handle' => 'marcus']);
+        app(GrantWalletEntry::class)->handle($commissioner, 1000, 3, 'test-seed', 'test-seed');
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        Livewire::actingAs($commissioner->fresh())->test('pickem-home')
+            ->assertSee('You')
+            ->assertSee('@marcus')
+            // The four columns, and the rung NAMED rather than a bare
+            // number: the ladder is the thing being sold.
+            ->assertSeeInOrder(['Rank', 'XP', 'Lattes', 'Wins'])
+            ->assertSee('Rotation')
+            ->assertSee('1,000')
+            ->assertSee('3');
+    });
+
+    it('dashes Wins until a week has actually been won', function () {
+        /*
+         * Break-it-back, both directions. "0 Wins" all September is a
+         * counter with no decision attached — and a zero nobody has had
+         * the chance to earn reads as a verdict on the reader. The strip
+         * pre-renders the em dash the component refuses to substitute.
+         */
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $strip = Livewire::actingAs($commissioner)->test('pickem-home')->instance()->youStrip;
+
+        expect($strip['stats'][3])->toBe(['label' => 'Wins', 'value' => '—']);
+
+        // A settled, countable week that the reader took.
+        [, $week] = pickemSeasonWeek();
+        $settled = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'saturday' => '2026-08-29',
+            'status' => Slate::SETTLED,
+            'exhibition' => false,
+            'settled_at' => now()->subDay(),
+        ]);
+        SlateEntry::factory()->create([
+            'slate_id' => $settled->id,
+            'user_id' => $commissioner->id,
+            'final_points' => 90,
+            'won' => true,
+        ]);
+
+        $strip = Livewire::actingAs($commissioner)->test('pickem-home')->instance()->youStrip;
+
+        expect($strip['stats'][3])->toBe(['label' => 'Wins', 'value' => '1']);
+    });
+
+    it('reads the wallet once for the whole strip', function () {
+        /*
+         * The strip's whole cost claim: lattes ride the SAME memoized
+         * walletTotals() SUM the rank chip and the ladder already read,
+         * and wins is a projection of cards(). Four numbers, not four
+         * questions — a second wallet read here is the class of drift
+         * that made the old dashboard heavy.
+         */
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        DB::enableQueryLog();
+
+        Livewire::actingAs($commissioner)->test('pickem-home')->assertSee('Lattes');
+
+        $wallet = collect(DB::getQueryLog())
+            ->filter(fn (array $query) => str_contains($query['query'], 'wallet_entries'))
+            ->count();
+
+        DB::disableQueryLog();
+
+        expect($wallet)->toBe(1);
     });
 });
 

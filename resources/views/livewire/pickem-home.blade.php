@@ -105,6 +105,50 @@ new class extends Component
     }
 
     /**
+     * THE READER'S OWN LINE — the standings' you-strip, second render
+     * site. Below `sm` the app header does not render at all, so a phone
+     * reader saw no rung, no XP and no lattes on either pick'em door:
+     * the gamification the screen is built around was invisible exactly
+     * where the screen starts.
+     *
+     * ZERO new queries. `rank`/`walletXp` are already read for the
+     * ladder, lattes ride the same memoized walletTotals() SUM, and wins
+     * is a projection of cards(). Values are PRE-RENDERED with an em dash
+     * where there is no data — the component never substitutes one.
+     *
+     * @return array{name: string, stats: list<array{label: string, value: string}>}|null
+     */
+    #[Computed]
+    public function youStrip(): ?array
+    {
+        $user = auth()->user();
+
+        if ($user === null) {
+            return null;
+        }
+
+        $wins = $this->cards->sum('wins');
+
+        return [
+            // The clubhouse strip's own rule: the handle when it is
+            // claimed, the name until then.
+            'name' => $user->handle !== null ? '@'.$user->handle : $user->name,
+            'stats' => [
+                ['label' => 'Rank', 'value' => $this->rank['name'] ?? '—'],
+                ['label' => 'XP', 'value' => number_format($this->walletXp)],
+                ['label' => 'Lattes', 'value' => number_format($user->walletTotals()['lattes'])],
+                /*
+                 * A DASH until the first win exists. "0 Wins" every
+                 * Sunday in September is a counter with no decision
+                 * attached to it, and a zero somebody has not earned yet
+                 * reads as a verdict on them.
+                 */
+                ['label' => 'Wins', 'value' => $wins > 0 ? (string) $wins : '—'],
+            ],
+        ];
+    }
+
+    /**
      * Every group card's state, assembled flat.
      *
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
@@ -567,6 +611,18 @@ new class extends Component
              substituted week. --}}
         @if ($this->weekEntry !== null)
             <x-week-ribbon :entry="$this->weekEntry" :clock="$this->ribbonClock" />
+        @endif
+
+        {{-- YOU, before anything on the screen asks you for something.
+             Below `sm` there is no app header, so this is the only place
+             a phone reader meets their own rung, XP and lattes on the
+             screen the whole ladder is played on.
+
+             Guarded on the FORK, not on the wallet: a first run has no
+             seat and no settled week, and the pitch it gets instead is
+             byte-identical to the one it has always had. --}}
+        @if ($this->hasTabs && $this->youStrip !== null)
+            <x-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
         @endif
 
         {{-- What needs you right now: slates still taking your picks,
