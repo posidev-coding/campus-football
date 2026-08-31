@@ -45,6 +45,20 @@ class SyncSummariesCommand extends Command
 
     public function handle(EspnClient $espn, SyncGameSummary $sync): int
     {
+        /*
+         * The two flags are opposites, and until now `--force` won silently:
+         * `--missing` was never read, so `--missing --force` refetched all 954
+         * games of a season when the operator had asked for the handful that
+         * were absent. On the most expensive feed we have — one request and
+         * 544 KB per game — a silent win in that direction is the wrong one.
+         * Refuse the pair rather than pick for them.
+         */
+        if ($this->option('missing') && $this->option('force')) {
+            $this->error('--missing and --force are opposites: --missing skips games that already have a summary, --force refetches them. Pass one.');
+
+            return self::FAILURE;
+        }
+
         // The debugging path, never the schedule's, so it stays off the ledger.
         if ($this->option('now')) {
             $gameIds = $this->gameIds();
@@ -196,6 +210,8 @@ class SyncSummariesCommand extends Command
             $query->whereHas('season', fn ($q) => $q->where('year', (int) $year));
         }
 
+        // `--missing` is the default, so this reads the flag that turns it
+        // OFF. The pair is rejected in handle(), so the two can never disagree.
         if (! $this->option('force')) {
             $query->whereNotIn('id', GameSummary::select('game_id'));
         }
