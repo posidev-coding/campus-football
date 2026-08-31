@@ -97,6 +97,128 @@ it('dates a night game in ET, not the next day in UTC', function () {
         ->assertDontSee('Oct 19');
 });
 
+describe('a log with more than one stat category', function () {
+    beforeEach(function () {
+        /*
+         * `athlete_game_stats` is unique on athlete, game and CATEGORY, so one
+         * Saturday for a quarterback is three rows. Stamped fresh and with the
+         * queue faked so nothing refetches over the seeded log.
+         */
+        $season = Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
+
+        $this->game = Game::factory()->finished()->create([
+            'id' => 401769073,
+            'season_id' => $season->id,
+            'kickoff_at' => '2025-09-06 19:30:00',
+            'short_name' => 'OLE @ UGA',
+        ]);
+
+        $this->line = function (string $category, array $stats) {
+            AthleteGameStat::create([
+                'athlete_id' => $this->athlete->id,
+                'game_id' => $this->game->id,
+                'team_id' => 61,
+                'category' => $category,
+                'stats' => $stats,
+                'display_stats' => collect($stats)
+                    ->map(fn ($value, $name) => ['name' => $name, 'label' => str($name)->headline()->upper()->toString()])
+                    ->values()
+                    ->all(),
+            ]);
+        };
+
+        Queue::fake();
+        $this->athlete->forceFill(['game_log_fetched_at' => now()])->save();
+    });
+
+    it('gives each category its own table instead of repeating the date under one header', function () {
+        /*
+         * The bug: one table, its header built from the FIRST row's
+         * display_stats, and a row per stat line. The rushing line landed
+         * under C/ATT, YDS, TD, INT as the same date with nothing but dashes
+         * in it — which reads as a duplicate row, and was reported as one.
+         */
+        ($this->line)('passing', ['passingYards' => '281', 'passingTouchdowns' => '3']);
+        ($this->line)('rushing', ['rushingYards' => '47', 'rushingTouchdowns' => '1']);
+
+        Livewire::test('player', ['athlete' => $this->athlete])
+            ->assertSee('Passing')
+            ->assertSee('Rushing')
+            // Both lines carry their own numbers. Under a single header the
+            // second category rendered dashes for every column it had.
+            ->assertSee('281')
+            ->assertSee('47');
+    });
+
+    it('reads the categories in football order, with fumbles last', function () {
+        // Not the order MySQL hands them back, and not alphabetical either —
+        // fumbles would lead every quarterback's log.
+        ($this->line)('fumbles', ['fumblesLost' => '1']);
+        ($this->line)('rushing', ['rushingYards' => '47']);
+        ($this->line)('passing', ['passingYards' => '281']);
+
+        Livewire::test('player', ['athlete' => $this->athlete])
+            ->assertSeeInOrder(['Passing', 'Rushing', 'Fumbles']);
+    });
+
+    it('keeps a category ESPN adds that we have no order for', function () {
+        // Sorting it away would be a silent loss of a log we already hold.
+        ($this->line)('passing', ['passingYards' => '281']);
+        ($this->line)('somethingNew', ['whatever' => '9']);
+
+        Livewire::test('player', ['athlete' => $this->athlete])
+            ->assertSeeInOrder(['Passing', 'Something New'])
+            ->assertSee('9');
+    });
+
+    it('names no category at all when there is only the one', function () {
+        // Most players are one line, and a lone "Passing" caption over a lone
+        // table is a heading that distinguishes nothing.
+        ($this->line)('passing', ['passingYards' => '281']);
+
+        Livewire::test('player', ['athlete' => $this->athlete])
+            ->assertSee('281')
+            ->assertDontSee('Passing');
+    });
+
+    it('unions the columns across a category, so an older shape keeps its stat', function () {
+        /*
+         * Two syncs write this column and their passing lines differ by one
+         * stat: ESPN publishes no QBR on ~6% of them. Columns taken from a
+         * single row put every other shape's extra stat behind a dash — the
+         * same mistake as the header, one category down.
+         */
+        // The older game, deliberately: taking the columns from the newest row
+        // alone is the shape of the bug, so the extra stat has to sit behind
+        // it to be worth asserting.
+        $earlier = Game::factory()->finished()->create([
+            'id' => 401769074,
+            'season_id' => $this->game->season_id,
+            'kickoff_at' => '2025-08-30 19:30:00',
+            'short_name' => 'UGA @ TENN',
+        ]);
+
+        ($this->line)('passing', ['passingYards' => '281']);
+
+        AthleteGameStat::create([
+            'athlete_id' => $this->athlete->id,
+            'game_id' => $earlier->id,
+            'team_id' => 61,
+            'category' => 'passing',
+            'stats' => ['passingYards' => '199', 'adjQBR' => '77.4'],
+            'display_stats' => [
+                ['name' => 'passingYards', 'label' => 'YDS'],
+                ['name' => 'adjQBR', 'label' => 'QBR'],
+            ],
+        ]);
+
+        Livewire::test('player', ['athlete' => $this->athlete])
+            ->assertSee('QBR')
+            ->assertSee('77.4')
+            ->assertSee('281');
+    });
+});
+
 it('renders the game log the job fetched', function () {
     $season = Season::factory()->create(['year' => 2025, 'type' => Season::REGULAR]);
     Game::factory()->finished()->create([
