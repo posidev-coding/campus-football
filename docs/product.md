@@ -329,6 +329,29 @@ place.
   backfilled: the old rows mean what they measured, and an estimate written
   into `ux_events` to make a chart continuous would be a fabricated number in
   a table read by an advisor that cannot tell the difference.
+- **`onboarding_credentials_reached` splits the drop in two**, and exists
+  because the week to 2026-08-31 read 225 opened against 5 registered with
+  nothing between them — everyone who registers finishes (team pick 5 of 5,
+  tour 5 of 5), so the entire loss sat inside three wizard steps the funnel
+  could not tell apart. It is emitted at the step boundary in `next()`, guests
+  only, deduped on the same session hash `begin()` uses, and it earns a case in
+  a deliberately bounded enum because it is a thing that HAPPENED rather than a
+  difference of two counters (which is why "slate abandoned with zero picks"
+  still is not one). One case, not three: "left before we asked for anything"
+  and "left at the email and password" are the two halves that call for
+  different fixes, and a counter per pane would be a bar chart nobody reads.
+- **The device draft restores the step with a LIVE `$wire.set`, chained after
+  `begin()` resolves.** The restored FIELDS are bound to elements, so a
+  deferred set repaints them for free; `step` is bound to nothing — it selects
+  a server-rendered pane — so the deferred set this used to do moved the
+  component's state and painted nothing at all. A returning guest saw the name
+  pane while the server believed they were on 'rating', and one Continue
+  validated the RATING rules and landed them on the credentials form: the
+  trash-talk question skipped, the retyped name unchecked, and the new
+  credentials-reached signal counted for somebody who never saw the pane
+  before it. Chaining matters as much as the live set: Livewire batches
+  same-tick calls into one commit and `begin()` is `#[Renderless]`, which
+  suppresses the render for the WHOLE commit.
 
 ## Verification pays first, then the clock runs
 
