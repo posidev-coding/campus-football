@@ -8,10 +8,12 @@ use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Str;
 
 /**
- * The schedule as data: every cfb task, its cadence, and its latest ledger
- * row, with an overdue flag derived from the task's own cron expression.
+ * The schedule as data: every cfb and pick'em task, its cadence, and its
+ * latest ledger row, with an overdue flag derived from the task's own cron
+ * expression.
  *
  * Introspected from Schedule::events() rather than from a hand-kept list, so
  * a task added to routes/console.php appears here without anyone remembering
@@ -27,6 +29,25 @@ use Illuminate\Contracts\Console\Kernel;
  */
 class SyncSchedule
 {
+    /**
+     * The command prefixes this report covers — an ALLOWLIST, and still a
+     * deliberate one rather than "everything on the schedule".
+     *
+     * `model:prune` is on the schedule too and stays off the report for the
+     * reason it always did: it is the ledger's own housekeeping, it writes no
+     * feed run, and it could only ever render as a permanently grey
+     * "untracked" row that means nothing.
+     *
+     * The pick'em sweeps are the opposite case, and they were dropped here for
+     * no better reason than their prefix. They are the weekly loop the product
+     * turns on, and PickemPreflight can only say they are REGISTERED — nothing
+     * else in the app answers whether one actually ran, so a dead worker or a
+     * stuck overlap mutex left the preflight green and this panel silent.
+     *
+     * @var list<string>
+     */
+    private const REPORTED = ['cfb:', 'pickem:'];
+
     /**
      * @return list<array{
      *     name: string, cadence: string, tracked: ?string, gated: bool,
@@ -107,7 +128,7 @@ class SyncSchedule
         if ($event instanceof CallbackEvent) {
             $description = (string) $event->description;
 
-            return str_starts_with($description, 'cfb:') ? $description : null;
+            return Str::startsWith($description, self::REPORTED) ? $description : null;
         }
 
         $command = (string) $event->command;
@@ -117,11 +138,7 @@ class SyncSchedule
             $command = substr($command, $artisan + strlen("'artisan' "));
         }
 
-        // cfb tasks only. `model:prune` is on the schedule too, but it is the
-        // ledger's own housekeeping — it writes no feed run, so it could only
-        // ever render as a permanently grey "untracked" row that means
-        // nothing.
-        return str_contains($command, 'cfb:') ? trim($command) : null;
+        return Str::contains($command, self::REPORTED) ? trim($command) : null;
     }
 
     /**
@@ -151,6 +168,14 @@ class SyncSchedule
             str_starts_with($command, 'cfb:kickoff-alerts') => 'kickoff-alerts',
             str_starts_with($command, 'cfb:ux-rollup') => 'ux:rollup',
             str_starts_with($command, 'cfb:gameday') => 'gameday',
+            /*
+             * The one pick'em sweep that writes rows today. The other three —
+             * publish-slates, settle, open-lobbies — call no trackRun, so they
+             * fall through to null and render as untracked. That is the honest
+             * state: a task reporting a run it never recorded is worse than one
+             * reporting nothing at all, so none of them gets an invented key.
+             */
+            str_starts_with($command, 'pickem:remind') => 'pick-reminders',
             default => null,
         };
     }

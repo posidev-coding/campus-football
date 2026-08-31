@@ -910,16 +910,68 @@ describe('the advisor ledger', function () {
 
 describe('the schedule report', function () {
     it('leaves no command that writes a feed run marked untracked', function () {
-        // A grey "untracked" row means "this writes no ledger entry", which is
-        // a real and useful state — model:prune and the news fan-out are
-        // genuinely untracked. A command that DOES write one and is missing a
-        // ledgerKey() case renders the same grey and the row simply lies.
+        /*
+         * A grey "untracked" row means "this writes no ledger entry", which is
+         * a real and useful state — model:prune and the news fan-out are
+         * genuinely untracked. A command that DOES write one and is missing a
+         * ledgerKey() case renders the same grey and the row simply lies.
+         *
+         * The three pick'em sweeps joined this list when `pickem:` became a
+         * reported prefix. They call no trackRun, so untracked is the honest
+         * state for them — a task reporting a run it never recorded would be
+         * worse than one reporting nothing. Giving them real rows means giving
+         * them trackRun first, and this pin is what will notice if one gains a
+         * key without a ledgerKey() line to read it.
+         */
         $untracked = collect(app(SyncSchedule::class)->tasks())
             ->where('tracked', null)
             ->pluck('name')
+            ->sort()
+            ->values()
             ->all();
 
-        expect($untracked)->toBe(['cfb:news:followed', 'cfb:news:followed:offseason']);
+        expect($untracked)->toBe([
+            'cfb:news:followed',
+            'cfb:news:followed:offseason',
+            'pickem:open-lobbies',
+            'pickem:publish-slates',
+            'pickem:settle',
+        ]);
+    });
+
+    it('reports all four pickem sweeps, which the cfb prefix used to drop', function () {
+        /*
+         * PickemPreflight checks the four are REGISTERED; nothing answered
+         * whether one actually RAN, because a display name of null drops a
+         * task from tasks() before any overdue calculation happens. A dead
+         * worker, a season gate evaluating wrong or a stuck overlap mutex left
+         * the preflight green and this report silent — over the loop the whole
+         * product turns on.
+         */
+        $names = collect(app(SyncSchedule::class)->tasks())->pluck('name');
+
+        foreach (['pickem:publish-slates', 'pickem:remind', 'pickem:settle', 'pickem:open-lobbies'] as $sweep) {
+            expect($names->contains(fn (string $name) => str_contains($name, $sweep)))
+                ->toBeTrue("{$sweep} must reach the schedule report.");
+        }
+
+        // And the allowlist is still an allowlist: the ledger's own
+        // housekeeping stays off a report about the ledger.
+        expect($names->contains(fn (string $name) => str_contains($name, 'model:prune')))->toBeFalse();
+    });
+
+    it('reads a recorded pick-reminders run back onto its row', function () {
+        // The half a display name alone does not buy: ledgerKey() has to map
+        // the sweep to the key SendPickRemindersCommand writes under, or the
+        // row renders grey over a ledger that has the answer in it.
+        $run = FeedRun::begin('pick-reminders', null);
+        $run->complete(0, 0, 12);
+
+        $task = collect(app(SyncSchedule::class)->tasks())
+            ->first(fn (array $task) => str_contains($task['name'], 'pickem:remind'));
+
+        expect($task['tracked'])->toBe('pick-reminders')
+            ->and($task['run']?->id)->toBe($run->id);
     });
 });
 

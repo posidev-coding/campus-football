@@ -64,20 +64,20 @@ class SendPickRemindersCommand extends Command
 
     private function sweep(string $wave): int
     {
-        $slates = PickReminders::dueSlates($wave);
-
-        if ($slates->isEmpty()) {
-            $this->info("Nothing due for {$wave}.");
-
-            return 0;
-        }
-
-        $owed = PickReminders::owedBy($slates);
-
+        // A preview is not the scheduled run, so it stays off the ledger —
+        // and it stamps nothing, so it must not answer for the wave either.
         if ($this->option('dry')) {
+            $slates = PickReminders::dueSlates($wave);
+
+            if ($slates->isEmpty()) {
+                $this->info("Nothing due for {$wave}.");
+
+                return 0;
+            }
+
             $this->table(
                 ["{$wave}: reader", 'cards', 'picks owed'],
-                collect($owed)->map(fn (array $cards, int $userId) => [
+                collect(PickReminders::owedBy($slates))->map(fn (array $cards, int $userId) => [
                     $userId, count($cards), collect($cards)->sum('owed'),
                 ])->values(),
             );
@@ -85,7 +85,27 @@ class SendPickRemindersCommand extends Command
             return 0;
         }
 
-        $sent = $this->trackRun('pick-reminders', null, function () use ($owed, $wave, $slates): array {
+        $swept = 0;
+
+        $sent = $this->trackRun('pick-reminders', null, function () use ($wave, &$swept): array {
+            /*
+             * A tick with no slate due is still a run, and it is most of them:
+             * the sweep fires every fifteen minutes from 08:00 to 23:45 in
+             * season and only the ticks inside a wave's window have anything
+             * to answer for. The completed row with a zero count is what lets
+             * the schedule panel tell "ran, nothing due" from "never ran" —
+             * and this sweep only reached that panel at all once `pickem:`
+             * became a reported prefix, so without this it would have arrived
+             * there reading overdue on nearly every tick.
+             */
+            $slates = PickReminders::dueSlates($wave);
+
+            if ($slates->isEmpty()) {
+                return ['records' => 0, 'batch_id' => null];
+            }
+
+            $swept = $slates->count();
+            $owed = PickReminders::owedBy($slates);
             $batchId = null;
 
             if ($owed !== []) {
@@ -118,7 +138,13 @@ class SendPickRemindersCommand extends Command
             return ['records' => count($owed), 'batch_id' => $batchId];
         });
 
-        $this->info("Queued {$sent} ".str('reminder')->plural($sent)." for {$wave} across ".$slates->count().' '.str('slate')->plural($slates->count()).'.');
+        if ($swept === 0) {
+            $this->info("Nothing due for {$wave}.");
+
+            return 0;
+        }
+
+        $this->info("Queued {$sent} ".str('reminder')->plural($sent)." for {$wave} across ".$swept.' '.str('slate')->plural($swept).'.');
 
         return $sent;
     }
