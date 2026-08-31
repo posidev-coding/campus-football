@@ -276,6 +276,7 @@ new class extends Component
         $rows = $slate->entries
             ->map(fn (SlateEntry $entry) => [
                 'user' => $entry->user,
+                'team' => $this->memberTeams[$entry->user_id] ?? null,
                 'label' => null,
                 'key' => null,
                 'icon' => null,
@@ -304,6 +305,7 @@ new class extends Component
             ->map(fn (array $row, int $i) => [
                 'rank' => $i + 1,
                 'user' => $row['user'],
+                'team' => $row['team'] ?? null,
                 'label' => $row['label'],
                 'key' => $row['key'],
                 'icon' => $row['icon'],
@@ -376,6 +378,8 @@ new class extends Component
             ->filter(fn (array $row) => $row['user'] !== null)
             ->keyBy(fn (array $row) => $row['user']->id);
 
+        $priorRanks = $this->priorRanks();
+
         return $this->members
             ->map(fn (GroupMember $seat) => [
                 'user' => $seat->user,
@@ -387,10 +391,84 @@ new class extends Component
             ->values()
             ->map(fn (array $row, int $i) => [
                 'rank' => $i + 1,
+                // The movement since the last settled Saturday — null until
+                // two weeks exist to compare, and null renders nothing.
+                'delta' => isset($priorRanks[$row['user']->id])
+                    ? $priorRanks[$row['user']->id] - ($i + 1)
+                    : null,
                 'user' => $row['user'],
+                'team' => $this->memberTeams[$row['user']->id] ?? null,
                 'won' => false,
                 'cells' => [$row['wins'], $row['points'], $row['week'] ?? '—'],
             ]);
+    }
+
+    /**
+     * THE MOVEMENT BASELINE: everyone's rank on the ledger as it stood
+     * BEFORE the latest settled Saturday, so Monday's table can say who
+     * climbed. Empty until two countable weeks exist — one week has no
+     * "before" worth inventing.
+     *
+     * @return array<int, int> user id => prior rank
+     */
+    private function priorRanks(): array
+    {
+        $settled = $this->contest->slates()
+            ->where('status', Slate::SETTLED)
+            ->where('exhibition', false)
+            ->orderByDesc('saturday')
+            ->limit(2)
+            ->pluck('id');
+
+        if ($settled->count() < 2) {
+            return [];
+        }
+
+        $prior = SlateEntry::query()
+            ->join('slates', 'slates.id', '=', 'slate_entries.slate_id')
+            ->where('slates.contest_id', $this->contest->id)
+            ->where('slates.status', Slate::SETTLED)
+            ->where('slates.exhibition', false)
+            ->where('slates.id', '!=', $settled->first())
+            ->groupBy('slate_entries.user_id')
+            ->selectRaw('slate_entries.user_id, COALESCE(SUM(slate_entries.won), 0) AS wins, COALESCE(SUM(slate_entries.final_points), 0) AS pts')
+            ->get()
+            ->keyBy('user_id');
+
+        return $this->members
+            ->map(fn (GroupMember $seat) => [
+                'user_id' => $seat->user_id,
+                'wins' => (int) ($prior[$seat->user_id]->wins ?? 0),
+                'points' => (int) ($prior[$seat->user_id]->pts ?? 0),
+            ])
+            ->sortBy([['wins', 'desc'], ['points', 'desc']])
+            ->values()
+            ->mapWithKeys(fn (array $row, int $i) => [$row['user_id'] => $i + 1])
+            ->all();
+    }
+
+    /**
+     * Each member's FIRST followed team — the identity chip beside the
+     * handle in the standings, the pilot's rivalries made visible. One
+     * query across every member; a member with no follows has no chip,
+     * and nothing is substituted for it.
+     *
+     * @return array<int, \App\Models\Team>
+     */
+    #[Computed]
+    public function memberTeams(): array
+    {
+        return \App\Models\Team::query()
+            ->join('team_follows', 'team_follows.team_id', '=', 'teams.id')
+            ->where('team_follows.position', 1)
+            ->whereIn('team_follows.user_id', $this->members->pluck('user_id'))
+            ->get([
+                'teams.id', 'teams.slug', 'teams.location', 'teams.display_name',
+                'teams.short_display_name', 'teams.logo', 'teams.logo_dark',
+                'team_follows.user_id as follower_id',
+            ])
+            ->keyBy('follower_id')
+            ->all();
     }
 
     /**
