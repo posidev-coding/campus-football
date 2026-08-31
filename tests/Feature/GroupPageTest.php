@@ -224,16 +224,120 @@ it('renders result marks and the week standings once games grade', function () {
     SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $member->id]);
     $slate->update(['status' => Slate::PRELIM]);
 
+    // The play tab answers picks; the standings moved to their own tab.
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate')
         ->assertSee('Preliminary')
+        ->assertSee('+1')
+        ->assertSee('No pick')
+        ->assertDontSee('This week')
+        ->set('view', 'standings')
         ->assertSee('This week')
         // The winner leads the loser in the room.
-        ->assertSeeInOrder(['@'.$commissioner->handle, '@'.$member->handle])
-        ->assertSee('+1')
-        ->assertSee('No pick');
+        ->assertSeeInOrder(['@'.$commissioner->handle, '@'.$member->handle]);
 });
 
-it('aggregates settled weeks on the Season tab, wins before points', function () {
+it('opens to Standings once the entry is in and the card is playing', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate = $slate->fresh();
+
+    // A complete entry: every game picked, the tiebreaker answered.
+    $games = $slate->games()->with('game')->get();
+
+    foreach ($games as $slateGame) {
+        Pick::factory()->create([
+            'slate_game_id' => $slateGame->id,
+            'user_id' => $commissioner->id,
+            'picked_team_id' => $slateGame->game->home_team_id,
+        ]);
+    }
+    SlateEntry::factory()->create([
+        'slate_id' => $slate->id,
+        'user_id' => $commissioner->id,
+        'tiebreaker_total' => 48,
+    ]);
+
+    // Not playing yet: a bare visit still opens to the pick surface.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate');
+
+    // Kickoff: the card is live, the entry is in — the answers tab wins.
+    $games->first()->game->update(['kickoff_at' => now()->subHour()]);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'standings');
+
+    // An explicit address is somebody's stated intent and always wins.
+    Livewire::withQueryParams(['view' => 'slate'])
+        ->actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate');
+
+    // An INCOMPLETE entry keeps the pick surface up even mid-game.
+    Pick::query()->where('user_id', $commissioner->id)->latest('id')->first()->delete();
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate');
+});
+
+it('normalizes the three-tab era\'s addresses onto the merged plate', function () {
+    [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+    // Mount half: bookmarked ?view= values from before the merge.
+    Livewire::withQueryParams(['view' => 'members'])
+        ->actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'standings');
+
+    Livewire::withQueryParams(['view' => 'nonsense'])
+        ->actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate');
+
+    // Hook half: an in-session set.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'season')
+        ->assertSet('view', 'standings')
+        ->set('view', 'garbage')
+        ->assertSet('view', 'slate');
+});
+
+it('shows the Standings tab its whole room: you-strip, invite, members, rules', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        // Nothing has been played: every figure is a dash, never a zero.
+        ->assertSee('Wk rank')
+        ->assertSee('—')
+        // The invite panel carries the link and the spoken-word code.
+        ->assertSee($group->code)
+        ->assertSee('Or read them the code')
+        // The roster disclosure and its management affordances.
+        ->assertSee('Members')
+        ->assertSee('Commissioner')
+        // The scoring panel, sized from the contest.
+        ->assertSee('Triple Option');
+});
+
+it('polls the Standings tab only while the card is live', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate = $slate->fresh();
+
+    // Upcoming: nothing to poll, no poll.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertDontSee('wire:poll.30s.visible', escape: false);
+
+    $slate->games()->with('game')->get()->first()->game->update(['kickoff_at' => now()->subHour()]);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertSee('wire:poll.30s.visible', escape: false);
+});
+
+it('aggregates settled weeks on the Standings tab, wins before points', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
     $member = User::factory()->create(['admin' => true]);
     GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
@@ -255,7 +359,7 @@ it('aggregates settled weeks on the Season tab, wins before points', function ()
     ]);
 
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
-        ->set('view', 'season')
+        ->set('view', 'standings')
         ->assertSee('Wins')
         // The week's winner outranks the commissioner's seat order.
         ->assertSeeInOrder(['@'.$member->handle, '@'.$commissioner->handle]);

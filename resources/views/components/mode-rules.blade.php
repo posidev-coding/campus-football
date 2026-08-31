@@ -13,6 +13,12 @@
     /** @var App\Enums\ContestMode */
     'mode',
     'open' => false,
+    /**
+     * The card the caller's CONTEST deals, when it holds one — a frozen
+     * Shotgun room seats 7 or 8, not the mode's default 10. Null means
+     * "the mode's own shape" and is only right where there is no contest.
+     */
+    'games' => null,
 ])
 
 @php $palette = $mode->palette(); @endphp
@@ -37,7 +43,7 @@
 
         <span class="min-w-0 flex-1">
             <span class="block font-bold leading-tight">{{ $mode->label() }}</span>
-            <span class="block truncate pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">{{ $mode->blurb() }}</span>
+            <span class="block truncate pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">{{ $mode->blurb($games) }}</span>
         </span>
 
         <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
@@ -45,7 +51,7 @@
 
     <div id="mode-rules-{{ $mode->value }}" x-show="open" x-cloak class="border-t border-zinc-100 px-4 py-3 dark:border-zinc-800/60">
         <ul class="flex flex-col gap-1.5">
-            @foreach ($mode->ruleLines() as $line)
+            @foreach ($mode->ruleLines($games) as $line)
                 <li wire:key="rule-{{ $mode->value }}-{{ $loop->index }}" class="flex gap-2 text-sm text-zinc-600 dark:text-zinc-300">
                     <span class="mt-1.5 size-1.5 shrink-0 rounded-full {{ $palette['icon'] }} bg-current opacity-60" aria-hidden="true"></span>
                     <span class="min-w-0">{{ $line }}</span>

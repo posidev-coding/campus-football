@@ -34,9 +34,12 @@ use Livewire\Component;
 
 /**
  * THE CLUBHOUSE — one group's home, rebuilt from the app's own DNA: the
- * hero band up top, a three-tab plate (Slate | Season | Members), and the
- * shared pick surface as the Slate tab, so picking lives one tap inside
- * the room where the trash talk happens.
+ * hero band up top and a two-tab plate. SLATE is pure play — the shared
+ * pick surface and nothing else talking over it. STANDINGS is everything
+ * social: the viewer's own line, the invite panel, this week's table, the
+ * season ledger, and the members. The 2026-08-30 pass merged the old
+ * Season and Members tabs in here so the play tab answers only "make
+ * your picks"; legacy ?view= values normalize across.
  *
  * Private groups are members-only; lobbies are readable by anyone signed
  * in, who sees the week's slate as a non-interactive preview behind the
@@ -57,7 +60,7 @@ new class extends Component
     /** The palette columns ride every card-feeding load — drop one and the cards silently un-brand. */
     private const TEAM_COLUMNS = 'id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color,header_style';
 
-    private const VIEWS = ['slate', 'season', 'members'];
+    private const VIEWS = ['slate', 'standings'];
 
     public Group $group;
 
@@ -82,6 +85,14 @@ new class extends Component
             $this->redirectRoute('pickem.room', $group, navigate: true);
         } elseif (! $group->isRoom() && request()->routeIs('pickem.room')) {
             $this->redirectRoute('pickem.group', $group, navigate: true);
+        }
+
+        // THE STATE-AWARE FRONT DOOR: a bare visit opens to the tab with
+        // the answers — Standings once the viewer's entry is in and the
+        // card is playing, the pick surface any other time. An explicit
+        // ?view= is somebody's stated intent and always wins.
+        if (request()->query('view') === null && $this->opensToStandings()) {
+            $this->view = 'standings';
         }
 
         $this->countSlateEntry();
@@ -462,17 +473,57 @@ new class extends Component
     }
 
     /**
-     * The tabs this room fields: a transient weekly room has no season to
-     * stand on, so its plate is Slate | Members.
+     * Two tabs, both kinds: the pick surface, and everything social. A
+     * room's Standings simply skips the season ledger it does not have.
      *
      * @return array<string, string>
      */
     #[Computed]
     public function tabs(): array
     {
-        return $this->group->isRoom()
-            ? ['slate' => 'Slate', 'members' => 'Members']
-            : ['slate' => 'Slate', 'season' => 'Season', 'members' => 'Members'];
+        return ['slate' => 'Slate', 'standings' => 'Standings'];
+    }
+
+    /**
+     * The viewer's own line above the tables — rank and points where the
+     * room has them, an em dash where it does not: null means no data,
+     * and a seat with no entry has no rank worth inventing. Null when the
+     * viewer holds no seat at all (an outsider previewing a lobby).
+     *
+     * @return array{name: string, stats: list<array{label: string, value: string}>}|null
+     */
+    #[Computed]
+    public function youStrip(): ?array
+    {
+        $user = auth()->user();
+
+        if ($user === null || $this->seatOf($user) === null) {
+            return null;
+        }
+
+        $playing = in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true);
+        $weekRow = $playing
+            ? $this->weekStandings->first(fn (array $row) => $row['user']?->id === $user->id)
+            : null;
+
+        $stats = [
+            ['label' => 'Wk rank', 'value' => $weekRow === null ? '—' : '#'.$weekRow['rank']],
+            ['label' => 'Wk pts', 'value' => $weekRow === null ? '—' : (string) $weekRow['cells'][0]],
+        ];
+
+        if (! $this->group->isRoom()) {
+            $seasonRow = $this->seasonHasHistory
+                ? $this->seasonStandings->first(fn (array $row) => $row['user']->id === $user->id)
+                : null;
+
+            $stats[] = ['label' => 'Wins', 'value' => $seasonRow === null ? '—' : (string) $seasonRow['cells'][0]];
+            $stats[] = ['label' => 'Pts', 'value' => $seasonRow === null ? '—' : (string) $seasonRow['cells'][1]];
+        }
+
+        return [
+            'name' => $user->handle !== null ? '@'.$user->handle : $user->name,
+            'stats' => $stats,
+        ];
     }
 
     public function join(JoinGroup $action): void
@@ -547,6 +598,7 @@ new class extends Component
         unset(
             $this->contest, $this->pivotChoices, $this->slate, $this->surfaceStatus,
             $this->weekStandings, $this->seasonStandings, $this->seasonHasHistory,
+            $this->youStrip,
         );
     }
 
@@ -574,16 +626,36 @@ new class extends Component
     protected function refreshPicks(): void
     {
         $this->refreshPickState();
-        unset($this->slate, $this->surfaceStatus, $this->weekStandings, $this->seasonStandings);
+        unset($this->slate, $this->surfaceStatus, $this->weekStandings, $this->seasonStandings, $this->youStrip);
     }
 
     private function normalizedView(string $view): string
     {
-        if ($this->group->isRoom() && $view === 'season') {
-            return 'slate';
+        // The three-tab era's addresses keep landing: Season and Members
+        // merged into Standings on 2026-08-30.
+        if (in_array($view, ['season', 'members'], true)) {
+            return 'standings';
         }
 
         return in_array($view, self::VIEWS, true) ? $view : 'slate';
+    }
+
+    /**
+     * A bare visit's tab: Standings once the viewer's entry is in and the
+     * card is playing (live through final), the pick surface otherwise.
+     * Explicit ?view= never reaches this — mount() checks the querystring
+     * first — and completing an entry mid-session never yanks the surface
+     * away, because the answer is asked once, at the front door.
+     */
+    private function opensToStandings(): bool
+    {
+        if (! in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true)) {
+            return false;
+        }
+
+        return $this->seatOf(auth()->user()) !== null
+            && $this->slate !== null
+            && $this->entryComplete($this->slate);
     }
 
     private function seatOf(?User $user): ?GroupMember
@@ -700,6 +772,22 @@ new class extends Component
         </flux:callout>
     @endif
 
+    {{-- A room's week has a winner, and the room says so out loud —
+         above the fork, so both tabs walk in on the news. --}}
+    @if ($group->isRoom() && $this->surfaceStatus === 'final')
+        @php
+            $winners = $this->weekStandings
+                ->filter(fn ($row) => $row['won'])
+                ->map(fn ($row) => $row['user']->handle !== null ? '@'.$row['user']->handle : $row['user']->name);
+        @endphp
+
+        @if ($winners->isNotEmpty())
+            <flux:callout icon="trophy">
+                <flux:callout.heading>{{ Voice::line('contest.room.winner', ['name' => $winners->implode(' & ')]) }}</flux:callout.heading>
+            </flux:callout>
+        @endif
+    @endif
+
     @if (session('status'))
         <x-notice tone="success">{{ session('status') }}</x-notice>
     @endif
@@ -741,30 +829,8 @@ new class extends Component
     >
     @if ($view === 'slate')
         @if ($this->slate?->isPublished())
-            {{-- A room's week has a winner, and the room says so out loud. --}}
-            @if ($group->isRoom() && $this->surfaceStatus === 'final')
-                @php
-                    $winners = $this->weekStandings
-                        ->filter(fn ($row) => $row['won'])
-                        ->map(fn ($row) => $row['user']->handle !== null ? '@'.$row['user']->handle : $row['user']->name);
-                @endphp
-
-                @if ($winners->isNotEmpty())
-                    <flux:callout icon="trophy">
-                        <flux:callout.heading>{{ Voice::line('contest.room.winner', ['name' => $winners->implode(' & ')]) }}</flux:callout.heading>
-                    </flux:callout>
-                @endif
-            @endif
-
-            @if (in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true) && $this->weekStandings->isNotEmpty())
-                <x-standings-table
-                    :rows="$this->weekStandings"
-                    :status="$this->surfaceStatus"
-                    :headings="['Pts']"
-                    title="This week"
-                />
-            @endif
-
+            {{-- PURE PLAY: the standings live on the Standings tab now, so
+                 the first pickable card is the first thing this tab says. --}}
             @include('partials.pick-slate', ['slate' => $this->slate, 'interactive' => $this->isMember])
         @else
             {{-- Dashed border = "not yet", the house grammar for a promise. --}}
@@ -803,121 +869,129 @@ new class extends Component
                 @endif
             </div>
         @endif
-    @elseif ($view === 'season')
-        @if ($this->seasonHasHistory || $this->surfaceStatus !== null)
-            <x-standings-table
-                :rows="$this->seasonStandings"
-                :headings="['Wins', 'Pts', 'This week']"
-                title="Season"
-                :status="$this->surfaceStatus === 'live' ? 'live' : null"
-            />
-        @else
-            <p class="rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-                {{ Voice::line('group.season.empty') }}
-            </p>
-        @endif
-    @else
-        @if ($this->isMember && ! $group->isLobby())
-            <div
-                class="flex flex-col gap-2 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700"
-                x-data="{
-                    copiedLink: false,
-                    copiedCode: false,
-                    canShare: typeof navigator.share === 'function',
-                    copyLink() {
-                        window.cfbClipboard.copy(@js($this->joinUrl)).then((ok) => {
-                            if (! ok) return;
+    @elseif ($view === 'standings')
+        {{-- Polls only while a slate game is live, reading only our own
+             database — the Saturday heartbeat, not a feed. --}}
+        <div
+            @if ($this->surfaceStatus === 'live') wire:poll.30s.visible @endif
+            class="flex flex-col gap-5"
+        >
+            @if ($this->youStrip !== null)
+                <x-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
+            @endif
 
-                            this.copiedLink = true;
-                            setTimeout(() => this.copiedLink = false, 2000);
-                        });
-                    },
-                    copyCode() {
-                        window.cfbClipboard.copy(@js($group->code)).then((ok) => {
-                            if (! ok) return;
+            {{-- The invite IS the acquisition surface, so it sits one tap
+                 from the standings people screenshot — open while the
+                 group is small. Rooms never advertise codes or links:
+                 they are joined from the lobby. --}}
+            @if ($this->isMember && ! $group->isLobby())
+                <x-invite-panel
+                    :url="$this->joinUrl"
+                    :code="$group->code"
+                    :title="$group->name"
+                    :share-text="Voice::line('groups.invite.share_text', ['group' => $group->name])"
+                    :hint="Voice::line('groups.invite.hint', ['group' => $group->name])"
+                    :open="$this->members->count() <= 3"
+                />
+            @endif
 
-                            this.copiedCode = true;
-                            setTimeout(() => this.copiedCode = false, 2000);
-                        });
-                    },
-                    share() {
-                        navigator.share({
-                            title: @js($group->name),
-                            text: @js(Voice::line('groups.invite.share_text', ['group' => $group->name])),
-                            url: @js($this->joinUrl),
-                        }).catch(() => {});
-                    },
-                }"
-            >
-                <flux:heading size="lg">Invite link</flux:heading>
-                <flux:subheading>{{ Voice::line('groups.invite.hint', ['group' => $group->name]) }}</flux:subheading>
+            @if (in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true) && $this->weekStandings->isNotEmpty())
+                <x-standings-table
+                    :rows="$this->weekStandings"
+                    :status="$this->surfaceStatus"
+                    :headings="['Pts']"
+                    title="This week"
+                />
+            @endif
 
-                <div class="flex flex-wrap items-center gap-2">
-                    <span class="max-w-full truncate font-mono text-sm font-semibold">{{ Str::after($this->joinUrl, '://') }}</span>
-                    <flux:button x-on:click="copyLink()" size="sm" variant="primary">
-                        <span x-show="! copiedLink">Copy link</span>
-                        <span x-show="copiedLink" x-cloak>Copied</span>
-                    </flux:button>
-                    <flux:button x-show="canShare" x-cloak x-on:click="share()" size="sm">
-                        <flux:icon.box-arrow-up variant="micro" />
-                        Share
-                    </flux:button>
-                </div>
+            {{-- The season ledger — groups and evergreen tables; a
+                 one-Saturday room has no season to stand on. --}}
+            @if (! $group->isRoom())
+                @if ($this->seasonHasHistory || $this->surfaceStatus !== null)
+                    <x-standings-table
+                        :rows="$this->seasonStandings"
+                        :headings="['Wins', 'Pts', 'This week']"
+                        title="Season"
+                        :status="$this->surfaceStatus === 'live' ? 'live' : null"
+                    />
+                @else
+                    <p class="rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+                        {{ Voice::line('group.season.empty') }}
+                    </p>
+                @endif
+            @endif
 
-                {{-- The spoken-word fallback for a friend across the room. --}}
-                <div class="flex items-center gap-3 border-t border-zinc-100 pt-2 dark:border-zinc-800/60">
-                    <p class="text-micro text-zinc-400">Or read them the code</p>
-                    <span class="font-mono text-lg font-bold tracking-widest">{{ $group->code }}</span>
-                    <flux:button x-on:click="copyCode()" size="xs" variant="ghost">
-                        <span x-show="! copiedCode">Copy</span>
-                        <span x-show="copiedCode" x-cloak>Copied</span>
-                    </flux:button>
+            {{-- The roster, folded: the standings table above already
+                 lists everyone playing; this disclosure is management. --}}
+            <div x-data="{ open: false }" class="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700">
+                <button
+                    type="button"
+                    x-on:click="open = ! open"
+                    aria-expanded="false"
+                    x-bind:aria-expanded="open"
+                    aria-controls="group-members"
+                    class="focus-ring flex w-full items-center justify-between gap-3 p-4 text-start"
+                >
+                    <span class="font-bold leading-tight">Members</span>
+                    <span class="flex shrink-0 items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+                        {{ $this->members->count() }}
+                        <flux:icon name="chevron-down" variant="micro" class="text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
+                    </span>
+                </button>
+
+                <div id="group-members" x-show="open" x-cloak class="flex flex-col gap-2 border-t border-zinc-100 px-4 py-3 dark:border-zinc-800/60">
+                    @foreach ($this->members as $seat)
+                        <div
+                            wire:key="member-{{ $seat->id }}"
+                            class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-2.5 dark:border-zinc-700"
+                        >
+                            <div class="min-w-0">
+                                <p class="truncate font-medium">
+                                    {{ $seat->user->name }}
+                                    @if ($seat->user->handle)
+                                        <span class="text-sm text-zinc-500 dark:text-zinc-400">&commat;{{ $seat->user->handle }}</span>
+                                    @endif
+                                </p>
+                            </div>
+                            <div class="flex shrink-0 items-center gap-2">
+                                @if ($seat->isCommissioner())
+                                    <flux:badge size="sm" color="amber">Commissioner</flux:badge>
+                                @elseif ($this->isCommissioner)
+                                    <flux:button
+                                        wire:click="remove({{ $seat->user_id }})"
+                                        wire:confirm="Remove {{ $seat->user->first_name }} from the group?"
+                                        size="sm"
+                                        variant="ghost"
+                                    >
+                                        Remove
+                                    </flux:button>
+                                @endif
+                            </div>
+                        </div>
+                    @endforeach
+
+                    @if ($this->isMember)
+                        <flux:button
+                            wire:click="leave"
+                            wire:confirm="Leave {{ $group->name }}?"
+                            variant="ghost"
+                            class="self-start text-red-600 dark:text-red-400"
+                        >
+                            Leave group
+                        </flux:button>
+                    @endif
                 </div>
             </div>
-        @endif
 
-        <div class="flex flex-col gap-2">
-            @foreach ($this->members as $seat)
-                <div
-                    wire:key="member-{{ $seat->id }}"
-                    class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-2.5 dark:border-zinc-700"
-                >
-                    <div class="min-w-0">
-                        <p class="truncate font-medium">
-                            {{ $seat->user->name }}
-                            @if ($seat->user->handle)
-                                <span class="text-sm text-zinc-500 dark:text-zinc-400">&commat;{{ $seat->user->handle }}</span>
-                            @endif
-                        </p>
-                    </div>
-                    <div class="flex shrink-0 items-center gap-2">
-                        @if ($seat->isCommissioner())
-                            <flux:badge size="sm" color="amber">Commissioner</flux:badge>
-                        @elseif ($this->isCommissioner)
-                            <flux:button
-                                wire:click="remove({{ $seat->user_id }})"
-                                wire:confirm="Remove {{ $seat->user->first_name }} from the group?"
-                                size="sm"
-                                variant="ghost"
-                            >
-                                Remove
-                            </flux:button>
-                        @endif
-                    </div>
-                </div>
-            @endforeach
+            {{-- The scoring panel: how this mode pays, one tap away from
+                 where the points are argued. Sized from the CONTEST. --}}
+            @if ($this->contest !== null)
+                <x-mode-rules
+                    :mode="$this->contest->mode"
+                    :games="$this->contest->mode->engine($this->contest->settings)->slateSize()"
+                />
+            @endif
         </div>
-
-        @if ($this->isMember)
-            <flux:button
-                wire:click="leave"
-                wire:confirm="Leave {{ $group->name }}?"
-                variant="ghost"
-                class="self-start text-red-600 dark:text-red-400"
-            >
-                Leave group
-            </flux:button>
-        @endif
     @endif
 
     </div>
