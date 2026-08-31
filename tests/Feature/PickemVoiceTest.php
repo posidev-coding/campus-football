@@ -60,6 +60,8 @@ it('speaks every register on the rebuild\'s new families', function (string $key
         'week' => 'Week 1', 'points' => '14', 'xp' => '100', 'place' => '3rd',
         'field' => '9', 'winner' => 'X', 'others' => 'X', 'rival' => 'X',
         'margin' => '4', 'max' => '200', 'list' => 'Triple Option · The Woodshed',
+        // The next-up slot's pre-pluralized tokens, and its clock.
+        'picks' => '3 picks', 'rooms' => '3 public rooms', 'time' => 'Sat 7:30pm',
         // The app invite's share text is personalized by the SHARER's
         // first name; without this the line renders a literal ":inviter".
         'inviter' => 'X',
@@ -95,6 +97,16 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     // the entry.
     'picks.entry.celebration',
     'picks.results.empty',
+    'picks.next.due',
+    'picks.next.fresh',
+    'picks.next.tiebreaker',
+    'picks.next.build',
+    'picks.next.invite',
+    'picks.next.live',
+    'picks.next.won',
+    'picks.next.settled',
+    'picks.next.locked',
+    'picks.next.join',
     'lobby.rules.subheading',
     // The two products, told apart: the definitions under My Picks' two
     // headings, the first run's group path, the store's own framing, and
