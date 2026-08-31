@@ -271,3 +271,56 @@ describe('the next-up ladder', function () {
             ->and($nudge['replace']['rooms'])->toBe('1 public room');
     });
 });
+
+describe('the nav dot', function () {
+    beforeEach(fn () => config()->set('cfb.pickem_open', true));
+
+    it('marks a week that still needs the reader, until the completing act clears it', function () {
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $slate = pickemDraftSlate($contest);
+        app(PublishSlate::class)->handle($commissioner, $slate);
+        $slate = $slate->fresh();
+
+        expect(PickemPulse::needsAttention($commissioner))->toBeTrue();
+
+        // Everything but the last pick lands behind the cached answer...
+        $games = $slate->games()->with('game')->get();
+
+        foreach ($games->take($games->count() - 1) as $slateGame) {
+            Pick::factory()->create([
+                'slate_game_id' => $slateGame->id,
+                'user_id' => $commissioner->id,
+                'picked_team_id' => $slateGame->game->home_team_id,
+            ]);
+        }
+
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id,
+            'user_id' => $commissioner->id,
+            'tiebreaker_total' => 40,
+        ]);
+
+        // ...and the dot honestly still nags: the entry is not in.
+        PickemPulse::flush();
+        expect(PickemPulse::needsAttention($commissioner))->toBeTrue();
+
+        // The COMPLETING act through the surface busts the cache on the
+        // same response — no five-minute nag over a finished entry.
+        Livewire\Livewire::actingAs($commissioner)
+            ->test('group', ['group' => $group])
+            ->call('pick', $games->last()->id, $games->last()->game->home_team_id);
+
+        expect(PickemPulse::needsAttention($commissioner))->toBeFalse();
+    });
+
+    it('stays dark for the unverified and behind the closed flag', function () {
+        $unverified = User::factory()->unverified()->create();
+
+        expect(PickemPulse::needsAttention($unverified))->toBeFalse();
+
+        config()->set('cfb.pickem_open', false);
+        $reader = User::factory()->create();
+
+        expect(PickemPulse::needsAttention($reader))->toBeFalse();
+    });
+});

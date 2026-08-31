@@ -84,6 +84,46 @@ class PickemPulse
         return self::$nudges[$user->id] = self::resolve($user);
     }
 
+    /**
+     * THE NAV DOT — does the viewer's week still need them? True while
+     * any published card is missing picks or its tiebreaker. Cached five
+     * minutes per user because the bottom nav renders on EVERY page and
+     * the honest answer costs the whole lean read; MakesPicks busts it on
+     * the completing act so "Entry in" never wears a stale nag, and the
+     * Tuesday turnover ages out inside one TTL. A dot, never a count —
+     * nav-tab's own decree.
+     */
+    public static function needsAttention(User $user): bool
+    {
+        if (! $user->hasVerifiedEmail()) {
+            return false;
+        }
+
+        if (config('cfb.pickem_open') !== true && ! $user->isAdmin()) {
+            return false;
+        }
+
+        return (bool) Cache::remember(
+            'pickem-pulse:dot:'.$user->id,
+            300,
+            fn (): bool => self::cards($user)->contains(fn (array $card) => in_array($card['state'], ['upcoming', 'live'], true)
+                && $card['total'] > 0
+                && ! $card['entryIn']),
+        );
+    }
+
+    /**
+     * The completing act clears the nag NOW — five minutes of false
+     * "needs you" over a finished entry is the one staleness the dot's
+     * cache may not buy. Drops the in-request memo too, so the same
+     * response cannot answer from the world before the pick.
+     */
+    public static function forgetAttention(User $user): void
+    {
+        Cache::forget('pickem-pulse:dot:'.$user->id);
+        unset(self::$state[$user->id], self::$nudges[$user->id]);
+    }
+
     public static function flush(): void
     {
         self::$state = [];
