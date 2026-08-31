@@ -93,6 +93,39 @@ it('stops for the week once the Saturday resolves, without asking again', functi
     Http::assertNothingSent();
 });
 
+it('records the run it stops on, without asking the feed to confirm it', function () {
+    /*
+     * The command runs five mornings and the first success resolves the week,
+     * so the stop-early path is the one four of them take. Without a row the
+     * schedule panel cannot tell "ran, already resolved" from "never ran" and
+     * reads overdue for the rest of the week, every week.
+     *
+     * assertNothingSent() is the half of this that protects the property the
+     * early return exists for: a fix that fetched in order to report it did
+     * not need to fetch would be worse than the bug, and it would still pass
+     * the row assertion alone.
+     */
+    Http::fake(['*' => Http::response(gamedayFeedPayload())]);
+
+    $this->artisan('cfb:gameday')->assertSuccessful();
+
+    expect(GamedayWeek::where('season_year', 2026)->value('status'))
+        ->toBe(GamedayStatus::Proposed);
+
+    Http::fake();
+    Http::preventStrayRequests();
+
+    $this->artisan('cfb:gameday')->assertSuccessful();
+
+    Http::assertNothingSent();
+
+    $run = FeedRun::latestFor('gameday');
+
+    expect($run)->not->toBeNull()
+        ->and($run->status)->toBe(FeedRun::COMPLETE)
+        ->and((int) $run->records)->toBe(0);
+});
+
 it('records not-yet-announced when the feed has not caught up', function () {
     // Its stale rows are hidden by booleans rather than removed, so there is
     // always a most-recent matchup sitting there looking answerable.
