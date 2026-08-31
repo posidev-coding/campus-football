@@ -144,7 +144,7 @@ class Navigation
                  * just joined — which is the moment you stopped browsing.
                  */
                 'sections' => (config('cfb.pickem_open') === true || (bool) auth()->user()?->isAdmin()) ? [
-                    ['route' => 'pickem.home', 'label' => 'My Picks', 'routes' => ['pickem.home', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join']],
+                    ['route' => 'pickem.home', 'label' => 'My Picks', 'routes' => ['pickem.home', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join', 'pickem.talk']],
                     ['route' => 'pickem.lobby', 'label' => 'Lobby'],
                     ['route' => 'pickem.leaderboard', 'label' => 'Leaderboard'],
                     ['route' => 'pickem.history', 'label' => 'History'],

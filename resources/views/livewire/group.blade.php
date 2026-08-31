@@ -681,6 +681,19 @@ new class extends Component
 
     <x-group-hero :group="$group" :contest="$this->contest" :members-count="$this->members->count()" :meta="$heroMeta">
         <x-slot:actions>
+            @if ($this->isMember)
+                {{-- The thread's door — a destination, never an embed
+                     (the pick surface stays chat-free; Task D stands). --}}
+                <a
+                    href="{{ route('pickem.talk', $group) }}"
+                    wire:navigate
+                    aria-label="{{ $group->isRoom() ? 'Room talk' : 'Group talk' }}"
+                    class="rounded-lg bg-white/10 p-2 transition-colors hover:bg-white/20 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                >
+                    <flux:icon name="chat-bubble-left-right" variant="mini" />
+                </a>
+            @endif
+
             @if ($this->isMember && ! $group->isLobby())
                 {{-- Copies the invite LINK without leaving the hero; the
                      link and the fallback code live on the Members tab. --}}
@@ -990,6 +1003,13 @@ new class extends Component
                     :mode="$this->contest->mode"
                     :games="$this->contest->mode->engine($this->contest->settings)->slateSize()"
                 />
+            @endif
+
+            {{-- The thread's second door, where the arguing starts. --}}
+            @if ($this->isMember)
+                <x-link-row :href="route('pickem.talk', $group)" :title="$group->isRoom() ? 'Room talk' : 'Group talk'">
+                    <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('talk.door.hint') }}</span>
+                </x-link-row>
             @endif
         </div>
     @endif

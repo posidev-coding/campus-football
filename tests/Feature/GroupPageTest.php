@@ -319,7 +319,10 @@ it('shows the Standings tab its whole room: you-strip, invite, members, rules', 
         ->assertSee('Members')
         ->assertSee('Commissioner')
         // The scoring panel, sized from the contest.
-        ->assertSee('Triple Option');
+        ->assertSee('Triple Option')
+        // The thread's doors: the hero button and the foot link-row.
+        ->assertSee('Group talk')
+        ->assertSee(route('pickem.talk', $group), escape: false);
 });
 
 it('polls the Standings tab only while the card is live', function () {
@@ -379,7 +382,9 @@ it('previews the surface read-only for a lobby outsider', function () {
     Livewire::actingAs($outsider)->test('group', ['group' => $group])
         ->assertSee('Join this lobby')
         ->assertDontSee('optimistic(', escape: false)
-        ->assertDontSee('No pick');
+        ->assertDontSee('No pick')
+        // No seat, no thread door.
+        ->assertDontSee('Room talk');
 });
 
 it('301s the old nested URL to the clubhouse', function () {
