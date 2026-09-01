@@ -66,33 +66,23 @@ new class extends Component
     /** The palette columns ride every card-feeding load — drop one and the cards silently un-brand. */
     private const TEAM_COLUMNS = 'id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color,header_style';
 
-    private const VIEWS = ['slate', 'standings'];
-
     /**
-     * Standings' own second row. Season and Members were folded INTO
-     * Standings on 2026-08-30 because three plate tabs was one too many
-     * and the roster did not earn a whole tab; this splits them again as
-     * a GUTTER, which is the house idiom for a second row of sub-nav
-     * under one plate tab (x-gutter-tabs' own docblock says so).
+     * ONE strip, four stops. The screen briefly had two — a plate of
+     * Slate|Standings with a gutter of Standings|Members|Invite beneath
+     * it — which put THREE rows of navigation over the content once the
+     * area nav is counted, and repeated the word Standings on two of
+     * them. A reader cannot tell which row owns which decision.
      *
-     * What changed since that fold: the invite grew a QR and three
-     * ready-to-send messages, so as a disclosure at the top of the stack
-     * it pushed the standings people actually came for below the fold.
-     * And the commissioner handoff landed inside the Members disclosure,
-     * which meant the one control that transfers a league lived behind a
-     * collapsed chevron.
+     * So the plate is gone rather than the gutter: x-plate is documented
+     * as two tabs and throws above three, and four stops is exactly the
+     * case x-gutter-tabs exists for ("more tabs than two-or-three").
      *
-     * `invite` is groups-only and normalizes away for a room, which is
-     * the same law the panel itself keeps: rooms are joined from the
-     * lobby, never by invitation.
+     * `invite` normalizes away for a room — rooms are joined from the
+     * lobby, never by invitation — so a room's strip is three stops.
      */
-    private const PANES = ['standings', 'members', 'invite'];
+    private const VIEWS = ['slate', 'standings', 'members', 'invite'];
 
     public Group $group;
-
-    /** Standings' sub-nav. #[Url] like $view, and normalized in both hooks. */
-    #[Url]
-    public string $pane = 'standings';
 
     #[Url(except: 'slate')]
     public string $view = 'slate';
@@ -132,19 +122,6 @@ new class extends Component
             $this->view = 'standings';
         }
 
-        /*
-         * The three-tab era's ?view=members keeps landing, and now there
-         * is somewhere honest to send it again: normalizedView() already
-         * turned it into Standings, so carry the second half of the
-         * address across rather than dropping the reader on a pane they
-         * did not ask for.
-         */
-        if (request()->query('view') === 'members' && request()->query('pane') === null) {
-            $this->pane = 'members';
-        }
-
-        $this->pane = $this->normalizedPane($this->pane);
-
         $this->countSlateEntry();
     }
 
@@ -176,12 +153,6 @@ new class extends Component
     public function updatedView(string $value): void
     {
         $this->view = $this->normalizedView($value);
-    }
-
-    /** Same seam as updatedView: a bookmarked ?pane= never fires this. */
-    public function updatedPane(string $value): void
-    {
-        $this->pane = $this->normalizedPane($value);
     }
 
     /**
@@ -750,20 +721,14 @@ new class extends Component
     #[Computed]
     public function tabs(): array
     {
-        return ['slate' => 'Slate', 'standings' => 'Standings'];
-    }
+        $tabs = [
+            'slate' => 'Slate',
+            'standings' => 'Standings',
+            'members' => 'Members',
+        ];
 
-    /**
-     * Standings' second row. Three items in a group, two in a room —
-     * a room has no invite to advertise.
-     *
-     * @return array<string, string>
-     */
-    #[Computed]
-    public function paneTabs(): array
-    {
-        $tabs = ['standings' => 'Standings', 'members' => 'Members'];
-
+        // Rooms never advertise invites, so the stop does not exist for
+        // them — matching normalizedView(), which sends the address back.
         if (! $this->group->isLobby()) {
             $tabs['invite'] = 'Invite';
         }
@@ -1009,28 +974,21 @@ new class extends Component
 
     private function normalizedView(string $view): string
     {
-        // The three-tab era's addresses keep landing: Season and Members
-        // merged into Standings on 2026-08-30.
-        if (in_array($view, ['season', 'members'], true)) {
+        // The three-tab era's addresses keep landing. `members` is a real
+        // stop again since 2026-09-01, so only `season` still folds.
+        if ($view === 'season') {
+            return 'standings';
+        }
+
+        // A room has no invite stop, so an address asking for one lands
+        // on the standings rather than an empty screen — the same law
+        // the panel itself keeps, kept here so the strip and the content
+        // cannot disagree about which stops exist.
+        if ($view === 'invite' && $this->group->isLobby()) {
             return 'standings';
         }
 
         return in_array($view, self::VIEWS, true) ? $view : 'slate';
-    }
-
-    /**
-     * A room has no invite pane to show, so an address asking for one
-     * lands on the standings rather than an empty box — the same refusal
-     * the panel itself makes, kept here so the gutter and the content
-     * cannot disagree about which panes exist.
-     */
-    private function normalizedPane(string $pane): string
-    {
-        if ($pane === 'invite' && $this->group->isLobby()) {
-            return 'standings';
-        }
-
-        return in_array($pane, self::PANES, true) ? $pane : 'standings';
     }
 
     /**
@@ -1273,10 +1231,17 @@ new class extends Component
         </div>
     @endif
 
-    <x-plate
-        :tabs="$this->tabs"
+    {{-- THE ONE STRIP. Four stops in a group, three in a room. It is a
+         gutter rather than a plate because x-plate is documented as two
+         tabs and throws above three — and because the screen briefly
+         carried BOTH, which stacked three rows of navigation over the
+         content and said "Standings" on two of them. --}}
+    <x-gutter-tabs
+        :items="$this->tabs"
         :selected="$view"
         model="view"
+        variant="block"
+        label="Group sections"
         key-prefix="group-tab"
     />
 
@@ -1390,20 +1355,6 @@ new class extends Component
                 <x-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
             @endif
 
-            {{-- STANDINGS' SECOND ROW. The viewer's own line stays ABOVE it:
-                 it answers "how am I doing", which is true on every pane,
-                 and a summary that disappeared when you opened Members
-                 would read as the screen losing your place. --}}
-            <x-gutter-tabs
-                :items="$this->paneTabs"
-                :selected="$pane"
-                model="pane"
-                variant="block"
-                label="Standings sections"
-                key-prefix="group-pane"
-            />
-
-            @if ($pane === 'standings')
             @if (in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true) && $this->weekStandings->isNotEmpty())
                 <x-standings-table
                     :rows="$this->weekStandings"
@@ -1446,13 +1397,20 @@ new class extends Component
                     :games="$this->contest->mode->engine($this->contest->settings)->slateSize()"
                 />
             @endif
-            @endif
 
-            @if ($pane === 'members')
-                {{-- THE ROSTER, and the management that goes with it. This
-                     was a collapsed disclosure at the bottom of the
-                     standings stack, which put the one control that
-                     transfers a league behind a chevron nobody opened. --}}
+            {{-- The thread's second door, where the arguing starts. --}}
+            @if ($this->isMember)
+                <x-link-row :href="route('pickem.talk', $group)" :title="$group->isRoom() ? 'Room talk' : 'Group talk'">
+                    <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('talk.door.hint') }}</span>
+                </x-link-row>
+            @endif
+        </div>
+    @elseif ($view === 'members')
+        {{-- THE ROSTER, and the management that goes with it. This was a
+             collapsed disclosure at the bottom of the standings stack,
+             which put the one control that transfers a league behind a
+             chevron nobody opened. --}}
+        <div class="flex flex-col gap-5">
                 <div class="flex flex-col gap-2">
                     @foreach ($this->members as $seat)
                         <div
@@ -1517,14 +1475,15 @@ new class extends Component
                         </flux:button>
                     @endif
                 </div>
-            @endif
-
-            {{-- THE INVITE, on a pane of its own. It carries a link, a
-                 code, a QR and three ready-to-send messages now, which is
-                 more than a disclosure at the top of the standings can
-                 hold without burying what people came for. Rooms never
-                 reach here — normalizedPane() sends them back. --}}
-            @if ($pane === 'invite' && $this->isMember && ! $group->isLobby())
+        </div>
+    @elseif ($view === 'invite')
+        {{-- THE INVITE, a stop of its own. It carries a link, a code, a QR
+             and three ready-to-send messages, which is more than a
+             disclosure on top of the standings could hold without burying
+             what people came for. Rooms never reach here —
+             normalizedView() sends the address back. --}}
+        <div class="flex flex-col gap-5">
+            @if ($this->isMember && ! $group->isLobby())
                 <x-invite-panel
                     :url="$this->joinUrl"
                     :code="$group->code"
@@ -1534,13 +1493,6 @@ new class extends Component
                     :open="true"
                     :templates="$this->inviteTemplates"
                 />
-            @endif
-
-            {{-- The thread's second door, where the arguing starts. --}}
-            @if ($this->isMember)
-                <x-link-row :href="route('pickem.talk', $group)" :title="$group->isRoom() ? 'Room talk' : 'Group talk'">
-                    <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('talk.door.hint') }}</span>
-                </x-link-row>
             @endif
         </div>
     @endif

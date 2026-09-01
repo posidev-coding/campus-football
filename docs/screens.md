@@ -919,28 +919,39 @@ Standings once the entry is in and the card is live-through-final (explicit
 `?view=` always wins; the answer is asked once, at mount), and the tab polls
 every 30s only while a slate game is live, reading only our own database.
 
-**Standings grew a second row on 2026-09-01** — an `x-gutter-tabs` under the
-plate, which is that component's own stated job ("a second row of sub-nav
-under one"). `$pane` is `#[Url]` like `$view` and normalized in both hooks;
-`invite` normalizes away for a room, the same law the panel keeps. Three
-panes in a group, two in a room:
+**One strip, four stops, since 2026-09-01.** The clubhouse briefly carried
+TWO rows — a plate of Slate|Standings with an `x-gutter-tabs` of
+Standings|Members|Invite beneath it — which stacked three levels of
+navigation over the content once the area nav is counted, and printed the
+word "Standings" on two of them. A reader cannot tell which row owns which
+decision.
 
-- **Standings** — the week and season tables and `x-mode-rules`, sized from
-  the contest, as the scoring panel beneath the numbers it explains.
-- **Members** — the roster, the commissioner badge, the handoff, Remove and
-  Leave. It was a collapsed disclosure at the foot of the stack, which put
-  the one control that transfers a league behind a chevron nobody opened.
-- **Invite** — `x-invite-panel`, groups only; rooms never advertise invites.
-  It moved off the top of the standings because it now carries a QR and
-  three ready-to-send messages and was burying what people came for.
+The plate is the one that went: `x-plate` is documented as two tabs and
+throws above three, and four stops is exactly the case `x-gutter-tabs`
+exists for ("more tabs than two-or-three"). So `$view` alone drives
+**Slate · Standings · Members · Invite**, still `#[Url]` and still
+normalized in both hooks. There is no `$pane`.
 
-`x-you-strip` stays ABOVE the gutter: it answers "how am I doing", which is
-true on every pane, and a summary that vanished when you opened Members
-would read as the screen losing your place. `?view=members` carries across
-to the pane rather than landing on Standings' first pane.
+- **Slate** — pure play.
+- **Standings** — `x-you-strip`, the week and season tables, the picks
+  grid, and `x-mode-rules` sized from the contest as the scoring panel
+  beneath the numbers it explains, then the Talk door.
+- **Members** — the roster, the commissioner badge, the handoff, Remove
+  and Leave. It was a collapsed disclosure at the foot of the standings,
+  which put the one control that transfers a league behind a chevron.
+- **Invite** — `x-invite-panel`, groups only. It moved off the top of the
+  standings because it now carries a QR and three ready-to-send messages
+  and was burying what people came for.
+
+A room gets **three** stops: `normalizedView()` sends `invite` back to the
+standings for a lobby, so the strip and the content cannot disagree about
+which stops exist. `?view=season` still folds to Standings; `?view=members`
+is a live address again and lands where it says. `GroupPageTest` counts the
+`group-tab-` keys and asserts there is no second strip — a two-strip
+regression passes every content assertion, so the count is the guard.
 
 **Names, not handles, inside a private group.** `x-standings-table` takes
-`names`, true only when `! $group->isLobby()`, and the Members pane follows
+`names`, true only when `! $group->isLobby()`, and the Members stop follows
 the same seam. A private group is people who invited each other by text,
 where a handle is the worse answer; a public room is strangers who walked in
 off the lobby, and their legal names are not the room's to publish. The
@@ -964,8 +975,7 @@ both `redirectIntended` — landing them back seated in one tap. A dead code
 gets words and a door, never a 404; a seated member skips the pitch straight
 to their clubhouse; a full or already-played room states its condition
 plainly with the Voice line for mood. Share surfaces (creation step 3, the
-clubhouse hero and the Standings tab's Invite pane) copy and share the LINK
-first with the code
+clubhouse hero and the Invite stop) copy and share the LINK first with the code
 kept beneath as the fallback — and rooms never advertise codes or /join
 links at all: they are joined from the lobby.
 

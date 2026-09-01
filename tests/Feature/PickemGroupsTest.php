@@ -199,14 +199,11 @@ it('shows a member their clubhouse: hero, mode, code and roster', function () {
     Livewire::actingAs($admin)->test('group', ['group' => $group])
         ->assertSee('The Test Group')
         ->assertSee('Triple Option')
-        // Standings grew a second row on 2026-09-01: the code moved to
-        // the Invite pane and the roster to Members. `view=members` is
-        // still a live address and still normalizes to Standings.
-        ->set('view', 'members')
-        ->assertSet('view', 'standings')
-        ->set('pane', 'invite')
+        // One strip, four stops: the code lives on Invite and the roster
+        // on Members, each a view of its own.
+        ->set('view', 'invite')
         ->assertSee($group->code)
-        ->set('pane', 'members')
+        ->set('view', 'members')
         ->assertSee('Commissioner');
 });
 
