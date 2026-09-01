@@ -88,6 +88,18 @@ class WoodshedMode extends ModeEngine
         return true;
     }
 
+    /** 8·5 + 6·5 + 4·5 = 90, before the Lock and the Bear. */
+    public function perfectWeek(): int
+    {
+        $total = 0;
+
+        foreach ($this->tierSpec() as $tier => $count) {
+            $total += $count * self::TIER_POINTS[$tier];
+        }
+
+        return $total;
+    }
+
     public function hasBear(): bool
     {
         return true;

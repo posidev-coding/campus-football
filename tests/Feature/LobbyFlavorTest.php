@@ -58,9 +58,15 @@ it('spawns a flavored room: marquee name, its own cap, settings stamped on the c
     $slate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $room->id))->sole();
 
     expect($slate->status)->toBe(Slate::PUBLISHED)
-        // The flash card: five games, from the settings the spawn stamped.
+        // The flash card: five games, from the settings the spawn stamped —
+        // plus the identity flag that holds it out of the Tallboy wager. The
+        // room exists to be frictionless and a wager is friction; the maths
+        // would have let it in.
         ->and($slate->games()->count())->toBe(5)
-        ->and($room->contests()->sole()->settings)->toBe(['slate_size' => 5]);
+        // Canonicalizing, not identical: MySQL JSON does not preserve
+        // object key order, so a second knob makes an ordered comparison a
+        // coin flip.
+        ->and($room->contests()->sole()->settings)->toEqualCanonicalizing(['slate_size' => 5, 'tallboy' => false]);
 });
 
 it('never cross-clones between a flavor and the standard slate of the same mode', function () {
@@ -148,7 +154,7 @@ it('respawns a filled room as the SAME shape: flavor, cap, settings, Saturday', 
     // cloned five-game slate with the settings that size it.
     expect($next->name)->toBe('Two-Minute Drill II')
         ->and($next->member_cap)->toBe(10)
-        ->and($next->contests()->sole()->settings)->toBe(['slate_size' => 5]);
+        ->and($next->contests()->sole()->settings)->toEqualCanonicalizing(['slate_size' => 5, 'tallboy' => false]);
 
     $nextSlate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $next->id))->sole();
 

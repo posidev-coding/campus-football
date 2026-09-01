@@ -74,7 +74,16 @@ enum LobbyFlavor: string
         return match ($this) {
             self::RankedAction => ['slate_filter' => SlateFilter::Ranked->value],
             self::UnderTheLights => ['slate_size' => 8, 'slate_filter' => SlateFilter::Primetime->value],
-            self::TwoMinuteDrill => ['slate_size' => 5],
+            /*
+             * `tallboy => false` is an IDENTITY exclusion, not an
+             * arithmetic one: at ±5 the wager's leverage here is 10% and
+             * comfortably inside the ceiling. The room is held out because
+             * its own blurb sells it as "the flash card: 5 games, in and
+             * out" — it exists to be frictionless, and a wager is friction.
+             * One public shelf with zero spend decisions is also the clean
+             * answer to "is the Lobby pay-to-play?", and Quick Hits is it.
+             */
+            self::TwoMinuteDrill => ['slate_size' => 5, 'tallboy' => false],
             self::UpsetAlley => ['kicker' => 'underdog_ml', 'kicker_points' => 2],
             self::BackPorch => null,
             self::SecShowdown, self::BigTenBlitz, self::AccAction, self::Big12Shootout, self::Pac12AfterDark => [

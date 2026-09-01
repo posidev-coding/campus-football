@@ -10,7 +10,6 @@ use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Slate;
 use App\Models\User;
-use App\Models\WalletEntry;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -84,36 +83,16 @@ class JoinGroup
     /**
      * Ice one down for a marquee seat.
      *
-     * NO SPEND MAY TAKE A WALLET NEGATIVE, and the ledger has deliberately
-     * no balance column to enforce that with — totals are SUMs. So the read
-     * and the write are serialized on the JOINER'S OWN ROW: without the
-     * lock, two taps on two Spotlight cards with one credit in hand both
-     * read a balance of 1, both pass, and the wallet ends at −1. Locking
-     * the user rather than the room is right because the constraint belongs
-     * to the wallet, not to the seat.
-     *
-     * The spend is keyless on purpose — a contest entry spends every entry,
-     * and leaving and coming back is a second seat, honestly bought.
+     * A free shelf prices at zero and spend() returns without touching the
+     * wallet, so the caller never has to ask whether this room charges.
+     * The no-negative law and the lock that enforces it live in
+     * {@see GrantWalletEntry::spend()}, shared with the wager.
      *
      * @throws WalletTooLight
      */
     private function charge(User $user, Group $group): void
     {
-        $price = $group->entryCredits();
-
-        if ($price === 0) {
-            return;
-        }
-
-        User::query()->whereKey($user->id)->lockForUpdate()->value('id');
-
-        $balance = (int) WalletEntry::query()->where('user_id', $user->id)->sum('credits');
-
-        if ($balance < $price) {
-            throw new WalletTooLight;
-        }
-
-        $this->wallet->handle($user, 0, -$price, GrantWalletEntry::REASON_ROOM_ENTRY);
+        $this->wallet->spend($user, $group->entryCredits(), GrantWalletEntry::REASON_ROOM_ENTRY);
     }
 
     /** @throws ContestFull */

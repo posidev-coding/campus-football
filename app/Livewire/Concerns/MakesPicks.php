@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Concerns;
 
+use App\Actions\CrushTallboy;
 use App\Actions\EnterTiebreaker;
 use App\Actions\LockPick;
 use App\Actions\MakePick;
@@ -9,6 +10,7 @@ use App\Exceptions\HandleRequired;
 use App\Exceptions\NotGroupMember;
 use App\Exceptions\PickemParticipationGated;
 use App\Exceptions\PickLocked;
+use App\Exceptions\WalletTooLight;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateEntry;
@@ -159,6 +161,38 @@ trait MakesPicks
         $this->refreshPicks();
     }
 
+    /**
+     * The Tallboy toggle, the Lock's sibling.
+     *
+     * One extra refusal over lockPick(): the wallet can be short, and that
+     * is the one a reader has to be TOLD about — an unaffordable tap that
+     * re-rendered silently reads as a dead button. PickLocked covers both
+     * kickoff races here: this game starting, and the game already carrying
+     * the wager starting while somebody tries to move it off.
+     */
+    public function crushTallboy(int $slateGameId, bool $staked, CrushTallboy $action): void
+    {
+        try {
+            $slateGame = SlateGame::query()->findOrFail($slateGameId);
+            $action->handle(auth()->user(), $slateGame, $staked);
+        } catch (WalletTooLight) {
+            $this->say('picks.tallboy.too_light', tone: 'error');
+        } catch (PickLocked) {
+            $this->say('picks.locked.notice', tone: 'error');
+        } catch (PickemParticipationGated) {
+            $this->say('groups.verify_first', tone: 'error');
+        } catch (HandleRequired) {
+            $this->say('picks.claim.body', tone: 'error');
+        } catch (NotGroupMember) {
+            $this->say('talk.not_member', tone: 'error');
+        } catch (ModelNotFoundException|InvalidArgumentException) {
+            // A stale card, or a wager aimed at a contest that does not
+            // take one — the refresh renders what is actually stakeable.
+        }
+
+        $this->refreshPicks();
+    }
+
     public function saveTotal(int $slateId, EnterTiebreaker $action): void
     {
         $total = (int) ($this->totals[$slateId] ?? 0);
@@ -227,8 +261,9 @@ trait MakesPicks
      * Derived, and stated exactly once — there is no `submitted_at` and no
      * submit button, because a stored flag can disagree with the picks it
      * claims to describe the moment one of them changes. Reads only what
-     * the surface has already loaded. The Woodshed's Lock is a WAGER, not
-     * a step: an entry with no Lock staked is a complete entry.
+     * the surface has already loaded. A WAGER IS NOT A STEP — neither the
+     * Woodshed's Lock nor the Tallboy — so an entry with nothing staked is
+     * a complete entry.
      */
     protected function entryComplete(Slate $slate): bool
     {

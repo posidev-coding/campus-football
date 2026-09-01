@@ -2,6 +2,7 @@
 
 namespace App\Actions;
 
+use App\Exceptions\WalletTooLight;
 use App\Models\User;
 use App\Models\WalletEntry;
 use App\Support\Cadence;
@@ -142,6 +143,14 @@ class GrantWalletEntry
      * bank does it.
      */
     public const REASON_ROOM_ENTRY = 'room-entry';
+
+    /**
+     * THE WAGER, the second sink. Staked as a negative row and PULLED as a
+     * new positive one — never an edit, never a deletion. Corrections are
+     * new rows, the way a bank does it, so the history always explains the
+     * balance.
+     */
+    public const REASON_TALLBOY_WAGER = 'tallboy-wager';
 
     public const COOLER_CAPACITY = 6;
 
@@ -346,6 +355,37 @@ class GrantWalletEntry
         }
 
         return $paid;
+    }
+
+    /**
+     * Take credits out, and never below zero.
+     *
+     * NO SPEND MAY TAKE A WALLET NEGATIVE, and the ledger has deliberately
+     * no balance column to enforce that with — totals are SUMs. So the read
+     * and the write are serialized on the SPENDER'S OWN ROW: without the
+     * lock, two taps with one credit in hand both read a balance of 1, both
+     * pass, and the wallet lands at −1. The user is locked rather than
+     * whatever is being bought, because the constraint belongs to the
+     * wallet and every sink shares it.
+     *
+     * Keyless: a spend is repeatable by nature — a contest entry spends
+     * every entry, and a wager pulled and re-staked is two real decisions.
+     *
+     * @throws WalletTooLight
+     */
+    public function spend(User $user, int $credits, string $reason): void
+    {
+        if ($credits <= 0) {
+            return;
+        }
+
+        User::query()->whereKey($user->id)->lockForUpdate()->value('id');
+
+        if ($this->creditBalance($user) < $credits) {
+            throw new WalletTooLight;
+        }
+
+        $this->handle($user, 0, -$credits, $reason);
     }
 
     /**

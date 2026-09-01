@@ -40,17 +40,32 @@ it('uses no clipPath, so the PNGs cannot drift from the SVGs', function (string 
     expect(File::get($svg($cut)))->not->toContain('clipPath');
 })->with($cuts);
 
-it('ships the light and dark cuts the wallet chip names', function () {
+it('ships the light and dark cuts the mark component names', function () {
     /*
      * A missing icon is a 404 behind alt="", which renders as nothing and
-     * reads as a layout choice. The chip names the -16 cut at both modes.
+     * reads as a layout choice. x-tallboy-mark is the ONE file that names
+     * the art — every render site goes through it, so this is the only
+     * place the filenames have to be checked.
      */
-    $chip = File::get(resource_path('views/components/wallet-chips.blade.php'));
+    $mark = File::get(resource_path('views/components/tallboy-mark.blade.php'));
 
     foreach (['tallboy-light-16', 'tallboy-dark-16'] as $named) {
-        expect($chip)->toContain("brand/currency/svg/{$named}.svg")
+        expect($mark)->toContain("brand/currency/svg/{$named}.svg")
             ->and(File::exists(public_path("brand/currency/svg/{$named}.svg")))->toBeTrue();
     }
+});
+
+it('keeps the art in one file', function () {
+    /*
+     * A seam with two copies is not a seam. Every render site asks
+     * x-tallboy-mark; nothing else may name the asset path.
+     */
+    $namers = collect(File::allFiles(resource_path('views')))
+        ->filter(fn ($file) => str_contains(File::get($file->getPathname()), 'brand/currency/svg/'))
+        ->map(fn ($file) => $file->getFilename())
+        ->values();
+
+    expect($namers->all())->toBe(['tallboy-mark.blade.php']);
 });
 
 it('keeps the PNG family complete and in the can\'s aspect ratio', function () {

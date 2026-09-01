@@ -1176,6 +1176,18 @@ class Voice
          * the Lobby is the front door for anybody without a private group
          * and nobody may read this as "the Lobby is closed to me".
          */
+        /*
+         * THE WAGER, refused for money. Distinct from the marquee's refusal
+         * because the reader is standing on a pick sheet rather than in the
+         * store: nothing to redirect them to, so it says what the cooler
+         * costs and where the next one comes from.
+         */
+        'picks.tallboy.too_light' => [
+            'pg' => 'A Tallboy costs one credit and your cooler is empty. Play the week out — the cooler restocks.',
+            'pg13' => "You're out of Tallboys. Keep playing: the cooler restocks every week, and wins pour their own.",
+            'r' => 'Empty cooler, no wager. Go win something — the cooler restocks weekly and it does not care how you feel about it.',
+        ],
+
         'contest.room.too_light' => [
             'pg' => 'That one costs a Tallboy and your cooler is empty. The Conference and Quick hits rooms are free — play one and earn some.',
             'pg13' => "Spotlight seats cost a Tallboy, and you're short. Conference and Quick hits are free — go win some back.",

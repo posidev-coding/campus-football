@@ -51,6 +51,22 @@
      */
     $picksAllIn = $gameIds->isNotEmpty() && $made >= $gameIds->count();
     $entryIn = $interactive && $picksAllIn && $this->entryIn($slate->id);
+
+    /*
+     * THE TALLBOY, and which card may take it. Eligibility is asked of the
+     * ENGINE — built from this contest's own frozen settings — never of a
+     * per-flavor list, because a dynamic room's slate is as big as the
+     * Saturday allowed and a thin one puts ±5 over the leverage ceiling.
+     *
+     * ONE WAGER PER SLATE, which is what that ceiling is a guarantee about.
+     * So every card offers it while nothing is staked, and once one is, the
+     * offer collapses to the card holding it — nine disabled controls is a
+     * screen arguing with itself. Read off `myPicks`, already loaded.
+     */
+    $takesTallboy = $engine->supportsTallboy();
+    $crushedId = $takesTallboy
+        ? $gameIds->first(fn (int $id) => (bool) $this->myPicks->get($id)?->locked)
+        : null;
 @endphp
 
 <div
@@ -290,6 +306,7 @@
                         :bear-team-id="$slateGame->bear_team_id"
                         :featured="$engine->supportsLock() && $slate->tiebreaker_slate_game_id === $slateGame->id"
                         :lockable="$interactive && $engine->supportsLock() && $slate->tiebreaker_slate_game_id === $slateGame->id"
+                        :crushable="$takesTallboy && ($crushedId === null || $crushedId === $slateGame->id)"
                     />
                 @endforeach
             </div>
