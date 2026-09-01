@@ -30,7 +30,7 @@ it('walks name, game, invite — and creates exactly one contest', function () {
         ->call('toGame')
         ->assertSee('Pick your game')
         ->assertSee('Triple Option')
-        ->assertSee('The Woodshed')
+        ->assertSee('Woodshed')
         ->call('choose', 'tiered')
         ->call('create')
         ->assertSee("You're live", escape: false);

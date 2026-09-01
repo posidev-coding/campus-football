@@ -82,8 +82,8 @@ class EngagementStats extends BaseWidget
     private ?array $modes = null;
 
     /**
-     * "Shotgun 3 · The Woodshed 1" — the mode's own name first, because the
-     * labels are proper nouns and "1 the woodshed" is not a sentence.
+     * "Shotgun 3 · Woodshed 1" — the mode's own name first, because the
+     * labels are proper nouns and "1 woodshed" is not a sentence.
      *
      * Modes nobody is playing are absent rather than listed at zero, and no
      * contests at all says so in words instead of a row of zeroes.

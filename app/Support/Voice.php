@@ -1058,9 +1058,9 @@ class Voice
         ],
 
         'picks.publish.featured_metric' => [
-            'pg' => "The Woodshed's tiebreaker is always the featured game's combined points. Switch the question back.",
-            'pg13' => "In the Woodshed the question is the featured game's over/under — founders' law. Switch it back.",
-            'r' => "The Woodshed asks ONE question: the featured game's total. The founders wrote it; you don't get to edit it.",
+            'pg' => "Woodshed's tiebreaker is always the featured game's combined points. Switch the question back.",
+            'pg13' => "In Woodshed the question is the featured game's over/under — founders' law. Switch it back.",
+            'r' => "Woodshed asks ONE question: the featured game's total. The founders wrote it; you don't get to edit it.",
         ],
 
         /*

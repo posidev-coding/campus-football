@@ -109,7 +109,7 @@ describe('engagement', function () {
             // The mode's own name first — the labels are proper nouns, and
             // "1 the woodshed" is not a sentence.
             ->assertSee('Shotgun 2')
-            ->assertSee('The Woodshed 1');
+            ->assertSee('Woodshed 1');
     });
 
     it('says so plainly when no contest is running, rather than a row of zeroes', function () {

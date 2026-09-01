@@ -47,7 +47,7 @@ the Game Quality Score suggests, never authors. Values settled 2026-08-14
 the Keep, the Dive — remain screen vocabulary, not engine facts. Perfect
 week: 100.
 
-## The Woodshed (`woodshed` · WoodshedMode)
+## Woodshed (`woodshed` · WoodshedMode)
 
 The founders' game, recovered whole in August 2026 from the original
 league's rules email and a working copy of its 2016 code (cfbpickem.net —

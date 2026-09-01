@@ -90,8 +90,22 @@ it('carries the product names on the mode enum, not in data', function () {
     expect(ContestMode::Classic->label())->toBe('Shotgun')
         ->and(ContestMode::Classic->value)->toBe('classic')
         ->and(ContestMode::Tiered->label())->toBe('Triple Option')
-        ->and(ContestMode::Woodshed->label())->toBe('The Woodshed')
+        ->and(ContestMode::Woodshed->label())->toBe('Woodshed')
         ->and(ContestMode::Tiered->value)->toBe('tiered');
+});
+
+it('names every mode without a leading article', function () {
+    /*
+     * "The Woodshed" collided with a real group of the same name and read
+     * wrong beside its siblings, so the article came off (2026-09-01). The
+     * labels are joined into lists and dropped mid-sentence — "Shotgun ·
+     * Triple Option · Woodshed", "Woodshed needs 15 games" — and one name
+     * carrying an article is the one that reads broken in every one of
+     * those seams.
+     */
+    foreach (ContestMode::cases() as $mode) {
+        expect($mode->label())->not->toStartWith('The ');
+    }
 });
 
 it('distinguishes an ungraded pick from one graded to nothing', function () {
