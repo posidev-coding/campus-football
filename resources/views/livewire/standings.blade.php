@@ -211,13 +211,14 @@ new class extends Component
          * Cached 900s as PLAIN ARRAYS (a cached model is an
          * __PHP_Incomplete_Class on the second request), rehydrated into
          * light stubs below for x-team-link's sake. VERSIONED key — the
-         * standings v2 convention: a day-class TTL outlives a deploy, so
-         * a shape change bumps the version and the old entries age out
-         * unread instead of fataling for the TTL. Remember::filled, so a
-         * request racing the standings backfill cannot pin empty.
+         * standings convention: a TTL outlives a deploy, so a change to the
+         * shape OR to the order bumps the version and the old entries age
+         * out unread instead of outliving the fix. v2 is the week-1 seeding
+         * fix in Standing::inStandingsOrder. Remember::filled, so a request
+         * racing the standings backfill cannot pin empty.
          */
         $cached = Remember::filled(
-            "standings:screen:v1:{$this->year}:{$this->scope}",
+            "standings:screen:v2:{$this->year}:{$this->scope}",
             900,
             fn () => Standing::query()
                 ->fromEspn()

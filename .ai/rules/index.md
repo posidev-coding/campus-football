@@ -42,6 +42,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/views/livewire/tour.blade.php,app/Support/Tours.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/support-views-livewire.md |
 | app/Support/**, app/Actions/**, app/Services/CfbCalendar.php | .ai/rules/support.md |
 | app/Services/Espn/Sync/SyncGames.php,app/Console/Commands/SweepLiveSummariesCommand.php,routes/console.php | .ai/rules/sync-console-commands.md |
+| app/Models/Standing.php,app/Services/Espn/Sync/SyncStandings.php | .ai/rules/sync.md |
 | tests/** | .ai/rules/tests.md |
 | app/Models/Slate.php,resources/views/livewire/group.blade.php,resources/views/livewire/pickem-home.blade.php,app/Support/** | .ai/rules/views-livewire-support.md |
 | app/Actions/PublishSlate.php,app/Support/Cadence.php,app/Models/Slate.php,resources/views/livewire/group.blade.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/views-livewire-views-livewire.md |
