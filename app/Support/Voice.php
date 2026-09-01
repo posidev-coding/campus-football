@@ -1169,6 +1169,19 @@ class Voice
             'r' => 'No history yet. Play a week and this page starts keeping receipts.',
         ],
 
+        /*
+         * THE MARQUEE PRICE, refused. A Spotlight seat costs a Tallboy and
+         * this wallet is short — so the line has to do two jobs: say WHY the
+         * tap did nothing, and point at the shelves that are free, because
+         * the Lobby is the front door for anybody without a private group
+         * and nobody may read this as "the Lobby is closed to me".
+         */
+        'contest.room.too_light' => [
+            'pg' => 'That one costs a Tallboy and your cooler is empty. The Conference and Quick hits rooms are free — play one and earn some.',
+            'pg13' => "Spotlight seats cost a Tallboy, and you're short. Conference and Quick hits are free — go win some back.",
+            'r' => "You cannot afford this room. Conference and Quick hits don't charge — start there and stop being broke.",
+        ],
+
         'contest.room.full' => [
             'pg' => 'That room just filled up. A fresh one should be open right below it.',
             'pg13' => 'Too slow — that room\'s full. The next one\'s already open.',
@@ -1437,10 +1450,16 @@ class Voice
             'r' => 'Short cards, small tables. Fewer picks to blow, and everyone watching you blow them.',
         ],
 
+        /*
+         * The one shelf that charges, and the line that says so — in three
+         * registers, around the CONSTANT verb the button wears. The price
+         * itself is a fact on the row and stays the same words everywhere;
+         * the slang lives here.
+         */
         'lobby.shelf.spotlight' => [
-            'pg' => 'Themed rooms — one idea per card.',
-            'pg13' => 'Themed rooms: ranked chaos, night games, dogs that bite.',
-            'r' => 'Themed rooms for people who think they have a specialty. Prove it.',
+            'pg' => 'Themed rooms — one idea per card. A seat here costs one Tallboy.',
+            'pg13' => 'Themed rooms: ranked chaos, night games, dogs that bite. Ice one down to get in.',
+            'r' => 'Themed rooms for people who think they have a specialty. Costs a Tallboy — crack it open and prove it.',
         ],
 
         'lobby.shelf.conference' => [

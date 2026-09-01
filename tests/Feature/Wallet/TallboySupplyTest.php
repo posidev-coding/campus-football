@@ -26,17 +26,6 @@ beforeEach(function () {
     $this->travelTo('2026-09-02 12:00:00');
 });
 
-function stocked(int $credits, ?User $user = null): User
-{
-    $user ??= User::factory()->create();
-
-    if ($credits !== 0) {
-        app(GrantWalletEntry::class)->handle($user, 0, $credits, 'test-stock');
-    }
-
-    return $user;
-}
-
 // ------------------------------------------------------------- the cooler
 
 it('grades the top-off on the balance, at every tier boundary', function (int $balance, int $expected) {
@@ -56,14 +45,14 @@ it('grades the top-off on the balance, at every tier boundary', function (int $b
 ]);
 
 it('pays the graduated amount into the ledger', function () {
-    $user = stocked(4);
+    $user = pickemStocked(credits: 4);
 
     expect(app(GrantWalletEntry::class)->topOff($user))->toBe(GrantWalletEntry::TOPOFF_ROOM_CREDITS)
         ->and($user->fresh()->walletTotals()['credits'])->toBe(4 + GrantWalletEntry::TOPOFF_ROOM_CREDITS);
 });
 
 it('tops a wallet up once a football week, however many times Picks is opened', function () {
-    $user = stocked(0);
+    $user = pickemStocked(credits: 0);
     $wallet = app(GrantWalletEntry::class);
 
     expect($wallet->topOff($user))->toBe(GrantWalletEntry::TOPOFF_EMPTY_CREDITS)
@@ -86,7 +75,7 @@ it('spends the week key even when the cooler is full, so it cannot be farmed', f
      * straight back for a restock, then do it again. The zero row is what
      * makes the key the cap rather than the payment.
      */
-    $user = stocked(GrantWalletEntry::COOLER_CAPACITY);
+    $user = pickemStocked(credits: GrantWalletEntry::COOLER_CAPACITY);
     $wallet = app(GrantWalletEntry::class);
 
     expect($wallet->topOff($user))->toBe(0)
@@ -107,7 +96,7 @@ it('asks the key before it reads the balance', function () {
      * a race. Asked key-first, the second fire computes nothing at all,
      * which is observable as the absence of the balance SUM.
      */
-    $user = stocked(3);
+    $user = pickemStocked(credits: 3);
     $wallet = app(GrantWalletEntry::class);
     $wallet->topOff($user);
 

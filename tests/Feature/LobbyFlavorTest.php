@@ -275,8 +275,9 @@ it('clones a dynamic room\'s frozen settings verbatim — never a re-resolve', f
     Game::query()->where('week_id', $week->id)->where('home_rank', '<=', 4)->update(['home_rank' => null]);
     GameRanks::flush();
 
-    app(JoinGroup::class)->handle(User::factory()->create(), $room);
-    app(JoinGroup::class)->handle(User::factory()->create(), $room->fresh());
+    // Ranked Action is a Spotlight room: both joiners ice one down.
+    app(JoinGroup::class)->handle(pickemStocked(), $room);
+    app(JoinGroup::class)->handle(pickemStocked(), $room->fresh());
 
     $next = Group::query()
         ->where('kind', Group::KIND_LOBBY)
@@ -307,7 +308,9 @@ it('says the kicker house rule out loud, over the slate', function () {
     [, $week] = lobbyFlavorWeek();
 
     $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, null, LobbyFlavor::UpsetAlley);
-    $viewer = pickemAdmin();
+    // Upset Alley sits on the Spotlight shelf, and a marquee seat is iced
+    // down with a Tallboy — an unfunded viewer is refused at the door.
+    $viewer = pickemStocked(pickemAdmin());
     app(JoinGroup::class)->handle($viewer, $room);
 
     Livewire::actingAs($viewer)->test('group', ['group' => $room->fresh()])

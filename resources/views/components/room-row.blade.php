@@ -14,7 +14,17 @@
 
     Mode identity is the TILE plus the micro-line, never a chip on the
     right: at 390px a chip and a button together starve the name, and
-    nothing may be reachable only above `sm`.
+    nothing may be reachable only above `sm`. THE PRICE rides that same
+    micro-line for the same reason, and it leads it — a Tallboy is the one
+    fact on the row that costs the reader something, so it must survive the
+    truncation that a seat count does not have to.
+
+    The price is a FACT and says the same words in every register; the
+    shelf's Voice line above carries the slang. The button is the one place
+    the canonical verb appears, because a button reading "Crush" over rules
+    text saying "ice down" reads as two different features — and the plain
+    instruction sits immediately beside it, so the verb never has to carry
+    "this joins the room" on its own.
 
     SEATS LEFT is said in WEIGHT, never in color. Rows repeat, the amber
     budget is one per viewport, and the verify callout above may already
@@ -50,6 +60,13 @@
     $palette = $mode->palette();
 
     /*
+     * What this seat costs, read off data already loaded: the flavor names
+     * a shelf and the shelf owns the price. Zero for every free shelf, and
+     * zero renders nothing — a row with no price is a row, not a hole.
+     */
+    $price = $room->entryCredits();
+
+    /*
      * How many seats are actually left. Null cap means an uncapped room —
      * no number to count down, so no urgency to claim. The signal is for
      * somebody who could still take one, so a reader already seated never
@@ -80,7 +97,7 @@
             {{-- THE LAST SEATS, in weight. A fact, not a flourish: it
                  stays the same sentence in every register, and it only
                  speaks to somebody who could still take one. --}}
-            {{ $mode->label() }}@if ($gameCount !== null) · {{ $gameCount }} {{ Str::plural('game', $gameCount) }}@endif@if ($scarce) · <span class="font-semibold text-zinc-900 dark:text-zinc-100">{{ $left }} {{ Str::plural('seat', $left) }} left</span>@elseif ($room->member_cap !== null) · {{ $seats }} of {{ $room->member_cap }} seats @else · {{ $seats }} {{ Str::plural('member', $seats) }}@endif
+            {{ $mode->label() }}@if ($price > 0) · <span class="font-semibold text-zinc-900 dark:text-zinc-100">{{ $price }} {{ Str::plural('Tallboy', $price) }} to enter</span>@endif@if ($gameCount !== null) · {{ $gameCount }} {{ Str::plural('game', $gameCount) }}@endif@if ($scarce) · <span class="font-semibold text-zinc-900 dark:text-zinc-100">{{ $left }} {{ Str::plural('seat', $left) }} left</span>@elseif ($room->member_cap !== null) · {{ $seats }} of {{ $room->member_cap }} seats @else · {{ $seats }} {{ Str::plural('member', $seats) }}@endif
         </span>
     </span>
 
@@ -102,6 +119,7 @@
             size="sm"
             variant="primary"
             class="pointer-events-auto relative z-10 -my-1 !h-9 shrink-0"
-        >Join</flux:button>
+            aria-label="{{ $price > 0 ? 'Ice down a Tallboy and join '.$room->name : 'Join '.$room->name }}"
+        >{{ $price > 0 ? 'Ice down' : 'Join' }}</flux:button>
     @endif
 </div>

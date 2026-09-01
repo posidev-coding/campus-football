@@ -5,6 +5,7 @@ use App\Actions\JoinGroup;
 use App\Enums\ContestMode;
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
+use App\Exceptions\WalletTooLight;
 use App\Models\Contest;
 use App\Models\Group;
 use App\Models\GroupMember;
@@ -712,6 +713,10 @@ new class extends Component
             return;
         } catch (ContestFull) {
             $this->addError($errorBag, Voice::line('contest.room.full'));
+
+            return;
+        } catch (WalletTooLight) {
+            $this->addError($errorBag, Voice::line('contest.room.too_light'));
 
             return;
         }

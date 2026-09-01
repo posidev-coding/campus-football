@@ -12,6 +12,7 @@ use App\Exceptions\GroupNeedsCommissioner;
 use App\Exceptions\ModeChangeBlocked;
 use App\Exceptions\NotGroupCommissioner;
 use App\Exceptions\PickemParticipationGated;
+use App\Exceptions\WalletTooLight;
 use App\Livewire\Concerns\MakesPicks;
 use App\Models\Contest;
 use App\Models\Group;
@@ -719,6 +720,10 @@ new class extends Component
             return;
         } catch (ContestFull) {
             $this->addError('group', Voice::line('contest.room.full'));
+
+            return;
+        } catch (WalletTooLight) {
+            $this->addError('group', Voice::line('contest.room.too_light'));
 
             return;
         }

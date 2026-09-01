@@ -55,4 +55,22 @@ enum LobbyShelf: string
     {
         return 'lobby.shelf.'.$this->value;
     }
+
+    /**
+     * What a seat on this shelf costs in Tallboys — THE entry-price seam.
+     *
+     * The Spotlight is the marquee, and it is the only shelf that charges.
+     * Everything else stays free on purpose: the Lobby is the front door
+     * for anybody without a private group, so a newcomer holding nothing
+     * must never be walled out of it. Quick Hits is credit-free end to end
+     * — no entry, no wager — which fell out of the rules rather than being
+     * designed, and is worth keeping.
+     *
+     * A number rather than a boolean because the reader is told the price,
+     * and one place should own it.
+     */
+    public function entryCredits(): int
+    {
+        return $this === self::Spotlight ? 1 : 0;
+    }
 }

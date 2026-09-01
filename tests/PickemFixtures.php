@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\GrantWalletEntry;
 use App\Actions\PublishSlate;
 use App\Enums\ContestMode;
 use App\Jobs\GradeGamePicks;
@@ -188,4 +189,20 @@ function pickemScore(Slate $slate, int $position, int $home, int $away, bool $fi
     ]);
 
     (new GradeGamePicks($game->id))->handle(app(PickGrader::class));
+}
+
+/**
+ * A wallet with something in it. Spotlight rooms cost a Tallboy, so any
+ * fixture that seats somebody on the marquee shelf has to fund them first
+ * — an empty wallet is a refusal now, which is the point.
+ */
+function pickemStocked(?User $user = null, int $credits = 1): User
+{
+    $user ??= User::factory()->create();
+
+    if ($credits !== 0) {
+        app(GrantWalletEntry::class)->handle($user, 0, $credits, 'test-stock');
+    }
+
+    return $user;
 }

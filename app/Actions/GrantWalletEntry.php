@@ -135,6 +135,14 @@ class GrantWalletEntry
      */
     public const REASON_TOPOFF = 'topoff';
 
+    /**
+     * THE MARQUEE ENTRY, the first sink. A spend is a NEGATIVE row with no
+     * key — repeatable, because a seat is bought every time one is taken —
+     * and a refund would be a new positive row, never an edit, the way a
+     * bank does it.
+     */
+    public const REASON_ROOM_ENTRY = 'room-entry';
+
     public const COOLER_CAPACITY = 6;
 
     public const COOLER_EMPTY_AT = 2;

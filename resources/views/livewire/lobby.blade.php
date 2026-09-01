@@ -5,6 +5,7 @@ use App\Enums\ContestMode;
 use App\Enums\LobbyShelf;
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
+use App\Exceptions\WalletTooLight;
 use App\Models\Group;
 use App\Models\Slate;
 use App\Models\SlateGame;
@@ -297,6 +298,13 @@ new class extends Component
             // filled room, and the words say why.
             $this->addError($errorBag, Voice::line('contest.room.full'));
             unset($this->openRooms, $this->publics, $this->shelves, $this->visibleShelves, $this->tabHasRooms, $this->evergreens, $this->weekContext, $this->firstKick);
+
+            return;
+        } catch (WalletTooLight) {
+            // The marquee costs a Tallboy and this wallet is short. The
+            // line points at the free shelves rather than at a wall: the
+            // Lobby is the front door for anybody without a group.
+            $this->addError($errorBag, Voice::line('contest.room.too_light'));
 
             return;
         }
