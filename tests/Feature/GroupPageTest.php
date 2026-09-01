@@ -320,13 +320,14 @@ it('opens to Standings once the entry is in and the card is playing', function (
         ->assertSet('view', 'slate');
 });
 
-it('normalizes the three-tab era\'s addresses onto the merged plate', function () {
+it('normalizes the three-tab era\'s addresses onto the one strip', function () {
     [$commissioner, $group] = pickemContest(ContestMode::Classic);
 
-    // Mount half: bookmarked ?view= values from before the merge.
+    // Mount half: bookmarked ?view= values. `members` is a real stop
+    // again since the strip went four-up, so only `season` still folds.
     Livewire::withQueryParams(['view' => 'members'])
         ->actingAs($commissioner)->test('group', ['group' => $group])
-        ->assertSet('view', 'standings');
+        ->assertSet('view', 'members');
 
     Livewire::withQueryParams(['view' => 'nonsense'])
         ->actingAs($commissioner)->test('group', ['group' => $group])
@@ -340,27 +341,38 @@ it('normalizes the three-tab era\'s addresses onto the merged plate', function (
         ->assertSet('view', 'slate');
 });
 
-it('gives the Standings tab a second row, and the you-strip sits above it', function () {
+it('navigates the clubhouse from ONE strip of four stops', function () {
+    /*
+     * There was briefly a plate of Slate|Standings with a gutter of
+     * Standings|Members|Invite beneath it — three rows of navigation
+     * once the area nav is counted, saying "Standings" on two of them.
+     * One strip, and the word appears once.
+     */
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
 
-    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+    $html = Livewire::actingAs($commissioner)->test('group', ['group' => $group])
         ->set('view', 'standings')
-        // The gutter itself, all three panes named.
+        ->assertSee('Slate')
         ->assertSee('Standings')
         ->assertSee('Members')
         ->assertSee('Invite')
-        // The viewer's own line is chrome above the gutter, not a pane:
-        // nothing has been played, so every figure is a dash, never a zero.
+        // The viewer's own line, and the standings' own content: nothing
+        // has been played, so every figure is a dash, never a zero.
         ->assertSee('Wk rank')
         ->assertSee('—')
-        // The standings pane's own content: the scoring panel, sized from
-        // the contest, and the thread's foot door.
         ->assertSee('Triple Option')
         ->assertSee('Group talk')
-        ->assertSee(route('pickem.talk', $group), escape: false);
+        ->assertSee(route('pickem.talk', $group), escape: false)
+        ->html();
+
+    // Exactly ONE navigation strip: four buttons, one set of keys. A
+    // second strip is the regression this test exists to catch, and it
+    // would pass every assertion above.
+    expect(substr_count($html, 'wire:key="group-tab-'))->toBe(4)
+        ->and($html)->not->toContain('group-pane-');
 });
 
-it('keeps the invite off the standings pane and on its own', function () {
+it('keeps the invite off the standings and on a stop of its own', function () {
     // It carries a link, a code, a QR and three ready-to-send messages
     // now — as a disclosure on top of the standings it buried them.
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
@@ -368,25 +380,24 @@ it('keeps the invite off the standings pane and on its own', function () {
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
         ->set('view', 'standings')
         ->assertDontSee('Or read them the code')
-        ->set('pane', 'invite')
+        ->set('view', 'invite')
         ->assertSee($group->code)
         ->assertSee('Or read them the code');
 });
 
-it('puts the roster and its management on the Members pane', function () {
+it('puts the roster and its management on the Members stop', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
 
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
-        ->set('view', 'standings')
-        ->set('pane', 'members')
+        ->set('view', 'members')
         ->assertSee('Commissioner')
         ->assertSee('Leave group');
 });
 
-it('gives a public room two panes, never an invite one', function () {
+it('gives a public room three stops, never an invite one', function () {
     /*
      * Rooms are joined from the lobby, never by invitation — so the
-     * gutter must not offer a pane the screen refuses to draw, and an
+     * strip must not offer a stop the screen refuses to draw, and an
      * address asking for one lands on the standings rather than an
      * empty box.
      */
@@ -396,8 +407,8 @@ it('gives a public room two panes, never an invite one', function () {
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
         ->set('view', 'standings')
         ->assertDontSee('Invite')
-        ->set('pane', 'invite')
-        ->assertSet('pane', 'standings')
+        ->set('view', 'invite')
+        ->assertSet('view', 'standings')
         ->assertDontSee('Or read them the code');
 });
 
@@ -445,23 +456,28 @@ it('keeps a public room\'s roster on handles too, not just its tables', function
     $group->update(['kind' => Group::KIND_LOBBY]);
 
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
-        ->set('view', 'standings')
-        ->set('pane', 'members')
+        ->set('view', 'members')
         ->assertSee('@shedhand')
         ->assertDontSee('Dale Trickett');
 });
 
-it('lands the three-tab era\'s ?view=members address on the Members pane', function () {
-    // normalizedView() has sent `members` to Standings since 2026-08-30;
-    // now that there is a Members pane again, carry the second half of
-    // the address across instead of dropping the reader somewhere else.
-    [$commissioner, $group] = pickemContest(ContestMode::Tiered);
+it('gives a room three stops and a group four, and sends ?view=invite back', function () {
+    /*
+     * The strip and the content must not disagree about which stops
+     * exist: a room has no invite to advertise, so the tab is absent AND
+     * the address is refused.
+     */
+    [$commissioner, $group] = pickemContest(ContestMode::Classic);
 
-    Livewire::actingAs($commissioner)
-        ->withQueryParams(['view' => 'members'])
-        ->test('group', ['group' => $group])
-        ->assertSet('view', 'standings')
-        ->assertSet('pane', 'members');
+    Livewire::withQueryParams(['view' => 'invite'])
+        ->actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'invite');
+
+    $group->update(['kind' => Group::KIND_LOBBY]);
+
+    Livewire::withQueryParams(['view' => 'invite'])
+        ->actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'standings');
 });
 
 it('polls the Standings tab only while the card is live', function () {
