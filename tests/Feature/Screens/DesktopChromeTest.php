@@ -329,13 +329,17 @@ describe('flat card lists claim the width', function () {
          * "Needs your picks" and Home's picks strip are ordered by urgency:
          * a grid makes "first" mean top-LEFT rather than top, which is a
          * weaker signal for the zone `docs/screens.md` calls the reason the
-         * screen works. They stay flat on purpose.
+         * screen works. The zone is one hero and one count now (the
+         * compact rows retired 2026-09-01), and the run from its heading
+         * to the hero stays flat on purpose.
          */
         $picks = file_get_contents(resource_path('views/livewire/pickem-home.blade.php'));
 
-        $needs = strpos($picks, '@foreach ($this->needsRest as $card)');
+        $hero = strpos($picks, 'wire:key="hero-');
+        $zone = substr($picks, $hero - 1500, 1500);
 
-        expect($needs)->not->toBeFalse()
-            ->and(substr($picks, $needs - 200, 200))->not->toContain('grid-cols');
+        expect($hero)->not->toBeFalse()
+            ->and($zone)->toContain('Needs your picks')
+            ->and($zone)->not->toContain('grid-cols');
     });
 });

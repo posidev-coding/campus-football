@@ -554,15 +554,18 @@ new class extends Component
     }
 
     /**
-     * Everything else still taking picks, in the same compact row the
-     * zone has always used. The hero is one card, not a new species.
-     *
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     * HOW MANY MORE still want picks below the hero — a fact for one
+     * plain line, never a second stack of rows. Every card that needed
+     * picks used to render TWICE on this screen: as a compact row up
+     * here and again as its own card in the sections below, which is
+     * how a reader in four groups met eight cards before the fold. The
+     * hero keeps the zone's one button; the cards below keep their own
+     * state (the count, "Entry in", "Tiebreaker left").
      */
     #[Computed]
-    public function needsRest()
+    public function needsMore(): int
     {
-        return $this->byUrgency()->slice(1)->values();
+        return max(0, $this->needsPicks->count() - 1);
     }
 
     /**
@@ -897,10 +900,11 @@ new class extends Component
                 <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Needs your picks</flux:subheading>
                 <flux:subheading>{{ Voice::line('lobby.needs.subheading') }}</flux:subheading>
 
-                {{-- ONE HERO, then compact rows. The card closest to
-                     locking wears the mode's own tile and carries the
-                     only button on the zone; four heroes would be four
-                     cards nobody reads. --}}
+                {{-- ONE HERO, and a count. The card closest to locking
+                     wears the mode's own tile and carries the only button
+                     on the zone; four heroes would be four cards nobody
+                     reads, and the compact rows that used to follow were
+                     every one of those cards drawn a second time. --}}
                 @php
                     $hero = $this->heroCard;
                     $heroGroup = $hero['group'];
@@ -967,13 +971,16 @@ new class extends Component
                     <flux:button :href="$heroHref" wire:navigate variant="primary" class="w-full md:w-auto md:self-start">
                         {{ $hero['made'] === 0 ? 'Make your picks' : 'Finish your picks' }}
                     </flux:button>
-                </div>
 
-                {{-- The shared compact row — Home's picks strip renders
-                     the very same component, not a copy. --}}
-                @foreach ($this->needsRest as $card)
-                    <x-slate-row :card="$card" wire:key="needs-{{ $card['group']->id }}" />
-                @endforeach
+                    {{-- The rest, as a COUNT: the cards below carry their
+                         own state, so the zone points at them rather than
+                         drawing them again. A fact, plain in every
+                         register, in the palette's body weight so it reads
+                         on the Woodshed's black tile too. --}}
+                    @if ($this->needsMore > 0)
+                        <p class="text-micro {{ $heroPalette['body'] }}">and {{ $this->needsMore }} more below</p>
+                    @endif
+                </div>
             </div>
         @elseif ($this->allIn)
             {{-- ALL IN. The zone that asks for picks simply vanished when

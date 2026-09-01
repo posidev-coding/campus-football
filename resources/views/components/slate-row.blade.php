@@ -1,6 +1,8 @@
 {{--
-    ONE SLATE'S STATE, compact — extracted from My Picks' needs-rows so
-    Home and the picks area render the same row rather than two copies.
+    ONE SLATE'S STATE, compact — born as My Picks' needs-rows, which
+    retired on 2026-09-01 (every card that needed picks rendered there
+    twice, as a row and as a card); Home's picks strip is its render
+    site now.
     Left: the group and where the entry stands (progress bar, amber
     "Tiebreaker left", emerald "Entry in"). Right: live or the kickoff,
     and a chevron; the whole row walks into the clubhouse.

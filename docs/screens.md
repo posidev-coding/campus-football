@@ -711,10 +711,12 @@ reader inside one is a seated member playing, not somebody browsing.
 **This week | Results** on an `x-plate` (first-run readers keep the single
 scroll; Results holds Last week, the rank ladder and the Season-history
 door), the needs-picks zone leads with ONE mode-tinted hero card wearing
-the zone's only button, the compact rows beneath it are the shared
-`x-slate-row` component (Home's picks strip renders the very same one),
-and a finished entry says "Entry in" — or amber "Tiebreaker left" when the
-question is the one thing open — instead of a fraction.
+the zone's only button and one plain "and N more below" line under it
+(since 2026-09-01 — the compact rows retired because every card that
+needed picks rendered twice, as a row and as a card; `x-slate-row` now
+renders only on Home's picks strip), and a finished entry says "Entry in"
+— or amber "Tiebreaker left" when the question is the one thing open —
+instead of a fraction.
 
 ## Two guided walks, one component, two columns
 

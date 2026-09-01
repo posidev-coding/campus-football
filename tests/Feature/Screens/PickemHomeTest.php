@@ -683,12 +683,14 @@ describe('my week (inside the flag)', function () {
             ->whereIn('id', $soonSlate->games->pluck('game_id'))
             ->update(['kickoff_at' => '2026-09-05 12:00:00']);
 
-        // The earlier kickoff takes the hero; the other keeps its compact
-        // row, which is what the zone has always drawn.
-        Livewire::actingAs($reader)->test('pickem-home')
-            ->assertSeeInOrder(['The Noon Kick', 'Make your picks', 'The Late Window'])
-            ->assertSeeHtml('wire:key="hero-'.$soon->id.'"')
-            ->assertSeeHtml('wire:key="needs-'.$late->id.'"');
+        // The earlier kickoff takes the hero; the other is a COUNT under
+        // its button and its own card below — never a second row.
+        $html = Livewire::actingAs($reader)->test('pickem-home')->html();
+
+        expectInOrder(overviewOf($html), ['The Noon Kick', 'Make your picks', 'and 1 more below', 'The Late Window']);
+
+        expect($html)->toContain('wire:key="hero-'.$soon->id.'"')
+            ->not->toContain('wire:key="needs-');
 
         /*
          * A slate already under way outranks any clock: "Live" is the
@@ -708,7 +710,38 @@ describe('my week (inside the flag)', function () {
 
         Livewire::actingAs($reader)->test('pickem-home')
             ->assertSeeHtml('wire:key="hero-'.$late->id.'"')
-            ->assertSeeHtml('wire:key="needs-'.$soon->id.'"');
+            ->assertDontSeeHtml('wire:key="hero-'.$soon->id.'"')
+            ->assertSee('and 1 more below');
+    });
+
+    it('says how many more want picks, once, under the button — and nothing when the hero is alone', function () {
+        /*
+         * Every card that needed picks rendered TWICE here: as a compact
+         * row in this zone and again as its own card below. A reader in
+         * four groups met eight cards before the fold. The zone is one
+         * hero and one count now; the cards keep their own state.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$reader, , $first] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($reader, pickemDraftSlate($first));
+
+        Livewire::actingAs($reader)->test('pickem-home')
+            ->assertSee('Make your picks')
+            ->assertDontSee('more below');
+
+        foreach (['The Back Porch', 'The Noon Kick'] as $name) {
+            $group = Group::factory()->create(['name' => $name]);
+            GroupMember::factory()->commissioner()->create(['group_id' => $group->id, 'user_id' => $reader->id]);
+            $contest = Contest::factory()->create(['group_id' => $group->id, 'mode' => ContestMode::Classic]);
+            app(PublishSlate::class)->handle($reader, pickemDraftSlate($contest));
+        }
+
+        $html = Livewire::actingAs($reader->fresh())->test('pickem-home')->html();
+
+        expect(substr_count($html, 'and 2 more below'))->toBe(1)
+            ->and(substr_count($html, 'wire:key="hero-'))->toBe(1)
+            ->and($html)->not->toContain('wire:key="needs-');
     });
 
     it('forks into This week and Results, and normalizes a nonsense tab both ways', function () {
