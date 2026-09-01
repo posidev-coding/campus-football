@@ -1,5 +1,5 @@
 {{--
-    The gamification shelf: Beast Latte balance, rank and XP, as chips.
+    The gamification shelf: Tallboy balance, rank and XP, as chips.
 
     The balance and XP are REAL — summed from the wallet_entries ledger
     (User::walletTotals(), one memoized query for both render sites) — and so
@@ -13,9 +13,13 @@
     This file is THE seam for the currency: the only place in the app that
     knows its name or its art. If App Store review ever reads the can as
     alcohol imagery (roadmap Phase 7 carries the contingency), the swap — art,
-    name, or a per-user variant — happens here and nowhere else. In-app copy
-    never uses drinking vocabulary: they are Beast Lattes, the app's currency,
-    full stop.
+    name, or a per-user variant — happens here and nowhere else. The LEDGER
+    is why that swap stays cheap: the column is `credits`, deliberately
+    neutral, so renaming the product never touches data.
+
+    They are TALLBOYS, and drinking vocabulary is allowed for the 2026 season
+    (.ai/rules/actions.md, waived deliberately) — the mark was always a can
+    and only the label said latte.
 
     The can mark ships in a light and a dark cut (the label band flips
     contrast), swapped the same way x-team-logo swaps its marks. The `*-16`
@@ -37,11 +41,11 @@
         href="{{ route('pickem.home') }}"
         wire:navigate
         class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
-        aria-label="{{ $wallet['lattes'] }} Beast {{ str('Latte')->plural($wallet['lattes']) }} — earning starts with Pick'em"
+        aria-label="{{ $wallet['credits'] }} {{ str('Tallboy')->plural($wallet['credits']) }} — earning starts with Pick'em"
     >
-        <img src="{{ asset('brand/currency/svg/beast-latte-light-16.svg') }}" alt="" class="h-[18px] w-auto dark:hidden">
-        <img src="{{ asset('brand/currency/svg/beast-latte-dark-16.svg') }}" alt="" class="hidden h-[18px] w-auto dark:block">
-        <span>{{ $wallet['lattes'] }}</span>
+        <img src="{{ asset('brand/currency/svg/tallboy-light-16.svg') }}" alt="" class="h-[18px] w-auto dark:hidden">
+        <img src="{{ asset('brand/currency/svg/tallboy-dark-16.svg') }}" alt="" class="hidden h-[18px] w-auto dark:block">
+        <span>{{ $wallet['credits'] }}</span>
     </a>
 
     <a

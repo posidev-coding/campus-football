@@ -38,8 +38,8 @@ class WalletEntriesRelationManager extends RelationManager
                     ->label('XP')
                     ->formatStateUsing(fn (int $state): string => sprintf('%+d', $state))
                     ->color(fn (int $state): string => $state >= 0 ? 'success' : 'danger'),
-                TextColumn::make('lattes')
-                    ->label('Lattes')
+                TextColumn::make('credits')
+                    ->label('Credits')
                     ->formatStateUsing(fn (int $state): string => sprintf('%+d', $state))
                     ->color(fn (int $state): string => $state >= 0 ? 'success' : 'danger'),
                 TextColumn::make('key')
@@ -65,7 +65,7 @@ class WalletEntriesRelationManager extends RelationManager
             ->schema([
                 TextInput::make('xp')->numeric()->default(0)->required()
                     ->helperText('Negative to take some back — the ledger records both directions.'),
-                TextInput::make('lattes')->numeric()->default(0)->required(),
+                TextInput::make('credits')->numeric()->default(0)->required(),
                 TextInput::make('reason')->required()->maxLength(40)
                     ->helperText('What this was for. It shows on their wallet.'),
             ])
@@ -76,7 +76,7 @@ class WalletEntriesRelationManager extends RelationManager
                 app(GrantWalletEntry::class)->handle(
                     $this->getOwnerRecord(),
                     (int) $data['xp'],
-                    (int) $data['lattes'],
+                    (int) $data['credits'],
                     $data['reason'],
                 );
 

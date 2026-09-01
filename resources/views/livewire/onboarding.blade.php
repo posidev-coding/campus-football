@@ -310,7 +310,7 @@ new class extends Component
         app(GrantWalletEntry::class)->handle(
             auth()->user(),
             xp: GrantWalletEntry::FIRST_TEAM_XP,
-            lattes: 0,
+            credits: 0,
             reason: GrantWalletEntry::REASON_FIRST_TEAM,
             key: GrantWalletEntry::REASON_FIRST_TEAM,
         );
@@ -730,7 +730,7 @@ new class extends Component
         /*
          * Ordered as a road trip: travel there, paint the field, learn the
          * song, THEN meet the fans — the high-five lands better once you have
-         * arrived — and the Beast Lattes close, holding the screen longest,
+         * arrived — and the Tallboys close, holding the screen longest,
          * because the last thing read is the thing remembered.
          */
         $warmupPhrases = [
@@ -738,7 +738,7 @@ new class extends Component
             Voice::line('splash.warmup.field'),
             Voice::line('splash.warmup.song'),
             Voice::line('splash.warmup.greet', ['team' => $warmupFor->mascotName() ?: $warmupFor->placeName()]),
-            Voice::line('splash.warmup.latte'),
+            Voice::line('splash.warmup.tallboy'),
         ];
     @endphp
 
@@ -779,7 +779,7 @@ new class extends Component
                 /*
                  * 2400ms a phrase — read it, smile, breathe once — walking to
                  * the last phrase at 9600ms, which then hangs an extra beat
-                 * before the fade: the Beast Lattes are the closer, and a
+                 * before the fade: the Tallboys are the closer, and a
                  * closer does not rush off stage. Slow on purpose: this
                  * screen is the app introducing its whole personality, and
                  * it is allowed the seconds that takes.

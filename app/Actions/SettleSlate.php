@@ -205,7 +205,7 @@ class SettleSlate
                 $this->wallet->handle(
                     $winner,
                     GrantWalletEntry::PICKEM_WIN_XP,
-                    GrantWalletEntry::PICKEM_WIN_LATTES,
+                    GrantWalletEntry::PICKEM_WIN_CREDITS,
                     GrantWalletEntry::REASON_PICKEM_WIN,
                     "slate:{$slate->id}:win",
                 );

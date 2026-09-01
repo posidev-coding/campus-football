@@ -23,7 +23,7 @@ it('pays the verification reward when the Verified event fires', function () {
 
     expect($entry->user_id)->toBe($user->id)
         ->and($entry->xp)->toBe(GrantWalletEntry::VERIFICATION_XP)
-        ->and($entry->lattes)->toBe(GrantWalletEntry::VERIFICATION_LATTES)
+        ->and($entry->credits)->toBe(GrantWalletEntry::VERIFICATION_CREDITS)
         ->and($entry->reason)->toBe(GrantWalletEntry::REASON_EMAIL_VERIFIED)
         ->and($entry->key)->toBe(GrantWalletEntry::REASON_EMAIL_VERIFIED);
 });
@@ -43,8 +43,8 @@ it('ignores a duplicate one-time grant at the action level too', function () {
     $user = User::factory()->create();
     $grant = app(GrantWalletEntry::class);
 
-    $grant->handle($user, xp: 100, lattes: 1, reason: 'email-verified', key: 'email-verified');
-    $grant->handle($user, xp: 100, lattes: 1, reason: 'email-verified', key: 'email-verified');
+    $grant->handle($user, xp: 100, credits: 1, reason: 'email-verified', key: 'email-verified');
+    $grant->handle($user, xp: 100, credits: 1, reason: 'email-verified', key: 'email-verified');
 
     expect(WalletEntry::count())->toBe(1);
 });
@@ -53,8 +53,8 @@ it('lets a keyless entry repeat — the shape every future spend and weekly win 
     $user = User::factory()->create();
     $grant = app(GrantWalletEntry::class);
 
-    $grant->handle($user, xp: 0, lattes: -1, reason: 'contest-entry');
-    $grant->handle($user, xp: 0, lattes: -1, reason: 'contest-entry');
+    $grant->handle($user, xp: 0, credits: -1, reason: 'contest-entry');
+    $grant->handle($user, xp: 0, credits: -1, reason: 'contest-entry');
 
     expect(WalletEntry::where('reason', 'contest-entry')->count())->toBe(2);
 });
@@ -80,22 +80,22 @@ it('grants through the real signed verification URL', function () {
 it('sums the ledger into wallet totals', function () {
     $user = User::factory()->create();
 
-    WalletEntry::factory()->for($user)->create(['xp' => 100, 'lattes' => 1]);
-    WalletEntry::factory()->for($user)->create(['xp' => 25, 'lattes' => 0]);
-    WalletEntry::factory()->for($user)->create(['xp' => 0, 'lattes' => -1, 'reason' => 'contest-entry']);
+    WalletEntry::factory()->for($user)->create(['xp' => 100, 'credits' => 1]);
+    WalletEntry::factory()->for($user)->create(['xp' => 25, 'credits' => 0]);
+    WalletEntry::factory()->for($user)->create(['xp' => 0, 'credits' => -1, 'reason' => 'contest-entry']);
 
-    expect($user->walletTotals())->toBe(['xp' => 125, 'lattes' => 0]);
+    expect($user->walletTotals())->toBe(['xp' => 125, 'credits' => 0]);
 });
 
 it('reads an empty ledger as zeros, never null', function () {
     $user = User::factory()->create();
 
-    expect($user->walletTotals())->toBe(['xp' => 0, 'lattes' => 0]);
+    expect($user->walletTotals())->toBe(['xp' => 0, 'credits' => 0]);
 });
 
 it('keeps one user\'s ledger out of another\'s totals', function () {
     $user = User::factory()->create();
-    WalletEntry::factory()->create(['xp' => 500, 'lattes' => 5]);
+    WalletEntry::factory()->create(['xp' => 500, 'credits' => 5]);
 
-    expect($user->walletTotals())->toBe(['xp' => 0, 'lattes' => 0]);
+    expect($user->walletTotals())->toBe(['xp' => 0, 'credits' => 0]);
 });

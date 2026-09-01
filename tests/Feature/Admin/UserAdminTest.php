@@ -170,7 +170,7 @@ describe('the record view', function () {
 describe('the KPI widget', function () {
     it('reads the wallet and the groups this person runs', function () {
         $user = User::factory()->create();
-        WalletEntry::factory()->create(['user_id' => $user->id, 'xp' => 125, 'lattes' => 2]);
+        WalletEntry::factory()->create(['user_id' => $user->id, 'xp' => 125, 'credits' => 2]);
 
         $group = Group::factory()->create();
         $group->members()->attach($user->id, ['role' => GroupMember::COMMISSIONER]);
@@ -197,7 +197,7 @@ describe('the KPI widget', function () {
 describe('verifying by hand', function () {
     it('fires Verified rather than writing the column', function () {
         // markEmailAsVerified() is the doorway: the listener on Verified is
-        // what pays the 100 XP and the Beast Latte. Writing the column
+        // what pays the 100 XP and the Tallboy. Writing the column
         // directly marks them verified and pays nothing.
         Event::fake([Verified::class]);
 
@@ -460,13 +460,13 @@ describe('the relation managers', function () {
             ])
             ->callAction(TestAction::make('grant')->table(), [
                 'xp' => 50,
-                'lattes' => 1,
+                'credits' => 1,
                 'reason' => 'apology',
             ])
             ->assertTableActionDoesNotExist('edit')
             ->assertTableActionDoesNotExist('delete');
 
-        expect($user->fresh()->walletTotals())->toBe(['xp' => 50, 'lattes' => 1])
+        expect($user->fresh()->walletTotals())->toBe(['xp' => 50, 'credits' => 1])
             // No key: a hand grant is a one-off, and a keyed one would no-op
             // the second time an admin meant to give it twice.
             ->and(WalletEntry::where('user_id', $user->id)->sole()->key)->toBeNull();

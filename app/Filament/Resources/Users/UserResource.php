@@ -135,8 +135,8 @@ class UserResource extends Resource
                 Tab::make('Wallet & activity')->icon(Heroicon::OutlinedBolt)->columns(2)->schema([
                     TextEntry::make('xp')->label('XP')
                         ->state(fn (User $record): string => number_format($record->walletTotals()['xp'])),
-                    TextEntry::make('lattes')->label('Beast Lattes')
-                        ->state(fn (User $record): string => number_format($record->walletTotals()['lattes'])),
+                    TextEntry::make('credits')->label('Tallboys')
+                        ->state(fn (User $record): string => number_format($record->walletTotals()['credits'])),
                     TextEntry::make('pick_record')->label('Pick record')
                         ->state(fn (User $record): string => self::pickRecord($record))
                         ->helperText('Wins-losses-pushes across every contest.'),

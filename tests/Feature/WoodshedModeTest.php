@@ -246,7 +246,7 @@ it('settles the founders\' way: Lock math in, the Bear strictly beaten pays five
     // nothing for Bob — the wallet is earn-only, a bad Lock never drains it.
     expect(WalletEntry::where(['user_id' => $alice->id, 'reason' => 'pickem-points'])->sole()->xp)->toBe(190)
         ->and(WalletEntry::where(['user_id' => $bob->id, 'reason' => 'pickem-points'])->count())->toBe(0)
-        ->and(WalletEntry::where(['user_id' => $alice->id, 'reason' => 'pickem-win'])->sole()->lattes)->toBe(1);
+        ->and(WalletEntry::where(['user_id' => $alice->id, 'reason' => 'pickem-win'])->sole()->credits)->toBe(1);
 
     // Settled is settled: the claim spends once, the keys pay nobody twice.
     expect(app(SettleSlate::class)->handle($settled))->toBeFalse()

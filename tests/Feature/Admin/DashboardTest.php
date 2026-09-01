@@ -149,15 +149,15 @@ describe('engagement', function () {
             ->toBe('3');
     });
 
-    it('sums the wallet from the ledger, XP and lattes together', function () {
-        WalletEntry::factory()->create(['xp' => 100, 'lattes' => 1]);
-        WalletEntry::factory()->create(['xp' => 25, 'lattes' => 0]);
+    it('sums the wallet from the ledger, XP and credits together', function () {
+        WalletEntry::factory()->create(['xp' => 100, 'credits' => 1]);
+        WalletEntry::factory()->create(['xp' => 25, 'credits' => 0]);
 
         Livewire::actingAs($this->admin)
             ->test(EngagementStats::class)
             ->assertOk()
             ->assertSee('125')
-            ->assertSee('1 Beast Lattes poured');
+            ->assertSee('1 Tallboys in circulation');
     });
 });
 

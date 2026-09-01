@@ -31,7 +31,7 @@ class UserStats extends BaseWidget
                 ->descriptionIcon('heroicon-m-bolt')
                 ->color('warning'),
 
-            Stat::make('Beast Lattes', number_format($wallet['lattes']))
+            Stat::make('Tallboys', number_format($wallet['credits']))
                 ->descriptionIcon('heroicon-m-beaker')
                 ->color('gray'),
 

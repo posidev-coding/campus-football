@@ -109,12 +109,12 @@ new class extends Component
     /**
      * THE READER'S OWN LINE — the standings' you-strip, second render
      * site. Below `sm` the app header does not render at all, so a phone
-     * reader saw no rung, no XP and no lattes on either pick'em door:
+     * reader saw no rung, no XP and no credits on either pick'em door:
      * the gamification the screen is built around was invisible exactly
      * where the screen starts.
      *
      * ZERO new queries. `rank`/`walletXp` are already read for the
-     * ladder, lattes ride the same memoized walletTotals() SUM, and wins
+     * ladder, credits ride the same memoized walletTotals() SUM, and wins
      * is a projection of cards(). Values are PRE-RENDERED with an em dash
      * where there is no data — the component never substitutes one.
      *
@@ -138,7 +138,7 @@ new class extends Component
             'stats' => [
                 ['label' => 'Rank', 'value' => $this->rank['name'] ?? '—'],
                 ['label' => 'XP', 'value' => number_format($this->walletXp)],
-                ['label' => 'Lattes', 'value' => number_format($user->walletTotals()['lattes'])],
+                ['label' => 'Tallboys', 'value' => number_format($user->walletTotals()['credits'])],
                 /*
                  * A DASH until the first win exists. "0 Wins" every
                  * Sunday in September is a counter with no decision
@@ -750,7 +750,7 @@ new class extends Component
 
         {{-- YOU, before anything on the screen asks you for something.
              Below `sm` there is no app header, so this is the only place
-             a phone reader meets their own rung, XP and lattes on the
+             a phone reader meets their own rung, XP and credits on the
              screen the whole ladder is played on.
 
              Guarded on the FORK, not on the wallet: a first run has no

@@ -244,7 +244,7 @@ describe('the picker', function () {
 
         Livewire::actingAs($user)->test('onboarding')->call('addTeam', 2633);
 
-        expect($user->walletTotals())->toBe(['xp' => 25, 'lattes' => 0]);
+        expect($user->walletTotals())->toBe(['xp' => 25, 'credits' => 0]);
 
         $user->followedTeams()->detach();
 
@@ -557,7 +557,7 @@ describe('the device draft', function () {
             ->assertDontSee('of 3');
     });
 
-    it('slows the splash to a reading pace, and closes dark on the lattes', function () {
+    it('slows the splash to a reading pace, and closes dark on the Tallboys', function () {
         /*
          * 2400ms a phrase — read it, smile, breathe — an extra ~2900ms hang
          * on the closer, and a forced `dark` class whatever the theme. The
@@ -565,7 +565,7 @@ describe('the device draft', function () {
          * automated tab renders no frames to watch them in; the pace was
          * slowed twice on real-phone review, so a faster retune must be a
          * decision, not a drift. The order is the road trip: travel, field,
-         * song, THEN the high-five, with the Beast Lattes holding the curtain.
+         * song, THEN the high-five, with the Tallboys holding the curtain.
          */
         $component = Livewire::actingAs(User::factory()->create())->test('onboarding');
 
@@ -574,7 +574,7 @@ describe('the device draft', function () {
             'Painting the end zones',
             'fight song',
             'High-fiving',
-            'Beast Lattes',
+            'Tallboys',
         ]);
 
         expect($component->html())
@@ -652,7 +652,7 @@ describe('the device draft', function () {
             'onboarding.favorite', 'onboarding.picker', 'onboarding.name',
             'onboarding.rating', 'onboarding.credentials',
             'splash.warmup.greet', 'splash.warmup.travel', 'splash.warmup.field',
-            'splash.warmup.song', 'splash.warmup.latte',
+            'splash.warmup.song', 'splash.warmup.tallboy',
         ] as $key) {
             $pg = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::Pg]));
             $r = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::R]));

@@ -125,7 +125,7 @@ strict beat-the-Bear bonus), and the featured-game over/under tiebreaker.
 Left behind, deliberately:
 
 - **Money.** Entry fees and the $70 / $35 / $35 weekly payout tree — v4's
-  stakes are XP and Beast Lattes.
+  stakes are XP and Tallboys.
 - **Divisions and their honors** (Overall / Division / Wildcard winners,
   the medal icons). The OG league itself dropped divisions at some point;
   v4 groups are flat.

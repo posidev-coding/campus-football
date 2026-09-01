@@ -24,7 +24,7 @@ class GrantWalletEntry
 
     public const VERIFICATION_XP = 100;
 
-    public const VERIFICATION_LATTES = 1;
+    public const VERIFICATION_CREDITS = 1;
 
     public const REASON_FIRST_TEAM = 'first-team';
 
@@ -50,7 +50,7 @@ class GrantWalletEntry
 
     public const PICKEM_WIN_XP = 100;
 
-    public const PICKEM_WIN_LATTES = 1;
+    public const PICKEM_WIN_CREDITS = 1;
 
     /** Saying something in a conversation, up to a few times a day. */
     public const REASON_TALK = 'talk';
@@ -76,12 +76,12 @@ class GrantWalletEntry
      * @return bool whether a row was actually written — false means the key
      *              was already spent, which is a no-op and not a failure
      */
-    public function handle(User $user, int $xp, int $lattes, string $reason, ?string $key = null): bool
+    public function handle(User $user, int $xp, int $credits, string $reason, ?string $key = null): bool
     {
         $entry = [
             'user_id' => $user->id,
             'xp' => $xp,
-            'lattes' => $lattes,
+            'credits' => $credits,
             'reason' => $reason,
             'key' => $key,
         ];
@@ -115,7 +115,7 @@ class GrantWalletEntry
      *
      * @return bool whether this call actually paid
      */
-    public function daily(User $user, int $xp, int $lattes, string $reason, int $cap, ?string $slot = null): bool
+    public function daily(User $user, int $xp, int $credits, string $reason, int $cap, ?string $slot = null): bool
     {
         // Never earn on an unverified account. Every capped earn is a
         // participation reward, and participation is what verification gates
@@ -142,6 +142,6 @@ class GrantWalletEntry
          * direction for an anti-farming cap, and the reason the sequence is
          * derived rather than counted up in the row itself.
          */
-        return $this->handle($user, $xp, $lattes, $reason, $prefix.($slot ?? $spent + 1));
+        return $this->handle($user, $xp, $credits, $reason, $prefix.($slot ?? $spent + 1));
     }
 }
