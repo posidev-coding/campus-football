@@ -500,7 +500,7 @@ new class extends Component
     <livewire:onboarding />
 
     {{-- The verify nudge leads the page for an unverified account: it pays
-         (the first Beast Latte and XP), and the clock under it is real. The
+         (the first Tallboy and XP), and the clock under it is real. The
          component renders nothing for guests and the verified.
 
          It also stands down for the length of the guided tour — the same

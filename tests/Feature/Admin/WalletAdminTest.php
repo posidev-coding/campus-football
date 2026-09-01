@@ -26,7 +26,7 @@ it('renders the ledger with signed amounts and the person who earned them', func
     WalletEntry::factory()->create([
         'user_id' => $user->id,
         'xp' => 100,
-        'lattes' => 1,
+        'credits' => 1,
         'reason' => 'email-verified',
         'key' => 'email-verified',
     ]);
@@ -82,11 +82,11 @@ it('grants through the Action, keyless, so a second grant is not a no-op', funct
         ->callAction(TestAction::make('grant')->table(), [
             'user_id' => $user->id,
             'xp' => 50,
-            'lattes' => 1,
+            'credits' => 1,
             'reason' => 'apology',
         ]);
 
-    expect($user->fresh()->walletTotals())->toBe(['xp' => 50, 'lattes' => 1])
+    expect($user->fresh()->walletTotals())->toBe(['xp' => 50, 'credits' => 1])
         ->and(WalletEntry::where('user_id', $user->id)->sole()->key)->toBeNull();
 });
 

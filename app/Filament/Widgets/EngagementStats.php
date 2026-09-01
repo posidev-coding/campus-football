@@ -36,7 +36,7 @@ class EngagementStats extends BaseWidget
         $lobby = $groups[Group::KIND_LOBBY]['total'] ?? 0;
 
         $wallet = WalletEntry::query()
-            ->selectRaw('coalesce(sum(xp), 0) as xp_total, coalesce(sum(lattes), 0) as latte_total')
+            ->selectRaw('coalesce(sum(xp), 0) as xp_total, coalesce(sum(credits), 0) as credit_total')
             ->first();
 
         $saturday = Cadence::currentSaturday();
@@ -58,7 +58,7 @@ class EngagementStats extends BaseWidget
                 ->color('gray'),
 
             Stat::make('XP awarded', number_format((int) $wallet->xp_total))
-                ->description(number_format((int) $wallet->latte_total).' Beast Lattes poured')
+                ->description(number_format((int) $wallet->credit_total).' Tallboys in circulation')
                 ->descriptionIcon('heroicon-m-bolt')
                 ->color('warning'),
         ];

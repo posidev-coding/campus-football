@@ -23,7 +23,7 @@ class WalletEntryFactory extends Factory
         return [
             'user_id' => User::factory(),
             'xp' => 10,
-            'lattes' => 0,
+            'credits' => 0,
             'reason' => 'test-grant',
             'key' => null,
         ];

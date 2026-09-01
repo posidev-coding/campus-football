@@ -269,7 +269,7 @@ place.
   skip path and dispatches `onboarding-finished` alongside `start-tour`.
 - **Both exits play the signup splash — slower, darker.** ~13s now: 2400ms a
   phrase, ordered as a road trip — travel, field, song, THEN the high-five —
-  with the Beast Lattes closing and holding ~2900ms before the 500ms fade to
+  with the Tallboys closing and holding ~2900ms before the 500ms fade to
   a plainly visible Home. The pace was slowed TWICE on real-phone review
   (850 → 1500 → 2400ms): this screen is the app introducing its whole
   personality, and it is allowed the seconds that takes — if it ever feels
@@ -362,7 +362,7 @@ that route comment is "middleware actually applied", not "verify early".
 
 - **Verifying pays**: `Illuminate\Auth\Events\Verified` →
   `GrantVerificationReward` → one idempotent `wallet_entries` row (100 XP +
-  1 Beast Latte, key `email-verified`). The unique `(user_id, key)` index
+  1 Tallboy, key `email-verified`). The unique `(user_id, key)` index
   absorbs double fires; repeatable entries (future spends, weekly wins) pass
   no key. All wallet writes go through `App\Actions\GrantWalletEntry`.
 - **The nudge is reward-first and ONE ROW** (`x-verify-email-callout`,

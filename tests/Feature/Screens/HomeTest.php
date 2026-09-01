@@ -566,7 +566,7 @@ describe('the wallet chips', function () {
             ->assertOk()
             ->assertSee('Walk-On')
             ->assertSee('0 XP')
-            ->assertSee('Beast Lattes', escape: false)
+            ->assertSee('Tallboys', escape: false)
             ->content();
 
         expect(substr_count($html, 'data-tour="wallet"'))->toBeGreaterThanOrEqual(2);
@@ -810,12 +810,12 @@ describe('the verify nudge', function () {
          * clock is real. The dismissal key is pinned here so a rename cannot
          * silently promote it to the install banner's forever-localStorage.
          * One sentence, one row: the nudge shrank after review because it
-         * was taxing the screen it sells — the latte still leads.
+         * was taxing the screen it sells — the Tallboy still leads.
          */
         $this->actingAs(User::factory()->unverified()->create())
             ->get(route('home'))
             ->assertOk()
-            ->assertSee('Beast Latte and XP waiting on it')
+            ->assertSee('Tallboy and XP waiting on it')
             ->assertSee('Resend')
             ->assertSee(route('verification.notice'))
             ->assertSee('cfb.verify.dismissed')
@@ -855,22 +855,22 @@ describe('the wallet pays', function () {
         /*
          * The chips read SUMs now, through the one write doorway
          * (GrantWalletEntry) — moment seed plus verification payout is
-         * 125 XP and one latte, and the singular aria-label proves the
+         * 125 XP and one Tallboy, and the singular aria-label proves the
          * numbers flow rather than the literals surviving.
          */
         $user = User::factory()->create();
         $grant = app(GrantWalletEntry::class);
 
-        $grant->handle($user, xp: GrantWalletEntry::FIRST_TEAM_XP, lattes: 0,
+        $grant->handle($user, xp: GrantWalletEntry::FIRST_TEAM_XP, credits: 0,
             reason: GrantWalletEntry::REASON_FIRST_TEAM, key: GrantWalletEntry::REASON_FIRST_TEAM);
-        $grant->handle($user, xp: GrantWalletEntry::VERIFICATION_XP, lattes: GrantWalletEntry::VERIFICATION_LATTES,
+        $grant->handle($user, xp: GrantWalletEntry::VERIFICATION_XP, credits: GrantWalletEntry::VERIFICATION_CREDITS,
             reason: GrantWalletEntry::REASON_EMAIL_VERIFIED, key: GrantWalletEntry::REASON_EMAIL_VERIFIED);
 
         $this->actingAs($user)
             ->get(route('home'))
             ->assertOk()
             ->assertSee('125 XP')
-            ->assertSee('1 Beast Latte —');
+            ->assertSee('1 Tallboy —');
     });
 });
 

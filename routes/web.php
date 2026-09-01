@@ -235,7 +235,7 @@ Route::livewire('recruiting/{year?}', 'recruiting')->name('recruiting');
  * `verified` is deliberately NOT applied: verification is reserved for
  * PARTICIPATION — Pick'em actions and XP earning — not for reading your own
  * settings. An unverified account is nudged on Home and Account, rewarded
- * (Beast Latte + XP) the moment it verifies, and pruned after
+ * (Tallboy + XP) the moment it verifies, and pruned after
  * User::VERIFICATION_GRACE_DAYS instead of being walled out on day one.
  */
 Route::middleware(['auth'])->group(function () {

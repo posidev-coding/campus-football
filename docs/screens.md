@@ -49,8 +49,8 @@ The Pick'em teaser card WAS deliberately inert; the Picks area is REAL now
 (`/picks`, the fifth nav area — see "My Picks" below), so the whole card
 navigates there. Outside the `pickem` flag the teaser still wears "Coming
 soon", matching the promise both pick'em doors keep for outsiders. The
-wallet chips (`x-wallet-chips`: Beast Latte balance and XP are REAL sums
-from the wallet ledger — verification pays 100 XP + 1 latte, the onboarding
+wallet chips (`x-wallet-chips`: Tallboy balance and XP are REAL sums
+from the wallet ledger — verification pays 100 XP + 1 Tallboy, the onboarding
 moment seeds 25 XP — and so is the RANK, computed from that XP total by
 `App\Support\RankLadder`: Walk-On · Redshirt · Rotation · Starter · Captain
 · All-American · Legend, a pure function of one integer with no stored
@@ -655,11 +655,11 @@ urgency:
    rather than "this Saturday" — the past branch is tested first on both.
 
    **The you-strip** sits above all of it, at the top of This week
-   (`x-you-strip`, the standings component unchanged): rung, XP, lattes
+   (`x-you-strip`, the standings component unchanged): rung, XP, Tallboys
    and wins. Below `sm` the app header does not render, so this is the
    only place a phone reader meets their own ladder on the screen the
    ladder is played on. Wins renders an em dash until a week has been won.
-   Zero new queries — `rank`/`walletXp` are already read, lattes ride the
+   Zero new queries — `rank`/`walletXp` are already read, Tallboys ride the
    memoized `walletTotals()` SUM, wins is a projection of `cards()`.
 
    **All in** replaces the ask when every entry is complete

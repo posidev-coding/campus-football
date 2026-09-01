@@ -80,7 +80,7 @@ class ViewUser extends ViewRecord
      * writes the column — `Verified` is fired by VerifyEmailController, which
      * is what makes the reward listener the doorway rather than a coincidence.
      * Calling the trait method alone would mark somebody verified and quietly
-     * skip the 100 XP and the Beast Latte, which is the failure this whole
+     * skip the 100 XP and the Tallboy, which is the failure this whole
      * action exists to avoid. Same two steps, same order, as the controller.
      *
      * The grant is keyed, so pressing this against an account that once
@@ -94,7 +94,7 @@ class ViewUser extends ViewRecord
             ->color('success')
             ->visible(fn (User $record): bool => ! $record->hasVerifiedEmail())
             ->requiresConfirmation()
-            ->modalDescription('Marks the address verified, which pays the usual verification reward — 100 XP and a Beast Latte. The grant is keyed, so it can only ever pay once.')
+            ->modalDescription('Marks the address verified, which pays the usual verification reward — 100 XP and a Tallboy. The grant is keyed, so it can only ever pay once.')
             ->action(function (User $record): void {
                 if ($record->markEmailAsVerified()) {
                     event(new Verified($record));

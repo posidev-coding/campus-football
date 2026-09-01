@@ -19,7 +19,7 @@ function leaderboardXp(User $user, int $xp, string $createdAt): void
     WalletEntry::forceCreate([
         'user_id' => $user->id,
         'xp' => $xp,
-        'lattes' => 0,
+        'credits' => 0,
         'reason' => 'test-grant',
         'created_at' => $createdAt,
     ]);

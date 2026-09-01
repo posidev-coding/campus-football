@@ -19,7 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * All writes go through App\Actions\GrantWalletEntry — never create rows
  * directly, or a one-time grant loses its idempotency key.
  */
-#[Fillable(['user_id', 'xp', 'lattes', 'reason', 'key'])]
+#[Fillable(['user_id', 'xp', 'credits', 'reason', 'key'])]
 class WalletEntry extends Model
 {
     /** @use HasFactory<WalletEntryFactory> */

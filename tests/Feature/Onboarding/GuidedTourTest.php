@@ -464,7 +464,7 @@ describe('personalization', function () {
         app(GrantWalletEntry::class)->handle(
             $seeded,
             xp: GrantWalletEntry::FIRST_TEAM_XP,
-            lattes: 0,
+            credits: 0,
             reason: GrantWalletEntry::REASON_FIRST_TEAM,
             key: GrantWalletEntry::REASON_FIRST_TEAM,
         );

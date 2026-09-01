@@ -66,8 +66,8 @@ class WalletEntryResource extends Resource
                     ->formatStateUsing(fn (int $state): string => sprintf('%+d', $state))
                     ->color(fn (int $state): string => $state >= 0 ? 'success' : 'danger')
                     ->sortable(),
-                TextColumn::make('lattes')
-                    ->label('Lattes')
+                TextColumn::make('credits')
+                    ->label('Credits')
                     ->formatStateUsing(fn (int $state): string => sprintf('%+d', $state))
                     ->color(fn (int $state): string => $state >= 0 ? 'success' : 'danger'),
                 TextColumn::make('key')
@@ -132,7 +132,7 @@ class WalletEntryResource extends Resource
                     ->getOptionLabelUsing(fn ($value): ?string => User::find($value)?->name),
                 TextInput::make('xp')->numeric()->default(0)->required()
                     ->helperText('Negative to take some back — the ledger records both directions.'),
-                TextInput::make('lattes')->numeric()->default(0)->required(),
+                TextInput::make('credits')->numeric()->default(0)->required(),
                 TextInput::make('reason')->required()->maxLength(40),
             ])
             ->action(function (array $data): void {
@@ -143,7 +143,7 @@ class WalletEntryResource extends Resource
                 app(GrantWalletEntry::class)->handle(
                     $user,
                     (int) $data['xp'],
-                    (int) $data['lattes'],
+                    (int) $data['credits'],
                     $data['reason'],
                 );
 

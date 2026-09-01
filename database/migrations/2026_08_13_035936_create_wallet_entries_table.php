@@ -25,6 +25,8 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             // Signed on purpose: spending is a negative row in the same ledger.
             $table->integer('xp');
+            // Renamed to `credits` on 2026-08-31 when the currency became a
+            // Tallboy — read the later migration, not this line.
             $table->integer('lattes');
             $table->string('reason', 40);
             $table->string('key', 40)->nullable();

@@ -647,7 +647,7 @@ describe('my week (inside the flag)', function () {
             ->assertSee('Walk-On')
             // ...and the you-strip does not: it is guarded on the fork,
             // so the first run stays the screen it has always been.
-            ->assertDontSee('Lattes');
+            ->assertDontSee('Tallboys');
     });
 
     it('gives a rooms-only reader the fork too — a seat is a card', function () {
@@ -983,7 +983,7 @@ describe('my week (inside the flag)', function () {
 
     /*
      * THE YOU-STRIP. Below `sm` the app header does not render, so a
-     * phone reader met no rung, no XP and no lattes on either pick'em
+     * phone reader met no rung, no XP and no credits on either pick'em
      * door — the whole ladder was invisible exactly where it is played.
      * The standings' own strip is the second render site, unchanged.
      */
@@ -998,7 +998,7 @@ describe('my week (inside the flag)', function () {
             ->assertSee('@marcus')
             // The four columns, and the rung NAMED rather than a bare
             // number: the ladder is the thing being sold.
-            ->assertSeeInOrder(['Rank', 'XP', 'Lattes', 'Wins'])
+            ->assertSeeInOrder(['Rank', 'XP', 'Tallboys', 'Wins'])
             ->assertSee('Rotation')
             ->assertSee('1,000')
             ->assertSee('3');
@@ -1042,7 +1042,7 @@ describe('my week (inside the flag)', function () {
 
     it('reads the wallet once for the whole strip', function () {
         /*
-         * The strip's whole cost claim: lattes ride the SAME memoized
+         * The strip's whole cost claim: credits ride the SAME memoized
          * walletTotals() SUM the rank chip and the ladder already read,
          * and wins is a projection of cards(). Four numbers, not four
          * questions — a second wallet read here is the class of drift
@@ -1053,7 +1053,7 @@ describe('my week (inside the flag)', function () {
 
         DB::enableQueryLog();
 
-        Livewire::actingAs($commissioner)->test('pickem-home')->assertSee('Lattes');
+        Livewire::actingAs($commissioner)->test('pickem-home')->assertSee('Tallboys');
 
         $wallet = collect(DB::getQueryLog())
             ->filter(fn (array $query) => str_contains($query['query'], 'wallet_entries'))

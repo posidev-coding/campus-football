@@ -203,9 +203,9 @@ it('holds settlement until the week turns official, then pays keyed, once', func
     expect($aliceEntry->final_points)->toBe(20)->and($aliceEntry->won)->toBeTrue()
         ->and($bobEntry->final_points)->toBe(0)->and($bobEntry->won)->toBeFalse();
 
-    // 20 points × 10 XP, plus the win: 100 XP + 1 latte. Keyed.
+    // 20 points × 10 XP, plus the win: 100 XP + 1 Tallboy. Keyed.
     expect(WalletEntry::where(['user_id' => $alice->id, 'reason' => 'pickem-points'])->sole()->xp)->toBe(200)
-        ->and(WalletEntry::where(['user_id' => $alice->id, 'reason' => 'pickem-win'])->sole()->lattes)->toBe(1)
+        ->and(WalletEntry::where(['user_id' => $alice->id, 'reason' => 'pickem-win'])->sole()->credits)->toBe(1)
         ->and(WalletEntry::where(['user_id' => $bob->id, 'reason' => 'pickem-points'])->count())->toBe(0);
 
     // Run the sweep again: settled is settled, nobody is paid twice.

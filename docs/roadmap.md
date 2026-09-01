@@ -377,10 +377,12 @@ rating is why "roast the pick, never the person" is a hard rule rather than a
 taste preference. Nothing should be built in Phases 5–6 that would need
 unwinding for a native shell.
 
-The same constraint owns the currency contingency. Beast Latte is a fictional
-can that copies no trade dress (see `public/brand/currency/README.md`) and
-the copy around it never uses drinking vocabulary — but if App Store review
-reads the art as alcohol imagery anyway, the fallback is a per-user variant
+The same constraint owns the currency contingency. Tallboy is a fictional
+can that copies no trade dress (see `public/brand/currency/README.md`). The
+copy around it DOES talk like a beer now — the no-drinking-vocabulary rule was
+waived deliberately for the 2026 season (.ai/rules/actions.md), which raises
+this contingency rather than removing it. If App Store review reads the art or
+the copy as alcohol, the fallback is a per-user variant
 (sodas, stadium food) behind the one-component seam: `x-wallet-chips` is the
 only file that knows the currency's name or art, so the swap never touches a
 screen.

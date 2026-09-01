@@ -174,10 +174,10 @@ class Voice
             'r' => 'Butchering your fight song...',
         ],
 
-        'splash.warmup.latte' => [
-            'pg' => 'Chilling the Beast Lattes...',
-            'pg13' => 'Icing down the Beast Lattes...',
-            'r' => 'Hiding the good Beast Lattes...',
+        'splash.warmup.tallboy' => [
+            'pg' => 'Chilling the Tallboys...',
+            'pg13' => 'Icing down the Tallboys...',
+            'r' => 'Hiding the good Tallboys...',
         ],
 
         /*
@@ -353,20 +353,25 @@ class Voice
         ],
 
         /*
-         * The currency stays out of drinking vocabulary on purpose — Beast
-         * Lattes are the app's currency, full stop, and the copy never says
-         * otherwise. See components/wallet-chips.blade.php for the strategy.
+         * The currency is a TALLBOY, and drinking vocabulary is deliberately
+         * ALLOWED here — the human waived the older no-slang rule for the
+         * 2026 season (.ai/rules/actions.md). The name is the art's own name:
+         * the mark was always a can, and only the label said latte.
+         *
+         * Slang varies freely by register in these lines; the canonical verbs
+         * on buttons and rules text do not. See
+         * components/wallet-chips.blade.php for the naming seam.
          */
         'tour.wallet.heading' => [
-            'pg' => 'Beast Lattes and ranks',
-            'pg13' => 'Get paid in Beast Lattes',
-            'r' => 'Get paid in Beast Lattes',
+            'pg' => 'Tallboys and ranks',
+            'pg13' => 'Get paid in Tallboys',
+            'r' => 'Get paid in Tallboys',
         ],
 
         'tour.wallet.body' => [
-            'pg' => "The app runs on Beast Lattes. Earn them and stack XP by playing Pick'em — your balance and rank live up here.",
-            'pg13' => 'The app runs on Beast Lattes. Win picks, stack XP, climb the ranks — your balance sits up here, judging quietly.',
-            'r' => 'The app runs on Beast Lattes. Win picks, stack XP, climb the ranks — and your balance up here will say exactly how good you really are.',
+            'pg' => "The app runs on Tallboys. Earn them and stack XP by playing Pick'em — your balance and rank live up here.",
+            'pg13' => 'The app runs on Tallboys. Win picks, stack XP, climb the ranks — your balance sits up here, judging quietly.',
+            'r' => 'The app runs on Tallboys. Win picks, stack XP, climb the ranks — and your balance up here will say exactly how good you really are.',
         ],
 
         /*
@@ -618,14 +623,14 @@ class Voice
 
         /*
          * The verify-your-email nudge — LOUD, reward-first, and ONE sentence:
-         * it rides a single slim row on Home, so the Beast Latte does all the
+         * it rides a single slim row on Home, so the Tallboy does all the
          * selling and the fine print stays in the mail. The picks variant
          * explains the one gate verification actually holds.
          */
         'verify.callout.body' => [
-            'pg' => 'Confirm your email — your first Beast Latte and XP are waiting.',
-            'pg13' => "Confirm your email — there's a Beast Latte and XP waiting on it.",
-            'r' => "Confirm your email. There's a Beast Latte riding on it, and the clock is running.",
+            'pg' => 'Confirm your email — your first Tallboy and XP are waiting.',
+            'pg13' => "Confirm your email — there's a Tallboy and XP waiting on it.",
+            'r' => "Confirm your email. There's a Tallboy riding on it, and the clock is running.",
         ],
 
         'verify.picks.body' => [
@@ -652,14 +657,14 @@ class Voice
         ],
 
         'verify.landing.reward' => [
-            'pg' => 'Your first Beast Latte and XP just landed in your account.',
-            'pg13' => 'Your first Beast Latte and XP just hit the account. Told you it paid.',
-            'r' => 'First Beast Latte and XP: paid in full. We keep our word around here.',
+            'pg' => 'Your first Tallboy and XP just landed in your account.',
+            'pg13' => 'Your first Tallboy and XP just hit the account. Told you it paid.',
+            'r' => 'First Tallboy and XP: paid in full. We keep our word around here.',
         ],
 
         'verify.landing.body' => [
             'pg' => 'This tab did its job. Open the app from your home screen and everything will be waiting.',
-            'pg13' => "This tab's work here is done — the app has your latte. Open it from your home screen.",
+            'pg13' => "This tab's work here is done — the app has your Tallboy. Open it from your home screen.",
             'r' => 'This tab was a means to an end. The real thing is on your home screen — go open it.',
         ],
 
@@ -670,9 +675,9 @@ class Voice
         ],
 
         'verify.celebration.body' => [
-            'pg' => 'Email confirmed — your first Beast Latte and XP are in.',
-            'pg13' => 'Email confirmed. Beast Latte and XP: banked.',
-            'r' => 'Email confirmed. Latte banked, XP banked — now we can get to work.',
+            'pg' => 'Email confirmed — your first Tallboy and XP are in.',
+            'pg13' => 'Email confirmed. Tallboy and XP: banked.',
+            'r' => 'Email confirmed. Tallboy banked, XP banked — now we can get to work.',
         ],
 
         /*
@@ -740,14 +745,14 @@ class Voice
         ],
 
         /*
-         * Verifying PAYS: the first Beast Latte and the first real XP land on
+         * Verifying PAYS: the first Tallboy and the first real XP land on
          * the tap, and Pick'em participation is gated behind it. The reward
          * leads because it is the true incentive — the lock is just policy.
          */
         'mail.verify.reward' => [
-            'pg' => "Confirming also pays out your first Beast Latte and XP, and saves your seat for Pick'em.",
-            'pg13' => "Confirming pays out your first Beast Latte and XP — and unlocks Pick'em when it opens.",
-            'r' => "Confirm and collect: one Beast Latte, your first XP, and a seat at Pick'em. Free money, minus the money.",
+            'pg' => "Confirming also pays out your first Tallboy and XP, and saves your seat for Pick'em.",
+            'pg13' => "Confirming pays out your first Tallboy and XP — and unlocks Pick'em when it opens.",
+            'r' => "Confirm and collect: one Tallboy, your first XP, and a seat at Pick'em. Free money, minus the money.",
         ],
 
         /*
@@ -771,9 +776,9 @@ class Voice
         ],
 
         'mail.reminder.outro' => [
-            'pg' => 'One tap below keeps it — and your first Beast Latte and XP come with it.',
-            'pg13' => 'One tap keeps it, and your first Beast Latte and XP land on the spot.',
-            'r' => 'One tap keeps it and pays out a Beast Latte. Ignoring it is choosing the void.',
+            'pg' => 'One tap below keeps it — and your first Tallboy and XP come with it.',
+            'pg13' => 'One tap keeps it, and your first Tallboy and XP land on the spot.',
+            'r' => 'One tap keeps it and pays out a Tallboy. Ignoring it is choosing the void.',
         ],
 
         'mail.newsletter.subject' => [
@@ -1687,9 +1692,9 @@ class Voice
         ],
 
         'notify.results.won.body' => [
-            'pg' => 'You won :week in :group with :points points — :xp XP and a Beast Latte.',
-            'pg13' => 'You took :week in :group. :points points, :xp XP, and a Beast Latte with your name on it.',
-            'r' => ':points points, and :week belongs to you. :xp XP, one Beast Latte, and a group chat that has to sit with it.',
+            'pg' => 'You won :week in :group with :points points — :xp XP and a Tallboy.',
+            'pg13' => 'You took :week in :group. :points points, :xp XP, and a Tallboy with your name on it.',
+            'r' => ':points points, and :week belongs to you. :xp XP, one Tallboy, and a group chat that has to sit with it.',
         ],
 
         'notify.results.won.shared' => [

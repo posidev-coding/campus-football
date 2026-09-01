@@ -13,7 +13,7 @@ use Livewire\Component;
  *
  *  (a) The verified FLIP must refresh the HOST once — the wallet chips
  *      live in the host's tree, and the flip is the moment they change
- *      (100 XP + 1 latte). check() dispatches `email-verified`; every
+ *      (100 XP + 1 Tallboy). check() dispatches `email-verified`; every
  *      embed carries `@email-verified="$refresh"` so the host re-renders
  *      exactly once, on the flip rather than on every tick.
  *
@@ -52,7 +52,7 @@ new class extends Component
 <div class="contents">
     @if (auth()->check() && ! auth()->user()->hasVerifiedEmail())
         {{--
-            One slim row, reward-first — the Beast Latte sells, the fine
+            One slim row, reward-first — the Tallboy sells, the fine
             print stays in the mail. Dismissal is $persist to
             SESSIONSTORAGE, deliberately weaker than the install banner's
             localStorage: the nudge must return next visit because the

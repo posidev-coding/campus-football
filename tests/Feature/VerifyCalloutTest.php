@@ -37,7 +37,7 @@ it('keeps .visible off the poll, so a dismissed reader still flips', function ()
 it('dispatches the flip event exactly when verification lands', function () {
     /*
      * Coupling (a): the wallet chips live in the HOST tree, and the flip
-     * is when they change (100 XP + 1 latte). Every embed forwards
+     * is when they change (100 XP + 1 Tallboy). Every embed forwards
      * `email-verified` to the host as one $refresh — so the dispatch has
      * to fire on the flip tick, and only then.
      */

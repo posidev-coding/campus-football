@@ -282,7 +282,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
      * Memoized within one request so the two wallet-chip render sites (layout
      * header and home nav) cost one query between them.
      *
-     * @var array{xp: int, lattes: int}|null
+     * @var array{xp: int, credits: int}|null
      */
     protected ?array $walletTotalsMemo = null;
 
@@ -294,7 +294,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
      * cache key for two integers costs more than the indexed SUM it saves.
      * Per-instance memo only, so a fresh request always reads fresh totals.
      *
-     * @return array{xp: int, lattes: int}
+     * @return array{xp: int, credits: int}
      */
     public function walletTotals(): array
     {
@@ -303,12 +303,12 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
         }
 
         $sums = $this->walletEntries()
-            ->selectRaw('coalesce(sum(xp), 0) as xp_total, coalesce(sum(lattes), 0) as latte_total')
+            ->selectRaw('coalesce(sum(xp), 0) as xp_total, coalesce(sum(credits), 0) as credit_total')
             ->first();
 
         return $this->walletTotalsMemo = [
             'xp' => (int) $sums->xp_total,
-            'lattes' => (int) $sums->latte_total,
+            'credits' => (int) $sums->credit_total,
         ];
     }
 
