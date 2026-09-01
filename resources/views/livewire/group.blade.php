@@ -65,7 +65,31 @@ new class extends Component
 
     private const VIEWS = ['slate', 'standings'];
 
+    /**
+     * Standings' own second row. Season and Members were folded INTO
+     * Standings on 2026-08-30 because three plate tabs was one too many
+     * and the roster did not earn a whole tab; this splits them again as
+     * a GUTTER, which is the house idiom for a second row of sub-nav
+     * under one plate tab (x-gutter-tabs' own docblock says so).
+     *
+     * What changed since that fold: the invite grew a QR and three
+     * ready-to-send messages, so as a disclosure at the top of the stack
+     * it pushed the standings people actually came for below the fold.
+     * And the commissioner handoff landed inside the Members disclosure,
+     * which meant the one control that transfers a league lived behind a
+     * collapsed chevron.
+     *
+     * `invite` is groups-only and normalizes away for a room, which is
+     * the same law the panel itself keeps: rooms are joined from the
+     * lobby, never by invitation.
+     */
+    private const PANES = ['standings', 'members', 'invite'];
+
     public Group $group;
+
+    /** Standings' sub-nav. #[Url] like $view, and normalized in both hooks. */
+    #[Url]
+    public string $pane = 'standings';
 
     #[Url(except: 'slate')]
     public string $view = 'slate';
@@ -98,6 +122,19 @@ new class extends Component
             $this->view = 'standings';
         }
 
+        /*
+         * The three-tab era's ?view=members keeps landing, and now there
+         * is somewhere honest to send it again: normalizedView() already
+         * turned it into Standings, so carry the second half of the
+         * address across rather than dropping the reader on a pane they
+         * did not ask for.
+         */
+        if (request()->query('view') === 'members' && request()->query('pane') === null) {
+            $this->pane = 'members';
+        }
+
+        $this->pane = $this->normalizedPane($this->pane);
+
         $this->countSlateEntry();
     }
 
@@ -129,6 +166,12 @@ new class extends Component
     public function updatedView(string $value): void
     {
         $this->view = $this->normalizedView($value);
+    }
+
+    /** Same seam as updatedView: a bookmarked ?pane= never fires this. */
+    public function updatedPane(string $value): void
+    {
+        $this->pane = $this->normalizedPane($value);
     }
 
     /**
@@ -701,6 +744,39 @@ new class extends Component
     }
 
     /**
+     * Standings' second row. Three items in a group, two in a room —
+     * a room has no invite to advertise.
+     *
+     * @return array<string, string>
+     */
+    #[Computed]
+    public function paneTabs(): array
+    {
+        $tabs = ['standings' => 'Standings', 'members' => 'Members'];
+
+        if (! $this->group->isLobby()) {
+            $tabs['invite'] = 'Invite';
+        }
+
+        return $tabs;
+    }
+
+    /**
+     * Whether a table here may print real names.
+     *
+     * A private group is people who know each other — a handle is a
+     * worse answer than a name for somebody you invited by text. A
+     * PUBLIC room is strangers, and putting their legal names on a
+     * screen anybody can walk into is a different thing entirely, so
+     * the seam is the kind of room, not a preference.
+     */
+    #[Computed]
+    public function showsRealNames(): bool
+    {
+        return ! $this->group->isLobby();
+    }
+
+    /**
      * The viewer's own line above the tables — rank and points where the
      * room has them, an em dash where it does not: null means no data,
      * and a seat with no entry has no rank worth inventing. Null when the
@@ -892,6 +968,21 @@ new class extends Component
         }
 
         return in_array($view, self::VIEWS, true) ? $view : 'slate';
+    }
+
+    /**
+     * A room has no invite pane to show, so an address asking for one
+     * lands on the standings rather than an empty box — the same refusal
+     * the panel itself makes, kept here so the gutter and the content
+     * cannot disagree about which panes exist.
+     */
+    private function normalizedPane(string $pane): string
+    {
+        if ($pane === 'invite' && $this->group->isLobby()) {
+            return 'standings';
+        }
+
+        return in_array($pane, self::PANES, true) ? $pane : 'standings';
     }
 
     /**
@@ -1199,28 +1290,27 @@ new class extends Component
                 <x-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
             @endif
 
-            {{-- The invite IS the acquisition surface, so it sits one tap
-                 from the standings people screenshot — open while the
-                 group is small. Rooms never advertise codes or links:
-                 they are joined from the lobby. --}}
-            @if ($this->isMember && ! $group->isLobby())
-                <x-invite-panel
-                    :url="$this->joinUrl"
-                    :code="$group->code"
-                    :title="$group->name"
-                    :share-text="Voice::line('groups.invite.share_text', ['group' => $group->name])"
-                    :hint="Voice::line('groups.invite.hint', ['group' => $group->name])"
-                    :open="$this->members->count() <= 3"
-                    :templates="$this->inviteTemplates"
-                />
-            @endif
+            {{-- STANDINGS' SECOND ROW. The viewer's own line stays ABOVE it:
+                 it answers "how am I doing", which is true on every pane,
+                 and a summary that disappeared when you opened Members
+                 would read as the screen losing your place. --}}
+            <x-gutter-tabs
+                :items="$this->paneTabs"
+                :selected="$pane"
+                model="pane"
+                variant="block"
+                label="Standings sections"
+                key-prefix="group-pane"
+            />
 
+            @if ($pane === 'standings')
             @if (in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true) && $this->weekStandings->isNotEmpty())
                 <x-standings-table
                     :rows="$this->weekStandings"
                     :status="$this->surfaceStatus"
                     :headings="['Pts']"
                     title="This week"
+                    :names="$this->showsRealNames"
                 />
             @endif
 
@@ -1239,6 +1329,7 @@ new class extends Component
                         :headings="['Wins', 'Pts', 'This week']"
                         title="Season"
                         :status="$this->surfaceStatus === 'live' ? 'live' : null"
+                        :names="$this->showsRealNames"
                     />
                 @else
                     <p class="rounded-xl border border-dashed border-zinc-300 px-4 py-3 text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
@@ -1247,35 +1338,42 @@ new class extends Component
                 @endif
             @endif
 
-            {{-- The roster, folded: the standings table above already
-                 lists everyone playing; this disclosure is management. --}}
-            <div x-data="{ open: false }" class="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-700">
-                <button
-                    type="button"
-                    x-on:click="open = ! open"
-                    aria-expanded="false"
-                    x-bind:aria-expanded="open"
-                    aria-controls="group-members"
-                    class="focus-ring flex w-full items-center justify-between gap-3 p-4 text-start"
-                >
-                    <span class="font-bold leading-tight">Members</span>
-                    <span class="flex shrink-0 items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
-                        {{ $this->members->count() }}
-                        <flux:icon name="chevron-down" variant="micro" class="text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
-                    </span>
-                </button>
+            {{-- The scoring panel sits with the numbers it explains, not
+                 with the roster or the invite. --}}
+            @if ($this->contest !== null)
+                <x-mode-rules
+                    :mode="$this->contest->mode"
+                    :games="$this->contest->mode->engine($this->contest->settings)->slateSize()"
+                />
+            @endif
+            @endif
 
-                <div id="group-members" x-show="open" x-cloak class="flex flex-col gap-2 border-t border-zinc-100 px-4 py-3 dark:border-zinc-800/60">
+            @if ($pane === 'members')
+                {{-- THE ROSTER, and the management that goes with it. This
+                     was a collapsed disclosure at the bottom of the
+                     standings stack, which put the one control that
+                     transfers a league behind a chevron nobody opened. --}}
+                <div class="flex flex-col gap-2">
                     @foreach ($this->members as $seat)
                         <div
                             wire:key="member-{{ $seat->id }}"
                             class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 py-2.5 dark:border-zinc-700"
                         >
-                            <div class="min-w-0">
+                            {{-- min-w-0, or the nowrap identity keeps its
+                                 whole min-content width and shoves the
+                                 buttons off the row at 390. --}}
+                            <div class="min-w-0 flex-1">
                                 <p class="truncate font-medium">
-                                    {{ $seat->user->name }}
-                                    @if ($seat->user->handle)
-                                        <span class="text-sm text-zinc-500 dark:text-zinc-400">&commat;{{ $seat->user->handle }}</span>
+                                    @if ($this->showsRealNames)
+                                        {{ $seat->user->name }}
+                                        @if ($seat->user->handle)
+                                            <span class="text-sm text-zinc-500 dark:text-zinc-400">&commat;{{ $seat->user->handle }}</span>
+                                        @endif
+                                    @else
+                                        {{-- A public room is strangers: the
+                                             handle is the identity, and the
+                                             name is nobody's business. --}}
+                                        {{ $seat->user->handle ? '@'.$seat->user->handle : $seat->user->name }}
                                     @endif
                                 </p>
                             </div>
@@ -1319,14 +1417,22 @@ new class extends Component
                         </flux:button>
                     @endif
                 </div>
-            </div>
+            @endif
 
-            {{-- The scoring panel: how this mode pays, one tap away from
-                 where the points are argued. Sized from the CONTEST. --}}
-            @if ($this->contest !== null)
-                <x-mode-rules
-                    :mode="$this->contest->mode"
-                    :games="$this->contest->mode->engine($this->contest->settings)->slateSize()"
+            {{-- THE INVITE, on a pane of its own. It carries a link, a
+                 code, a QR and three ready-to-send messages now, which is
+                 more than a disclosure at the top of the standings can
+                 hold without burying what people came for. Rooms never
+                 reach here — normalizedPane() sends them back. --}}
+            @if ($pane === 'invite' && $this->isMember && ! $group->isLobby())
+                <x-invite-panel
+                    :url="$this->joinUrl"
+                    :code="$group->code"
+                    :title="$group->name"
+                    :share-text="Voice::line('groups.invite.share_text', ['group' => $group->name])"
+                    :hint="Voice::line('groups.invite.hint', ['group' => $group->name])"
+                    :open="true"
+                    :templates="$this->inviteTemplates"
                 />
             @endif
 

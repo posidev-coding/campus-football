@@ -914,15 +914,39 @@ each" over a Week 0 card of seven.
 **The clubhouse went two-tab on 2026-08-30** (docs/plans/home-and-picks-
 pass.md): **Slate | Standings** for both kinds, legacy `?view=season|members`
 normalizing across in both hooks. Slate is pure play — the This-week table
-left it and the first pickable card rose ~300px. Standings carries the
-social whole: `x-you-strip` (the viewer's line, em dashes wherever there is
-no data), `x-invite-panel` (groups only — rooms never advertise invites;
-open while the group holds ≤3 members), the week and season tables, the
-roster folded into a Members disclosure, and `x-mode-rules` sized from the
-contest as the scoring panel. A bare visit opens to Standings once the
-entry is in and the card is live-through-final (explicit `?view=` always
-wins; the answer is asked once, at mount), and the tab polls every 30s only
-while a slate game is live, reading only our own database.
+left it and the first pickable card rose ~300px. A bare visit opens to
+Standings once the entry is in and the card is live-through-final (explicit
+`?view=` always wins; the answer is asked once, at mount), and the tab polls
+every 30s only while a slate game is live, reading only our own database.
+
+**Standings grew a second row on 2026-09-01** — an `x-gutter-tabs` under the
+plate, which is that component's own stated job ("a second row of sub-nav
+under one"). `$pane` is `#[Url]` like `$view` and normalized in both hooks;
+`invite` normalizes away for a room, the same law the panel keeps. Three
+panes in a group, two in a room:
+
+- **Standings** — the week and season tables and `x-mode-rules`, sized from
+  the contest, as the scoring panel beneath the numbers it explains.
+- **Members** — the roster, the commissioner badge, the handoff, Remove and
+  Leave. It was a collapsed disclosure at the foot of the stack, which put
+  the one control that transfers a league behind a chevron nobody opened.
+- **Invite** — `x-invite-panel`, groups only; rooms never advertise invites.
+  It moved off the top of the standings because it now carries a QR and
+  three ready-to-send messages and was burying what people came for.
+
+`x-you-strip` stays ABOVE the gutter: it answers "how am I doing", which is
+true on every pane, and a summary that vanished when you opened Members
+would read as the screen losing your place. `?view=members` carries across
+to the pane rather than landing on Standings' first pane.
+
+**Names, not handles, inside a private group.** `x-standings-table` takes
+`names`, true only when `! $group->isLobby()`, and the Members pane follows
+the same seam. A private group is people who invited each other by text,
+where a handle is the worse answer; a public room is strangers who walked in
+off the lobby, and their legal names are not the room's to publish. The
+seam is the KIND of room, never a preference, and `GroupPageTest` asserts it
+both ways round on one fixture — a test that only checks the name appears
+passes just as happily when the room prints it too.
 
 ## The invite landing is the acquisition funnel
 
@@ -940,7 +964,8 @@ both `redirectIntended` — landing them back seated in one tap. A dead code
 gets words and a door, never a 404; a seated member skips the pitch straight
 to their clubhouse; a full or already-played room states its condition
 plainly with the Voice line for mood. Share surfaces (creation step 3, the
-clubhouse hero and Members tab) copy and share the LINK first with the code
+clubhouse hero and the Standings tab's Invite pane) copy and share the LINK
+first with the code
 kept beneath as the fallback — and rooms never advertise codes or /join
 links at all: they are joined from the lobby.
 
