@@ -97,20 +97,68 @@ class Standing extends Model
     }
 
     /**
-     * Conference standings order: conference record first, then overall, then
-     * point differential as the tiebreak. Real conference tiebreakers are more
-     * involved (head-to-head, division, records vs common opponents), but those
-     * only matter at the top of a race and ESPN publishes `playoff_seed` for
-     * exactly that — so prefer the seed when present.
+     * Conference standings order.
+     *
+     * ESPN's `playoff_seed` is the conference's own standings order, and it
+     * carries the tiebreakers our columns cannot reconstruct — head-to-head,
+     * division, records vs common opponents. Sorted against five completed
+     * seasons, ordering by record alone moves a third of all rows off the
+     * position ESPN gives them, so the seed leads whenever it can be trusted.
+     *
+     * It cannot be trusted until every team in the conference has one. ESPN
+     * seeds only the teams that have PLAYED and publishes `playoffSeed: 0` for
+     * the rest — 0 is "unseeded", not first — and its own site puts those
+     * teams between the winners and the losers rather than above everyone.
+     * Measured live on 2026-09-01, mid-week-1 ACC: Virginia, Florida State,
+     * North Carolina and Stanford 1-0 with seeds 1-4, twelve teams 0-0 with
+     * seed 0, and NC State 0-1 with seed 5, rendered in exactly that order.
+     * Sorting on the raw seed put all twelve teams that had not kicked off
+     * above the four that had won.
+     *
+     * So the seed applies only where the whole conference carries one; while
+     * any team is unseeded it goes inert for that conference (every row NULL,
+     * a uniform tie) and the records decide. A team with no games is counted
+     * as .500 there — ahead of a team that has lost, behind a team that has
+     * won, which is the placement ESPN itself uses and the one thing this
+     * order must never get wrong.
+     *
+     * The percentages are derived from the win/loss columns rather than read
+     * from `win_pct` / `conf_win_pct`, because those carry the same sentinel
+     * one column over: ESPN writes 0.0000 for a team with no games, which is
+     * indistinguishable from a team that has lost them all.
+     *
+     * The gate is a correlated subquery, which costs a lookup per row: 45ms
+     * over the league-wide 265 rows `TeamGlance` reads, 18ms for one division
+     * on the standings screen. Both sit behind a 900s cache. A join would be
+     * cheaper and would break every caller that selects `team_id` unqualified.
      */
     public function scopeInStandingsOrder(Builder $query): Builder
     {
         return $query
-            ->orderByRaw('playoff_seed IS NULL, playoff_seed')
-            ->orderByDesc('conf_win_pct')
+            ->orderByRaw('CASE WHEN EXISTS ('
+                .'SELECT 1 FROM standings unseeded'
+                .' WHERE unseeded.season_year = standings.season_year'
+                .' AND unseeded.conference_id <=> standings.conference_id'
+                .' AND unseeded.source = standings.source'
+                .' AND COALESCE(unseeded.playoff_seed, 0) = 0'
+                .') THEN NULL ELSE standings.playoff_seed END')
+            ->orderByRaw(self::winPercentage('conf').' DESC')
             ->orderByDesc('conf_wins')
-            ->orderByDesc('win_pct')
+            ->orderByRaw(self::winPercentage('overall').' DESC')
             ->orderByDesc('point_differential');
+    }
+
+    /**
+     * Win percentage from the record columns, with no games played as .500.
+     *
+     * @param  'conf'|'overall'  $prefix
+     */
+    private static function winPercentage(string $prefix): string
+    {
+        $played = "{$prefix}_wins + {$prefix}_losses + {$prefix}_ties";
+
+        return "CASE WHEN ({$played}) = 0 THEN 0.5"
+            ." ELSE ({$prefix}_wins + {$prefix}_ties / 2) / ({$played}) END";
     }
 
     /**

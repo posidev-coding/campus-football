@@ -56,6 +56,36 @@ it('orders by conference record', function () {
         ->assertSeeInOrder(['Georgia', 'Alabama']);
 });
 
+it('puts a team that has won above a team that has not kicked off', function () {
+    /*
+     * Opening weekend, when most of a conference is still 0-0. ESPN seeds only
+     * the teams that have played and files everyone else under seed 0, so this
+     * screen spent week 1 showing every team that had not kicked off above the
+     * ones that had won. Auburn is that 1-0 team; Vanderbilt has not played.
+     */
+    Team::factory()->create(['id' => 2, 'location' => 'Auburn', 'display_name' => 'Auburn Tigers']);
+    Team::factory()->create(['id' => 238, 'location' => 'Vanderbilt', 'display_name' => 'Vanderbilt Commodores']);
+
+    Standing::create([
+        'season_year' => 2019, 'conference_id' => 8, 'team_id' => 238,
+        'source' => StandingSource::Espn,
+        'win_pct' => 0.0, 'conf_win_pct' => 0.0, 'playoff_seed' => 0,
+    ]);
+
+    Standing::create([
+        'season_year' => 2019, 'conference_id' => 8, 'team_id' => 2,
+        'source' => StandingSource::Espn,
+        'overall_wins' => 1, 'win_pct' => 1.0, 'conf_win_pct' => 0.0,
+        'playoff_seed' => 1, 'point_differential' => 24,
+    ]);
+
+    ConferenceSeason::create(['conference_id' => 8, 'season_year' => 2019, 'classification' => 'FBS']);
+
+    Livewire::test('standings')
+        ->set('year', 2019)
+        ->assertSeeInOrder(['Auburn', 'Vanderbilt']);
+});
+
 it('shows the authoritative ESPN source, not the computed cross-check', function () {
     // The computed row deliberately disagrees. It exists for the reconciler and
     // the admin panel; it must never reach a public screen.

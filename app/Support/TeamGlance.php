@@ -142,7 +142,7 @@ class TeamGlance
          * has yet to land, which is the only thing filled() exists for.
          */
         return self::$memo["positions:{$year}"] ??= Cache::remember(
-            "glance:positions:v2:{$year}",
+            "glance:positions:v3:{$year}",
             self::CACHE_SECONDS,
             function () use ($year) {
                 $positions = [];
