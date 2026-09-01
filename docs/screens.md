@@ -941,7 +941,12 @@ normalized in both hooks. There is no `$pane`.
   which put the one control that transfers a league behind a chevron.
 - **Invite** — `x-invite-panel`, groups only. It moved off the top of the
   standings because it now carries a QR and three ready-to-send messages
-  and was burying what people came for.
+  and was burying what people came for. The HERO's copy-link button went
+  with it: a stop that owns the link, the code, a QR and three channel
+  templates does not need a second, worse door beside the Talk icon.
+  `GroupPageTest` guards that on the clipboard handler rather than the
+  word "Invite" — the button and the tab label read identically to
+  `assertSee`, and only the copy handler tells them apart.
 
 A room gets **three** stops: `normalizedView()` sends `invite` back to the
 standings for a lobby, so the strip and the content cannot disagree about
@@ -975,7 +980,7 @@ both `redirectIntended` — landing them back seated in one tap. A dead code
 gets words and a door, never a 404; a seated member skips the pitch straight
 to their clubhouse; a full or already-played room states its condition
 plainly with the Voice line for mood. Share surfaces (creation step 3, the
-clubhouse hero and the Invite stop) copy and share the LINK first with the code
+clubhouse's Invite stop) copy and share the LINK first with the code
 kept beneath as the fallback — and rooms never advertise codes or /join
 links at all: they are joined from the lobby.
 
