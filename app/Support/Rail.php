@@ -80,7 +80,12 @@ class Rail
         // The lobby: the shelved room rows own the width.
         'pickem.lobby' => [],
         // The clubhouse: the pick grid already grows to xl:grid-cols-3, so
-        // the width belongs to the cards, not a panel.
+        // the width belongs to the cards, not a panel. It does carry an
+        // IN-CONTENT sidecar on the play tab once the card is playing —
+        // this week's running table beside the picks — for the reason the
+        // docblock above gives: that table is the screen's own Livewire
+        // state, and it opens only when there is something in it, which a
+        // route-keyed panel could not decide.
         'pickem.group' => [],
         // A three-step wizard: focus, not context.
         'pickem.create' => [],

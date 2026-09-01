@@ -12,14 +12,37 @@
       $interactive  false renders the identical surface as a read-only
                     preview — the lobby outsider's view, and the
                     commissioner's preview-as-participant step
+      $sidecar      OPTIONAL, defaults false. True when the host has put
+                    this surface in a grid COLUMN rather than at the page
+                    width — see the bleed note below.
 
     The sub-chrome (status · progress · countdown) sticks under the app
     header and measures its own height into `--pickem-chrome` on the
     document element — the scoreboard's pattern, for the same reason: tier
     headings park against a measured edge, not a guessed constant, and
     Livewire's morph would strip an inline style from any node it renders.
+
+    THE BLEED, and why it is a flag rather than a constant. Both sticky
+    bands here cancel the page gutter with `-mx-4 px-4`: the background runs
+    edge to edge while the text stays aligned with the cards. That is only
+    correct while this surface spans the page. Nested in a grid column it
+    still bleeds 16px past BOTH edges — and the right-hand 16px lands in the
+    24px column gap, painting an opaque white band under the sidecar's
+    shoulder. So `$sidecar` cancels the trailing half at `lg` only: the
+    band still bleeds left to the page gutter (that edge IS the gutter) and
+    stops flush at the column's right edge, where the cards stop.
+
+    Not applied unconditionally, because the two hosts differ: the group
+    clubhouse opens this column only once its sidecar has something in it,
+    and the slate builder renders it in a centred measure where the
+    symmetric bleed is still the right answer.
 --}}
 @php
+    $sidecar ??= false;
+
+    /** Cancels the trailing bleed only — the leading edge is the page gutter. */
+    $bleed = $sidecar ? 'lg:me-0 lg:pe-0' : '';
+
     $engine = $slate->contest->mode->engine($slate->contest->settings);
 
     $gameIds = $slate->games->pluck('id');
@@ -92,7 +115,7 @@
 >
     <div
         x-ref="chrome"
-        class="sticky top-[var(--chrome-offset)] z-30 -mx-4 flex items-center justify-between gap-3 border-b border-zinc-100 bg-white px-4 py-2 dark:border-zinc-800/60 dark:bg-zinc-950"
+        class="sticky top-[var(--chrome-offset)] z-30 -mx-4 flex items-center justify-between gap-3 border-b border-zinc-100 bg-white px-4 py-2 dark:border-zinc-800/60 dark:bg-zinc-950 {{ $bleed }}"
     >
         <span class="shrink-0">
             <x-slate-status :status="$surfaceStatus" upcoming="Slate's up" class="text-sm" />
@@ -285,7 +308,7 @@
                 @php $tierPoints = $engine->pointsFor($tierGames->first()); @endphp
 
                 <flux:subheading
-                    class="sticky z-20 -mx-4 flex items-center gap-1.5 bg-white px-4 py-1.5 dark:bg-zinc-950"
+                    class="sticky z-20 -mx-4 flex items-center gap-1.5 bg-white px-4 py-1.5 dark:bg-zinc-950 {{ $bleed }}"
                     style="top: var(--pickem-chrome, 0px)"
                 >
                     <span class="font-semibold text-zinc-900 dark:text-zinc-100">Tier {{ $tier }}</span>

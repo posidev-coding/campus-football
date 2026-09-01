@@ -228,17 +228,52 @@ it('renders result marks and the week standings once games grade', function () {
     SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $member->id]);
     $slate->update(['status' => Slate::PRELIM]);
 
-    // The play tab answers picks; the standings moved to their own tab.
+    /*
+     * The play tab answers picks; the standings moved to their own tab.
+     *
+     * That decision was about the VERTICAL stack — "the first pickable card
+     * is the first thing this tab says" — so what it forbids is a standings
+     * table pushing the cards down the page. It was pinned as
+     * `assertDontSee('This week')`, which also forbade the desktop sidecar
+     * that now carries the running week beside the cards at `lg`. The
+     * guarantee is re-stated here rather than dropped: the table may exist
+     * on this tab only inside the `lg`-gated column, and the pick surface
+     * still comes first in the flow.
+     */
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
         ->assertSet('view', 'slate')
         ->assertSee('Preliminary')
         ->assertSee('+1')
         ->assertSee('No pick')
-        ->assertDontSee('This week')
+        // Present, but desktop-only and in the sidecar — never in the stack.
+        ->assertSee('hidden flex-col gap-4 lg:flex', escape: false)
+        ->assertSeeInOrder(['Preliminary', 'hidden flex-col gap-4 lg:flex', 'This week'], escape: false)
         ->set('view', 'standings')
         ->assertSee('This week')
         // The winner leads the loser in the room.
         ->assertSeeInOrder(['@'.$commissioner->handle, '@'.$member->handle]);
+});
+
+it('opens no sidecar column on a slate that has not kicked off', function () {
+    /*
+     * The blank-column guard, and the reason the sidecar is conditional at
+     * all. Before kickoff everybody is on zero and no picks are revealed,
+     * so there is no table to put beside the cards — and a reserved-but-
+     * empty 320px track is precisely the bug App\Support\Rail's docblock
+     * was written to name. Most of a pick'em week is spent in this state.
+     *
+     * It also pins the query trade: `surfaceStatus` is tested before
+     * `weekStandings`, so a slate nobody has played costs exactly what it
+     * cost before the sidecar existed.
+     */
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate')
+        ->assertDontSee('lg:grid-cols-[minmax(0,1fr)_20rem]', escape: false)
+        ->assertDontSee('This week');
 });
 
 it('opens to Standings once the entry is in and the card is playing', function () {
