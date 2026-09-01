@@ -1348,16 +1348,36 @@ class Voice
          * survives because the FIRST RUN still names the public product
          * over the lobby door, where there are no cards to say it.
          */
+        /*
+         * "Still playing", not "every seat you hold": a public room that
+         * has played its Saturday leaves this stack, so a line promising
+         * every seat would be describing a stack that is missing three
+         * of them. See picks.rooms.past.
+         */
         'picks.whereplay.subheading' => [
-            'pg' => 'Every seat you hold — season-long groups and one-Saturday rooms.',
-            'pg13' => 'Every seat you hold. Each card says which kind it is; the standings say how it\'s going.',
-            'r' => 'Every seat you hold: the season-long grudges up top, the Saturday flings underneath.',
+            'pg' => 'Everywhere you are still playing — season-long groups and this Saturday\'s rooms.',
+            'pg13' => 'Everywhere you\'re still playing. Each card says which kind it is; the standings say how it\'s going.',
+            'r' => 'Everywhere you\'re still alive: the season-long grudges up top, this Saturday\'s flings underneath.',
         ],
 
         'picks.rooms.subheading' => [
             'pg' => 'Public rooms, open to anyone. Each one plays a single Saturday.',
             'pg13' => 'Public and open to anyone. One Saturday each — win it or wait for the next.',
             'r' => 'Open to anybody with a thumb. One Saturday, one verdict, no rematch.',
+        ],
+
+        /*
+         * The door to History, under the count of rooms that have
+         * played. Its job is to say the RULE — a public room is a
+         * transient contest and next week is a fresh decision — because
+         * the reader is looking at a screen those rooms just vanished
+         * from. Rooms are already sold as one-Saturday over the lobby
+         * door; this is where that promise is kept.
+         */
+        'picks.rooms.past' => [
+            'pg' => 'Rooms play one Saturday and close. Next week\'s are a fresh decision.',
+            'pg13' => 'Rooms don\'t carry over. One Saturday, one verdict, and next week you pick your spots again.',
+            'r' => 'Rooms die on Sunday. What you did in there is on the record forever.',
         ],
 
         /*

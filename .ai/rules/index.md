@@ -14,6 +14,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | tests/** | .ai/rules/boost/tests.md |
 | app/Notifications/**, app/Jobs/**, app/Console/Commands/** | .ai/rules/commands.md |
 | resources/views/components/boot-splash.blade.php,resources/css/app.css | .ai/rules/components-css.md |
+| resources/views/livewire/pickem-home.blade.php,resources/views/components/group-card.blade.php,app/Support/Lobby.php | .ai/rules/components-support.md |
 | resources/views/livewire/pickem-home.blade.php,resources/views/livewire/lobby.blade.php,resources/views/components/group-card.blade.php,resources/views/components/group-hero.blade.php | .ai/rules/components.md |
 | config/** | .ai/rules/config.md |
 | app/Actions/**,app/Support/**,app/Console/Commands/** | .ai/rules/console-commands.md |

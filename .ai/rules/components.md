@@ -6,20 +6,23 @@ paths:
 # Components
 
 ## GROUPS and ROOMS are two products; one stack, with the kind said on every card
-(Amended 2026-09, supersedes "never share a heading".) My Picks sells every seat in ONE
-"Where you play" stack: groupCards (`! isLobby()`, alphabetical) then roomCards
-(`isRoom()`, past Saturdays last) then tableCards (evergreen `isLobby() && ! isRoom()`),
-concatenated by whereYouPlay() — projections of cards() only; never a fourth query. The
+(Amended 2026-09, supersedes "never share a heading".) My Picks sells every seat STILL IN PLAY in ONE
+"Where you play" stack: groupCards (`! isLobby()`, alphabetical)
+then roomCards (`isRoom()` and still on the card) then tableCards (evergreen
+`isLobby() && ! isRoom()`), concatenated by whereYouPlay() — projections of cards() only;
+never a fourth query. A room whose Saturday has been played is NOT in the stack: it is a
+transient contest that ended, and `pastRooms` sends it to History (components-support.md). The
 HEADINGS merged because three headings over one thumb of cards read as three products; the
 DISTINCTION did not: every card leads its micro-line with its kind in the join-landing's
 grammar ("Private group, all season ·" / "Public room · this Saturday ·" / "Always
-open ·"), so the kind is said once per CARD instead of once per zone. A past room's line
-says "Saturday played", never "this Saturday"; an evergreen is "Always open", never a
+open ·"), so the kind is said once per CARD instead of once per zone. group-card's past
+line ("Saturday played") is a GUARD now, not a display path — this screen retires a played
+room rather than stacking it. An evergreen is "Always open", never a
 room's one-Saturday label and never "table" — two user-facing container nouns, still. The
 definition line under the heading is Voice (`picks.whereplay.subheading`); the kind lines
 are facts and stay plain.
 
-A room keeps its URL forever and leaves the inventory when its week ends, so it has no slate for the CURRENT week and falls through the state match to `waiting` — which told a reader their public room was waiting on a commissioner it never had. `cards()` carries a `past` flag (`isRoom() && week_id !== $weekId`) and group-card's waiting branch tests it FIRST.
+A room keeps its URL forever and leaves the inventory when its week ends, so it has no slate for the CURRENT week and falls through the state match to `waiting` — which told a reader their public room was waiting on a commissioner it never had. `cards()` carries a `past` flag (read off the room's OWN Saturday, never `week_id` alone — components-support.md) and group-card's waiting branch tests it FIRST.
 
 First-run means no PRIVATE groups, not no memberships: one public seat must not suppress the pitch. The three x-mode-door tiles stay the ONLY create affordance, and the Lobby door lives in `partials/lobby-door` so the first-run block and the screen foot render one door off one `roomsOpen` read — never two.
 

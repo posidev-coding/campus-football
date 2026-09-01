@@ -357,14 +357,18 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee('Start a group');
     });
 
-    it('tells a room whose Saturday is gone from one waiting on a commissioner', function () {
+    it('retires a room whose week is over instead of stacking it into the new one', function () {
         /*
-         * A room keeps its URL forever and leaves the inventory when its
-         * week ends, so it has no slate for the CURRENT week and falls
-         * through the state match to 'waiting'. The waiting line names a
-         * commissioner the room never had, on a week that is never
-         * coming — over the very card meant to teach that rooms are
-         * transient.
+         * A public room is a TRANSIENT contest: one Saturday, then it
+         * dies. It used to keep its card in "Where you play" forever
+         * with a "Saturday played" line, which put last week's seats
+         * above the reader's own groups and told them they were already
+         * in public contests this week — the opposite of the product,
+         * where a fresh week starts with the decision unmade.
+         *
+         * The room is not deleted: the membership, the leaderboard and
+         * the URL all outlive it. It leaves THIS screen for the door to
+         * History.
          */
         $this->travelTo('2026-09-02 12:00:00');
 
@@ -381,18 +385,92 @@ describe('my week (inside the flag)', function () {
             ->whereIn('contest_id', $room->contests()->pluck('id'))
             ->update(['week_id' => $gone->id]);
 
+        $screen = Livewire::actingAs($viewer->fresh())->test('pickem-home');
+
+        expect($screen->instance()->pastRooms->pluck('group.id')->all())->toBe([$room->id])
+            ->and($screen->instance()->whereYouPlay->pluck('group.id')->all())->not->toContain($room->id);
+
+        $screen
+            ->assertDontSee($room->name)
+            ->assertDontSee('Public room · Saturday played', escape: false)
+            ->assertDontSee('Public room · this Saturday', escape: false)
+            // ...and the way back to it, which is the only thing a played
+            // room leaves behind here.
+            ->assertSee('Rooms you\'ve played')
+            ->assertSee('1 finished room')
+            ->assertSee(route('pickem.history'), escape: false)
+            ->assertSee(Voice::line('picks.rooms.past', for: $viewer));
+
+        // The seat itself is untouched — history is read off it.
+        expect($room->fresh()->memberships()->where('user_id', $viewer->id)->exists())->toBeTrue();
+    });
+
+    it('drops last Saturday\'s room inside a split week, where the week id still matches', function () {
+        /*
+         * THE BUG, exactly. 2026's Week 1 holds two Saturdays, 8/29 and
+         * 9/5, so a room that played 8/29 still satisfies
+         * `week_id === $weekId` on the Tuesday after — and every one of
+         * last week's public rooms carried into the new week wearing
+         * "this Saturday". Past has to be read off the room's OWN
+         * Saturday against the card being sold, never off the week id.
+         *
+         * The room is spawned and joined on the Wednesday BEFORE 8/29,
+         * because that is the only time it could be: a card cannot be
+         * suggested out of games already played. Then the clock moves to
+         * Tuesday 9/1, where Cadence has gone on to 9/5 and 8/29 is
+         * history.
+         */
+        $this->travelTo('2026-08-26 12:00:00');
+
+        $viewer = pickemAdmin();
+        [, $week] = splitPickemWeek();
+
+        foreach (Game::query()->whereNotNull('kickoff_at')->get() as $game) {
+            pickemOdd($game);
+            $game->predictor()->create(['matchup_quality' => 90.0]);
+        }
+
+        $played = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, Carbon::parse('2026-08-29'));
+        app(JoinGroup::class)->handle($viewer, $played);
+
+        $this->travelTo('2026-09-01 12:00:00');
+
+        $selling = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, Carbon::parse('2026-09-05'));
+        app(JoinGroup::class)->handle($viewer, $selling);
+
+        // The house names rooms per SATURDAY, so both of these are
+        // legitimately "Hail Mary" — named apart here so the assertions
+        // below are about the right card and not about a shared string.
+        $played->update(['name' => 'The 8/29 Room']);
+        $selling->update(['name' => 'The 9/5 Room']);
+
+        // Same week id on both — which is the whole trap.
+        expect($played->week_id)->toBe($selling->week_id);
+
+        $screen = Livewire::actingAs($viewer->fresh())->test('pickem-home');
+
+        expect($screen->instance()->pastRooms->pluck('group.id')->all())->toBe([$played->id])
+            ->and($screen->instance()->roomCards->pluck('group.id')->all())->toBe([$selling->id]);
+
+        $screen
+            ->assertDontSee($played->name)
+            ->assertSee($selling->name)
+            ->assertSee('Public room · this Saturday', escape: false);
+    });
+
+    it('says nothing about history to a reader whose rooms are all still live', function () {
+        // The door is a consequence of having played, not chrome. A
+        // reader whose only room is this Saturday's has no past to read.
+        $this->travelTo('2026-09-02 12:00:00');
+
+        $viewer = pickemAdmin();
+        [, $week] = pickemHomeWeek();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        app(JoinGroup::class)->handle($viewer, $room);
+
         Livewire::actingAs($viewer->fresh())->test('pickem-home')
-            ->assertSee(Voice::line('group.room.past', for: $viewer))
-            ->assertDontSee(Voice::line('group.slate.waiting', for: $viewer))
-            /*
-             * And the kind line agrees with the state row. A room keeps
-             * its URL forever and leaves the inventory when its week
-             * ends, so "this Saturday" over one that already played is a
-             * date nobody is playing — the past branch is tested FIRST on
-             * this card for exactly that reason.
-             */
-            ->assertSee('Public room · Saturday played', escape: false)
-            ->assertDontSee('Public room · this Saturday', escape: false);
+            ->assertSee($room->name)
+            ->assertDontSee('Rooms you\'ve played');
     });
 
     it('never tells a room to go rattle a commissioner it does not have', function () {
