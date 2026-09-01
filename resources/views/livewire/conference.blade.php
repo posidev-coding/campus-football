@@ -272,9 +272,15 @@ new class extends Component
         <div class="flex flex-col gap-2">
             <flux:subheading>News</flux:subheading>
 
-            @foreach ($this->news as $article)
-                <x-article-card :article="$article" compact wire:key="cnews-{{ $article->id }}" />
-            @endforeach
+            {{-- Agrees with the games grid above it: this screen carries no
+                 rail, so the columns are the width's whole job, and two
+                 adjacent lists on one screen should not disagree about
+                 whether that is true. --}}
+            <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                @foreach ($this->news as $article)
+                    <x-article-card :article="$article" compact wire:key="cnews-{{ $article->id }}" />
+                @endforeach
+            </div>
         </div>
     @endif
 </div>

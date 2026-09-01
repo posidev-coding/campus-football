@@ -575,13 +575,20 @@ new class extends Component
         class="flex flex-col gap-4 motion-safe:transition-opacity"
     >
     @if ($tab === 'schedule')
-        <div class="flex flex-col gap-2">
+        {{-- The same ladder the scoreboard and Home already give this card,
+             minus their `sm` rung: a season schedule is the one game-card
+             list that carries `date`, so its cells need more room than a
+             single day's slate does. Beside this screen's rail, `xl` lands
+             at ~358px — over the 276px the card was measured to. --}}
+        <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             @forelse ($this->schedule as $game)
                 {{-- Dated: a season's schedule is a flat four-month list, so
                      a kickoff time alone does not say which week. --}}
                 <x-game-card :game="$game" date wire:key="g-{{ $game->id }}" />
             @empty
-                <flux:callout icon="calendar-days">
+                {{-- Spans the track: an empty state in one cell of three
+                     reads as a missing card, not as an answer. --}}
+                <flux:callout icon="calendar-days" class="md:col-span-2 xl:col-span-3">
                     <flux:callout.heading>No schedule</flux:callout.heading>
                     <flux:callout.text>Nothing on the books for {{ $year }}.</flux:callout.text>
                 </flux:callout>
@@ -900,16 +907,18 @@ new class extends Component
     @endif
 
     @if ($tab === 'news')
+        <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         @forelse ($this->news as $article)
             <x-article-card :article="$article" wire:key="tnews-{{ $article->id }}" />
         @empty
-            <flux:callout icon="newspaper">
+            <flux:callout icon="newspaper" class="md:col-span-2 xl:col-span-3">
                 <flux:callout.heading>No news</flux:callout.heading>
                 <flux:callout.text>
                     ESPN's feed only reaches back a few days, so this fills in as news is synced.
                 </flux:callout.text>
             </flux:callout>
         @endforelse
+        </div>
     @endif
     </div>
 

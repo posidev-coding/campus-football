@@ -104,7 +104,7 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-5 lg:mx-auto lg:w-full lg:max-w-xl">
+<div class="flex flex-col gap-5 md:mx-auto md:w-full md:max-w-xl">
     <h1 class="sr-only">Start a group</h1>
 
     <div class="flex items-center justify-between gap-3">

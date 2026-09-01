@@ -69,7 +69,7 @@ new class extends Component {}; ?>
     {{-- A walkthrough, not data: centred and held to a readable measure from
          `lg` rather than stretched across a monitor. Nothing is hidden by the
          narrowing, so the rule that every breakpoint is additive holds. --}}
-    class="flex flex-col gap-5 lg:mx-auto lg:w-full lg:max-w-3xl"
+    class="flex flex-col gap-5 md:mx-auto md:w-full md:max-w-3xl"
 >
     {{-- Like Scores, this screen has no section strip naming it, so it is
          allowed its visible heading — and the same mark, which retires at `sm`

@@ -1023,9 +1023,16 @@ new class extends Component
             </a>
         </div>
 
-        @foreach ($this->news as $article)
-            <x-article-card :article="$article" wire:key="home-news-{{ $article->id }}" />
-        @endforeach
+        {{-- Gridded from `md`, where the rail has not arrived yet and the
+             column is the whole shell: three full-width rows put a headline
+             in the left third and nothing in the other two. The same card
+             already runs four across on /news, and carries its own
+             `min-w-0` for exactly this use. --}}
+        <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            @foreach ($this->news as $article)
+                <x-article-card :article="$article" wire:key="home-news-{{ $article->id }}" />
+            @endforeach
+        </div>
     </section>
 
     {{-- THE FOOT DOOR. The page never ends on somebody else's articles —

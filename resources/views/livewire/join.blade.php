@@ -255,7 +255,7 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-5 lg:mx-auto lg:w-full lg:max-w-xl">
+<div class="flex flex-col gap-5 md:mx-auto md:w-full md:max-w-2xl">
     <h1 class="sr-only">{{ $this->isAppInvite ? "Join Pick'em" : 'Join a group' }}</h1>
 
     {{-- THREE branches, and the ORDER is the whole rule. A codeless link
