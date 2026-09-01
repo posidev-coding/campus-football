@@ -1,4 +1,17 @@
-@php use App\Support\Brand; @endphp
+@php
+    use App\Support\Brand;
+    use App\Support\PageMeta;
+
+    /*
+     * What THIS page says it is. A screen sets it in mount(); anything that
+     * says nothing falls through to Brand, which is exactly what every
+     * screen rendered before PageMeta existed.
+     *
+     * `$title` (the Livewire layout variable) still WINS when a component
+     * passes one, so this is additive rather than a second competing source.
+     */
+    $meta = app(PageMeta::class);
+@endphp
 
 <meta charset="utf-8">
 {{-- `maximum-scale=1, user-scalable=no` is the zoom lock. Installed, there is
@@ -85,7 +98,7 @@
     }
 </script>
 
-<title>{{ $title ?? Brand::name() }}</title>
+<title>{{ $title ?? $meta->windowTitle() }}</title>
 
 {{-- Icons. Every URL comes from Brand, so an upload on the App Branding page
      reaches the tab, the home screen and the share card together — three
@@ -135,13 +148,17 @@
     >
 @endforeach
 
-<meta name="description" content="{{ Brand::tagline() }}">
+{{-- The share card. og:title deliberately drops the brand suffix the window
+     title carries: Slack prints og:site_name on its own line, so repeating it
+     inside the headline reads as a stutter. A screen that sets nothing gets
+     the brand answer, unchanged. --}}
+<meta name="description" content="{{ $meta->description() }}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="{{ Brand::name() }}">
-<meta property="og:title" content="{{ $title ?? Brand::name() }}">
-<meta property="og:description" content="{{ Brand::tagline() }}">
+<meta property="og:title" content="{{ $title ?? $meta->title() }}">
+<meta property="og:description" content="{{ $meta->description() }}">
 <meta property="og:url" content="{{ url()->current() }}">
-<meta property="og:image" content="{{ Brand::asset('og-image') }}">
+<meta property="og:image" content="{{ $meta->image() }}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">

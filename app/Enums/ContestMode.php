@@ -146,6 +146,28 @@ enum ContestMode: string
     }
 
     /**
+     * The mode's ground color as a HEX string, for the one place Tailwind
+     * classes cannot reach: the composed PNG a shared invite link unfurls
+     * as. GD needs a number, and `palette()` deliberately holds full static
+     * class strings so the build's content scan can see them — parsing a
+     * hex back out of `bg-cyan-50/50` is how a palette edit silently
+     * un-tints a share card nobody looks at until launch day.
+     *
+     * These are the DEEP weights, not the tile's washed ones: the card is
+     * 1200x630 of solid color behind a logo, where a tint reads as a
+     * mistake. The Woodshed keeps the brand's ink — the founders' game is
+     * dark in both themes and its card is dark too.
+     */
+    public function cardHex(): string
+    {
+        return match ($this) {
+            self::Classic => '#0e7490',
+            self::Tiered => '#6d28d9',
+            self::Woodshed => '#0b0b0c',
+        };
+    }
+
+    /**
      * The mode's rules as plain instructional lines — the ONE source the
      * lobby's explainer, the mode doors, the join landing and the docs all
      * read, so the game is never described two ways. Product facts,

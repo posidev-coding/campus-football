@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\ChangeGroupMode;
+use App\Actions\HandOffCommissioner;
 use App\Actions\JoinGroup;
 use App\Actions\LeaveGroup;
 use App\Actions\RecordUxEvent;
@@ -25,6 +26,7 @@ use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Services\Contests\SpreadGrader;
 use App\Support\Cadence;
+use App\Support\InviteTemplates;
 use App\Support\SlateFeasibility;
 use App\Support\Voice;
 use Flux\Flux;
@@ -633,6 +635,36 @@ new class extends Component
         ]));
     }
 
+    /**
+     * The ready-to-send messages for this group's invite.
+     *
+     * Sized from the CONTEST, never the mode's default — a downsized
+     * Shotgun room deals eight games and an invitation promising ten is
+     * the group lying about the game it is selling.
+     *
+     * An empty list when there is no contest yet: nothing to describe is
+     * not the same as a generic description, and the panel renders the
+     * link and the QR without this block rather than inventing rules.
+     *
+     * @return list<array{key: string, label: string, hint: string, subject: string|null, body: string}>
+     */
+    #[Computed]
+    public function inviteTemplates(): array
+    {
+        $contest = $this->contest;
+
+        if ($contest === null) {
+            return [];
+        }
+
+        return InviteTemplates::for(
+            $this->group,
+            $contest->mode,
+            $this->joinUrl,
+            $contest->mode->engine($contest->settings)->slateSize(),
+        );
+    }
+
     #[Computed]
     public function isCommissioner(): bool
     {
@@ -802,6 +834,40 @@ new class extends Component
 
         session()->flash('status', Voice::line('groups.member.removed', ['name' => $member->first_name]));
         unset($this->members);
+    }
+
+    /**
+     * Hand the commissioner's seat to another member.
+     *
+     * The Action gates every rule; this only translates its refusals. A
+     * 403 for the authorization miss (a non-commissioner reaching the
+     * method) matches remove(); the argument refusals cannot be provoked
+     * from the rendered screen — the button only exists on a seated
+     * member's row — so they abort rather than growing user copy for a
+     * state a reader cannot reach.
+     *
+     * isCommissioner is memoized and now WRONG for both people, so it is
+     * dropped alongside members: the row this ran from has to re-render
+     * with the badge and the buttons swapped.
+     */
+    public function handOff(int $userId, HandOffCommissioner $action): void
+    {
+        $member = User::findOrFail($userId);
+
+        try {
+            $action->handle(auth()->user(), $this->group, $member);
+        } catch (NotGroupCommissioner) {
+            abort(403);
+        } catch (InvalidArgumentException) {
+            abort(422);
+        }
+
+        session()->flash('status', Voice::line('groups.handoff.done', [
+            'name' => $member->first_name,
+            'group' => $this->group->name,
+        ]));
+
+        unset($this->members, $this->isCommissioner);
     }
 
     /** @return Collection<int, Slate> */
@@ -1093,6 +1159,7 @@ new class extends Component
                     :share-text="Voice::line('groups.invite.share_text', ['group' => $group->name])"
                     :hint="Voice::line('groups.invite.hint', ['group' => $group->name])"
                     :open="$this->members->count() <= 3"
+                    :templates="$this->inviteTemplates"
                 />
             @endif
 
@@ -1164,6 +1231,18 @@ new class extends Component
                                 @if ($seat->isCommissioner())
                                     <flux:badge size="sm" color="amber">Commissioner</flux:badge>
                                 @elseif ($this->isCommissioner)
+                                    {{-- The handoff. Confirmed because it is
+                                         not undoable BY THE PERSON DOING IT:
+                                         once the seat moves, only the new
+                                         commissioner can move it back. --}}
+                                    <flux:button
+                                        wire:click="handOff({{ $seat->user_id }})"
+                                        wire:confirm="{{ Voice::line('groups.handoff.confirm', ['name' => $seat->user->first_name, 'group' => $group->name]) }}"
+                                        size="sm"
+                                        variant="ghost"
+                                    >
+                                        Make commissioner
+                                    </flux:button>
                                     <flux:button
                                         wire:click="remove({{ $seat->user_id }})"
                                         wire:confirm="Remove {{ $seat->user->first_name }} from the group?"
