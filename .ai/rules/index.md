@@ -38,6 +38,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Support/**, app/Services/** | .ai/rules/services.md |
 | routes/**,app/Http/Controllers/Ops/**,app/Support/RemoteBoard.php,app/Console/Commands/Issue*.php | .ai/rules/support-console-commands.md |
 | app/Actions/GrantWalletEntry.php,app/Actions/EnterFilmRoom.php,app/Support/RankLadder.php,app/Support/PickemPreflight.php | .ai/rules/support-support.md |
+| resources/views/livewire/tour.blade.php,app/Support/Tours.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/support-views-livewire.md |
 | app/Support/**, app/Actions/**, app/Services/CfbCalendar.php | .ai/rules/support.md |
 | app/Services/Espn/Sync/SyncGames.php,app/Console/Commands/SweepLiveSummariesCommand.php,routes/console.php | .ai/rules/sync-console-commands.md |
 | tests/** | .ai/rules/tests.md |

@@ -1061,7 +1061,9 @@ describe('my week (inside the flag)', function () {
          * visit pays is what is pinned: the one memoized SUM, plus the
          * top-off asking its week key — an existence check on the
          * (user_id, key) unique, which is the cheapest question in the
-         * schema and the reason the grant can be lazy at all.
+         * schema and the reason the grant can be lazy at all. The Picks
+         * walk's own mount() adds the third: the seed-grant lookup its
+         * wallet stop reads, paid once while the walk is still unwalked.
          */
         [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
         app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
@@ -1078,7 +1080,7 @@ describe('my week (inside the flag)', function () {
 
         DB::disableQueryLog();
 
-        expect($wallet)->toHaveCount(2)
+        expect($wallet)->toHaveCount(3)
             ->and($wallet->filter(fn (string $query) => str_contains($query, 'sum('))->count())->toBe(1);
     });
 });

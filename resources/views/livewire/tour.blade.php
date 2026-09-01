@@ -3,20 +3,29 @@
 use App\Actions\GrantWalletEntry;
 use App\Actions\RecordUxEvent;
 use App\Enums\UxSignal;
+use App\Support\Tours;
+use Livewire\Attributes\Computed;
 use Livewire\Component;
 
 /**
- * The guided coach-mark tour: a spotlight that walks a brand-new user through
- * the five things worth knowing, then closes on the install — with the
- * detected browser's actual steps rendered inside the card, so "do it now"
- * is a thing the reader can literally do without leaving the spot.
+ * The guided coach-mark tour: a spotlight that walks a reader through the
+ * things worth knowing on a screen.
  *
- * Home decides WHETHER this renders (signed in, onboarded, first team
- * followed, never toured — or an explicit replay); this component only runs
- * the walk and stamps the finish. Everything positional is client-side:
- * targets are `[data-tour]` elements, and each step spotlights whichever
- * element wearing its key is actually visible — the bottom tab below `sm`,
- * the header chip above it — so one step list serves every width.
+ * TWO WALKS, ONE COMPONENT. `home` is the app's first-run story, closing on
+ * the install with the detected browser's actual steps inside the card;
+ * `picks` is the economy's, added when Tallboys gained two sinks and a
+ * cooler worth explaining. They differ in exactly three things — the step
+ * list, the copy those keys resolve, and the column the finish stamps — so
+ * a second component would have been a second copy of the spotlight
+ * geometry, and the geometry is the part with the scars on it.
+ *
+ * The HOST decides whether this renders (Home: onboarded and never toured;
+ * My Picks: never walked — or an explicit replay on either); this component
+ * only runs the walk and stamps the finish. Everything positional is
+ * client-side: targets are `[data-tour]` elements, and each step spotlights
+ * whichever element wearing its key is actually VISIBLE — the bottom tab
+ * below `sm`, the header chip above it — so one step list serves every
+ * width for free.
  *
  * No requestAnimationFrame anywhere: positions are computed on step change
  * and window resize, scrolling uses `behavior: 'instant'`, and the movement
@@ -25,6 +34,19 @@ use Livewire\Component;
  */
 new class extends Component
 {
+    /** Which walk this is. The lists themselves live on App\Support\Tours. */
+    public string $walk = Tours::HOME;
+
+    /**
+     * This walk's stops, in order — the ONE list the view reads twice.
+     *
+     * @return list<string>
+     */
+    #[Computed]
+    public function steps(): array
+    {
+        return Tours::stepsFor($this->walk);
+    }
     /**
      * Whether the first-team seed grant exists. The wallet stop mentions the
      * XP only when it was actually paid — a skipper tours too, and telling
@@ -40,8 +62,10 @@ new class extends Component
      */
     public ?string $searchTeam = null;
 
-    public function mount(): void
+    public function mount(string $walk = Tours::HOME): void
     {
+        $this->walk = Tours::known($walk) ? $walk : Tours::HOME;
+
         $user = auth()->user();
 
         if ($user === null) {
@@ -69,29 +93,39 @@ new class extends Component
     {
         $user = auth()->user();
 
-        if ($user !== null && $user->tour_completed_at === null) {
-            $user->forceFill(['tour_completed_at' => now()])->save();
+        // Each walk stamps its OWN column. The Picks walk deliberately does
+        // not touch picks_first_seen_at: that is the economy's first-visit
+        // fact, and a replay from Account must never re-trigger the grant
+        // hanging off it.
+        $column = $this->walk === Tours::PICKS ? 'picks_tour_completed_at' : 'tour_completed_at';
+
+        if ($user !== null && $user->{$column} === null) {
+            $user->forceFill([$column => now()])->save();
 
             // Inside the first-stamp guard, so the counter measures readers
             // and not round trips — every later relaunch calls this too.
-            app(RecordUxEvent::class)->handle(UxSignal::TourDismissed);
+            // ONE emitter per signal: the two walks are two questions.
+            app(RecordUxEvent::class)->handle(
+                $this->walk === Tours::PICKS ? UxSignal::PicksTourDismissed : UxSignal::TourDismissed,
+            );
         }
     }
 }; ?>
 
-{{-- This list is duplicated in the Alpine `keys` below and the two MUST stay
-     identical — Blade renders the copy blocks by index, Alpine walks the
-     spotlights by index, and a mismatch shows one step's words over another
-     step's highlight without anything erroring. GuidedTourTest sweeps the
-     source for parity. --}}
 @php
     /*
-     * 'room' rides in BOTH lists unconditionally so the parity sweep holds;
-     * its anchor (the pick'em teaser card) only renders `data-tour="room"`
-     * while the flag is open, and a stop with no visible target steps over
-     * itself — which is exactly how pre-flip tours skip the beat.
+     * ONE list, read by Blade (which renders the copy blocks by index) AND
+     * by Alpine (which walks the spotlights by index). It used to be typed
+     * in both places with a source sweep holding them level; a second walk
+     * would have been a second chance to mistype it, and a mismatch shows
+     * one stop's words over another stop's highlight without erroring.
+     *
+     * Stops ride the list unconditionally: an anchor that is not on the
+     * page — the pick'em teaser only wears `data-tour="room"` while the
+     * flag is open — makes the stop step over ITSELF, which is exactly how
+     * a pre-flip tour skips the beat.
      */
-    $steps = ['glance', 'search', 'scores', 'picks', 'room', 'wallet', 'league', 'account', 'install'];
+    $steps = $this->steps;
 @endphp
 
 {{-- `contents`: a static wrapper would claim a slot in Home's gap-6 column.
@@ -102,7 +136,7 @@ new class extends Component
     x-data="{
         open: false,
         step: 0,
-        keys: ['glance', 'search', 'scores', 'picks', 'room', 'wallet', 'league', 'account', 'install'],
+        keys: @js($steps),
         box: null,
         centered: false,
         cardTop: 0,
@@ -474,7 +508,7 @@ new class extends Component
         class="fixed z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-sm flex-col gap-3 overflow-y-auto rounded-xl bg-white p-4 shadow-xl ring-1 ring-zinc-200 dark:bg-zinc-900 dark:ring-zinc-700"
         role="dialog"
         aria-modal="true"
-        aria-label="App tour"
+        aria-label="{{ $walk === 'picks' ? 'Picks tour' : 'App tour' }}"
     >
         @foreach ($steps as $i => $key)
             @php
@@ -517,9 +551,15 @@ new class extends Component
                          contest is the first-week retention hinge, so the
                          card offers the walk, not just the words. Stamp
                          complete on the way out — a reader this button
-                         convinces leaves the tour through it. --}}
+                         convinces leaves the tour through it.
+
+                         WHERE it goes depends on the walk, because a button
+                         to the screen you are standing on is a dead button:
+                         from Home it opens Picks, and from Picks — where the
+                         spotlight is already on the Lobby door — it opens
+                         the store itself. --}}
                     <flux:button
-                        :href="route('pickem.home')"
+                        :href="route($walk === 'picks' ? 'pickem.lobby' : 'pickem.home')"
                         wire:navigate
                         x-on:click="$wire.complete()"
                         variant="primary"

@@ -155,6 +155,7 @@ describe('the vocabulary', function () {
             'onboarding_team_picked',
             'onboarding_skipped',
             'tour_dismissed',
+            'picks_tour_dismissed',
             'invite_opened',
             'slate_entered',
             'first_pick_made',

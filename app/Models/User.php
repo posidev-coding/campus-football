@@ -87,6 +87,7 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'tour_completed_at' => 'datetime',
             'standalone_seen_at' => 'datetime',
             'picks_first_seen_at' => 'datetime',
+            'picks_tour_completed_at' => 'datetime',
             'password' => 'hashed',
             'admin' => 'boolean',
             'content_rating' => ContentRating::class,
@@ -376,6 +377,19 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     public function hasSeenPicks(): bool
     {
         return $this->picks_first_seen_at !== null;
+    }
+
+    /**
+     * Whether the Picks walk has been seen off, by finishing or skipping.
+     *
+     * A DIFFERENT question from hasSeenPicks(), on a different column and
+     * deliberately so: waving coach marks away is not the same fact as
+     * having arrived, and one column doing both would let a replay
+     * re-trigger the economy's first-visit grant.
+     */
+    public function hasTouredPicks(): bool
+    {
+        return $this->picks_tour_completed_at !== null;
     }
 
     /**

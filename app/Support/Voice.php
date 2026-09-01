@@ -406,6 +406,66 @@ class Voice
             'r' => "Already up :xp XP just for picking a team. Easiest money you'll make all season.",
         ],
 
+        /*
+         * THE PICKS WALK — the economy's own five stops, added when Tallboys
+         * gained two sinks and a cooler. Its own keys rather than a reuse of
+         * the Home walk's: this reader is standing on their own week, not
+         * meeting the app, so "up here" and "coming soon" are the wrong
+         * sentences even where the subject is the same.
+         *
+         * The `room` stop is deliberately SHARED with the Home walk — the
+         * pitch is identical from either screen ("get in a room"), and two
+         * copies of one idea is how the two screens start disagreeing about
+         * what a room is.
+         */
+        'tour.week.heading' => [
+            'pg' => 'This is your week',
+            'pg13' => 'Your week, all of it',
+            'r' => 'Your week. No hiding from it',
+        ],
+
+        'tour.week.body' => [
+            'pg' => 'Every card you have to fill in, with the deadline on it. Picks lock game by game at kickoff.',
+            'pg13' => "Everything still waiting on you, and the clock it's waiting under. Picks lock game by game at kickoff.",
+            'r' => 'Everything waiting on you, with a clock. Picks lock game by game at kickoff, and an empty card is worth exactly nothing.',
+        ],
+
+        'tour.seats.heading' => [
+            'pg' => 'Every seat you hold',
+            'pg13' => 'Every seat you hold',
+            'r' => 'Everywhere you can be beaten',
+        ],
+
+        'tour.seats.body' => [
+            'pg' => 'Private groups run all season; public rooms are one Saturday each. Each card says which it is.',
+            'pg13' => 'Season-long groups and one-Saturday rooms, in one stack — each card says which kind it is.',
+            'r' => 'Season-long grudges and one-Saturday rooms, stacked together. Each card says which kind of trouble it is.',
+        ],
+
+        'tour.balance.heading' => [
+            'pg' => 'Your rank and your Tallboys',
+            'pg13' => 'Rank, XP, Tallboys, wins',
+            'r' => 'The receipts, in four numbers',
+        ],
+
+        'tour.balance.body' => [
+            'pg' => 'XP climbs the ranks. Tallboys are the currency you spend in the Lobby — and the cooler tops you up every week.',
+            'pg13' => 'XP climbs the ranks; Tallboys get spent in the Lobby. The cooler tops you up weekly, so running dry is temporary.',
+            'r' => 'XP is the ladder, Tallboys are the money, and the cooler restocks weekly — so being broke is never the excuse.',
+        ],
+
+        'tour.how.heading' => [
+            'pg' => 'The rules, when you want them',
+            'pg13' => 'The rules, whenever you want them',
+            'r' => 'The rules, for when somebody argues',
+        ],
+
+        'tour.how.body' => [
+            'pg' => 'What every room costs, how the cooler works, and how each mode is scored — all on one page you can come back to.',
+            'pg13' => "Room prices, the cooler, and how every mode scores. One page, and it's here whenever the argument starts.",
+            'r' => "Every price, every rule, every mode. Bookmark it — you'll want it the week somebody claims they were robbed.",
+        ],
+
         'tour.league.heading' => [
             'pg' => 'Around the league, go deep',
             'r' => 'Around the league, go deep — bring receipts',

@@ -250,6 +250,12 @@ describe('the record view', function () {
             'location' => 'Tennessee',
             'abbreviation' => 'TENN',
             'color' => 'ff8200',
+            // PIN THE ALT TOO. TeamFactory mints a random one, it feeds the
+            // TeamPalette ladder, and the ladder is what decides whether the
+            // heading reads "White on" — so an unpinned alt makes this
+            // assertion a coin flip that only lands wrong in a full-suite
+            // faker sequence.
+            'alt_color' => '4b4b4b',
         ]);
 
         TeamSeason::factory()->create([

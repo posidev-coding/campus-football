@@ -67,6 +67,14 @@ enum UxSignal: string
     /** The guided tour ended, whether by finishing it or closing it. */
     case TourDismissed = 'tour_dismissed';
 
+    /**
+     * The PICKS walk ended, whether finished or closed. Its own signal
+     * rather than a second emitter of TourDismissed: a signal counted from
+     * two places stops measuring what it is named after, and these two
+     * walks answer different questions about the same reader.
+     */
+    case PicksTourDismissed = 'picks_tour_dismissed';
+
     /** Somebody opened a /join/{CODE} link. The top of the acquisition funnel. */
     case InviteOpened = 'invite_opened';
 
