@@ -1,4 +1,4 @@
-# The Woodshed: the founders' rules email (2016)
+# Woodshed: the founders' rules email (2016)
 
 **This is a primary source, preserved verbatim.** It is the rules email from
 the original cfbpickem.net league — the document that let the founders' game

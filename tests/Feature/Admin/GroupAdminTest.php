@@ -165,7 +165,7 @@ describe('contests', function () {
                 'pageClass' => ViewGroup::class,
             ])
             ->assertOk()
-            ->assertSee('The Woodshed')
+            ->assertSee('Woodshed')
             ->assertSee('2026');
 
         Livewire::actingAs($this->admin)

@@ -226,7 +226,7 @@ describe('my week (inside the flag)', function () {
                 'Two ways to play',
                 'Start your own group',
                 'Shotgun',
-                'The Woodshed',
+                'Woodshed',
                 'Or take a seat this Saturday',
                 'The Lobby',
             ])

@@ -159,7 +159,7 @@ daily-login rewards, no timers, no FOMO.
     as `tiered` so the product name lives in `Voice` and labels, never in
     data. Proposed tier names from the play itself (still open as screen
     vocabulary): **The Pitch**, **The Keep**, **The Dive**.
-  - **The Woodshed** — the founders' game, RECOVERED AND IMPLEMENTED
+  - **Woodshed** — the founders' game, RECOVERED AND IMPLEMENTED
     2026-08-14 (the rules email surfaced — kept verbatim at
     [woodshed.md](woodshed.md) — and a working copy of the 2016 code
     confirmed the mechanics before being discarded, so the code's half now

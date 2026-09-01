@@ -404,7 +404,7 @@ describe('the store (inside the flag)', function () {
         Livewire::actingAs($admin)->test('lobby')
             ->assertSee('Hail Mary')
             // The House shelf's closed shapes, as one sentence...
-            ->assertSee(Voice::line('lobby.shelf.also', ['list' => 'Triple Option · The Woodshed'], for: $admin))
+            ->assertSee(Voice::line('lobby.shelf.also', ['list' => 'Triple Option · Woodshed'], for: $admin))
             // ...never as their own dashed rows.
             ->assertDontSeeHtml('closed-tiered-standard')
             // The Conference shelf keeps the named rows, in the

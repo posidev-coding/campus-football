@@ -108,7 +108,7 @@ it('drives the pivot from the clubhouse modal, and answers the blocked lever in 
         ->assertSee('Change the game')
         // Three live modes: the radiogroup offers BOTH other doors.
         ->assertSee('Triple Option')
-        ->assertSee('The Woodshed')
+        ->assertSee('Woodshed')
         ->call('choosePivot', 'tiered')
         ->call('changeMode')
         ->assertSee('New mode: Triple Option');

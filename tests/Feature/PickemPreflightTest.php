@@ -72,7 +72,7 @@ it('passes the calendar and rooms checks once the lobby is actually stocked', fu
 
     expect($rooms['status'])->toBe(PickemPreflight::FAIL)
         ->and($rooms['detail'])->toContain('Triple Option')
-        ->and($rooms['detail'])->toContain('The Woodshed')
+        ->and($rooms['detail'])->toContain('Woodshed')
         // The mode that IS stocked is not listed as missing.
         ->and($rooms['detail'])->not->toContain('Shotgun');
 });

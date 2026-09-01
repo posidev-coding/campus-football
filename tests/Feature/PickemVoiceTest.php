@@ -59,7 +59,7 @@ it('speaks every register on the rebuild\'s new families', function (string $key
         'owed' => '3', 'total' => '10', 'count' => '2', 'when' => 'noon',
         'week' => 'Week 1', 'points' => '14', 'xp' => '100', 'place' => '3rd',
         'field' => '9', 'winner' => 'X', 'others' => 'X', 'rival' => 'X',
-        'margin' => '4', 'max' => '200', 'list' => 'Triple Option · The Woodshed',
+        'margin' => '4', 'max' => '200', 'list' => 'Triple Option · Woodshed',
         // The next-up slot's pre-pluralized tokens, and its clock.
         'picks' => '3 picks', 'rooms' => '3 public rooms', 'time' => 'Sat 7:30pm',
         // The app invite's share text is personalized by the SHARER's

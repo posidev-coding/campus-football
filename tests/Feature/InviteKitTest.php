@@ -64,10 +64,10 @@ it('adds the brand to the window title but never to the share headline', functio
     // Slack prints og:site_name on its own line, so repeating it inside
     // og:title reads as a stutter. A browser tab has no such frame.
     $meta = new PageMeta;
-    $meta->set(title: 'Behind the Woodshed · The Woodshed');
+    $meta->set(title: 'Behind the Woodshed · Woodshed');
 
-    expect($meta->windowTitle())->toBe('Behind the Woodshed · The Woodshed · '.Brand::name())
-        ->and($meta->title())->toBe('Behind the Woodshed · The Woodshed');
+    expect($meta->windowTitle())->toBe('Behind the Woodshed · Woodshed · '.Brand::name())
+        ->and($meta->title())->toBe('Behind the Woodshed · Woodshed');
 });
 
 it('unfurls a live invite as the group and its game', function () {
@@ -78,7 +78,7 @@ it('unfurls a live invite as the group and its game', function () {
 
     $this->get("/join/{$group->code}")
         ->assertOk()
-        ->assertSee('<meta property="og:title" content="Behind the Woodshed · The Woodshed">', escape: false)
+        ->assertSee('<meta property="og:title" content="Behind the Woodshed · Woodshed">', escape: false)
         ->assertSee('og:image" content="'.route('brand.invite-card', ['mode' => 'woodshed']).'"', escape: false);
 });
 

@@ -375,7 +375,7 @@ it('refuses to open the wizard on a Saturday that cannot seat the mode', functio
 
     Livewire::actingAs($commissioner)->test('slate-builder', ['group' => $group])
         ->assertSee('Not enough games this Saturday')
-        ->assertSee("The Woodshed needs 15 games and this Saturday's card has 7.", escape: false)
+        ->assertSee("Woodshed needs 15 games and this Saturday's card has 7.", escape: false)
         ->assertSee('Open the clubhouse')
         ->assertDontSee('Publish the slate');
 

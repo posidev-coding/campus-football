@@ -53,7 +53,7 @@ class PicksRelationManager extends RelationManager
                 IconColumn::make('locked')
                     ->label('Lock')
                     ->boolean()
-                    ->tooltip('The Woodshed Lock wager: +6 right, −4 wrong.'),
+                    ->tooltip('Woodshed Lock wager: +6 right, −4 wrong.'),
                 TextColumn::make('result')
                     ->badge()
                     ->placeholder('Ungraded')

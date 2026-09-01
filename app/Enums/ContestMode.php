@@ -37,7 +37,7 @@ enum ContestMode: string
         return match ($this) {
             self::Classic => 'Shotgun',
             self::Tiered => 'Triple Option',
-            self::Woodshed => 'The Woodshed',
+            self::Woodshed => 'Woodshed',
         };
     }
 
