@@ -5,10 +5,12 @@ use App\Actions\ReorderFollowedTeams;
 use App\Actions\UnfollowTeam;
 use App\Enums\ContentRating;
 use App\Exceptions\FollowLimitReached;
+use App\Livewire\Concerns\UploadsImages;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\User;
 use App\Services\CfbCalendar;
+use App\Support\ImageUpload;
 use App\Support\PhoneNumber;
 use App\Support\Voice;
 use Flux\Flux;
@@ -35,6 +37,7 @@ use Livewire\WithFileUploads;
  */
 new class extends Component
 {
+    use UploadsImages;
     use WithFileUploads;
 
     public string $first_name = '';
@@ -352,15 +355,14 @@ new class extends Component
     {
         $this->validate([
             /*
-             * A megabyte is generous for a 512px avatar and mean enough to stop
-             * somebody uploading a photo straight off a phone camera, which is
-             * five to ten times that. There is no resizing pipeline in this app
-             * and adding one is not this change's job — so the cap is the whole
-             * defense, and it has to be real.
+             * The cap and its reasoning moved to ImageUpload, where the
+             * BROWSER can read the same number: a photo straight off a phone
+             * camera is five to ten times this, and PHP drops a body that big
+             * before any rule here gets to run. This is the backstop now.
              */
-            'photo' => ['image', 'max:1024', 'dimensions:min_width=64,min_height=64'],
+            'photo' => ImageUpload::rules(),
         ], [
-            'photo.max' => 'That photo is over 1MB. Crop it or pick a smaller one.',
+            'photo.max' => ImageUpload::oversizedMessage(),
             'photo.dimensions' => 'That image is too small to read at avatar size.',
         ]);
 
@@ -604,7 +606,7 @@ new class extends Component
                     <flux:icon name="camera" variant="micro" />
                 </span>
 
-                <input type="file" wire:model="photo" accept="image/*" class="sr-only" aria-label="Upload a profile photo">
+                <x-image-file-input property="photo" label="Upload a profile photo" />
             </label>
 
             {{-- The one place the upload can report on itself. `wire:target`

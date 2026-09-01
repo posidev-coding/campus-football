@@ -17,6 +17,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/views/livewire/pickem-home.blade.php,resources/views/components/group-card.blade.php,app/Support/Lobby.php | .ai/rules/components-support.md |
 | resources/views/components/group-hero.blade.php,resources/views/components/group-icon.blade.php,resources/views/livewire/group.blade.php | .ai/rules/components-views-livewire.md |
 | resources/views/livewire/pickem-home.blade.php,resources/views/livewire/lobby.blade.php,resources/views/components/group-card.blade.php,resources/views/components/group-hero.blade.php | .ai/rules/components.md |
+| resources/views/components/image-file-input.blade.php,app/Support/ImageUpload.php,app/Livewire/Concerns/UploadsImages.php,resources/views/livewire/** | .ai/rules/concerns-views-livewire.md |
 | config/** | .ai/rules/config.md |
 | app/Actions/**,app/Support/**,app/Console/Commands/** | .ai/rules/console-commands.md |
 | app/Services/Contests/** | .ai/rules/contests.md |
