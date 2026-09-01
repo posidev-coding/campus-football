@@ -278,6 +278,52 @@ describe('flat card lists claim the width', function () {
         ['pickem-home', 'grid gap-2 xl:grid-cols-2'],
     ]);
 
+    it('cancels the pick surface bleed only where it sits in a column', function () {
+        /*
+         * `-mx-4 px-4` runs the sticky bands edge to edge while their text
+         * stays on the cards, and that is right only while the surface spans
+         * the PAGE. In a grid column the trailing 16px lands in the 24px
+         * column gap and paints an opaque band under the sidecar's shoulder
+         * — the same family as the league sheet nesting inside the game
+         * screen's grid.
+         *
+         * A flag rather than a constant, because the two hosts differ: the
+         * clubhouse opens a column, the slate builder renders the surface in
+         * a centred measure where the symmetric bleed is still correct. Both
+         * bands must wear it, so a second sticky block cannot be added later
+         * and quietly bleed on its own.
+         */
+        $source = file_get_contents(resource_path('views/partials/pick-slate.blade.php'));
+
+        /*
+         * Counted off the CLASS ATTRIBUTES, not the file: the docblock above
+         * them names `-mx-4` too, and a sweep that counts prose passes or
+         * fails on how the comment is worded rather than on the markup.
+         */
+        $bands = array_values(array_filter(
+            explode("\n", $source),
+            fn (string $line) => str_contains($line, 'class=')
+                && str_contains($line, '-mx-4')
+        ));
+
+        $unflagged = array_filter($bands, fn (string $line) => ! str_contains($line, '{{ $bleed }}'));
+
+        expect($source)->toContain("\$bleed = \$sidecar ? 'lg:me-0 lg:pe-0' : ''")
+            ->and($bands)->not->toBeEmpty()
+            ->and($unflagged)->toBe([], 'a sticky band in the pick surface bleeds the page gutter without carrying {{ $bleed }}')
+            // Trailing edge only: the leading edge IS the page gutter, and
+            // cancelling it would pull the band off the content column.
+            ->and($source)->not->toContain('lg:mx-0');
+
+        // And the clubhouse must pass the flag in step with the column it
+        // opens — a grid without the flag is the bleed, a flag without the
+        // grid is a band that stops 16px short.
+        $group = file_get_contents(resource_path('views/livewire/group.blade.php'));
+
+        expect($group)->toContain("'sidecar' => \$slateSidecar")
+            ->and($group)->toContain("'lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6' => \$slateSidecar");
+    });
+
     it('never grids the urgency-ordered zones', function () {
         /*
          * "Needs your picks" and Home's picks strip are ordered by urgency:

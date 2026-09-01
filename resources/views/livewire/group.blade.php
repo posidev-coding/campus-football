@@ -1096,9 +1096,61 @@ new class extends Component
     >
     @if ($view === 'slate')
         @if ($this->slate?->isPublished())
+            {{-- THE SIDECAR, and the guard is the whole design. Before
+                 kickoff there is no table to show — everybody is on zero and
+                 nobody's picks are revealed — so the column is not opened at
+                 all rather than reserved and left blank, which is the bug
+                 App\Support\Rail's docblock exists to name. From the first
+                 snap it opens and the running week rides beside the cards
+                 instead of behind a tab.
+
+                 `surfaceStatus` is tested FIRST on purpose: it is already
+                 computed for this tab, and PHP short-circuits, so a slate
+                 that has not kicked off never touches `weekStandings` and
+                 the tab costs exactly what it costs today. Once it has, the
+                 computed is one aggregate over picks already being read.
+
+                 Additive: this is the Standings tab's own "This week" table,
+                 the same component with the same rows, so a phone reader
+                 reaches every figure in it one tap away. --}}
+            @php
+                $slateSidecar = in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true)
+                    && $this->weekStandings->isNotEmpty();
+            @endphp
+
             {{-- PURE PLAY: the standings live on the Standings tab now, so
                  the first pickable card is the first thing this tab says. --}}
-            @include('partials.pick-slate', ['slate' => $this->slate, 'interactive' => $this->isMember])
+            <div @class([
+                'flex flex-col gap-5',
+                'lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6' => $slateSidecar,
+            ])>
+                <div class="flex min-w-0 flex-col gap-5">
+                    @include('partials.pick-slate', [
+                        'slate' => $this->slate,
+                        'interactive' => $this->isMember,
+                        'sidecar' => $slateSidecar,
+                    ])
+                </div>
+
+                @if ($slateSidecar)
+                    {{-- `hidden … lg:flex`, the app rail's own string, and NOT
+                         the game screen's "foot of the page on a phone" trade.
+                         The difference is that this table is not tail content
+                         borrowed from the bottom of this tab — it already has
+                         a home one tap away on Standings, and adding a second
+                         copy underneath the cards would be a phone change on a
+                         screen this pass is not allowed to touch. Additive is
+                         satisfied by the tab, not by a duplicate. --}}
+                    <div class="hidden flex-col gap-4 lg:flex">
+                        <x-standings-table
+                            :rows="$this->weekStandings"
+                            :status="$this->surfaceStatus"
+                            :headings="['Pts']"
+                            title="This week"
+                        />
+                    </div>
+                @endif
+            </div>
         @else
             {{-- Dashed border = "not yet", the house grammar for a promise. --}}
             <div class="flex flex-col gap-2 rounded-xl border border-dashed border-zinc-300 px-4 py-4 dark:border-zinc-700">
