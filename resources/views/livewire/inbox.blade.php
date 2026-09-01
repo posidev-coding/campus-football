@@ -75,7 +75,7 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-4 lg:mx-auto lg:w-full lg:max-w-3xl">
+<div class="flex flex-col gap-4 md:mx-auto md:w-full md:max-w-3xl">
     {{-- The section strip names this place — the h1 stays for screen
          readers only, the house rule. --}}
     <h1 class="sr-only">Notifications</h1>

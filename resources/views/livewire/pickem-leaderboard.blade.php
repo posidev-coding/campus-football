@@ -65,7 +65,7 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-4 lg:mx-auto lg:w-full lg:max-w-2xl">
+<div class="flex flex-col gap-4 md:mx-auto md:w-full md:max-w-3xl">
     <h1 class="sr-only">Leaderboard</h1>
 
     <div class="flex items-center justify-between gap-3">

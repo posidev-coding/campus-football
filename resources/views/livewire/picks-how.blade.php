@@ -132,7 +132,7 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-5 lg:mx-auto lg:w-full lg:max-w-3xl">
+<div class="flex flex-col gap-5 md:mx-auto md:w-full md:max-w-3xl">
     <h1 class="sr-only">How Pick'em works</h1>
 
     {{-- The slim band and the way back, the Talk screen's grammar: this is

@@ -861,7 +861,7 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-6 lg:mx-auto lg:w-full lg:max-w-3xl">
+<div class="flex flex-col gap-6">
     @if ($this->showPersonal)
         {{-- ============================== MY PICKS =================== --}}
         {{-- The section strip names this place — the h1 stays for screen
@@ -890,8 +890,10 @@ new class extends Component
         <div
             wire:loading.class="opacity-60 pointer-events-none"
             wire:target="view"
-            class="flex flex-col gap-6 motion-safe:transition-opacity"
+            class="flex flex-col gap-6 motion-safe:transition-opacity lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6"
         >
+        {{-- MAIN COLUMN: the urgency spine, in one column and in order. --}}
+        <div class="flex min-w-0 flex-col gap-6">
         @if ($this->activeView === 'week')
         {{-- The week's dateline. No calendar entry, no ribbon — never a
              substituted week. --}}
@@ -982,7 +984,10 @@ new class extends Component
 
                     {{-- The AFFORDANCE stays plain in every register —
                          the joke is the line above it. --}}
-                    <flux:button :href="$heroHref" wire:navigate variant="primary" class="w-full">
+                    {{-- `w-full` only while the card is one: uncapped, this
+                         hero is ~648px wide and a button that fills it is
+                         not an affordance, it is a wall. --}}
+                    <flux:button :href="$heroHref" wire:navigate variant="primary" class="w-full md:w-auto md:self-start">
                         {{ $hero['made'] === 0 ? 'Make your picks' : 'Finish your picks' }}
                     </flux:button>
                 </div>
@@ -1085,71 +1090,17 @@ new class extends Component
                 </div>
                 <flux:subheading>{{ Voice::line('picks.whereplay.subheading') }}</flux:subheading>
 
-                @foreach ($this->whereYouPlay as $card)
-                    <x-group-card wire:key="play-{{ $card['group']->id }}" :card="$card" />
-                @endforeach
-            </div>
-        @endif
-
-        {{-- THE ROOMS THAT ARE OVER, as a door and never as cards.
-
-             A public room is a TRANSIENT contest: one Saturday, then it
-             dies. Stacking last week's three above a reader's own groups
-             said they were already seated in this Saturday's public
-             contests, when the whole point is that a fresh week starts
-             with the decision unmade. So the played rooms leave the
-             stack and keep exactly one thing here — a way back to them.
-
-             The count is a projection of cards(); History is the screen
-             that holds every week the reader has played, in the section
-             strip already. --}}
-        @if ($this->pastRooms->isNotEmpty())
-            <x-link-row :href="route('pickem.history')" title="Rooms you've played">
-                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-                    {{ $this->pastRooms->count() }} finished {{ Str::plural('room', $this->pastRooms->count()) }} — your settled weeks are in History
-                </span>
-                @php $roomsPast = Voice::line('picks.rooms.past'); @endphp
-                @if ($roomsPast !== '')
-                    <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">{{ $roomsPast }}</span>
-                @endif
-            </x-link-row>
-        @endif
-
-        {{-- The code stays as the spoken-word fallback, folded away —
-             links are how a group travels now. --}}
-        <div
-            x-data="{ open: @js($errors->has('code')) }"
-            class="rounded-xl border border-zinc-200 dark:border-zinc-700"
-        >
-            <button
-                type="button"
-                x-on:click="open = ! open"
-                x-bind:aria-expanded="open"
-                class="flex w-full items-center justify-between gap-3 p-4 text-start"
-            >
-                <div class="min-w-0">
-                    <p class="font-semibold">Have an invite code?</p>
-                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('groups.join.subheading') }}</p>
+                {{-- Two-up only from `xl`: this sits in the main column
+                     beside the sidecar, so it is ~648px at `lg` and does
+                     not have room for two seats until `xl`. `min-w-0` at
+                     the call site because group-card's root carries none
+                     and a grid item keeps its min-content width. --}}
+                <div class="grid gap-2 xl:grid-cols-2">
+                    @foreach ($this->whereYouPlay as $card)
+                        <x-group-card class="min-w-0" wire:key="play-{{ $card['group']->id }}" :card="$card" />
+                    @endforeach
                 </div>
-                <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
-            </button>
-
-            <div x-show="open" x-cloak class="border-t border-zinc-100 p-4 dark:border-zinc-800/60">
-                <form wire:submit="join" class="flex flex-col gap-3">
-                    {{-- The format rule stays plain: 8 characters, told straight. --}}
-                    <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />
-                    <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="join" class="self-start">Join the group</flux:button>
-                </form>
             </div>
-        </div>
-
-        {{-- THE LOBBY, as a door — ONE of them. On a first run it has
-             already rendered up beside the mode doors, where the two ways
-             to play sit together; drawing it again down here would be the
-             same destination twice on one screen, which is the mistake
-             the first-run block itself was built to retire. --}}
-        @if ($this->groupCards->isNotEmpty())
-            @include('partials.lobby-door')
         @endif
         @endif
 
@@ -1228,6 +1179,79 @@ new class extends Component
         @endif
         @endif
 
+        </div>
+
+        {{-- THE SIDECAR. Every block below already sat at the FOOT of this
+             screen, so below `lg` nothing moved: the column collapses and
+             they land exactly where a phone reader has always found them.
+             From `lg` they ride alongside instead of pushing the spine down
+             the page — the same trade the game screen makes. Not sticky: the
+             picks walk spotlights `room` and `how` in here, and it scrolls to
+             a measured box. --}}
+        <div class="flex flex-col gap-6">
+        @if ($this->activeView === 'week')
+        {{-- THE ROOMS THAT ARE OVER, as a door and never as cards.
+
+             A public room is a TRANSIENT contest: one Saturday, then it
+             dies. Stacking last week's three above a reader's own groups
+             said they were already seated in this Saturday's public
+             contests, when the whole point is that a fresh week starts
+             with the decision unmade. So the played rooms leave the
+             stack and keep exactly one thing here — a way back to them.
+
+             The count is a projection of cards(); History is the screen
+             that holds every week the reader has played, in the section
+             strip already. --}}
+        @if ($this->pastRooms->isNotEmpty())
+            <x-link-row :href="route('pickem.history')" title="Rooms you've played">
+                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                    {{ $this->pastRooms->count() }} finished {{ Str::plural('room', $this->pastRooms->count()) }} — your settled weeks are in History
+                </span>
+                @php $roomsPast = Voice::line('picks.rooms.past'); @endphp
+                @if ($roomsPast !== '')
+                    <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">{{ $roomsPast }}</span>
+                @endif
+            </x-link-row>
+        @endif
+
+        {{-- The code stays as the spoken-word fallback, folded away —
+             links are how a group travels now. --}}
+        <div
+            x-data="{ open: @js($errors->has('code')) }"
+            class="rounded-xl border border-zinc-200 dark:border-zinc-700"
+        >
+            <button
+                type="button"
+                x-on:click="open = ! open"
+                x-bind:aria-expanded="open"
+                class="flex w-full items-center justify-between gap-3 p-4 text-start"
+            >
+                <div class="min-w-0">
+                    <p class="font-semibold">Have an invite code?</p>
+                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('groups.join.subheading') }}</p>
+                </div>
+                <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
+            </button>
+
+            <div x-show="open" x-cloak class="border-t border-zinc-100 p-4 dark:border-zinc-800/60">
+                <form wire:submit="join" class="flex flex-col gap-3">
+                    {{-- The format rule stays plain: 8 characters, told straight. --}}
+                    <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />
+                    <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="join" class="self-start">Join the group</flux:button>
+                </form>
+            </div>
+        </div>
+
+        {{-- THE LOBBY, as a door — ONE of them. On a first run it has
+             already rendered up beside the mode doors, where the two ways
+             to play sit together; drawing it again down here would be the
+             same destination twice on one screen, which is the mistake
+             the first-run block itself was built to retire. --}}
+        @if ($this->groupCards->isNotEmpty())
+            @include('partials.lobby-door')
+        @endif
+        @endif
+
         {{-- THE LADDER belongs to Results — XP is what a settled week
              paid. It stays on a TABLESS first run too, because XP is
              earned before the first slate is and that reader has no
@@ -1290,6 +1314,7 @@ new class extends Component
         <x-link-row :href="route('pickem.how')" title="How this works" data-tour="how">
             <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Tallboys, the cooler, and what every room costs.</span>
         </x-link-row>
+        </div>
         </div>
     @else
         @include('partials.pickem-promise')

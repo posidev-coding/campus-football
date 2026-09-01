@@ -193,3 +193,103 @@ describe('the structural screens', function () {
             ->toContain('article-body lg:mx-auto');
     });
 });
+
+describe('the measure never narrows as the window widens', function () {
+    it('caps no screen at lg with nothing below it', function () {
+        /*
+         * The completeness sweep, and the reason it is a sweep rather than
+         * twelve pinned strings: `lg:mx-auto lg:w-full lg:max-w-3xl` has no
+         * rung beneath it, so the column is FULL WIDTH at 1000px and 200px
+         * NARROWER at 1024. Measured on /picks before this was fixed — 968px
+         * of column at a 1000px window, 768px at 1024, and still 768px at
+         * 1440, where `<main>` is 1408 and 640px of it sat empty.
+         *
+         * Twelve screens had it and nobody had noticed, because a reader
+         * only sees it while dragging a window across the boundary. Engage
+         * a cap at `md`, where the content box (viewport - 32) is still
+         * under it, and the measure grows to the cap and then holds.
+         */
+        $violations = [];
+
+        foreach (glob(resource_path('views/livewire/*.blade.php')) as $path) {
+            if (str_contains(file_get_contents($path), 'lg:mx-auto lg:w-full lg:max-w-')) {
+                $violations[] = basename($path);
+            }
+        }
+
+        expect($violations)->toBe([], implode(', ', $violations)
+            .' — caps the measure at `lg` with no rung below it, so the column'
+            .' is full width at 1000px and narrower at 1024. Engage the cap at'
+            .' `md` instead, where the content box is still under it.');
+    });
+
+    it('splits My Picks into a spine and a sidecar, in that order', function () {
+        /*
+         * The urgency spine `docs/screens.md` documents — ribbon, needs your
+         * picks, where you play — keeps the main column and its order. Only
+         * the tail rides the sidecar, and it must stay AFTER the spine in
+         * source: below `lg` the grid collapses to the same flex column it
+         * always was, so DOM order IS the phone layout.
+         */
+        $source = file_get_contents(resource_path('views/livewire/pickem-home.blade.php'));
+
+        $grid = strpos($source, 'lg:grid-cols-[minmax(0,1fr)_20rem]');
+        $seats = strpos($source, 'data-tour="seats"');
+        $invite = strpos($source, 'Have an invite code?');
+
+        expect($grid)->not->toBeFalse()
+            ->and($seats)->toBeGreaterThan($grid)
+            ->and($invite)->toBeGreaterThan($seats);
+    });
+
+    it('keeps the ladder below the week tail, where a tabless reader had it', function () {
+        /*
+         * The one branch this restructure could have broken. On a TABLESS
+         * first run the ladder renders inside the week flow (`! $hasTabs`),
+         * so if it had stayed in the main column it would have jumped ABOVE
+         * the invite disclosure on a phone. It sits in the sidecar after the
+         * moved tail instead, which restores the exact order. Source order
+         * is the guarantee, because below `lg` the columns concatenate.
+         */
+        $source = file_get_contents(resource_path('views/livewire/pickem-home.blade.php'));
+
+        expect(strpos($source, 'THE LADDER belongs to Results'))
+            ->toBeGreaterThan(strpos($source, 'Have an invite code?'));
+    });
+});
+
+describe('flat card lists claim the width', function () {
+    it('grids the lists whose own component already grids elsewhere', function (string $view, string $grid) {
+        // Each of these was a flat @foreach of a card that runs two- or
+        // three-up on another screen — a headline in the left third of a
+        // 1096px row, and nothing in the other two.
+        expect(file_get_contents(resource_path("views/livewire/{$view}.blade.php")))
+            ->toContain($grid);
+    })->with([
+        ['home', 'grid gap-2 md:grid-cols-2 xl:grid-cols-3'],
+        ['team', 'grid gap-2 md:grid-cols-2 xl:grid-cols-3'],
+        ['conference', 'grid gap-2 md:grid-cols-2 xl:grid-cols-3'],
+        // `lg`, not `md`, and that is room-row's own constraint: it is
+        // measured to starve its name below 390px, and two-up at a 768px
+        // viewport gives 356px cells. `lg` gives 484px.
+        ['lobby', 'grid gap-2 lg:grid-cols-2 xl:grid-cols-3'],
+        // Beside the sidecar the main column is ~648px at `lg`, so seats
+        // do not go two-up until `xl`.
+        ['pickem-home', 'grid gap-2 xl:grid-cols-2'],
+    ]);
+
+    it('never grids the urgency-ordered zones', function () {
+        /*
+         * "Needs your picks" and Home's picks strip are ordered by urgency:
+         * a grid makes "first" mean top-LEFT rather than top, which is a
+         * weaker signal for the zone `docs/screens.md` calls the reason the
+         * screen works. They stay flat on purpose.
+         */
+        $picks = file_get_contents(resource_path('views/livewire/pickem-home.blade.php'));
+
+        $needs = strpos($picks, '@foreach ($this->needsRest as $card)');
+
+        expect($needs)->not->toBeFalse()
+            ->and(substr($picks, $needs - 200, 200))->not->toContain('grid-cols');
+    });
+});

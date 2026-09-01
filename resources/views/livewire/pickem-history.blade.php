@@ -114,7 +114,7 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-4 lg:mx-auto lg:w-full lg:max-w-2xl">
+<div class="flex flex-col gap-4 md:mx-auto md:w-full md:max-w-3xl">
     <h1 class="sr-only">History</h1>
 
     @if ($this->entries->isNotEmpty())

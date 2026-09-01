@@ -476,7 +476,7 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-5 lg:mx-auto lg:w-full lg:max-w-3xl">
+<div class="flex flex-col gap-5 md:mx-auto md:w-full md:max-w-3xl">
     <h1 class="sr-only">Build the slate</h1>
 
     @if ($thinWindow !== [])

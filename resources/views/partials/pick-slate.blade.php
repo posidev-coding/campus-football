@@ -293,7 +293,7 @@
                 </flux:subheading>
             @endif
 
-            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 @foreach ($tierGames as $slateGame)
                     <x-pick-card
                         wire:key="slate-{{ $slate->id }}-pick-{{ $slateGame->id }}"

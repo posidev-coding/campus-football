@@ -920,7 +920,7 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-5 lg:mx-auto lg:w-full lg:max-w-5xl">
+<div class="flex flex-col gap-5">
     @php
         $heroMeta = $group->isRoom()
             ? collect([

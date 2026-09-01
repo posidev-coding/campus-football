@@ -320,7 +320,10 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-6 lg:mx-auto lg:w-full lg:max-w-3xl">
+{{-- No cap and no sidecar: `App\Support\Rail` already ruled that "the
+     shelved room rows own the width", and a panel here would fight the room
+     grid for the same pixels. The width goes to the inventory instead. --}}
+<div class="flex flex-col gap-6">
     @if ($this->showLobby)
         {{-- =============================== THE LOBBY ================= --}}
         {{-- The section strip names this place — the h1 stays for screen
@@ -432,8 +435,15 @@ new class extends Component
                      passed — no query, and no second answer about how many
                      games a room deals (the CONTEST's number, never the
                      mode's default). --}}
+                {{-- Two-up from `lg`, three from `xl` — NOT from `md`, and
+                     that is the row's own constraint rather than a taste
+                     call: room-row is measured to starve its name below
+                     390px, and `md:grid-cols-2` at a 768px viewport gives
+                     356px cells. `lg` gives 484px and `xl` gives 400px. --}}
+                <div class="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
                 @foreach ($shelf['rooms'] as $entry)
                     <x-room-row
+                        class="min-w-0"
                         wire:key="room-{{ $entry['room']->id }}"
                         :room="$entry['room']"
                         :mode="$entry['mode']"
@@ -443,6 +453,7 @@ new class extends Component
                         :pitch="$entry['room']->flavorEnum()?->blurb($entry['gameCount']) ?? $entry['mode']->blurb($entry['gameCount'])"
                     />
                 @endforeach
+                </div>
 
                 {{-- What the Saturday could not seat. Collapsed to ONE
                      muted line per shelf: thirteen catalog shapes with
@@ -504,14 +515,17 @@ new class extends Component
             <div class="flex flex-col gap-2">
                 <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Always open</flux:subheading>
 
+                <div class="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
                 @foreach ($this->evergreens as $lobby)
                     <x-room-row
+                        class="min-w-0"
                         wire:key="lobby-{{ $lobby->id }}"
                         :room="$lobby"
                         :mode="$lobby->contests->first()?->mode ?? ContestMode::Classic"
                         :seats="$lobby->memberships_count"
                     />
                 @endforeach
+                </div>
             </div>
         @endif
 
