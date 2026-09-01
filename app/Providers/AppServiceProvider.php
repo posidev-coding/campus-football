@@ -14,6 +14,7 @@ use App\Services\Espn\EspnClient;
 use App\Services\Nil\KeywordNilNewsProvider;
 use App\Services\Nil\NilNewsProvider;
 use App\Support\PageMeta;
+use App\Support\R2SignedUploadUrl;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -28,6 +29,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Pennant\Feature;
+use Livewire\Features\SupportFileUploads\GenerateSignedUploadUrl;
 use Throwable;
 
 class AppServiceProvider extends ServiceProvider
@@ -64,6 +66,14 @@ class AppServiceProvider extends ServiceProvider
         Model::preventSilentlyDiscardingAttributes(! $this->app->isProduction());
 
         Date::use(CarbonImmutable::class);
+
+        /*
+         * Livewire's direct-to-bucket upload signs an ACL R2 refuses. Bound
+         * rather than swapped: a swap sets a resolved instance and would
+         * displace the stub Livewire installs for its own tests, where no
+         * URL should be signed at all. A binding lets that stub still win.
+         */
+        $this->app->bind(GenerateSignedUploadUrl::class, R2SignedUploadUrl::class);
 
         /*
          * Live pick'em scoring, event-driven end to end: the sync tier that
