@@ -16,6 +16,7 @@ use App\Exceptions\NotGroupCommissioner;
 use App\Exceptions\PickemParticipationGated;
 use App\Exceptions\WalletTooLight;
 use App\Livewire\Concerns\MakesPicks;
+use App\Livewire\Concerns\UploadsImages;
 use App\Models\Contest;
 use App\Models\Group;
 use App\Models\GroupMember;
@@ -26,6 +27,7 @@ use App\Models\User;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Services\Contests\SpreadGrader;
+use App\Support\ImageUpload;
 use App\Support\Cadence;
 use App\Support\InviteTemplates;
 use App\Support\SlateFeasibility;
@@ -61,6 +63,7 @@ new class extends Component
     use MakesPicks {
         refreshPicks as refreshPickState;
     }
+    use UploadsImages;
     use WithFileUploads;
 
     /** The palette columns ride every card-feeding load — drop one and the cards silently un-brand. */
@@ -883,9 +886,9 @@ new class extends Component
     public function updatedIconFile(SetGroupIcon $action): void
     {
         $this->validate([
-            'iconFile' => ['image', 'max:1024', 'dimensions:min_width=64,min_height=64'],
+            'iconFile' => ImageUpload::rules(),
         ], [
-            'iconFile.max' => 'That image is over 1MB. Crop it or pick a smaller one.',
+            'iconFile.max' => ImageUpload::oversizedMessage(),
             'iconFile.dimensions' => 'That image is too small to read at icon size.',
         ]);
 
@@ -1054,7 +1057,7 @@ new class extends Component
                         <flux:icon name="camera" variant="micro" />
                     </span>
 
-                    <input type="file" wire:model="iconFile" accept="image/*" class="sr-only" aria-label="Upload a group icon">
+                    <x-image-file-input property="iconFile" label="Upload a group icon" />
                 </label>
             </x-slot:icon>
         @endif
