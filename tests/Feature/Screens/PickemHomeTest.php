@@ -1248,3 +1248,34 @@ it('lights My Picks, and lets the Lobby chip keep the store', function () {
     expect(collect($sections)->pluck('label')->all())->toBe(['My Picks', 'Lobby', 'Leaderboard', 'History'])
         ->and($sections[0]['route'])->toBe('pickem.home');
 });
+
+describe('the seats read', function () {
+    it('reads every seat once for the whole screen', function () {
+        /*
+         * The group switcher and the card query both stand on ONE Seats
+         * read. A second groups query here is the drift this pins
+         * against: two answers to "which groups am I in", one for the
+         * menu and one for the page under it.
+         */
+        $reader = pickemAdmin();
+
+        foreach (['Rocky Top Rejects', 'The Back Porch', 'The Noon Kick'] as $name) {
+            $group = Group::factory()->create(['name' => $name]);
+            GroupMember::factory()->commissioner()->create(['group_id' => $group->id, 'user_id' => $reader->id]);
+            Contest::factory()->create(['group_id' => $group->id]);
+        }
+
+        DB::enableQueryLog();
+
+        Livewire::actingAs($reader->fresh())->test('pickem-home')->assertSee('Rocky Top Rejects');
+
+        $seats = collect(DB::getQueryLog())
+            ->pluck('query')
+            ->filter(fn (string $query) => str_contains($query, 'pivot_role'))
+            ->count();
+
+        DB::disableQueryLog();
+
+        expect($seats)->toBe(1);
+    });
+});

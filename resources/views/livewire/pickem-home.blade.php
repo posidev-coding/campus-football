@@ -19,6 +19,7 @@ use App\Support\Cadence;
 use App\Support\Lobby;
 use App\Support\SlateFeasibility;
 use App\Support\RankLadder;
+use App\Support\Seats;
 use App\Support\Voice;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -219,6 +220,17 @@ new class extends Component
     }
 
     /**
+     * EVERY SEAT THE READER HOLDS, read once. The group switcher above the
+     * fork and the card query below both stand on this one read, so the
+     * menu and the overview can never list a different set of groups.
+     */
+    #[Computed]
+    public function seats(): Seats
+    {
+        return Seats::for(auth()->user());
+    }
+
+    /**
      * Every group card's state, assembled flat.
      *
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
@@ -226,7 +238,7 @@ new class extends Component
     #[Computed]
     public function cards()
     {
-        $groups = auth()->user()->groups()->withCount('memberships')->orderBy('name')->get();
+        $groups = $this->seats->groups;
 
         if ($groups->isEmpty()) {
             return collect();
@@ -238,19 +250,21 @@ new class extends Component
             ->get()
             ->keyBy('group_id');
 
-        $weekId = $contests->isEmpty()
-            ? null
-            : app(CfbCalendar::class)->defaultWeekId($contests->first()->season_year);
-
         /*
-         * The week is resolved BEFORE the slates now, because the card
-         * being played is a SATURDAY and an ESPN week can hold two of
-         * them. Keyed on the week alone, keyBy() silently kept whichever
-         * row came last — the published card here, while the clubhouse's
+         * The week is resolved BEFORE the slates, because the card being
+         * played is a SATURDAY and an ESPN week can hold two of them.
+         * Keyed on the week alone, keyBy() silently kept whichever row
+         * came last — the published card here, while the clubhouse's
          * ->first() took the other one. Two screens, one week, two
          * answers. See Slate::scopeOnCard().
+         *
+         * Read off the Seats read the switcher shares, and STILL gated on
+         * the contests: with none there is no card to sell, and a week
+         * resolved anyway would hand ribbonClock() a deadline for a group
+         * that has no contest to build one for.
          */
-        $week = $weekId === null ? null : Week::find($weekId);
+        $week = $contests->isEmpty() ? null : $this->seats->week();
+        $weekId = $week?->id;
 
         $slates = $week === null ? collect() : Slate::query()
             ->whereIn('contest_id', $contests->pluck('id'))
@@ -276,36 +290,6 @@ new class extends Component
             ->get()
             ->keyBy('slate_id');
 
-        /*
-         * THE SATURDAY EACH ROOM ACTUALLY PLAYS — the one read `$slates`
-         * cannot answer, because it is filtered to the card being sold
-         * and a played room is by definition off it. Dates only, no
-         * eager loads, and only when the reader holds a public seat at
-         * all: this is what tells "the Saturday you played" apart from
-         * "your slate was taken away", which are the same absence in the
-         * card query and two different sentences on the card.
-         */
-        $roomContestIds = $groups
-            ->filter(fn (Group $group) => $group->isRoom())
-            ->map(fn (Group $group) => $contests->get($group->id)?->id)
-            ->filter()
-            ->values();
-
-        $roomSaturdays = $roomContestIds->isEmpty() ? collect() : Slate::query()
-            ->whereIn('contest_id', $roomContestIds)
-            ->orderBy('saturday')
-            ->pluck('saturday', 'contest_id')
-            /*
-             * DATE STRINGS, and the comparison downstream is a string
-             * one. `slates.saturday` is a date column cast at the app's
-             * timezone while the card being sold is an ET midnight —
-             * comparing the two as instants makes the SAME Saturday four
-             * hours "earlier" and files a live room under played. Every
-             * other Saturday comparison in this codebase is
-             * toDateString(); this one is too.
-             */
-            ->map(fn (?CarbonInterface $day) => $day?->toDateString());
-
         // Season wins, and a practice week never earned one — the same
         // ledger rule the clubhouse's season table reads.
         $wins = SlateEntry::query()
@@ -327,7 +311,7 @@ new class extends Component
          * already reads `$slate->saturday` and the publish sweep already
          * reads activeSaturday(); this is the third caller agreeing with them.
          */
-        $pending = $week === null ? null : Cadence::activeSaturday($week);
+        $pending = $week === null ? null : $this->seats->saturday();
         $fallbackDeadline = $pending === null ? null : Cadence::slateDeadline($pending);
 
         /*
@@ -340,10 +324,9 @@ new class extends Component
          */
         $viable = null;
 
-        return $groups->map(function (Group $group) use ($contests, $slates, $roomSaturdays, $made, $entries, $wins, $fallbackDeadline, $weekId, $week, $pending, &$viable) {
+        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $fallbackDeadline, $week, $pending, &$viable) {
             $contest = $contests->get($group->id);
             $slate = $contest === null ? null : $slates->get($contest->id);
-            $roomSaturday = $contest === null ? null : $roomSaturdays->get($contest->id);
             $tally = $slate === null ? null : $made->get($slate->id);
             $entry = $slate === null ? null : $entries->get($slate->id);
 
@@ -395,29 +378,11 @@ new class extends Component
                 'won' => (bool) ($entry->won ?? false),
                 'wins' => (int) ($wins[$contest?->id] ?? 0),
                 'firstKick' => $slate?->firstKickoff(),
-                /*
-                 * A ROOM WHOSE SATURDAY HAS BEEN PLAYED — a week behind
-                 * us, OR a Saturday behind the one being sold.
-                 *
-                 * The second half is the fix: an ESPN week holds two
-                 * Saturdays (2026 Week 1 = 8/29 and 9/5), so a room that
-                 * played 8/29 still satisfied `week_id === $weekId` on
-                 * the Tuesday after and carried into the fresh week as
-                 * "Public room · this Saturday" — three dead seats
-                 * stacked over the reader's own groups, saying they were
-                 * already in this Saturday's public contests. Read the
-                 * room's OWN Saturday and compare it to the card being
-                 * sold, the same rule every other read on this screen
-                 * follows (.ai/rules/views-livewire-support.md).
-                 *
-                 * A room with no slate at all is NOT past: its card was
-                 * never published or was taken away, which is a
-                 * different sentence on the card and must not be
-                 * inferred from a missing row.
-                 */
-                'past' => $group->isRoom()
-                    && ($group->week_id !== $weekId
-                        || ($roomSaturday !== null && $pending !== null && $roomSaturday < $pending->toDateString())),
+                // A ROOM WHOSE SATURDAY HAS BEEN PLAYED — the rule lives
+                // on Seats now, beside the switcher that has to agree
+                // with it: read off the room's OWN Saturday, never the
+                // week id alone (.ai/rules/components-support.md).
+                'past' => $this->seats->isPast($group),
                 // A published slate answers for its OWN Saturday; a group
                 // still waiting on one is told about the card being sold.
                 'deadline' => $slate === null
@@ -814,7 +779,7 @@ new class extends Component
     #[Computed]
     public function roomsOpen(): int
     {
-        return Lobby::openRoomCount(auth()->user());
+        return $this->seats->openCount();
     }
 
     public function join(JoinGroup $action)
