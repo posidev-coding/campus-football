@@ -647,7 +647,12 @@ describe('my week (inside the flag)', function () {
             ->assertSee('Walk-On')
             // ...and the you-strip does not: it is guarded on the fork,
             // so the first run stays the screen it has always been.
-            ->assertDontSee('Tallboys');
+            //
+            // Asserted on the STRIP rather than on the word "Tallboys",
+            // which has since escaped it — the How-it-works door names the
+            // currency too, and a proxy that catches an unrelated mention
+            // is a test measuring the wrong thing.
+            ->assertDontSeeHtml('data-you-strip');
     });
 
     it('gives a rooms-only reader the fork too — a seat is a card', function () {
@@ -998,6 +1003,7 @@ describe('my week (inside the flag)', function () {
             ->assertSee('@marcus')
             // The four columns, and the rung NAMED rather than a bare
             // number: the ladder is the thing being sold.
+            ->assertSeeHtml('data-you-strip')
             ->assertSeeInOrder(['Rank', 'XP', 'Tallboys', 'Wins'])
             ->assertSee('Rotation')
             ->assertSee('1,000')

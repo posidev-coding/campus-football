@@ -1201,6 +1201,32 @@ class Voice
          * store: nothing to redirect them to, so it says what the cooler
          * costs and where the next one comes from.
          */
+        /*
+         * THE EXPLAINER's three subheadings. Register copy AROUND the rules,
+         * never instead of them: the numbers on that screen come from the
+         * constants that pay them, and these lines only frame what the
+         * reader is about to read. The cooler line is the one a reader plans
+         * a week with, so all three registers say the SAME rule — only the
+         * attitude moves.
+         */
+        'picks.how.currency' => [
+            'pg' => 'Earned everywhere you play. Spent in the Lobby, and only there.',
+            'pg13' => 'You earn them everywhere. You spend them in the Lobby — nowhere else takes them.',
+            'r' => 'Earned everywhere, spent in the Lobby. Your private league does not take them and never will.',
+        ],
+
+        'picks.how.cooler' => [
+            'pg' => 'A weekly top-off that depends on what you are holding — so running low is temporary, and hoarding stops paying.',
+            'pg13' => 'The weekly top-off reads your balance: broke gets restocked, comfortable gets a splash, stocked gets nothing.',
+            'r' => 'The cooler reads your balance before it pours. Broke? Restocked. Sitting on a pile? Enjoy the pile — it stops growing.',
+        ],
+
+        'picks.how.rooms' => [
+            'pg' => 'Only the Spotlight shelf charges. Everything else is free to enter.',
+            'pg13' => 'One shelf charges. The rest are free — nobody is priced out of the Lobby.',
+            'r' => 'One shelf costs a Tallboy. The rest are free, so being broke is never the reason you did not play.',
+        ],
+
         'picks.tallboy.too_light' => [
             'pg' => 'A Tallboy costs one credit and your cooler is empty. Play the week out — the cooler restocks.',
             'pg13' => "You're out of Tallboys. Keep playing: the cooler restocks every week, and wins pour their own.",

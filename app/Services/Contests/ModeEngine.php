@@ -173,6 +173,39 @@ abstract class ModeEngine
     }
 
     /**
+     * Whether the SLATE SIZE this engine reads was frozen from a real
+     * Saturday or is just the mode's default. A dynamic room's answer to
+     * supportsTallboy() is only as good as the card it ends up dealing, so
+     * an explainer with no contest in hand must say "when the card is big
+     * enough" rather than a flat yes.
+     */
+    public function sizeIsFrozen(): bool
+    {
+        return $this->setting('slate_size') !== null;
+    }
+
+    /**
+     * The Tallboy rule for THIS contest, in one plain sentence.
+     *
+     * Product vocabulary and register-constant, the ContestMode::ruleLines()
+     * posture: the game is never described two ways, so the explainer,
+     * the room grid and the docs all read this rather than restating it.
+     * DERIVED from the same three exclusions supportsTallboy() applies, so
+     * a room that changes shape cannot end up with a stale reason printed
+     * beside a correct answer.
+     */
+    public function tallboyRule(): string
+    {
+        return match (true) {
+            $this->supportsLock() => 'No Tallboy — the Lock is this mode\'s wager, and a slate never offers two.',
+            $this->kickerPoints() !== null => 'No Tallboy — the underdog kicker is already riding on every winning pick.',
+            $this->setting('tallboy', true) === false => 'No Tallboy — this room is in and out, with nothing to weigh.',
+            ! $this->supportsTallboy() => 'No Tallboy — '.self::TALLBOY_SWING.' points is too big a swing for a card this short.',
+            default => 'Crush a Tallboy on any one game: +'.self::TALLBOY_SWING.' right, −'.self::TALLBOY_SWING.' wrong.',
+        };
+    }
+
+    /**
      * The most a perfect week pays before any wager — the denominator the
      * Tallboy's leverage is measured against, and derived rather than
      * re-typed. Untiered modes are size × the standard ten; a tiered mode

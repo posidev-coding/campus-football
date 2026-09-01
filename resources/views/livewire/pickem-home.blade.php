@@ -779,7 +779,7 @@ new class extends Component
              seat and no settled week, and the pitch it gets instead is
              byte-identical to the one it has always had. --}}
         @if ($this->hasTabs && $this->youStrip !== null)
-            <x-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
+            <x-you-strip data-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
         @endif
 
         {{-- What needs you right now: slates still taking your picks,
@@ -1127,6 +1127,17 @@ new class extends Component
                 <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Every week you have played, and what it paid.</span>
             </x-link-row>
         @endif
+
+        {{-- THE REFERENCE, on BOTH views: the rules are what you go
+             looking for mid-week as readily as on a Sunday, and a door
+             that only exists on one fork is a door somebody cannot find.
+             Its own address rather than a disclosure here — this screen
+             already carries the week, the seats, the payoff and the
+             ladder, and the Lobby folded its own rules away for exactly
+             that reason. --}}
+        <x-link-row :href="route('pickem.how')" title="How this works" data-tour="how">
+            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Tallboys, the cooler, and what every room costs.</span>
+        </x-link-row>
         </div>
     @else
         @include('partials.pickem-promise')

@@ -609,12 +609,10 @@ new class extends Component
                     <x-mode-rules wire:key="rules-{{ $mode->value }}" :mode="$mode" />
                 @endforeach
 
-                {{-- The rules every mode shares, stated once and plainly. --}}
-                <p class="pt-1 text-micro leading-relaxed text-zinc-500">
-                    Every pick is against the spread, and every line is a half point — no pushes, ever.
-                    Picks lock game by game at kickoff. Commissioner slates are due Tuesday night;
-                    weeks turn official Sunday noon. Tied weeks share the win.
-                </p>
+                {{-- The rules every mode shares, stated once and plainly —
+                     in ONE partial, because the Picks explainer says them
+                     too and two copies of a rule is how a rule drifts. --}}
+                @include('partials.pickem-laws')
             </div>
         </div>
     @else

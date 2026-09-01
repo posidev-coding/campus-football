@@ -302,6 +302,17 @@ Route::middleware(['auth'])->group(function () {
         Route::livewire('groups/{group}/talk', 'group-talk')->name('pickem.talk');
 
         /*
+         * HOW THIS WORKS: the Picks area's reference screen. A side room
+         * off My Picks rather than a fifth chip in a four-chip section
+         * strip — it is read once and returned to rarely, and the strip is
+         * for the places somebody moves between every week.
+         *
+         * Inside the flag with the rest of them: outside it there is no
+         * economy to explain and /picks keeps its coming-soon promise.
+         */
+        Route::livewire('picks/how', 'picks-how')->name('pickem.how');
+
+        /*
          * A public room is the same clubhouse component wearing its own
          * address — the screen redirects each kind to its home, so a
          * shared link always reads /contests/... for a room and
