@@ -168,6 +168,7 @@ it('puts a scannable QR on the clubhouse invite panel', function () {
     Livewire::actingAs($commissioner)
         ->test('group', ['group' => $group])
         ->set('view', 'standings')
+        ->set('pane', 'invite')
         ->assertSee('viewBox="0 0 256 256"', escape: false);
 });
 
@@ -253,6 +254,7 @@ it('puts the ready-to-send messages on the clubhouse, keyed for the morph', func
     Livewire::actingAs($commissioner)
         ->test('group', ['group' => $group])
         ->set('view', 'standings')
+        ->set('pane', 'invite')
         ->assertSee('Ready to send')
         ->assertSee('Text message')
         ->assertSee('Slack post')
@@ -271,6 +273,7 @@ it('renders the panel without a templates block when there is no contest to desc
     $html = Livewire::actingAs($commissioner)
         ->test('group', ['group' => $group])
         ->set('view', 'standings')
+        ->set('pane', 'invite')
         ->assertSee('viewBox="0 0 256 256"', escape: false)
         ->assertDontSee('Ready to send')
         ->html();
@@ -364,10 +367,12 @@ it('offers the handoff only to a commissioner', function () {
     Livewire::actingAs($commissioner)
         ->test('group', ['group' => $group])
         ->set('view', 'standings')
+        ->set('pane', 'members')
         ->assertSee('Make commissioner');
 
     Livewire::actingAs($member)
         ->test('group', ['group' => $group])
         ->set('view', 'standings')
+        ->set('pane', 'members')
         ->assertDontSee('Make commissioner');
 });

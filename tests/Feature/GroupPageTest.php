@@ -340,25 +340,128 @@ it('normalizes the three-tab era\'s addresses onto the merged plate', function (
         ->assertSet('view', 'slate');
 });
 
-it('shows the Standings tab its whole room: you-strip, invite, members, rules', function () {
+it('gives the Standings tab a second row, and the you-strip sits above it', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
 
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
         ->set('view', 'standings')
-        // Nothing has been played: every figure is a dash, never a zero.
+        // The gutter itself, all three panes named.
+        ->assertSee('Standings')
+        ->assertSee('Members')
+        ->assertSee('Invite')
+        // The viewer's own line is chrome above the gutter, not a pane:
+        // nothing has been played, so every figure is a dash, never a zero.
         ->assertSee('Wk rank')
         ->assertSee('—')
-        // The invite panel carries the link and the spoken-word code.
-        ->assertSee($group->code)
-        ->assertSee('Or read them the code')
-        // The roster disclosure and its management affordances.
-        ->assertSee('Members')
-        ->assertSee('Commissioner')
-        // The scoring panel, sized from the contest.
+        // The standings pane's own content: the scoring panel, sized from
+        // the contest, and the thread's foot door.
         ->assertSee('Triple Option')
-        // The thread's doors: the hero button and the foot link-row.
         ->assertSee('Group talk')
         ->assertSee(route('pickem.talk', $group), escape: false);
+});
+
+it('keeps the invite off the standings pane and on its own', function () {
+    // It carries a link, a code, a QR and three ready-to-send messages
+    // now — as a disclosure on top of the standings it buried them.
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertDontSee('Or read them the code')
+        ->set('pane', 'invite')
+        ->assertSee($group->code)
+        ->assertSee('Or read them the code');
+});
+
+it('puts the roster and its management on the Members pane', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->set('pane', 'members')
+        ->assertSee('Commissioner')
+        ->assertSee('Leave group');
+});
+
+it('gives a public room two panes, never an invite one', function () {
+    /*
+     * Rooms are joined from the lobby, never by invitation — so the
+     * gutter must not offer a pane the screen refuses to draw, and an
+     * address asking for one lands on the standings rather than an
+     * empty box.
+     */
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $group->update(['kind' => Group::KIND_LOBBY]);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertDontSee('Invite')
+        ->set('pane', 'invite')
+        ->assertSet('pane', 'standings')
+        ->assertDontSee('Or read them the code');
+});
+
+it('prints real names in a private group and handles in a public room', function () {
+    /*
+     * The seam is the KIND of room, not a preference. A private group is
+     * people who invited each other by text; a public room is strangers
+     * who walked in off the lobby, and their legal names are not the
+     * room's to publish.
+     *
+     * Asserted BOTH ways round on the same fixture, because a test that
+     * only checks the name appears passes just as happily when the room
+     * prints it too.
+     */
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $member = User::factory()->create(['first_name' => 'Dale', 'last_name' => 'Trickett', 'handle' => 'shedhand']);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    [, $week] = pickemSeasonWeek();
+    $slate = Slate::factory()->create([
+        'contest_id' => $contest->id, 'week_id' => $week->id,
+        'status' => Slate::SETTLED, 'settled_at' => now(),
+    ]);
+    SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $member->id, 'final_points' => 9, 'won' => true]);
+
+    // Private: the name, and not the handle.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertSee('Dale Trickett')
+        ->assertDontSee('@shedhand');
+
+    // The same people, in public: the handle, and not the name.
+    $group->update(['kind' => Group::KIND_LOBBY]);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertSee('@shedhand')
+        ->assertDontSee('Dale Trickett');
+});
+
+it('keeps a public room\'s roster on handles too, not just its tables', function () {
+    [$commissioner, $group] = pickemContest(ContestMode::Classic);
+    $member = User::factory()->create(['first_name' => 'Dale', 'last_name' => 'Trickett', 'handle' => 'shedhand']);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+    $group->update(['kind' => Group::KIND_LOBBY]);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->set('pane', 'members')
+        ->assertSee('@shedhand')
+        ->assertDontSee('Dale Trickett');
+});
+
+it('lands the three-tab era\'s ?view=members address on the Members pane', function () {
+    // normalizedView() has sent `members` to Standings since 2026-08-30;
+    // now that there is a Members pane again, carry the second half of
+    // the address across instead of dropping the reader somewhere else.
+    [$commissioner, $group] = pickemContest(ContestMode::Tiered);
+
+    Livewire::actingAs($commissioner)
+        ->withQueryParams(['view' => 'members'])
+        ->test('group', ['group' => $group])
+        ->assertSet('view', 'standings')
+        ->assertSet('pane', 'members');
 });
 
 it('polls the Standings tab only while the card is live', function () {
@@ -403,8 +506,10 @@ it('aggregates settled weeks on the Standings tab, wins before points', function
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
         ->set('view', 'standings')
         ->assertSee('Wins')
-        // The week's winner outranks the commissioner's seat order.
-        ->assertSeeInOrder(['@'.$member->handle, '@'.$commissioner->handle]);
+        // The week's winner outranks the commissioner's seat order — and
+        // a private group prints NAMES: these are people who invited each
+        // other, where a handle is the worse answer.
+        ->assertSeeInOrder([$member->name, $commissioner->name]);
 });
 
 it('previews the surface read-only for a lobby outsider', function () {
@@ -564,7 +669,7 @@ it('shows the movement and the member colors once two weeks have settled', funct
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
         ->set('view', 'standings')
         ->assertSee('https://cdn.example.com/vols.png', escape: false)
-        ->assertSee('@mover');
+        ->assertSee($member->name);
 });
 
 it('keeps the movement quiet with only one settled week behind the table', function () {

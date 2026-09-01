@@ -9,7 +9,8 @@
       ['rank' => 1, 'user' => User, 'won' => bool, 'cells' => [12, 340]]
     with `headings` naming each cell column in order. Identity is the
     handle when claimed, the name until then — the table never blocks on
-    the handle seam.
+    the handle seam. Pass `names` inside a private group to flip that
+    around: people who invited each other read names better than handles.
 
     A row may carry NO user — the Woodshed's Bear sits in standings as
     ['user' => null, 'label' => 'The Bear', 'key' => 'bear', 'icon' =>
@@ -29,6 +30,18 @@
      * 'cells' => list]. Null renders nothing.
      */
     'pinned' => null,
+    /**
+     * Print real names instead of handles. TRUE only inside a private
+     * group, where everybody was invited by somebody they know and a
+     * handle is a worse answer than a name. A public room and the global
+     * leaderboard stay on handles: those are strangers, and their legal
+     * names are not the room's to publish.
+     *
+     * Falls back to the handle when a member has no name to print, the
+     * mirror of the default's fallback — the table never blocks on
+     * either half of the identity seam.
+     */
+    'names' => false,
 ])
 
 <div {{ $attributes->class(['overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900']) }}>
@@ -84,7 +97,13 @@
                                 @if ($row['team'] ?? null)
                                     <x-team-logo :team="$row['team']" size="xs" class="shrink-0" />
                                 @endif
-                                <span class="truncate">{{ $row['user']->handle !== null ? '@'.$row['user']->handle : $row['user']->name }}</span>
+                                <span class="truncate">
+                                    @if ($names)
+                                        {{ $row['user']->name ?: ($row['user']->handle !== null ? '@'.$row['user']->handle : '') }}
+                                    @else
+                                        {{ $row['user']->handle !== null ? '@'.$row['user']->handle : $row['user']->name }}
+                                    @endif
+                                </span>
                             </span>
                         @else
                             <span class="inline-flex items-center gap-1">
