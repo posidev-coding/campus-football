@@ -582,8 +582,10 @@ describe('the wallet chips', function () {
 
     it('references currency art that actually exists on disk', function () {
         // The chips render <img> tags; a renamed asset 404s as a silently
-        // blank icon rather than an error anywhere a test would look.
-        $source = file_get_contents(resource_path('views/components/wallet-chips.blade.php'));
+        // blank icon rather than an error anywhere a test would look. The
+        // art moved into x-tallboy-mark when the wager gave it a second
+        // render site — one file names the asset, so this reads that one.
+        $source = file_get_contents(resource_path('views/components/tallboy-mark.blade.php'));
 
         preg_match_all('/brand\/currency\/[a-z0-9\/.-]+/', $source, $paths);
 

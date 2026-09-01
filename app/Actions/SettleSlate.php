@@ -43,7 +43,7 @@ class SettleSlate
             return false;
         }
 
-        $slate->loadMissing(['games.game', 'games.picks', 'entries.user', 'contest', 'tiebreakerGame.game']);
+        $slate->loadMissing(['games.game', 'games.picks', 'entries.user', 'contest.group', 'tiebreakerGame.game']);
 
         // A slate with an unfinished game cannot settle, whatever the clock
         // says — the rescue sweep will have regraded it by the next pass.
@@ -209,7 +209,62 @@ class SettleSlate
                     GrantWalletEntry::REASON_PICKEM_WIN,
                     "slate:{$slate->id}:win",
                 );
+
+                // A PUBLIC ROOM won, once ever. The Lobby is where credits
+                // are spent, so the first time a stranger's room is taken is
+                // the milestone worth paying — a private league's first win
+                // is already the weekly payout.
+                if ($slate->contest->group?->isRoom()) {
+                    $this->wallet->handle(
+                        $winner,
+                        0,
+                        GrantWalletEntry::FIRST_ROOM_WIN_CREDITS,
+                        GrantWalletEntry::REASON_FIRST_ROOM_WIN,
+                        GrantWalletEntry::REASON_FIRST_ROOM_WIN,
+                    );
+                }
             }
+        }
+
+        $this->payPerfect($slate);
+    }
+
+    /**
+     * The perfect week: every game on the card picked, every one right.
+     *
+     * Judged on RESULTS, never on points — a Woodshed Lock pays 14 for one
+     * game and a Triple Option tier-3 pays 4, so no total identifies a clean
+     * sheet. Repeatable across weeks and keyed per SLATE, because being
+     * perfect twice is two achievements and a re-settle is neither.
+     *
+     * Zero extra queries: `games.picks` is the relation the official regrade
+     * just wrote through, so this counts what is already in memory.
+     */
+    private function payPerfect(Slate $slate): void
+    {
+        $size = $slate->games->count();
+
+        if ($size === 0) {
+            return;
+        }
+
+        $wins = $slate->games
+            ->flatMap(fn ($slateGame) => $slateGame->picks)
+            ->filter(fn (Pick $pick) => $pick->result === Pick::WIN)
+            ->groupBy('user_id');
+
+        foreach ($slate->entries as $entry) {
+            if (($wins[$entry->user_id] ?? collect())->count() !== $size) {
+                continue;
+            }
+
+            $this->wallet->handle(
+                $entry->user,
+                0,
+                GrantWalletEntry::PERFECT_WEEK_CREDITS,
+                GrantWalletEntry::REASON_PERFECT_WEEK,
+                "slate:{$slate->id}:perfect",
+            );
         }
     }
 }

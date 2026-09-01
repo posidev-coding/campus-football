@@ -80,6 +80,21 @@ class Group extends Model
     }
 
     /**
+     * What a seat here costs in Tallboys, and zero for almost everything.
+     *
+     * Reads off data that already exists: the flavor names a shelf, and the
+     * shelf owns the price. Only PUBLIC contests can charge — you never
+     * spend inside a private league, which is what dissolves the
+     * multi-group supply problem (a member of four leagues would otherwise
+     * need four times the income), and a flavorless public room is a House
+     * room, which is free.
+     */
+    public function entryCredits(): int
+    {
+        return $this->isLobby() ? ($this->flavorEnum()?->shelf()->entryCredits() ?? 0) : 0;
+    }
+
+    /**
      * The specialty this room is, if any. Stored as the raw backing value;
      * null is a STANDARD room, and an unrecognized value (a retired
      * flavor) degrades to standard rather than throwing on a room that

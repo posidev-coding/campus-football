@@ -28,6 +28,19 @@
     `$pick->locked` is the staked wager. The temporal chip RENDERS as
     "Kicked off" (2026-08-31) so the reader only ever sees "Lock" meaning
     the wager; the prop names stay.
+
+    `crushable` grows the same footer for the TALLBOY — ±5 on any one game,
+    bought with a credit. It reads `$pick->locked` too, because a slate can
+    only ever offer ONE wager (the Woodshed owns the Lock, everybody else
+    can take the Tallboy) and one column therefore serves both. The two
+    props are never true together, and the host is what guarantees it: the
+    engine answers supportsLock() or supportsTallboy(), never both.
+
+    ONE WAGER PER SLATE, which is what the leverage ceiling is a guarantee
+    about — so the host passes `crushable` only for the card that may act:
+    every card while nothing is staked, and afterwards only the one holding
+    it. Nine quiet cards after the decision is the point; a disabled control
+    repeated nine times is a screen arguing with itself.
 --}}
 @props([
     'slateGame',
@@ -44,6 +57,11 @@
     'featured' => false,
     /** Whether this card takes the Lock wager (Woodshed featured game). */
     'lockable' => false,
+    /**
+     * Whether this card may take the TALLBOY — true for every card until
+     * one is staked, then only for the card holding it.
+     */
+    'crushable' => false,
 ])
 
 @php
@@ -277,11 +295,63 @@
         @endforeach
     </div>
 
+    @php
+        // The stored WAGER on this card — the Lock in the Woodshed, the
+        // Tallboy everywhere else. One column, never both mechanics.
+        $staked = (bool) $pick?->locked;
+        $swing = App\Services\Contests\ModeEngine::TALLBOY_SWING;
+
+        // An empty footer is a hole. Render only when there is a control to
+        // offer, or a wager already riding into a kicked-off game.
+        $showCrush = $crushable && (($interactive && ! $locked) || $staked);
+    @endphp
+
+    @if ($showCrush)
+        <div class="flex items-center justify-between gap-2 border-t border-zinc-100 px-2.5 py-2 dark:border-zinc-800/60">
+            @if ($interactive && ! $locked)
+                {{-- The wager, stakes stated plainly: instructions never joke. --}}
+                <button
+                    type="button"
+                    wire:click="crushTallboy({{ $slateGame->id }}, {{ $staked ? 'false' : 'true' }})"
+                    wire:loading.attr="disabled"
+                    wire:target="crushTallboy({{ $slateGame->id }}, {{ $staked ? 'false' : 'true' }})"
+                    @disabled($pick === null)
+                    @if ($staked) aria-pressed="true" @endif
+                    data-crush-toggle
+                    @class([
+                        'focus-ring flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors',
+                        'border-sky-900/40 bg-zinc-900 text-sky-200 dark:border-sky-950 dark:bg-black dark:text-sky-300' => $staked,
+                        'border-zinc-200 text-zinc-700 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-500' => ! $staked && $pick !== null,
+                        'border-zinc-200 text-zinc-400 dark:border-zinc-800' => $pick === null,
+                    ])
+                >
+                    <x-tallboy-mark :size="14" />
+                    {{ $staked ? 'Crushed' : 'Crush' }}
+                </button>
+
+                <span class="text-micro font-medium text-zinc-500">
+                    @if ($pick === null)
+                        Pick a side to crush a Tallboy.
+                    @elseif ($staked)
+                        +{{ $swing }} right · −{{ $swing }} wrong
+                    @else
+                        +{{ $swing }} right · −{{ $swing }} wrong · 1 Tallboy
+                    @endif
+                </span>
+            @elseif ($staked)
+                {{-- Kicked with the wager riding: the state, said plainly. --}}
+                <span data-crush-toggle class="flex items-center gap-1.5 text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+                    <x-tallboy-mark :size="14" />
+                    The Tallboy is riding · +{{ $swing }} right, −{{ $swing }} wrong
+                </span>
+            @endif
+        </div>
+    @endif
+
     @if ($lockable)
         @php
             $bonus = App\Services\Contests\WoodshedMode::LOCK_BONUS;
             $penalty = App\Services\Contests\WoodshedMode::LOCK_PENALTY;
-            $staked = (bool) $pick?->locked;
         @endphp
 
         <div class="flex items-center justify-between gap-2 border-t border-zinc-100 px-2.5 py-2 dark:border-zinc-800/60">

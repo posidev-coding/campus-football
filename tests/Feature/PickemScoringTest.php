@@ -7,12 +7,9 @@ use App\Jobs\GradeGamePicks;
 use App\Models\Game;
 use App\Models\GameTeamStat;
 use App\Models\Group;
-use App\Models\GroupMember;
 use App\Models\Pick;
 use App\Models\Slate;
-use App\Models\User;
 use App\Models\WalletEntry;
-use App\Services\Contests\PickGrader;
 use App\Services\Espn\Sync\SyncGames;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
@@ -41,42 +38,6 @@ beforeEach(function () {
 beforeEach(function () {
     $this->travelTo('2026-09-02 12:00:00');
 });
-
-/**
- * A published slate with two picking members. Returns everything the
- * scenarios below poke at.
- *
- * @return array{0: Slate, 1: User, 2: User}
- */
-function pickemContestants(): array
-{
-    [$commissioner, $group, $contest] = pickemContest();
-    $slate = pickemDraftSlate($contest);
-    app(PublishSlate::class)->handle($commissioner, $slate);
-    $slate = $slate->fresh();
-
-    $alice = User::factory()->create(['handle' => 'alice', 'admin' => true]);
-    $bob = User::factory()->create(['handle' => 'bob']);
-    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $alice->id]);
-    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $bob->id]);
-
-    return [$slate, $alice, $bob];
-}
-
-/** Kick and score one slate game, then regrade it the way the events do. */
-function pickemScore(Slate $slate, int $position, int $home, int $away, bool $final = false): void
-{
-    $game = $slate->games()->orderBy('position')->skip($position - 1)->first()->game;
-
-    $game->update([
-        'home_score' => $home,
-        'away_score' => $away,
-        'status' => $final ? 'post' : 'in',
-        'completed' => $final,
-    ]);
-
-    (new GradeGamePicks($game->id))->handle(app(PickGrader::class));
-}
 
 // ---------------------------------------------------------- the job's shape
 

@@ -5,6 +5,7 @@ use App\Actions\RecordUxEvent;
 use App\Enums\UxSignal;
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
+use App\Exceptions\WalletTooLight;
 use App\Models\Contest;
 use App\Models\Group;
 use App\Models\Slate;
@@ -217,6 +218,10 @@ new class extends Component
         } catch (ContestFull) {
             $this->addError('join', Voice::line('contest.room.full'));
             unset($this->group, $this->roomFull, $this->roomPlayed);
+
+            return;
+        } catch (WalletTooLight) {
+            $this->addError('join', Voice::line('contest.room.too_light'));
 
             return;
         }

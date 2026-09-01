@@ -17,6 +17,9 @@ use App\Models\SlateGame;
  */
 class TieredMode extends ModeEngine
 {
+    /** @var array<int, int> */
+    public const TIER_POINTS = [1 => 9, 2 => 7, 3 => 4];
+
     /**
      * `slate_size` is deliberately NOT honored here: a short slate has no
      * honest 5-5-5, and half-scaling a tier spec changes what the tiers
@@ -41,9 +44,21 @@ class TieredMode extends ModeEngine
     public function pointsFor(SlateGame $slateGame): int
     {
         return match ($slateGame->tier) {
-            1 => 9,
-            2 => 7,
-            3 => 4,
+            1 => self::TIER_POINTS[1],
+            2 => self::TIER_POINTS[2],
+            3 => self::TIER_POINTS[3],
         };
+    }
+
+    /** 9·5 + 7·5 + 4·5 = 100, derived from the spec rather than re-typed. */
+    public function perfectWeek(): int
+    {
+        $total = 0;
+
+        foreach ($this->tierSpec() as $tier => $count) {
+            $total += $count * self::TIER_POINTS[$tier];
+        }
+
+        return $total;
     }
 }

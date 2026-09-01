@@ -86,6 +86,8 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'onboarded_at' => 'datetime',
             'tour_completed_at' => 'datetime',
             'standalone_seen_at' => 'datetime',
+            'picks_first_seen_at' => 'datetime',
+            'picks_tour_completed_at' => 'datetime',
             'password' => 'hashed',
             'admin' => 'boolean',
             'content_rating' => ContentRating::class,
@@ -313,6 +315,20 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     }
 
     /**
+     * Drop the memo, so the next read sees a row written since.
+     *
+     * Called by GrantWalletEntry whenever it actually writes, because the
+     * memo exists to make two chip renders cost one query and NOT to freeze
+     * a balance across a grant — the Picks visit tops the wallet up in
+     * mount() and the you-strip renders the number a moment later, which is
+     * exactly the shape that would otherwise print the pre-grant total.
+     */
+    public function forgetWalletTotals(): void
+    {
+        $this->walletTotalsMemo = null;
+    }
+
+    /**
      * Memoized like walletTotals: the dot renders in the tab bar, the
      * section strip and the avatar wrapper, and those three sites must
      * cost one indexed COUNT between them, per request.
@@ -355,6 +371,25 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
     public function hasToured(): bool
     {
         return $this->tour_completed_at !== null;
+    }
+
+    /** Whether Picks has ever been opened — the Tallboy economy's start line. */
+    public function hasSeenPicks(): bool
+    {
+        return $this->picks_first_seen_at !== null;
+    }
+
+    /**
+     * Whether the Picks walk has been seen off, by finishing or skipping.
+     *
+     * A DIFFERENT question from hasSeenPicks(), on a different column and
+     * deliberately so: waving coach marks away is not the same fact as
+     * having arrived, and one column doing both would let a replay
+     * re-trigger the economy's first-visit grant.
+     */
+    public function hasTouredPicks(): bool
+    {
+        return $this->picks_tour_completed_at !== null;
     }
 
     /**

@@ -4,11 +4,13 @@ namespace App\Actions;
 
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
+use App\Exceptions\WalletTooLight;
 use App\Jobs\SpawnSuccessorRoom;
 use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Slate;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Take a seat in a group — reached by invite code for private groups and
@@ -17,12 +19,13 @@ use App\Models\User;
  * Joining twice is a no-op rather than an error, the FollowTeam idempotency
  * shape: the button you already pressed must never scold you.
  *
- * PUBLIC ROOMS add two rules and one side effect. A room refuses a seat
+ * PUBLIC ROOMS add three rules and one side effect. A room refuses a seat
  * once its cap is reached or its week is already being played (a seat you
- * cannot pick from is not a seat). And the join that FILLS the room spawns
- * the next one — through the atomic `filled_at` claim, so two racing
- * joiners provision exactly one Room N+1. The hourly sweep is the belt;
- * this hook is the suspenders that keeps the lobby stocked in real time.
+ * cannot pick from is not a seat), and a MARQUEE room refuses one the
+ * wallet cannot cover. And the join that FILLS the room spawns the next
+ * one — through the atomic `filled_at` claim, so two racing joiners
+ * provision exactly one Room N+1. The hourly sweep is the belt; this hook
+ * is the suspenders that keeps the lobby stocked in real time.
  */
 class JoinGroup
 {
@@ -33,6 +36,7 @@ class JoinGroup
     /**
      * @throws PickemParticipationGated when the joiner is unverified
      * @throws ContestFull when a public room has no seat to give
+     * @throws WalletTooLight when the seat is priced and the wallet is short
      */
     public function handle(User $user, Group $group): void
     {
@@ -48,11 +52,19 @@ class JoinGroup
             $this->guardRoom($group);
         }
 
-        GroupMember::create([
-            'group_id' => $group->id,
-            'user_id' => $user->id,
-            'role' => GroupMember::MEMBER,
-        ]);
+        // Seat first, then charge, INSIDE one transaction: a failure
+        // between them rolls both back, and if the two ever had to be
+        // ordered the safe direction is a free seat rather than a spent
+        // credit and no room.
+        DB::transaction(function () use ($user, $group) {
+            GroupMember::create([
+                'group_id' => $group->id,
+                'user_id' => $user->id,
+                'role' => GroupMember::MEMBER,
+            ]);
+
+            $this->charge($user, $group);
+        });
 
         // Once-ever, whichever group was first — the key is the cap.
         $this->wallet->handle(
@@ -66,6 +78,21 @@ class JoinGroup
         if ($group->isRoom() && $group->member_cap !== null) {
             $this->spawnIfFilled($group);
         }
+    }
+
+    /**
+     * Ice one down for a marquee seat.
+     *
+     * A free shelf prices at zero and spend() returns without touching the
+     * wallet, so the caller never has to ask whether this room charges.
+     * The no-negative law and the lock that enforces it live in
+     * {@see GrantWalletEntry::spend()}, shared with the wager.
+     *
+     * @throws WalletTooLight
+     */
+    private function charge(User $user, Group $group): void
+    {
+        $this->wallet->spend($user, $group->entryCredits(), GrantWalletEntry::REASON_ROOM_ENTRY);
     }
 
     /** @throws ContestFull */

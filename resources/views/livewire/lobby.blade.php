@@ -5,6 +5,7 @@ use App\Enums\ContestMode;
 use App\Enums\LobbyShelf;
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
+use App\Exceptions\WalletTooLight;
 use App\Models\Group;
 use App\Models\Slate;
 use App\Models\SlateGame;
@@ -297,6 +298,13 @@ new class extends Component
             // filled room, and the words say why.
             $this->addError($errorBag, Voice::line('contest.room.full'));
             unset($this->openRooms, $this->publics, $this->shelves, $this->visibleShelves, $this->tabHasRooms, $this->evergreens, $this->weekContext, $this->firstKick);
+
+            return;
+        } catch (WalletTooLight) {
+            // The marquee costs a Tallboy and this wallet is short. The
+            // line points at the free shelves rather than at a wall: the
+            // Lobby is the front door for anybody without a group.
+            $this->addError($errorBag, Voice::line('contest.room.too_light'));
 
             return;
         }
@@ -601,12 +609,10 @@ new class extends Component
                     <x-mode-rules wire:key="rules-{{ $mode->value }}" :mode="$mode" />
                 @endforeach
 
-                {{-- The rules every mode shares, stated once and plainly. --}}
-                <p class="pt-1 text-micro leading-relaxed text-zinc-500">
-                    Every pick is against the spread, and every line is a half point — no pushes, ever.
-                    Picks lock game by game at kickoff. Commissioner slates are due Tuesday night;
-                    weeks turn official Sunday noon. Tied weeks share the win.
-                </p>
+                {{-- The rules every mode shares, stated once and plainly —
+                     in ONE partial, because the Picks explainer says them
+                     too and two copies of a rule is how a rule drifts. --}}
+                @include('partials.pickem-laws')
             </div>
         </div>
     @else

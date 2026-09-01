@@ -1,9 +1,11 @@
 <?php
 
+use App\Actions\EnterPicks;
 use App\Actions\JoinGroup;
 use App\Enums\ContestMode;
 use App\Exceptions\ContestFull;
 use App\Exceptions\PickemParticipationGated;
+use App\Exceptions\WalletTooLight;
 use App\Models\Contest;
 use App\Models\Group;
 use App\Models\GroupMember;
@@ -22,6 +24,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Number;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\On;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 
@@ -60,9 +63,34 @@ new class extends Component
 
     public const VIEWS = ['week', 'results'];
 
+    /**
+     * Replay flag from Account's "Replay the Picks tour" — a URL param, so
+     * the button is a plain link and a replay is shareable in a bug report.
+     * Home's `?tour=1` grammar, deliberately: two walks with two different
+     * replay verbs would be two things to remember.
+     */
+    #[Url(as: 'tour', except: false)]
+    public bool $tourReplay = false;
+
     public function mount(): void
     {
         $this->view = $this->normalizedView($this->view);
+
+        /*
+         * WHERE THE ECONOMY STARTS. Arriving here stamps the first visit and
+         * restocks the cooler for the football week — lazily, so no schedule
+         * writes a row for somebody who never came back, and keyed, so this
+         * pays once however many times the screen is opened.
+         *
+         * mount(), never render(): a Livewire re-render is cheap and often,
+         * and while the key stops it paying twice nothing would stop it
+         * asking twice. Behind the same gate as the rest of the personal
+         * screen — outside the flag this address keeps its coming-soon
+         * promise, and a currency should not be paid out under it.
+         */
+        if ($this->showPersonal) {
+            app(EnterPicks::class)->handle(auth()->user());
+        }
     }
 
     /** #[Url] hydrates without firing this hook, hence mount() normalizes too. */
@@ -80,6 +108,45 @@ new class extends Component
     public function showPersonal(): bool
     {
         return auth()->check() && Feature::active('pickem');
+    }
+
+    /**
+     * THE PICKS WALK. Its own gate beside Home's, reading its OWN column:
+     * `picks_tour_completed_at`, never `picks_first_seen_at`. The first-visit
+     * stamp is the economy's — it is what pays the weekly top-off — and
+     * folding the two together would mean a replay from Account re-triggered
+     * a grant, or a reader who waved the coach marks away looked to the
+     * economy like somebody who had never arrived.
+     *
+     * Behind `showPersonal` as well as its own flag: outside the pick'em
+     * flag this screen is a coming-soon promise, and walking somebody
+     * through an economy that is not open yet is a tour of nothing.
+     */
+    #[Computed]
+    public function showTour(): bool
+    {
+        $user = auth()->user();
+
+        if ($user === null || ! $this->showPersonal || ! Feature::active('picks-tour')) {
+            return false;
+        }
+
+        return $this->tourReplay || ! $user->hasTouredPicks();
+    }
+
+    /**
+     * The walk finished or was skipped. Clearing the replay flag is the
+     * load-bearing half — Home's lesson: `showTour` short-circuits on it, so
+     * a replayed walk would stay "showing" after its own last card, and
+     * dropping it strips `?tour=1` so a reload does not restart a walk the
+     * reader just closed.
+     */
+    #[On('tour-finished')]
+    public function tourFinished(): void
+    {
+        $this->tourReplay = false;
+
+        unset($this->showTour);
     }
 
     /**
@@ -697,6 +764,10 @@ new class extends Component
             $this->addError($errorBag, Voice::line('contest.room.full'));
 
             return;
+        } catch (WalletTooLight) {
+            $this->addError($errorBag, Voice::line('contest.room.too_light'));
+
+            return;
         }
 
         session()->flash('status', Voice::line('groups.joined', ['group' => $group->name]));
@@ -745,7 +816,7 @@ new class extends Component
         {{-- The week's dateline. No calendar entry, no ribbon — never a
              substituted week. --}}
         @if ($this->weekEntry !== null)
-            <x-week-ribbon :entry="$this->weekEntry" :clock="$this->ribbonClock" />
+            <x-week-ribbon data-tour="week" :entry="$this->weekEntry" :clock="$this->ribbonClock" />
         @endif
 
         {{-- YOU, before anything on the screen asks you for something.
@@ -757,7 +828,7 @@ new class extends Component
              seat and no settled week, and the pitch it gets instead is
              byte-identical to the one it has always had. --}}
         @if ($this->hasTabs && $this->youStrip !== null)
-            <x-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
+            <x-you-strip data-you-strip data-tour="balance" :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
         @endif
 
         {{-- What needs you right now: slates still taking your picks,
@@ -913,7 +984,7 @@ new class extends Component
              fork above and the lobby door below still key off groupCards
              exactly as they did. --}}
         @if ($this->whereYouPlay->isNotEmpty())
-            <div class="flex flex-col gap-2">
+            <div class="flex flex-col gap-2" data-tour="seats">
                 <div class="flex items-baseline justify-between gap-3">
                     <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Where you play</flux:subheading>
                     {{-- The small escape to the wizard, for a reader who
@@ -1105,8 +1176,27 @@ new class extends Component
                 <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Every week you have played, and what it paid.</span>
             </x-link-row>
         @endif
+
+        {{-- THE REFERENCE, on BOTH views: the rules are what you go
+             looking for mid-week as readily as on a Sunday, and a door
+             that only exists on one fork is a door somebody cannot find.
+             Its own address rather than a disclosure here — this screen
+             already carries the week, the seats, the payoff and the
+             ladder, and the Lobby folded its own rules away for exactly
+             that reason. --}}
+        <x-link-row :href="route('pickem.how')" title="How this works" data-tour="how">
+            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Tallboys, the cooler, and what every room costs.</span>
+        </x-link-row>
         </div>
     @else
         @include('partials.pickem-promise')
+    @endif
+
+    {{-- The Picks walk, LAST at the page root for the same reason Home's is:
+         a `fixed inset-0` overlay must never sit inside a sticky or
+         backdrop-filter ancestor, which would resolve it against the parent
+         instead of the viewport. --}}
+    @if ($this->showTour)
+        <livewire:tour walk="picks" />
     @endif
 </div>

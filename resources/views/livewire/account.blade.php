@@ -1088,6 +1088,26 @@ new class extends Component
             Replay the tour
         </flux:button>
 
+        {{-- The SECOND walk, beside the first and never folded into it: the
+             app's first-run story and the economy's are different halves,
+             and a reader who wants the Tallboy rules again should not have
+             to sit through the install pitch to reach them. Same `?tour=1`
+             grammar on a different screen — one verb to remember. Behind
+             the pick'em flag, because outside it Picks is a promise and
+             there is nothing to walk. --}}
+        @if (Laravel\Pennant\Feature::active('pickem'))
+            <flux:button
+                :href="route('pickem.home', ['tour' => 1])"
+                wire:navigate
+                size="sm"
+                variant="ghost"
+                class="justify-start"
+            >
+                <flux:icon.arrow-repeat variant="micro" />
+                Replay the Picks tour
+            </flux:button>
+        @endif
+
         @if (auth()->user()->isAdmin())
             <flux:button href="/admin" icon="wrench-screwdriver" size="sm" variant="ghost" class="justify-start">
                 Admin

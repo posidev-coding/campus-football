@@ -174,10 +174,17 @@ class Voice
             'r' => 'Butchering your fight song...',
         ],
 
+        /*
+         * THE CLOSER, and it names the sink now. It held the screen longest
+         * while promising a currency with nothing to buy — the loudest
+         * promise in the app attached to the emptiest fact. Every register
+         * says THE LOBBY, because that is where a Tallboy is worth
+         * something, and the last thing read is the thing remembered.
+         */
         'splash.warmup.tallboy' => [
-            'pg' => 'Chilling the Tallboys...',
-            'pg13' => 'Icing down the Tallboys...',
-            'r' => 'Hiding the good Tallboys...',
+            'pg' => 'Stocking the Lobby cooler with Tallboys...',
+            'pg13' => 'Icing down Tallboys for the Lobby...',
+            'r' => 'Hiding the good Tallboys from the Lobby regulars...',
         ],
 
         /*
@@ -368,10 +375,22 @@ class Voice
             'r' => 'Get paid in Tallboys',
         ],
 
+        /*
+         * EARNED EVERYWHERE, SPENT IN THE LOBBY — both halves, because
+         * either one alone is a lie by omission. "The app runs on Tallboys"
+         * over a balance with nowhere to go was the promise-debt this whole
+         * economy exists to pay off, and a stop that still said only "earn
+         * them" would leave a private-league player holding a number.
+         *
+         * The canonical verbs ride these lines (ice down, crush) so the
+         * Lobby's buttons say the same words the tour did. PG keeps the
+         * facts and skips the consumption slang — mild is a register, not a
+         * punishment, and the plain version has to be as useful.
+         */
         'tour.wallet.body' => [
-            'pg' => "The app runs on Tallboys. Earn them and stack XP by playing Pick'em — your balance and rank live up here.",
-            'pg13' => 'The app runs on Tallboys. Win picks, stack XP, climb the ranks — your balance sits up here, judging quietly.',
-            'r' => 'The app runs on Tallboys. Win picks, stack XP, climb the ranks — and your balance up here will say exactly how good you really are.',
+            'pg' => 'The app runs on Tallboys. Earn them anywhere you play, and spend them in the Lobby — a marquee seat, or five points riding on one game.',
+            'pg13' => 'The app runs on Tallboys. Earn them everywhere, spend them in the Lobby: ice one down for a Spotlight seat, or crush one on a game for five either way.',
+            'r' => 'The app runs on Tallboys. Earn everywhere, spend in the Lobby — ice one down for a marquee seat, or crush one on a game and live with it.',
         ],
 
         /*
@@ -385,6 +404,66 @@ class Voice
             'pg' => 'The :xp XP already in there? Picking your team earned that.',
             'pg13' => 'That :xp XP already sitting in there? Picking your team paid it.',
             'r' => "Already up :xp XP just for picking a team. Easiest money you'll make all season.",
+        ],
+
+        /*
+         * THE PICKS WALK — the economy's own five stops, added when Tallboys
+         * gained two sinks and a cooler. Its own keys rather than a reuse of
+         * the Home walk's: this reader is standing on their own week, not
+         * meeting the app, so "up here" and "coming soon" are the wrong
+         * sentences even where the subject is the same.
+         *
+         * The `room` stop is deliberately SHARED with the Home walk — the
+         * pitch is identical from either screen ("get in a room"), and two
+         * copies of one idea is how the two screens start disagreeing about
+         * what a room is.
+         */
+        'tour.week.heading' => [
+            'pg' => 'This is your week',
+            'pg13' => 'Your week, all of it',
+            'r' => 'Your week. No hiding from it',
+        ],
+
+        'tour.week.body' => [
+            'pg' => 'Every card you have to fill in, with the deadline on it. Picks lock game by game at kickoff.',
+            'pg13' => "Everything still waiting on you, and the clock it's waiting under. Picks lock game by game at kickoff.",
+            'r' => 'Everything waiting on you, with a clock. Picks lock game by game at kickoff, and an empty card is worth exactly nothing.',
+        ],
+
+        'tour.seats.heading' => [
+            'pg' => 'Every seat you hold',
+            'pg13' => 'Every seat you hold',
+            'r' => 'Everywhere you can be beaten',
+        ],
+
+        'tour.seats.body' => [
+            'pg' => 'Private groups run all season; public rooms are one Saturday each. Each card says which it is.',
+            'pg13' => 'Season-long groups and one-Saturday rooms, in one stack — each card says which kind it is.',
+            'r' => 'Season-long grudges and one-Saturday rooms, stacked together. Each card says which kind of trouble it is.',
+        ],
+
+        'tour.balance.heading' => [
+            'pg' => 'Your rank and your Tallboys',
+            'pg13' => 'Rank, XP, Tallboys, wins',
+            'r' => 'The receipts, in four numbers',
+        ],
+
+        'tour.balance.body' => [
+            'pg' => 'XP climbs the ranks. Tallboys are the currency you spend in the Lobby — and the cooler tops you up every week.',
+            'pg13' => 'XP climbs the ranks; Tallboys get spent in the Lobby. The cooler tops you up weekly, so running dry is temporary.',
+            'r' => 'XP is the ladder, Tallboys are the money, and the cooler restocks weekly — so being broke is never the excuse.',
+        ],
+
+        'tour.how.heading' => [
+            'pg' => 'The rules, when you want them',
+            'pg13' => 'The rules, whenever you want them',
+            'r' => 'The rules, for when somebody argues',
+        ],
+
+        'tour.how.body' => [
+            'pg' => 'What every room costs, how the cooler works, and how each mode is scored — all on one page you can come back to.',
+            'pg13' => "Room prices, the cooler, and how every mode scores. One page, and it's here whenever the argument starts.",
+            'r' => "Every price, every rule, every mode. Bookmark it — you'll want it the week somebody claims they were robbed.",
         ],
 
         'tour.league.heading' => [
@@ -1169,6 +1248,57 @@ class Voice
             'r' => 'No history yet. Play a week and this page starts keeping receipts.',
         ],
 
+        /*
+         * THE MARQUEE PRICE, refused. A Spotlight seat costs a Tallboy and
+         * this wallet is short — so the line has to do two jobs: say WHY the
+         * tap did nothing, and point at the shelves that are free, because
+         * the Lobby is the front door for anybody without a private group
+         * and nobody may read this as "the Lobby is closed to me".
+         */
+        /*
+         * THE WAGER, refused for money. Distinct from the marquee's refusal
+         * because the reader is standing on a pick sheet rather than in the
+         * store: nothing to redirect them to, so it says what the cooler
+         * costs and where the next one comes from.
+         */
+        /*
+         * THE EXPLAINER's three subheadings. Register copy AROUND the rules,
+         * never instead of them: the numbers on that screen come from the
+         * constants that pay them, and these lines only frame what the
+         * reader is about to read. The cooler line is the one a reader plans
+         * a week with, so all three registers say the SAME rule — only the
+         * attitude moves.
+         */
+        'picks.how.currency' => [
+            'pg' => 'Earned everywhere you play. Spent in the Lobby, and only there.',
+            'pg13' => 'You earn them everywhere. You spend them in the Lobby — nowhere else takes them.',
+            'r' => 'Earned everywhere, spent in the Lobby. Your private league does not take them and never will.',
+        ],
+
+        'picks.how.cooler' => [
+            'pg' => 'A weekly top-off that depends on what you are holding — so running low is temporary, and hoarding stops paying.',
+            'pg13' => 'The weekly top-off reads your balance: broke gets restocked, comfortable gets a splash, stocked gets nothing.',
+            'r' => 'The cooler reads your balance before it pours. Broke? Restocked. Sitting on a pile? Enjoy the pile — it stops growing.',
+        ],
+
+        'picks.how.rooms' => [
+            'pg' => 'Only the Spotlight shelf charges. Everything else is free to enter.',
+            'pg13' => 'One shelf charges. The rest are free — nobody is priced out of the Lobby.',
+            'r' => 'One shelf costs a Tallboy. The rest are free, so being broke is never the reason you did not play.',
+        ],
+
+        'picks.tallboy.too_light' => [
+            'pg' => 'A Tallboy costs one credit and your cooler is empty. Play the week out — the cooler restocks.',
+            'pg13' => "You're out of Tallboys. Keep playing: the cooler restocks every week, and wins pour their own.",
+            'r' => 'Empty cooler, no wager. Go win something — the cooler restocks weekly and it does not care how you feel about it.',
+        ],
+
+        'contest.room.too_light' => [
+            'pg' => 'That one costs a Tallboy and your cooler is empty. The Conference and Quick hits rooms are free — play one and earn some.',
+            'pg13' => "Spotlight seats cost a Tallboy, and you're short. Conference and Quick hits are free — go win some back.",
+            'r' => "You cannot afford this room. Conference and Quick hits don't charge — start there and stop being broke.",
+        ],
+
         'contest.room.full' => [
             'pg' => 'That room just filled up. A fresh one should be open right below it.',
             'pg13' => 'Too slow — that room\'s full. The next one\'s already open.',
@@ -1437,10 +1567,16 @@ class Voice
             'r' => 'Short cards, small tables. Fewer picks to blow, and everyone watching you blow them.',
         ],
 
+        /*
+         * The one shelf that charges, and the line that says so — in three
+         * registers, around the CONSTANT verb the button wears. The price
+         * itself is a fact on the row and stays the same words everywhere;
+         * the slang lives here.
+         */
         'lobby.shelf.spotlight' => [
-            'pg' => 'Themed rooms — one idea per card.',
-            'pg13' => 'Themed rooms: ranked chaos, night games, dogs that bite.',
-            'r' => 'Themed rooms for people who think they have a specialty. Prove it.',
+            'pg' => 'Themed rooms — one idea per card. A seat here costs one Tallboy.',
+            'pg13' => 'Themed rooms: ranked chaos, night games, dogs that bite. Ice one down to get in.',
+            'r' => 'Themed rooms for people who think they have a specialty. Costs a Tallboy — crack it open and prove it.',
         ],
 
         'lobby.shelf.conference' => [

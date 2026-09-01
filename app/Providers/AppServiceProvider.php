@@ -150,6 +150,14 @@ class AppServiceProvider extends ServiceProvider
         Feature::define('guided-tour', fn (): bool => true);
 
         /*
+         * The PICKS walk, its own flag beside the Home one: it points at an
+         * economy that can be pulled independently of the app's first-run
+         * story, and a walkthrough of a feature that has been turned off is
+         * worse than no walkthrough at all.
+         */
+        Feature::define('picks-tour', fn (): bool => true);
+
+        /*
          * Admins see the real Pick'em surfaces while `cfb.pickem_open` is
          * false; everyone else keeps the coming-soon screen. Launch is that
          * config going true (PICKEM_OPEN in the environment), so the flip is

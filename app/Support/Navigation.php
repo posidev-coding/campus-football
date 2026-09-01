@@ -121,7 +121,7 @@ class Navigation
                 // Only routes that RENDER belong here — the permanent
                 // redirects (picks.groups, picks.group) never paint a nav
                 // to light.
-                'routes' => ['pickem.home', 'pickem.lobby', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join', 'pickem.leaderboard', 'pickem.history'],
+                'routes' => ['pickem.home', 'pickem.lobby', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join', 'pickem.leaderboard', 'pickem.history', 'pickem.how'],
                 /*
                  * Sections exist only inside the `pickem` flag: outside it
                  * the area is one coming-soon screen and a one-tab strip
@@ -144,7 +144,7 @@ class Navigation
                  * just joined — which is the moment you stopped browsing.
                  */
                 'sections' => (config('cfb.pickem_open') === true || (bool) auth()->user()?->isAdmin()) ? [
-                    ['route' => 'pickem.home', 'label' => 'My Picks', 'routes' => ['pickem.home', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join', 'pickem.talk']],
+                    ['route' => 'pickem.home', 'label' => 'My Picks', 'routes' => ['pickem.home', 'pickem.group', 'pickem.room', 'pickem.create', 'pickem.build', 'pickem.join', 'pickem.talk', 'pickem.how']],
                     ['route' => 'pickem.lobby', 'label' => 'Lobby'],
                     ['route' => 'pickem.leaderboard', 'label' => 'Leaderboard'],
                     ['route' => 'pickem.history', 'label' => 'History'],

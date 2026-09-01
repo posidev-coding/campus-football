@@ -7,6 +7,7 @@ use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Models\User;
+use App\Support\Tours;
 use App\Support\Voice;
 use Illuminate\Support\Str;
 use Laravel\Pennant\Feature;
@@ -172,25 +173,53 @@ describe('targets', function () {
         expect($html)->toContain('data-tour="account"');
     });
 
-    it('keeps the Blade and Alpine step lists identical', function () {
+    it('renders the copy blocks and the spotlight walk off ONE step list', function () {
         /*
-         * The tour's steps are defined TWICE in tour.blade.php — a Blade
-         * array that renders the copy blocks by index, and an Alpine `keys`
-         * array that walks the spotlights by index. A mismatch shows one
-         * step's words over another step's highlight, and nothing errors.
-         * Source-swept because no render can see the disagreement.
+         * The steps used to be typed TWICE in tour.blade.php — a Blade array
+         * for the copy blocks and an Alpine `keys` array for the spotlights,
+         * both walked by index — and a mismatch showed one stop's words over
+         * another stop's highlight without erroring. This test swept the two
+         * level.
+         *
+         * A SECOND WALK made that a second chance to mistype it, so the
+         * duplication is gone: the lists live on App\Support\Tours, the view
+         * reads one of them into `$steps`, and Alpine's copy is rendered
+         * FROM that with @js. The sweep now holds the shape that makes the
+         * old bug unreachable rather than policing two copies of it.
          */
         $source = file_get_contents(resource_path('views/livewire/tour.blade.php'));
 
-        preg_match_all("/\\[((?:\\s*'[a-z-]+',?)+)\\s*\\]/", $source, $lists);
+        expect($source)->toContain('keys: @js($steps)')
+            ->and($source)->toContain('$steps = $this->steps;')
+            ->and(array_keys(Tours::WALKS))->toBe([Tours::HOME, Tours::PICKS])
+            // The Home walk still opens and closes where it always did.
+            ->and(Tours::WALKS[Tours::HOME][0])->toBe('glance')
+            ->and(Tours::WALKS[Tours::HOME][count(Tours::WALKS[Tours::HOME]) - 1])->toBe('install');
 
-        $sequences = collect($lists[1])
-            ->map(fn (string $list) => preg_match_all("/'([a-z-]+)'/", $list, $m) ? $m[1] : [])
-            ->filter(fn (array $keys) => in_array('glance', $keys, true))
-            ->values();
+        // No walk repeats a stop: two copy blocks over one spotlight.
+        foreach (Tours::WALKS as $walk => $steps) {
+            expect(array_unique($steps))->toBe($steps, "{$walk} repeats a stop");
+        }
+    });
 
-        expect($sequences)->toHaveCount(2)
-            ->and($sequences[0])->toBe($sequences[1]);
+    it('writes every stop of every walk in every register', function () {
+        /*
+         * A stop is a `[data-tour]` key AND a Voice family, so a list gains
+         * a stop and the copy map has to gain three registers. An unwritten
+         * key resolves to '' and the card renders a hole with Next under it
+         * — the coach mark equivalent of a blank screen.
+         */
+        foreach (Tours::WALKS as $walk => $steps) {
+            foreach ($steps as $step) {
+                foreach (['heading', 'body'] as $part) {
+                    $line = Voice::line("tour.{$step}.{$part}", for: User::factory()->make([
+                        'content_rating' => ContentRating::Pg,
+                    ]));
+
+                    expect($line)->not->toBe('', "tour.{$step}.{$part} is unwritten for {$walk}");
+                }
+            }
+        }
     });
 
     it('holds back while the signup wizard is on screen, then starts after a beat', function () {
@@ -590,6 +619,38 @@ describe('the voice', function () {
                     ->and($r)->not->toBe('')
                     ->and($r)->not->toBe($pg);
             }
+        }
+    });
+
+    it('names where a Tallboy is SPENT, not just that one exists', function () {
+        /*
+         * The promise-debt this economy exists to pay off. "The app runs on
+         * Tallboys" over a balance with nowhere to go was the loudest claim
+         * in the app attached to the emptiest fact — and a stop that still
+         * said only "earn them" would leave a private-league reader holding
+         * a number they cannot place.
+         *
+         * Both halves, in every register: earned everywhere, spent in the
+         * LOBBY. The named place is the load-bearing word; the slang around
+         * it is free to vary.
+         */
+        foreach ([ContentRating::Pg, ContentRating::Pg13, ContentRating::R] as $rating) {
+            $body = Voice::line('tour.wallet.body', for: User::factory()->make(['content_rating' => $rating]));
+
+            expect($body)->toContain('Lobby')
+                ->and(str_contains($body, 'Earn') || str_contains($body, 'earn'))->toBeTrue()
+                ->and(str_contains($body, 'spend') || str_contains($body, 'Spend'))->toBeTrue();
+        }
+    });
+
+    it('closes the signup splash on the sink, in every register', function () {
+        // The closer holds the screen longest because the last thing read
+        // is the thing remembered — so it is the one phrase that must not
+        // sell a currency with nothing to buy.
+        foreach ([ContentRating::Pg, ContentRating::Pg13, ContentRating::R] as $rating) {
+            expect(Voice::line('splash.warmup.tallboy', for: User::factory()->make(['content_rating' => $rating])))
+                ->toContain('Tallboy')
+                ->toContain('Lobby');
         }
     });
 

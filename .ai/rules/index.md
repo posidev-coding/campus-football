@@ -4,6 +4,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 
 | Applies to | Rule file |
 | --- | --- |
+| app/Actions/GrantWalletEntry.php,app/Actions/EnterPicks.php,app/Actions/MakePick.php,app/Actions/SettleSlate.php | .ai/rules/actions-actions.md |
 | app/Support/Voice.php,resources/views/livewire/**,public/brand/currency/**,app/Actions/GrantWalletEntry.php | .ai/rules/actions.md |
 | app/Ai/**,app/Support/Recap*.php,app/Support/AiFailure.php,app/Support/GamedayFallback.php,app/Support/StatAnswer.php,app/Support/Stats/StatCatalog.php,app/Livewire/Concerns/AsksQuestions.php | .ai/rules/ai-layer.md |
 | app/**,resources/views/**,tests/**,docs/** | .ai/rules/app-views.md |
@@ -19,6 +20,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Services/Contests/** | .ai/rules/contests.md |
 | resources/views/livewire/**, resources/views/mail/**, app/Support/Voice.php, app/Notifications/**, app/Enums/ContentRating.php, app/Enums/TiebreakerMetric.php, app/Support/Cadence.php | .ai/rules/copy-and-voice.md |
 | resources/views/**, resources/css/** | .ai/rules/css.md |
+| public/brand/currency/** | .ai/rules/currency.md |
 | app/Models/**, database/migrations/**, database/factories/** | .ai/rules/data-model.md |
 | app/Services/Espn/**, app/Console/Commands/**, app/Jobs/**, routes/console.php, routes/** | .ai/rules/espn-sync.md |
 | app/Services/Espn/Sync/SyncGames.php,app/Services/Espn/** | .ai/rules/espn.md |
@@ -31,10 +33,12 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Support/SlateFeasibility.php,resources/views/livewire/group.blade.php,resources/views/livewire/slate-builder.blade.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/livewire-views-livewire.md |
 | app/Actions/PostToConversation.php,app/Actions/DeleteConversationPost.php,resources/views/livewire/conversation.blade.php | .ai/rules/livewire.md |
 | app/Models/**, database/migrations/**, resources/views/** | .ai/rules/migrations-views.md |
+| app/Services/Contests/ModeEngine.php,app/Actions/CrushTallboy.php,app/Actions/LockPick.php,app/Models/Pick.php | .ai/rules/models.md |
 | app/Providers/** | .ai/rules/providers.md |
 | app/Support/**, app/Services/** | .ai/rules/services.md |
 | routes/**,app/Http/Controllers/Ops/**,app/Support/RemoteBoard.php,app/Console/Commands/Issue*.php | .ai/rules/support-console-commands.md |
 | app/Actions/GrantWalletEntry.php,app/Actions/EnterFilmRoom.php,app/Support/RankLadder.php,app/Support/PickemPreflight.php | .ai/rules/support-support.md |
+| resources/views/livewire/tour.blade.php,app/Support/Tours.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/support-views-livewire.md |
 | app/Support/**, app/Actions/**, app/Services/CfbCalendar.php | .ai/rules/support.md |
 | app/Services/Espn/Sync/SyncGames.php,app/Console/Commands/SweepLiveSummariesCommand.php,routes/console.php | .ai/rules/sync-console-commands.md |
 | tests/** | .ai/rules/tests.md |

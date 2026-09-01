@@ -24,6 +24,35 @@ use App\Models\SlateGame;
  */
 abstract class ModeEngine
 {
+    /**
+     * THE TALLBOY WAGER: symmetric, flat, and never scaled.
+     *
+     * Five rather than ten because most games are worth ten, so every
+     * score sits on a ten-point lattice: a ten-point wager keeps you ON
+     * that lattice and therefore breaks no ties at all, while a five lands
+     * wagerers on the fives and everyone else on the zeros, where the two
+     * can never tie. It does not hand the tie to whoever paid — half the
+     * time the separation is downward.
+     *
+     * It stays FLAT even where it exceeds the game. Triple Option's tier-3
+     * games pay four, so a wager there outweighs the game itself; that is
+     * a choice, not an oversight, and it is what makes a junk game worth
+     * wagering on. Scaling to the tier yields fractions on nines and
+     * sevens.
+     */
+    public const TALLBOY_SWING = 5;
+
+    /**
+     * A wager may never be worth more than roughly this much of a perfect
+     * week — the guard that outlives today's ten rooms.
+     *
+     * Measured as swing ÷ perfect week: Shotgun 5/100 = 5%, Under the
+     * Lights 5/80 = 6.3%, Triple Option 5/100 = 5%. A THIN Saturday is
+     * what this is really for — three games is a 30-point week and 16.7%,
+     * refused.
+     */
+    public const TALLBOY_LEVERAGE_CEILING = 0.15;
+
     public function __construct(protected ?array $settings = null) {}
 
     /** One knob from the contest's settings column, or the mode's default. */
@@ -73,6 +102,23 @@ abstract class ModeEngine
      */
     public function pointsForPick(SlateGame $slateGame, Pick $pick, string $result): int
     {
+        /*
+         * THE TALLBOY, priced in the one seam live grading and settlement
+         * share, so the money math can never fork. `picks.locked` is the
+         * stored wager for BOTH mechanics — the Woodshed overrides this
+         * method for the Lock, and the two are mutually exclusive by
+         * design, so one column serves both. A locked pick under a mode
+         * that offers neither is inert data and grades plainly.
+         */
+        if ($pick->locked && $this->supportsTallboy()) {
+            return match ($result) {
+                Pick::WIN => $this->pointsFor($slateGame) + self::TALLBOY_SWING,
+                Pick::LOSS => -self::TALLBOY_SWING,
+                // Defense only — the half-point law makes a push unreachable.
+                Pick::PUSH => 0,
+            };
+        }
+
         return $result === Pick::WIN
             ? $this->pointsFor($slateGame) + $this->kickerBonus($slateGame, $pick)
             : 0;
@@ -124,6 +170,94 @@ abstract class ModeEngine
     public function supportsLock(): bool
     {
         return false;
+    }
+
+    /**
+     * Whether the SLATE SIZE this engine reads was frozen from a real
+     * Saturday or is just the mode's default. A dynamic room's answer to
+     * supportsTallboy() is only as good as the card it ends up dealing, so
+     * an explainer with no contest in hand must say "when the card is big
+     * enough" rather than a flat yes.
+     */
+    public function sizeIsFrozen(): bool
+    {
+        return $this->setting('slate_size') !== null;
+    }
+
+    /**
+     * The Tallboy rule for THIS contest, in one plain sentence.
+     *
+     * Product vocabulary and register-constant, the ContestMode::ruleLines()
+     * posture: the game is never described two ways, so the explainer,
+     * the room grid and the docs all read this rather than restating it.
+     * DERIVED from the same three exclusions supportsTallboy() applies, so
+     * a room that changes shape cannot end up with a stale reason printed
+     * beside a correct answer.
+     */
+    public function tallboyRule(): string
+    {
+        return match (true) {
+            $this->supportsLock() => 'No Tallboy — the Lock is this mode\'s wager, and a slate never offers two.',
+            $this->kickerPoints() !== null => 'No Tallboy — the underdog kicker is already riding on every winning pick.',
+            $this->setting('tallboy', true) === false => 'No Tallboy — this room is in and out, with nothing to weigh.',
+            ! $this->supportsTallboy() => 'No Tallboy — '.self::TALLBOY_SWING.' points is too big a swing for a card this short.',
+            default => 'Crush a Tallboy on any one game: +'.self::TALLBOY_SWING.' right, −'.self::TALLBOY_SWING.' wrong.',
+        };
+    }
+
+    /**
+     * The most a perfect week pays before any wager — the denominator the
+     * Tallboy's leverage is measured against, and derived rather than
+     * re-typed. Untiered modes are size × the standard ten; a tiered mode
+     * overrides with its own arithmetic.
+     */
+    public function perfectWeek(): int
+    {
+        return $this->slateSize() * ClassicMode::GAME_POINTS;
+    }
+
+    /**
+     * Whether THIS CONTEST takes the Tallboy wager.
+     *
+     * EVALUATED PER SLATE, NOT PER FLAVOR, and that is the whole point of
+     * asking the engine rather than a list. Ranked Action and all five
+     * conference rooms are dynamic-size: their slate is as big as the
+     * Saturday allows, frozen into `contests.settings.slate_size` at spawn.
+     * A thin conference week can seat three games — a 30-point perfect
+     * week, where ±5 is 16.7% and over the ceiling. A static per-flavor
+     * allowlist ships a silent over-leverage bug on the first thin
+     * Saturday; this reads the contest's own frozen size, exactly the way
+     * blurb($games) takes the contest's size rather than the mode's.
+     *
+     * Three exclusions above the arithmetic:
+     *
+     *  - A mode that already owns a wager. The Woodshed has the Lock, and a
+     *    slate must never offer two — which is also why one `picks.locked`
+     *    column can serve both mechanics with no migration.
+     *  - A mode carrying a KICKER. Upset Alley's underdog bonus already
+     *    stacks onto a winning pick, and a second modifier on the same pick
+     *    is unreadable.
+     *  - `tallboy => false` in settings. Two-Minute Drill is excluded on
+     *    IDENTITY, not arithmetic: at ±5 its leverage is 10% and inside the
+     *    ceiling, but its own blurb sells it as "the flash card: in and
+     *    out", and a wager is friction. Keeping one public shelf with zero
+     *    spend decisions is also the clean answer to "is the Lobby
+     *    pay-to-play?".
+     */
+    public function supportsTallboy(): bool
+    {
+        if ($this->supportsLock() || $this->kickerPoints() !== null) {
+            return false;
+        }
+
+        if ($this->setting('tallboy', true) === false) {
+            return false;
+        }
+
+        $perfect = $this->perfectWeek();
+
+        return $perfect > 0
+            && self::TALLBOY_SWING / $perfect <= self::TALLBOY_LEVERAGE_CEILING;
     }
 
     /** Whether the Bear rides this mode's slates. */

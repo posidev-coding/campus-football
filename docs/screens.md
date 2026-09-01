@@ -716,6 +716,66 @@ the zone's only button, the compact rows beneath it are the shared
 and a finished entry says "Entry in" — or amber "Tiebreaker left" when the
 question is the one thing open — instead of a fraction.
 
+## Two guided walks, one component, two columns
+
+`livewire/tour.blade.php` runs BOTH: the app's first-run walk from Home
+(nine stops, closing on the install with the detected browser's own steps
+inside the card) and the PICKS walk (`week · seats · balance · room · how`),
+added when Tallboys gained two sinks and a cooler worth explaining. They
+differ in exactly three things — the step list, the copy those keys resolve,
+and the column the finish stamps — so a second component would have been a
+second copy of the spotlight geometry, which is the part with the scars on
+it. The lists live on `App\Support\Tours`; Blade renders the copy blocks by
+index and Alpine walks the spotlights by index, and both read ONE `$steps`
+now, which is what makes a second walk safe.
+
+**Two columns, and the distinction is the point.**
+`users.picks_first_seen_at` is the ECONOMY's fact — it is what switches
+Tallboys on and what the weekly top-off hangs off — while
+`users.picks_tour_completed_at` is one walk's business. Folding them
+together would mean a replay from Account re-triggered a grant, or a reader
+who waved the coach marks away looked to the economy like somebody who had
+never turned up. Its own Pennant flag (`picks-tour`), its own `UxSignal`
+(one emitter per signal, always), and its own replay row in Account.
+
+The `room` stop is shared with the Home walk because the pitch is identical
+from either screen, but its BUTTON is not: from Home it opens Picks, and
+from Picks — where the spotlight is already on the Lobby door — it opens the
+store. A button to the screen you are standing on is a dead button.
+
+## How this works is a side room off My Picks, not a fifth chip
+
+`/picks/how` (`picks-how`) is the Picks area's reference screen: the
+currency, the cooler, what every room costs, and the three modes. It exists
+because the Tallboy economy put a SECOND thing to understand on top of
+contest modes that were only ever explained inside the store — a reader
+standing on their own week should not have to walk into the Lobby to find
+out what the number in their header buys.
+
+**A destination rather than a disclosure at the foot of My Picks.** That
+screen already carries the week, the seats, the payoff and the ladder, and
+the Lobby folded its own rules away for exactly this reason. It is reached
+from a link row that renders on BOTH forks — the rules are looked up
+mid-week as readily as on a Sunday — and it lights My Picks in the section
+strip rather than taking a fifth slot in a four-chip row.
+
+**Nothing on it is restated.** Mode rules are `ContestMode::ruleLines()`
+through the same `x-mode-rules` card the Lobby uses; the shared laws are one
+partial (`partials/pickem-laws`) both screens include; the room grid reads
+`LobbyFlavor` and the engine; the cooler's three tiers come off
+`GrantWalletEntry`'s constants and the reader's own row is MARKED, which is
+what turns a rule into an answer. A rebalance moves this screen without
+anybody editing it.
+
+**The room grid is one stacked card per room, never a table.** Thirteen
+rooms across three columns is a sideways scroll at 390px;
+`ChromeConsistencyTest` bans `overflow-x-auto` outright, and the
+non-negotiables put the design at 390 first. Cards widen to two columns
+above `sm`. A dynamic-size room answers "On a full card" rather than a flat
+yes, because its slate is as big as the Saturday allows and a thin one puts
+±5 over the leverage ceiling — the same honesty `blurb($games)` applies to a
+numbered pitch.
+
 ## The Lobby sells the open contests
 
 `/lobby` (`lobby`) is the contest browser and nothing else — no picks, no
