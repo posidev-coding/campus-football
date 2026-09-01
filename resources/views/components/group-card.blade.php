@@ -85,12 +85,16 @@
 
     <div class="flex items-center justify-between gap-3 text-sm">
         @if ($card['state'] === 'waiting')
-            {{-- A PUBLIC ROOM WHOSE SATURDAY IS GONE. It has no slate for
-                 the current week, so it falls through the state match to
+            {{-- A PUBLIC ROOM WHOSE SATURDAY IS GONE. It has no slate on
+                 the card, so it falls through the state match to
                  'waiting' — and the waiting line names a commissioner the
-                 room never had, on a week that is never coming. The room
-                 keeps its URL forever, so the card still travels; only
-                 the words change. --}}
+                 room never had, on a week that is never coming.
+
+                 My Picks no longer STACKS a played room (a room is a
+                 transient contest; it leaves the stack for the History
+                 door), so this branch is the card's own guard rather
+                 than a display path: whoever renders a past card next
+                 inherits the right words instead of the lie. --}}
             @if ($card['past'] ?? false)
                 <span class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">{{ App\Support\Voice::line('group.room.past') }}</span>
             @elseif ($group->isRoom())

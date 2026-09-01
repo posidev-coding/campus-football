@@ -20,6 +20,7 @@ use App\Support\Lobby;
 use App\Support\SlateFeasibility;
 use App\Support\RankLadder;
 use App\Support\Voice;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Number;
 use Laravel\Pennant\Feature;
@@ -275,6 +276,36 @@ new class extends Component
             ->get()
             ->keyBy('slate_id');
 
+        /*
+         * THE SATURDAY EACH ROOM ACTUALLY PLAYS — the one read `$slates`
+         * cannot answer, because it is filtered to the card being sold
+         * and a played room is by definition off it. Dates only, no
+         * eager loads, and only when the reader holds a public seat at
+         * all: this is what tells "the Saturday you played" apart from
+         * "your slate was taken away", which are the same absence in the
+         * card query and two different sentences on the card.
+         */
+        $roomContestIds = $groups
+            ->filter(fn (Group $group) => $group->isRoom())
+            ->map(fn (Group $group) => $contests->get($group->id)?->id)
+            ->filter()
+            ->values();
+
+        $roomSaturdays = $roomContestIds->isEmpty() ? collect() : Slate::query()
+            ->whereIn('contest_id', $roomContestIds)
+            ->orderBy('saturday')
+            ->pluck('saturday', 'contest_id')
+            /*
+             * DATE STRINGS, and the comparison downstream is a string
+             * one. `slates.saturday` is a date column cast at the app's
+             * timezone while the card being sold is an ET midnight —
+             * comparing the two as instants makes the SAME Saturday four
+             * hours "earlier" and files a live room under played. Every
+             * other Saturday comparison in this codebase is
+             * toDateString(); this one is too.
+             */
+            ->map(fn (?CarbonInterface $day) => $day?->toDateString());
+
         // Season wins, and a practice week never earned one — the same
         // ledger rule the clubhouse's season table reads.
         $wins = SlateEntry::query()
@@ -309,9 +340,10 @@ new class extends Component
          */
         $viable = null;
 
-        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $fallbackDeadline, $weekId, $week, $pending, &$viable) {
+        return $groups->map(function (Group $group) use ($contests, $slates, $roomSaturdays, $made, $entries, $wins, $fallbackDeadline, $weekId, $week, $pending, &$viable) {
             $contest = $contests->get($group->id);
             $slate = $contest === null ? null : $slates->get($contest->id);
+            $roomSaturday = $contest === null ? null : $roomSaturdays->get($contest->id);
             $tally = $slate === null ? null : $made->get($slate->id);
             $entry = $slate === null ? null : $entries->get($slate->id);
 
@@ -363,12 +395,29 @@ new class extends Component
                 'won' => (bool) ($entry->won ?? false),
                 'wins' => (int) ($wins[$contest?->id] ?? 0),
                 'firstKick' => $slate?->firstKickoff(),
-                // A room whose Saturday has come and gone. It keeps its
-                // URL forever but leaves the inventory when its week
-                // ends, so it falls through the state match to 'waiting'
-                // — where the card would tell a reader their PUBLIC room
-                // is waiting on a commissioner it never had.
-                'past' => $group->isRoom() && $group->week_id !== $weekId,
+                /*
+                 * A ROOM WHOSE SATURDAY HAS BEEN PLAYED — a week behind
+                 * us, OR a Saturday behind the one being sold.
+                 *
+                 * The second half is the fix: an ESPN week holds two
+                 * Saturdays (2026 Week 1 = 8/29 and 9/5), so a room that
+                 * played 8/29 still satisfied `week_id === $weekId` on
+                 * the Tuesday after and carried into the fresh week as
+                 * "Public room · this Saturday" — three dead seats
+                 * stacked over the reader's own groups, saying they were
+                 * already in this Saturday's public contests. Read the
+                 * room's OWN Saturday and compare it to the card being
+                 * sold, the same rule every other read on this screen
+                 * follows (.ai/rules/views-livewire-support.md).
+                 *
+                 * A room with no slate at all is NOT past: its card was
+                 * never published or was taken away, which is a
+                 * different sentence on the card and must not be
+                 * inferred from a missing row.
+                 */
+                'past' => $group->isRoom()
+                    && ($group->week_id !== $weekId
+                        || ($roomSaturday !== null && $pending !== null && $roomSaturday < $pending->toDateString())),
                 // A published slate answers for its OWN Saturday; a group
                 // still waiting on one is told about the card being sold.
                 'deadline' => $slate === null
@@ -396,8 +445,17 @@ new class extends Component
     }
 
     /**
-     * THE PUBLIC HALF — one-Saturday rooms, this week's first so a
-     * finished one never sits above a card still taking picks.
+     * THE PUBLIC HALF — the one-Saturday rooms being played RIGHT NOW,
+     * and only those.
+     *
+     * A public room is a transient contest: it is joined for one
+     * Saturday, it dies with that Saturday, and the next week is a fresh
+     * decision. Carrying a played room into the new week put three dead
+     * seats above the reader's real groups and told them they were
+     * already in this Saturday's public contests — which is the exact
+     * opposite of the product. The rooms that played are not deleted
+     * (their leaderboards and their URLs outlive them); they leave THIS
+     * screen for {@see pastRooms()}, which points at History.
      *
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
      */
@@ -405,8 +463,27 @@ new class extends Component
     public function roomCards()
     {
         return $this->cards
-            ->filter(fn (array $card) => $card['group']->isRoom())
-            ->sortBy(fn (array $card) => $card['past'] ? 1 : 0)
+            ->filter(fn (array $card) => $card['group']->isRoom() && ! $card['past'])
+            ->values();
+    }
+
+    /**
+     * THE SEATS THAT ARE OVER — rooms whose Saturday has been played.
+     *
+     * Never rendered as cards. They are a COUNT and a door to History,
+     * because the reader still needs a way back to a room they played
+     * and My Picks is not that way: this screen is the week in front of
+     * them.
+     *
+     * A projection of cards(), like everything else here.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function pastRooms()
+    {
+        return $this->cards
+            ->filter(fn (array $card) => $card['group']->isRoom() && $card['past'])
             ->values();
     }
 
@@ -428,8 +505,11 @@ new class extends Component
     }
 
     /**
-     * EVERY SEAT YOU HOLD, in one stack: groups alphabetical, then rooms
-     * with past Saturdays last, then the always-open tables.
+     * EVERY SEAT YOU ARE STILL PLAYING, in one stack: groups
+     * alphabetical, then this Saturday's rooms, then the always-open
+     * tables. A room whose Saturday has been played is NOT here — it is
+     * a transient contest that has ended, and `pastRooms` sends it to
+     * History.
      *
      * The three zones above still exist and are still the thing this
      * concatenates — the first-run fork and the lobby door both key off
@@ -1011,6 +1091,29 @@ new class extends Component
             </div>
         @endif
 
+        {{-- THE ROOMS THAT ARE OVER, as a door and never as cards.
+
+             A public room is a TRANSIENT contest: one Saturday, then it
+             dies. Stacking last week's three above a reader's own groups
+             said they were already seated in this Saturday's public
+             contests, when the whole point is that a fresh week starts
+             with the decision unmade. So the played rooms leave the
+             stack and keep exactly one thing here — a way back to them.
+
+             The count is a projection of cards(); History is the screen
+             that holds every week the reader has played, in the section
+             strip already. --}}
+        @if ($this->pastRooms->isNotEmpty())
+            <x-link-row :href="route('pickem.history')" title="Rooms you've played">
+                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
+                    {{ $this->pastRooms->count() }} finished {{ Str::plural('room', $this->pastRooms->count()) }} — your settled weeks are in History
+                </span>
+                @php $roomsPast = Voice::line('picks.rooms.past'); @endphp
+                @if ($roomsPast !== '')
+                    <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">{{ $roomsPast }}</span>
+                @endif
+            </x-link-row>
+        @endif
 
         {{-- The code stays as the spoken-word fallback, folded away —
              links are how a group travels now. --}}
