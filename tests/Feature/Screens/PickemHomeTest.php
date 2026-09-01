@@ -1045,23 +1045,35 @@ describe('my week (inside the flag)', function () {
          * The strip's whole cost claim: credits ride the SAME memoized
          * walletTotals() SUM the rank chip and the ladder already read,
          * and wins is a projection of cards(). Four numbers, not four
-         * questions — a second wallet read here is the class of drift
+         * questions — a second wallet SUM here is the class of drift
          * that made the old dashboard heavy.
+         *
+         * MEASURED ON A RETURN VISIT, deliberately. The first arrival is
+         * where the Tallboy economy switches on (EnterPicks: stamp, sweep
+         * the rungs, restock the cooler), and that is a once-a-week write
+         * rather than the cost of looking at the screen. What every OTHER
+         * visit pays is what is pinned: the one memoized SUM, plus the
+         * top-off asking its week key — an existence check on the
+         * (user_id, key) unique, which is the cheapest question in the
+         * schema and the reason the grant can be lazy at all.
          */
         [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
         app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
 
+        Livewire::actingAs($commissioner)->test('pickem-home');
+
         DB::enableQueryLog();
 
-        Livewire::actingAs($commissioner)->test('pickem-home')->assertSee('Tallboys');
+        Livewire::actingAs($commissioner->fresh())->test('pickem-home')->assertSee('Tallboys');
 
         $wallet = collect(DB::getQueryLog())
-            ->filter(fn (array $query) => str_contains($query['query'], 'wallet_entries'))
-            ->count();
+            ->pluck('query')
+            ->filter(fn (string $query) => str_contains($query, 'wallet_entries'));
 
         DB::disableQueryLog();
 
-        expect($wallet)->toBe(1);
+        expect($wallet)->toHaveCount(2)
+            ->and($wallet->filter(fn (string $query) => str_contains($query, 'sum('))->count())->toBe(1);
     });
 });
 

@@ -1,6 +1,8 @@
 <?php
 
+use App\Actions\PublishSlate;
 use App\Enums\ContestMode;
+use App\Jobs\GradeGamePicks;
 use App\Models\Contest;
 use App\Models\Game;
 use App\Models\GameOdd;
@@ -11,6 +13,7 @@ use App\Models\Slate;
 use App\Models\SlateGame;
 use App\Models\User;
 use App\Models\Week;
+use App\Services\Contests\PickGrader;
 
 /*
  * Shared pick'em fixtures, loaded from Pest.php so every Pickem*Test file
@@ -149,4 +152,40 @@ function pickemDraftSlate(Contest $contest): Slate
     ]);
 
     return $slate->fresh();
+}
+
+/**
+ * A published slate with two picking members — the graph every scoring,
+ * settlement and payout scenario stands on.
+ *
+ * @return array{0: Slate, 1: User, 2: User}
+ */
+function pickemContestants(): array
+{
+    [$commissioner, $group, $contest] = pickemContest();
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate = $slate->fresh();
+
+    $alice = User::factory()->create(['handle' => 'alice', 'admin' => true]);
+    $bob = User::factory()->create(['handle' => 'bob']);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $alice->id]);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $bob->id]);
+
+    return [$slate, $alice, $bob];
+}
+
+/** Kick and score one slate game, then regrade it the way the events do. */
+function pickemScore(Slate $slate, int $position, int $home, int $away, bool $final = false): void
+{
+    $game = $slate->games()->orderBy('position')->skip($position - 1)->first()->game;
+
+    $game->update([
+        'home_score' => $home,
+        'away_score' => $away,
+        'status' => $final ? 'post' : 'in',
+        'completed' => $final,
+    ]);
+
+    (new GradeGamePicks($game->id))->handle(app(PickGrader::class));
 }

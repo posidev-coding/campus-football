@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\EnterPicks;
 use App\Actions\JoinGroup;
 use App\Enums\ContestMode;
 use App\Exceptions\ContestFull;
@@ -63,6 +64,22 @@ new class extends Component
     public function mount(): void
     {
         $this->view = $this->normalizedView($this->view);
+
+        /*
+         * WHERE THE ECONOMY STARTS. Arriving here stamps the first visit and
+         * restocks the cooler for the football week — lazily, so no schedule
+         * writes a row for somebody who never came back, and keyed, so this
+         * pays once however many times the screen is opened.
+         *
+         * mount(), never render(): a Livewire re-render is cheap and often,
+         * and while the key stops it paying twice nothing would stop it
+         * asking twice. Behind the same gate as the rest of the personal
+         * screen — outside the flag this address keeps its coming-soon
+         * promise, and a currency should not be paid out under it.
+         */
+        if ($this->showPersonal) {
+            app(EnterPicks::class)->handle(auth()->user());
+        }
     }
 
     /** #[Url] hydrates without firing this hook, hence mount() normalizes too. */

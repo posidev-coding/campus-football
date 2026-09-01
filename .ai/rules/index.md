@@ -4,6 +4,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 
 | Applies to | Rule file |
 | --- | --- |
+| app/Actions/GrantWalletEntry.php,app/Actions/EnterPicks.php,app/Actions/MakePick.php,app/Actions/SettleSlate.php | .ai/rules/actions-actions.md |
 | app/Support/Voice.php,resources/views/livewire/**,public/brand/currency/**,app/Actions/GrantWalletEntry.php | .ai/rules/actions.md |
 | app/Ai/**,app/Support/Recap*.php,app/Support/AiFailure.php,app/Support/GamedayFallback.php,app/Support/StatAnswer.php,app/Support/Stats/StatCatalog.php,app/Livewire/Concerns/AsksQuestions.php | .ai/rules/ai-layer.md |
 | app/**,resources/views/**,tests/**,docs/** | .ai/rules/app-views.md |
@@ -19,6 +20,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Services/Contests/** | .ai/rules/contests.md |
 | resources/views/livewire/**, resources/views/mail/**, app/Support/Voice.php, app/Notifications/**, app/Enums/ContentRating.php, app/Enums/TiebreakerMetric.php, app/Support/Cadence.php | .ai/rules/copy-and-voice.md |
 | resources/views/**, resources/css/** | .ai/rules/css.md |
+| public/brand/currency/** | .ai/rules/currency.md |
 | app/Models/**, database/migrations/**, database/factories/** | .ai/rules/data-model.md |
 | app/Services/Espn/**, app/Console/Commands/**, app/Jobs/**, routes/console.php, routes/** | .ai/rules/espn-sync.md |
 | app/Services/Espn/Sync/SyncGames.php,app/Services/Espn/** | .ai/rules/espn.md |
