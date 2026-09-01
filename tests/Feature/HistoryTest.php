@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ContestMode;
+use App\Models\Contest;
 use App\Models\Group;
 use App\Models\Slate;
 use App\Models\SlateEntry;
@@ -45,7 +46,59 @@ it('lists settled weeks with place, points and the W', function () {
         ->assertSee('3rd of 3')
         ->assertSee('6 pts')
         ->assertSee('1 week')
+        ->assertSee('1 entry')
         ->assertSee('0 wins');
+});
+
+it('counts three rooms on one Saturday as one week and three entries', function () {
+    /*
+     * THE STRIP MUST AGREE WITH THE LIST. Public rooms are joined a
+     * Saturday at a time and a reader can hold several at once, so the
+     * row count and the week count are two different numbers — and the
+     * chip was the row count wearing the word "weeks". Three rooms under
+     * a single Week 1 heading read as "3 weeks", contradicting the one
+     * heading directly beneath it.
+     */
+    $viewer = pickemAdmin();
+    [, $week] = pickemSeasonWeek();
+
+    foreach (['Hail Mary', 'Two-Minute Drill', 'Upset Alley'] as $i => $name) {
+        $room = Group::factory()->create([
+            'name' => $name, 'kind' => Group::KIND_LOBBY, 'week_id' => $week->id, 'member_cap' => 20,
+        ]);
+        $contest = Contest::factory()->create(['group_id' => $room->id, 'mode' => ContestMode::Classic]);
+
+        // One ESPN week, one Saturday, three contests.
+        $slate = Slate::factory()->create([
+            'contest_id' => $contest->id,
+            'week_id' => $week->id,
+            'saturday' => '2026-09-05',
+            'status' => Slate::SETTLED,
+            'settled_at' => now()->subDay(),
+        ]);
+
+        SlateEntry::factory()->create([
+            'slate_id' => $slate->id, 'user_id' => $viewer->id,
+            'final_points' => 60 - $i * 20, 'won' => false,
+        ]);
+    }
+
+    $screen = Livewire::actingAs($viewer)->test('pickem-history');
+
+    // The chip IS the number of headings, by construction.
+    expect($screen->instance()->weeks->count())->toBe(1)
+        ->and($screen->instance()->summary['weeks'])->toBe(1)
+        ->and($screen->instance()->summary['entries'])->toBe(3);
+
+    $screen
+        ->assertSee('1 week')
+        ->assertSee('3 entries')
+        ->assertDontSee('3 weeks')
+        ->assertSee('best 60 pts')
+        // ...and all three rooms are still listed under the one heading.
+        ->assertSee('Hail Mary')
+        ->assertSee('Two-Minute Drill')
+        ->assertSee('Upset Alley');
 });
 
 it('splits the opening week into Week 0 and Week 1 headings', function () {

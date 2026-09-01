@@ -2,6 +2,7 @@
 
 use App\Models\SlateEntry;
 use App\Models\Slate;
+use App\Support\Cadence;
 use App\Support\Voice;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Number;
@@ -69,12 +70,44 @@ new class extends Component
             ->all();
     }
 
-    /** @return array{weeks: int, wins: int, best: int} */
+    /**
+     * THE WEEKS THEMSELVES — entries grouped into the CARDS they played,
+     * keyed on the ESPN week AND the Saturday inside it.
+     *
+     * A split opening week holds two Saturdays under one week id, so the
+     * week alone is not the card. This is what the headings iterate and
+     * what the weeks chip counts: one grouping, so the strip cannot
+     * disagree with the list underneath it.
+     *
+     * @return Collection<string, Collection<int, SlateEntry>>
+     */
+    #[Computed]
+    public function weeks(): Collection
+    {
+        return $this->entries->groupBy(fn (SlateEntry $entry) => $entry->slate->week_id
+            .':'.Cadence::displayWeekNumber($entry->slate->week, $entry->slate->saturday));
+    }
+
+    /**
+     * The season so far, in four numbers.
+     *
+     * WEEKS counts CARDS, not rows. Three public rooms on one Saturday
+     * is three entries and ONE week played, and counting the rows called
+     * it "3 weeks" over a single Week 0 heading — the strip contradicting
+     * the list directly beneath it.
+     *
+     * ENTRIES is the number that was being mislabeled: how many contests
+     * the reader played, however few weekends they span. Both are facts,
+     * so both are said.
+     *
+     * @return array{weeks: int, entries: int, wins: int, best: int}
+     */
     #[Computed]
     public function summary(): array
     {
         return [
-            'weeks' => $this->entries->count(),
+            'weeks' => $this->weeks->count(),
+            'entries' => $this->entries->count(),
             'wins' => $this->entries->where('won', true)->count(),
             'best' => (int) $this->entries->max('final_points'),
         ];
@@ -85,17 +118,26 @@ new class extends Component
     <h1 class="sr-only">History</h1>
 
     @if ($this->entries->isNotEmpty())
-        {{-- The season so far, in three numbers. --}}
-        <div class="flex items-center gap-2">
+        {{-- The season so far, in four numbers — WEEKS and ENTRIES are
+             two of them because they are two facts. Three rooms on one
+             Saturday is one week and three entries, and the strip said
+             "3 weeks" over a single Week 0 heading.
+
+             Four pills fit on one line at 390px today; `flex-wrap` is
+             what keeps that true when a number grows a digit, because
+             nothing on this screen may scroll sideways. --}}
+        <div class="flex flex-wrap items-center gap-2">
             <span class="tabular rounded-full bg-zinc-100 px-3 py-1 text-sm font-semibold dark:bg-zinc-800">{{ $this->summary['weeks'] }} {{ Str::plural('week', $this->summary['weeks']) }}</span>
+            <span class="tabular rounded-full bg-zinc-100 px-3 py-1 text-sm font-semibold dark:bg-zinc-800">{{ $this->summary['entries'] }} {{ Str::plural('entry', $this->summary['entries']) }}</span>
             <span class="tabular rounded-full bg-zinc-100 px-3 py-1 text-sm font-semibold dark:bg-zinc-800">{{ $this->summary['wins'] }} {{ Str::plural('win', $this->summary['wins']) }}</span>
             <span class="tabular rounded-full bg-zinc-100 px-3 py-1 text-sm font-semibold dark:bg-zinc-800">best {{ $this->summary['best'] }} pts</span>
         </div>
 
         {{-- Grouped by the CARD, not the ESPN week: a split opening week
              holds two Saturdays, and a player in both must see Week 0 and
-             Week 1 as separate headings. --}}
-        @foreach ($this->entries->groupBy(fn ($entry) => $entry->slate->week_id.':'.\App\Support\Cadence::displayWeekNumber($entry->slate->week, $entry->slate->saturday)) as $weekEntries)
+             Week 1 as separate headings. The same key the weeks chip
+             counts, so the strip can never disagree with the headings. --}}
+        @foreach ($this->weeks as $weekEntries)
             @php
                 $week = $weekEntries->first()->slate->week;
                 $weekLabel = \App\Support\Cadence::displayWeekLabel($week, $weekEntries->first()->slate->saturday);
