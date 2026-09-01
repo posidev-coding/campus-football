@@ -1039,7 +1039,7 @@ new class extends Component
                      not have room for two seats until `xl`. `min-w-0` at
                      the call site because group-card's root carries none
                      and a grid item keeps its min-content width. --}}
-                <div class="grid gap-2 xl:grid-cols-2">
+                <div class="grid gap-3 xl:grid-cols-2">
                     @foreach ($this->groupCards as $card)
                         <x-group-card class="min-w-0" wire:key="play-{{ $card['group']->id }}" :card="$card" />
                     @endforeach
@@ -1096,7 +1096,7 @@ new class extends Component
                 @endif
 
                 @if ($this->roomCards->isNotEmpty() || $this->tableCards->isNotEmpty())
-                    <div class="grid gap-2 xl:grid-cols-2">
+                    <div class="grid gap-3 xl:grid-cols-2">
                         @foreach ($this->roomCards->concat($this->tableCards) as $card)
                             <x-group-card class="min-w-0" wire:key="play-{{ $card['group']->id }}" :card="$card" />
                         @endforeach

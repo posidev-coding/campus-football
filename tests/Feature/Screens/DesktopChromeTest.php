@@ -274,8 +274,9 @@ describe('flat card lists claim the width', function () {
         // viewport gives 356px cells. `lg` gives 484px.
         ['lobby', 'grid gap-2 lg:grid-cols-2 xl:grid-cols-3'],
         // Beside the sidecar the main column is ~648px at `lg`, so seats
-        // do not go two-up until `xl`.
-        ['pickem-home', 'grid gap-2 xl:grid-cols-2'],
+        // do not go two-up until `xl`. `gap-3`, not `gap-2`: the cards
+        // carry a surface, and at 8px a stack of them ran together.
+        ['pickem-home', 'grid gap-3 xl:grid-cols-2'],
     ]);
 
     it('cancels the pick surface bleed only where it sits in a column', function () {

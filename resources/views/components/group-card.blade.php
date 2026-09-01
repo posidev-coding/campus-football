@@ -37,10 +37,13 @@
     ])->filter()->implode(' · ');
 @endphp
 
+{{-- A SURFACE of its own, the pick card's pair: two hairline borders
+     8px apart on the page ground ran together in a stack of five, and a
+     stack is exactly what a reader in five groups gets. --}}
 <a
     href="{{ $group->isRoom() ? route('pickem.room', $group) : route('pickem.group', $group) }}"
     wire:navigate
-    {{ $attributes->class(['flex flex-col gap-2 rounded-xl border border-zinc-200 px-4 py-3 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600']) }}
+    {{ $attributes->class(['flex flex-col gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 hover:border-zinc-300 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600']) }}
 >
     <div class="flex items-center justify-between gap-3">
         <span class="flex min-w-0 items-center gap-2.5">
