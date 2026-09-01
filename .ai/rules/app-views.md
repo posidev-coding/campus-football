@@ -10,4 +10,4 @@ Settled 2026-08-20 and swept through the whole tree; long form in docs/product.m
 
 BANNED: "board" (retired to SLATE — PickemVoiceTest sweeps the Voice families, and the internals are clean: pickem:publish-slates, slateGames(); the Stats leaderboards keep the word because they really are boards) and "floor" for the lobby (Cadence::activeSaturday is the Saturday this pick'em week is ON; numeric floors — RankLadder, TeamPalette ratios, rate-stat minimums — and the PWA's offline floor are a different word and stay).
 
-Also: a group plays a MODE, never "a game"; the screen says "your groups", never "your games".
+Also: a group plays a MODE, never "a game"; the screen says "My Groups", never "your games".

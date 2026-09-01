@@ -35,6 +35,8 @@ confirmed every suspected friction point in code:
 1. Consolidate `/picks`' three container zones into ONE "Where you play"
    stack with kind-first identity per card — a conscious amendment of the
    `.ai/rules/components.md` two-products rule (amended text below).
+   **Reversed 2026-09-01** — two sections that mirror the group switcher's
+   menu; see [picks-switcher-pass](picks-switcher-pass.md).
 2. All four flash elements approved: weekly-win payoff moment, ticking
    countdown clocks (hero + lobby band), louder lobby rows (flavor pitch
    lines), "All in" state card.

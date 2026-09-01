@@ -10,10 +10,12 @@
     markup — same states, same words, now beside an identity a thumb can
     find in a stack.
 
-    Since 2026-08-31 the card also leads its micro-line with its KIND,
-    because My Picks sells every seat in one "Where you play" stack now
-    and the zone headings that used to carry the distinction are gone.
-    Same props: `group` and `past` were already here.
+    The micro-line is FACTS since 2026-09-01: the kind moved back onto
+    the section headings ("My Groups" / "Week N Contests", the same two
+    the group switcher shows), so the card says how many members and
+    whether the reader runs it. An evergreen alone keeps "Always open ·"
+    in front, because its section names a Saturday and a table is not
+    one. Same props: `group`, `commissioner` and `past` were already here.
 --}}
 @props([
     /** @var array<string, mixed> */
@@ -25,6 +27,14 @@
     $mode = $card['contest']?->mode;
     $palette = $mode?->palette();
     $members = $group->memberships_count ?? null;
+
+    // Facts, plain in every register. Null means no data and is skipped,
+    // never a zero standing in for it.
+    $facts = collect([
+        $group->isLobby() && ! $group->isRoom() ? 'Always open' : null,
+        $members === null ? null : $members.' '.Str::plural('member', $members),
+        ($card['commissioner'] ?? false) ? "you're the commissioner" : null,
+    ])->filter()->implode(' · ');
 @endphp
 
 <a
@@ -42,34 +52,13 @@
 
             <span class="min-w-0">
                 <span class="block truncate font-semibold leading-tight">{{ $group->name }}</span>
-                {{-- THE KIND, said on every CARD. The three zone headings
-                     merged into one stack, and the definitions came with
-                     them: three headings over one thumb of cards read as
-                     three products, but the DISTINCTION between a season
-                     and a Saturday is exactly what a reader needs. So it
-                     is said once per card instead of once per zone, in
-                     the join landing's own grammar.
-
-                     PAST FIRST, as everywhere else on this card: a room
-                     keeps its URL forever and leaves the inventory when
-                     its week ends, so "this Saturday" over a room that
-                     already played is a date nobody is playing.
-
-                     An evergreen is "Always open" — never a room's
-                     one-Saturday label, and never "table". Two
+                {{-- THE FACTS. The kind lives on the section heading now;
+                     an evergreen alone keeps "Always open" here, never a
+                     room's one-Saturday label and never "table" — two
                      user-facing container nouns, still. --}}
-                <span class="block truncate text-micro text-zinc-500">
-                    @if (! $group->isLobby())
-                        Private group, all season
-                    @elseif ($group->isRoom())
-                        Public room · {{ ($card['past'] ?? false) ? 'Saturday played' : 'this Saturday' }}
-                    @else
-                        Always open
-                    @endif
-                    @if ($members !== null)
-                        · {{ $members }} {{ Str::plural('member', $members) }}
-                    @endif
-                </span>
+                @if ($facts !== '')
+                    <span class="block truncate text-micro text-zinc-500">{{ $facts }}</span>
+                @endif
             </span>
         </span>
 

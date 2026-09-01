@@ -396,10 +396,12 @@ new class extends Component
      * THE PRIVATE HALF — season-long groups the reader belongs to. A
      * pure projection of cards(), like every zone on this screen.
      *
-     * The split exists because one heading over both products is what
-     * made them indistinguishable: a public room joined an hour ago sat
-     * in the same stack, under the same word, as a group somebody runs
-     * to the bowls.
+     * Its own heading again since 2026-09-01: "My Groups", mirrored by
+     * the switcher's menu. The 08-31 merge put the kind on every card
+     * instead, and a stack of cards each carrying its own kind line read
+     * as one product with fine print — the two headings are the same two
+     * sections the menu shows, so the taxonomy is one thing said in two
+     * places.
      *
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
      */
@@ -466,34 +468,6 @@ new class extends Component
     {
         return $this->cards
             ->filter(fn (array $card) => $card['group']->isLobby() && ! $card['group']->isRoom())
-            ->values();
-    }
-
-    /**
-     * EVERY SEAT YOU ARE STILL PLAYING, in one stack: groups
-     * alphabetical, then this Saturday's rooms, then the always-open
-     * tables. A room whose Saturday has been played is NOT here — it is
-     * a transient contest that has ended, and `pastRooms` sends it to
-     * History.
-     *
-     * The three zones above still exist and are still the thing this
-     * concatenates — the first-run fork and the lobby door both key off
-     * `groupCards`, and each zone's own ordering rule survives inside the
-     * stack. What merged is the HEADINGS: three of them over one thumb of
-     * cards read as three products. The distinction did not merge — every
-     * card leads its micro-line with its kind now, so it is said once per
-     * CARD instead of once per zone.
-     *
-     * A projection of projections of cards(). Never a fourth query.
-     *
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
-     */
-    #[Computed]
-    public function whereYouPlay()
-    {
-        return $this->groupCards
-            ->concat($this->roomCards)
-            ->concat($this->tableCards)
             ->values();
     }
 
@@ -1042,37 +1016,23 @@ new class extends Component
             </div>
         @endif
 
-        {{-- WHERE YOU PLAY — every seat the reader holds, in ONE stack:
-             groups first, then rooms with past Saturdays last, then the
-             always-open tables. Three headings over one thumb of cards
-             read as three products; the DISTINCTION did not merge with
-             them, it moved onto every card as a kind-first micro-line.
-             (Amends the two-headings rule in .ai/rules/components.md.)
-
-             The projections behind it are unchanged, so the first-run
-             fork above and the lobby door below still key off groupCards
-             exactly as they did. --}}
-        @if ($this->whereYouPlay->isNotEmpty())
+        {{-- MY GROUPS — the season-long, private half, under its own
+             heading again (2026-09-01; reverses the 08-31 merge). The
+             heading carries the KIND now — the same two sections the
+             switcher's menu shows, so the taxonomy is one thing said in
+             two places rather than fine print on every card. The escape
+             to the wizard stays on the heading row for a reader who
+             already has groups; on a first run the three mode doors
+             above are the ONLY create affordance. --}}
+        @if ($this->groupCards->isNotEmpty())
             <div class="flex flex-col gap-2" data-tour="seats">
                 <div class="flex items-baseline justify-between gap-3">
-                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Where you play</flux:subheading>
-                    {{-- The small escape to the wizard, for a reader who
-                         already has groups. On a first run the three mode
-                         doors above are the ONLY create affordance, and a
-                         fourth link beside them is the same destination
-                         drawn twice — the mistake that block exists to
-                         retire.
-
-                         There is no "Find a room" beside it either: the
-                         lobby door below is that destination, and one
-                         door is the partial's own rule. --}}
-                    @if ($this->groupCards->isNotEmpty())
-                        <a href="{{ route('pickem.create') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
-                            Start a group
-                        </a>
-                    @endif
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">My Groups</flux:subheading>
+                    <a href="{{ route('pickem.create') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
+                        Start a group
+                    </a>
                 </div>
-                <flux:subheading>{{ Voice::line('picks.whereplay.subheading') }}</flux:subheading>
+                <flux:subheading>{{ Voice::line('picks.groups.subheading') }}</flux:subheading>
 
                 {{-- Two-up only from `xl`: this sits in the main column
                      beside the sidecar, so it is ~648px at `lg` and does
@@ -1080,10 +1040,72 @@ new class extends Component
                      the call site because group-card's root carries none
                      and a grid item keeps its min-content width. --}}
                 <div class="grid gap-2 xl:grid-cols-2">
-                    @foreach ($this->whereYouPlay as $card)
+                    @foreach ($this->groupCards as $card)
                         <x-group-card class="min-w-0" wire:key="play-{{ $card['group']->id }}" :card="$card" />
                     @endforeach
                 </div>
+            </div>
+        @endif
+
+        {{-- THE INVITE CODE, folded — under the groups it joins you to,
+             and ONE unconditional site: a bad code has to open a form
+             for a reader with no seats at all. Links are how a group
+             travels now; the code is the spoken-word fallback. --}}
+        <div
+            x-data="{ open: @js($errors->has('code')) }"
+            class="rounded-xl border border-zinc-200 dark:border-zinc-700"
+        >
+            <button
+                type="button"
+                x-on:click="open = ! open"
+                x-bind:aria-expanded="open"
+                class="flex w-full items-center justify-between gap-3 p-4 text-start"
+            >
+                <div class="min-w-0">
+                    <p class="font-semibold">Have an invite code?</p>
+                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('groups.join.subheading') }}</p>
+                </div>
+                <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
+            </button>
+
+            <div x-show="open" x-cloak class="border-t border-zinc-100 p-4 dark:border-zinc-800/60">
+                <form wire:submit="join" class="flex flex-col gap-3">
+                    {{-- The format rule stays plain: 8 characters, told straight. --}}
+                    <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />
+                    <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="join" class="self-start">Join the group</flux:button>
+                </form>
+            </div>
+        </div>
+
+        {{-- WEEK N CONTESTS — the public half: this Saturday's rooms the
+             reader is seated in, the always-open tables, and the ONE
+             door to the Lobby, where a room is joined. The heading names
+             the Saturday being sold and is SKIPPED when the calendar has
+             no week — never the cards, never the door, never a
+             substituted week. On a first run the door has already
+             rendered beside the mode doors, so it stays out of here; and
+             a rooms-only reader has no My Groups block, so the tour's
+             `seats` stop anchors here instead of stepping over itself. --}}
+        @if ($this->groupCards->isNotEmpty() || $this->roomCards->isNotEmpty() || $this->tableCards->isNotEmpty())
+            @php $contestsHeading = $this->seats->weekLabel() === null ? null : $this->seats->weekLabel().' Contests'; @endphp
+
+            <div class="flex flex-col gap-2" @if ($this->groupCards->isEmpty()) data-tour="seats" @endif>
+                @if ($contestsHeading !== null)
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">{{ $contestsHeading }}</flux:subheading>
+                    <flux:subheading>{{ Voice::line('picks.contests.subheading') }}</flux:subheading>
+                @endif
+
+                @if ($this->roomCards->isNotEmpty() || $this->tableCards->isNotEmpty())
+                    <div class="grid gap-2 xl:grid-cols-2">
+                        @foreach ($this->roomCards->concat($this->tableCards) as $card)
+                            <x-group-card class="min-w-0" wire:key="play-{{ $card['group']->id }}" :card="$card" />
+                        @endforeach
+                    </div>
+                @endif
+
+                @if ($this->groupCards->isNotEmpty())
+                    @include('partials.lobby-door')
+                @endif
             </div>
         @endif
         @endif
@@ -1169,9 +1191,10 @@ new class extends Component
              screen, so below `lg` nothing moved: the column collapses and
              they land exactly where a phone reader has always found them.
              From `lg` they ride alongside instead of pushing the spine down
-             the page — the same trade the game screen makes. Not sticky: the
-             picks walk spotlights `room` and `how` in here, and it scrolls to
-             a measured box. --}}
+             the page — the same trade the game screen makes. The invite
+             code and the Lobby door left here 2026-09-01 for the sections
+             they belong to. Not sticky: the picks walk spotlights `how` in
+             here, and it scrolls to a measured box. --}}
         <div class="flex flex-col gap-6">
         @if ($this->activeView === 'week')
         {{-- THE ROOMS THAT ARE OVER, as a door and never as cards.
@@ -1198,42 +1221,6 @@ new class extends Component
             </x-link-row>
         @endif
 
-        {{-- The code stays as the spoken-word fallback, folded away —
-             links are how a group travels now. --}}
-        <div
-            x-data="{ open: @js($errors->has('code')) }"
-            class="rounded-xl border border-zinc-200 dark:border-zinc-700"
-        >
-            <button
-                type="button"
-                x-on:click="open = ! open"
-                x-bind:aria-expanded="open"
-                class="flex w-full items-center justify-between gap-3 p-4 text-start"
-            >
-                <div class="min-w-0">
-                    <p class="font-semibold">Have an invite code?</p>
-                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('groups.join.subheading') }}</p>
-                </div>
-                <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
-            </button>
-
-            <div x-show="open" x-cloak class="border-t border-zinc-100 p-4 dark:border-zinc-800/60">
-                <form wire:submit="join" class="flex flex-col gap-3">
-                    {{-- The format rule stays plain: 8 characters, told straight. --}}
-                    <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />
-                    <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="join" class="self-start">Join the group</flux:button>
-                </form>
-            </div>
-        </div>
-
-        {{-- THE LOBBY, as a door — ONE of them. On a first run it has
-             already rendered up beside the mode doors, where the two ways
-             to play sit together; drawing it again down here would be the
-             same destination twice on one screen, which is the mistake
-             the first-run block itself was built to retire. --}}
-        @if ($this->groupCards->isNotEmpty())
-            @include('partials.lobby-door')
-        @endif
         @endif
 
         {{-- THE LADDER belongs to Results — XP is what a settled week

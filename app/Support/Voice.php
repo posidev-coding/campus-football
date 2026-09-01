@@ -437,9 +437,9 @@ class Voice
         ],
 
         'tour.seats.body' => [
-            'pg' => 'Private groups run all season; public rooms are one Saturday each. Each card says which it is.',
-            'pg13' => 'Season-long groups and one-Saturday rooms, in one stack — each card says which kind it is.',
-            'r' => 'Season-long grudges and one-Saturday rooms, stacked together. Each card says which kind of trouble it is.',
+            'pg' => 'Your private groups run all season; this Saturday\'s public rooms sit just below them. The switcher up top jumps to any of them.',
+            'pg13' => 'Season-long groups here, this Saturday\'s rooms underneath — and the switcher up top jumps straight to whichever one you\'re playing.',
+            'r' => 'The season-long grudges live here, this Saturday\'s flings underneath. The switcher up top gets you to whichever one is currently ruining your weekend.',
         ],
 
         'tour.balance.heading' => [
@@ -1368,29 +1368,36 @@ class Voice
         ],
 
         /*
-         * THE TWO PRODUCTS, told apart. The DEFINITION is the
+         * THE TWO PRODUCTS, told apart — one definition line under each
+         * of My Picks' two section headings, the same two the group
+         * switcher's menu shows (2026-09-01). The DEFINITION is the
          * instruction, so every register keeps its load-bearing facts
          * intact (invite-only + all season / open to anyone + one
          * Saturday). The joke rides the end of the line, never the
          * middle of it.
          *
-         * `picks.groups.subheading` was retired on 2026-08-31 with the
-         * "Your groups" heading it sat under: My Picks sells every seat
-         * in ONE stack now, and the per-kind definitions moved onto the
-         * cards themselves as plain kind lines. `picks.rooms.subheading`
+         * `picks.groups.subheading` came back with the "My Groups"
+         * heading; `picks.whereplay.subheading` retired with the one
+         * "Where you play" stack it sat under. `picks.rooms.subheading`
          * survives because the FIRST RUN still names the public product
          * over the lobby door, where there are no cards to say it.
          */
+        'picks.groups.subheading' => [
+            'pg' => 'Invite-only, and the standings run all season.',
+            'pg13' => 'Invite-only, all season. Your people, your mode, one long argument.',
+            'r' => 'Invite-only, all season. The people you picked, and the receipts you can\'t outrun.',
+        ],
+
         /*
-         * "Still playing", not "every seat you hold": a public room that
-         * has played its Saturday leaves this stack, so a line promising
-         * every seat would be describing a stack that is missing three
-         * of them. See picks.rooms.past.
+         * "The ones you're seated in": a public room that has played its
+         * Saturday leaves this section, and the Lobby is where the rest
+         * are joined — the line says both, so the section reads as what
+         * it is rather than as a store. See picks.rooms.past.
          */
-        'picks.whereplay.subheading' => [
-            'pg' => 'Everywhere you are still playing — season-long groups and this Saturday\'s rooms.',
-            'pg13' => 'Everywhere you\'re still playing. Each card says which kind it is; the standings say how it\'s going.',
-            'r' => 'Everywhere you\'re still alive: the season-long grudges up top, this Saturday\'s flings underneath.',
+        'picks.contests.subheading' => [
+            'pg' => 'This Saturday\'s public rooms — the ones you are seated in, and the door to the rest.',
+            'pg13' => 'This Saturday\'s public rooms. One Saturday each — the ones you\'re in, and the Lobby for more.',
+            'r' => 'This Saturday\'s flings: one Saturday, one verdict, no rematch — and the Lobby is always selling another.',
         ],
 
         'picks.rooms.subheading' => [

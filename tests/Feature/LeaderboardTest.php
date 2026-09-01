@@ -96,7 +96,7 @@ it('renders the screen with its two dials and the viewer highlighted', function 
     leaderboardXp($viewer, 120, now()->toDateTimeString());
 
     Livewire::actingAs($viewer)->test('pickem-leaderboard')
-        ->assertSee('My groups')
+        ->assertSee('My Groups')
         ->assertSee('Everyone')
         ->assertSee('This Week')
         ->set('view', 'all')
