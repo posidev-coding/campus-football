@@ -1,9 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <defs><clipPath id="band"><rect x="30" y="38" width="40" height="22"></rect></clipPath></defs>
-  <rect x="32" y="5" width="36" height="4.6" rx="1.6" fill="#1E5C8F"></rect>
-  <polygon points="34,9.6 66,9.6 70,20 30,20" fill="#1E5C8F"></polygon>
-  <rect x="30" y="15" width="40" height="81" rx="3.5" fill="#1E5C8F"></rect>
-  <g clip-path="url(#band)">
-    <rect x="30" y="38" width="40" height="22" fill="#F5F2EA"></rect>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" width="42" height="100" viewBox="0 0 42 100">
+  <rect x="4" y="0" width="34" height="5.6" rx="1.2" fill="#1E5C8F"/>
+  <path d="M 6 5.5 L 36 5.5 L 36 12 C 40 14.5 42 18 42 23 L 42 96.5 C 42 98.4 40.4 100 38.5 100 L 3.5 100 C 1.6 100 0 98.4 0 96.5 L 0 23 C 0 18 2 14.5 6 12 Z" fill="#1E5C8F"/>
+  <rect x="0" y="57" width="42" height="12" fill="#F5F2EA"/>
 </svg>

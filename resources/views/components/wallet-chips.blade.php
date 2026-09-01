@@ -23,8 +23,13 @@
 
     The can mark ships in a light and a dark cut (the label band flips
     contrast), swapped the same way x-team-logo swaps its marks. The `*-16`
-    art is the simplified cut — below 24px the reflection and base rim are
-    mud, per the asset README.
+    art is the CHIP CUT and it is the only one this file ever names: 18px is
+    the one size the mark renders at, which on a 1x screen is seven device
+    pixels across, so that cut drops the reflection, base rim and range and
+    exaggerates the neck instead. Both cuts declare `width`/`height` as well
+    as a viewBox — without them an <img> hands an SVG a SQUARE intrinsic size
+    and letterboxes the can into 42% of an 18px box, which is invisible here
+    and is what the retired art actually did. TallboyMarkTest pins it.
 
     Rendered only for signed-in users (a balance is YOURS) in two homes that
     never overlap: x-home-nav's reserved slot below `sm`, the layout header
