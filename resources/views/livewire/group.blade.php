@@ -1076,33 +1076,6 @@ new class extends Component
                 </a>
             @endif
 
-            @if ($this->isMember && ! $group->isLobby())
-                {{-- Copies the invite LINK without leaving the hero; the
-                     link and the fallback code live on the Members tab. --}}
-                <div
-                    x-data="{
-                        copied: false,
-                        copy() {
-                            window.cfbClipboard.copy(@js($this->joinUrl)).then((ok) => {
-                                if (! ok) return;
-
-                                this.copied = true;
-                                setTimeout(() => this.copied = false, 2000);
-                            });
-                        },
-                    }"
-                >
-                    <button
-                        type="button"
-                        x-on:click="copy()"
-                        class="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium transition-colors hover:bg-white/20 dark:bg-zinc-800 dark:hover:bg-zinc-700"
-                    >
-                        <span x-show="! copied">Invite</span>
-                        <span x-show="copied" x-cloak>Copied</span>
-                    </button>
-                </div>
-            @endif
-
             @if ($this->isCommissioner && $this->pivotChoices->isNotEmpty())
                 <flux:modal.trigger name="change-mode">
                     <button

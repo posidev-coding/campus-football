@@ -372,6 +372,32 @@ it('navigates the clubhouse from ONE strip of four stops', function () {
         ->and($html)->not->toContain('group-pane-');
 });
 
+it('keeps the hero out of the invite business, now that a stop owns it', function () {
+    /*
+     * The hero carried a copy-link button back when the invite was a
+     * disclosure buried in the standings and worth a shortcut. It now
+     * has a stop of its own carrying the link, the code, a QR and three
+     * ready-to-send messages, so the hero button was a second, worse
+     * door to the same place.
+     *
+     * Guarded on the CLIPBOARD rather than the word "Invite", which is
+     * still on the screen as a tab label: the button and the tab read
+     * the same to assertSee, and only the copy handler tells them apart.
+     */
+    [$commissioner, $group] = pickemContest(ContestMode::Tiered);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'slate')
+        ->assertSee('Invite')
+        ->assertDontSee('cfbClipboard', escape: false);
+
+    // And the real door still works.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('view', 'invite')
+        ->assertSee('cfbClipboard', escape: false)
+        ->assertSee($group->code);
+});
+
 it('keeps the invite off the standings and on a stop of its own', function () {
     // It carries a link, a code, a QR and three ready-to-send messages
     // now — as a disclosure on top of the standings it buried them.
