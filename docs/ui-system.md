@@ -180,8 +180,17 @@ the components encode:
    stats scope). `block` runs `px-2` where `shrink` runs `px-3` — "Special
    Teams" at `px-3` sits 0.03px from clipping a three-up cell at 390, and
    five equal cells put "Schedule" 5.4px over its padding, which is what sent
-   the team page's sections to `x-team-nav`. Neither scrolls; a set that
-   cannot fit either way belongs in a `filter-menu`.
+   the team page's sections to `x-team-nav`. `fill` (2026-09-01) is the
+   third shape, for the clubhouse's five stops: the track is `w-full` like
+   `block`, but each cell is `flex-auto min-w-0 px-2`, so a cell's basis is
+   its own label and only the spare width is shared. Measured at 390 inside
+   a 352px track: five EQUAL cells give 54.4px of label box each, which
+   clips Standings (64.2px) and Members (59.7px); sized to content at
+   `px-2` the five labels (Slate 32.4 · Standings 64.2 · Members 59.7 ·
+   Invite 34.4 · Talk 25.9) total 298px and 54px is shared. A sixth stop
+   ("Rules", 36.4px) fits neither way, which is why the mode brief is an
+   accordion on the Slate tab and not a tab. None of the three scrolls; a
+   set that cannot fit any way belongs in a `filter-menu`.
 8. **Row order, top down**: plate or team nav → filter bar → gutter →
    content. The WHEN menu rides the plate's actions slot when one exists,
    else the filter bar's — or, on the team page, the hero. ONE exception,
