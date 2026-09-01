@@ -30,6 +30,7 @@ use App\Services\Contests\SpreadGrader;
 use App\Support\ImageUpload;
 use App\Support\Cadence;
 use App\Support\InviteTemplates;
+use App\Support\Seats;
 use App\Support\SlateFeasibility;
 use App\Support\Voice;
 use Flux\Flux;
@@ -716,6 +717,19 @@ new class extends Component
     }
 
     /**
+     * EVERY SEAT THE READER HOLDS, for the switcher in the hero — the
+     * same read My Picks stands on, so the menu here and the sections
+     * there can never list a different set of groups. Lazy past the
+     * groups: the week only resolves for the contests heading, the room
+     * Saturdays only when a room is held.
+     */
+    #[Computed]
+    public function seats(): Seats
+    {
+        return Seats::for(auth()->user());
+    }
+
+    /**
      * Two tabs, both kinds: the pick surface, and everything social. A
      * room's Standings simply skips the season ledger it does not have.
      *
@@ -1034,6 +1048,16 @@ new class extends Component
     @endphp
 
     <x-group-hero :group="$group" :contest="$this->contest" :members-count="$this->members->count()" :meta="$heroMeta">
+        {{-- THE NAME IS THE SWITCHER. The same control that sits above
+             My Picks' fork, worn here as the title: one tap to any other
+             seat without going back out through the overview. The sr-only
+             h1 keeps the heading for assistive tech — the house shows no
+             visible h1 off Scores, and the visible name is a control now. --}}
+        <x-slot:title>
+            <h1 class="sr-only">{{ $group->name }}</h1>
+            <x-group-switcher :seats="$this->seats" :current="$group" variant="hero" class="min-w-0" />
+        </x-slot:title>
+
         {{-- THE MARK IS THE CONTROL, the same gesture the account photo
              teaches: tapping the thing you want to change beats a second
              button on a row that is already tight at 390px. The label

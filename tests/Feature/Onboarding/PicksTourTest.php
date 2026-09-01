@@ -58,6 +58,10 @@ it('mounts on Picks and points at targets that are actually there', function () 
     foreach (['seats', 'balance', 'room', 'how'] as $key) {
         expect($html)->toContain('data-tour="'.$key.'"');
     }
+
+    // The seats stop points at the My Groups section — the block under the
+    // anchor, not the switcher menu that names the section higher up.
+    expect(strpos($html, 'My Groups', strpos($html, 'data-tour="seats"')))->not->toBeFalse();
 });
 
 it('stamps its OWN column and never the economy\'s first visit', function () {

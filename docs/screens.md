@@ -603,56 +603,86 @@ at three heights, with the Saturday it was selling 1,400px above the rooms.
 This half keeps everything that is ABOUT THE READER, one column ordered by
 urgency:
 
-1. **The week ribbon** (`x-week-ribbon`, the group-hero band grammar) — the
+1. **The group switcher** (`x-group-switcher`, 2026-09-01) — centered above
+   the This week | Results fork, the one piece of chrome allowed above a
+   plate (`docs/ui-system.md` rule 8). It answers "which of my seats am I
+   looking at" before the plate asks "which half": "All my picks", then
+   **My Groups** (private, by name), then **Week N Contests** (the public
+   rooms the reader is SEATED in this Saturday, the always-open tables, and
+   "Browse the Lobby · N open" — the Lobby is where a room is joined, so
+   the menu lists what you hold, never what is for sale). The current row
+   is bold. Pure navigation off `App\Support\Seats`, the one read this
+   screen and the clubhouse share (held in a `#[Computed] seats()`, handed
+   to the switcher as a prop): no Livewire state, no query of its own,
+   renders once (`data-group-switcher`), and only for a reader with a seat
+   — the first run is byte-identical. The same control is the clubhouse's
+   title, so a reader inside one seat reaches any other in one tap. It came
+   from the first onboarded readers, who held several groups and rooms at
+   once and could not tell one card from the next.
+2. **The week ribbon** (`x-week-ribbon`, the group-hero band grammar) — the
    dateline from `CfbCalendar::defaultWeekEntry()` plus ONE clock line by
    urgency: games live now → the next kickoff → a commissioner's slate
    deadline. No calendar entry, no ribbon — never a substituted week.
-2. **Needs your picks** — renders only when a published slate is still
-   taking picks the reader hasn't finished; each row is name + progress +
-   first kick, walking into the clubhouse. This zone is why the screen
-   works: it answers "what do I do right now" before anything else talks.
-3. **Where you play** — ONE stack of every seat the reader holds, each
-   card an `x-group-card` with its mode mark, palette and pass 2's
-   five-way state row (waiting / upcoming / live / prelim / final) intact.
+3. **Needs your picks** — renders only when a published slate is still
+   taking picks the reader hasn't finished: ONE mode-tinted hero card (the
+   slate closest to locking: live first, then soonest kickoff, a missing
+   kickoff last) wearing the zone's only button, and under it one plain
+   "and N more below" line. This zone is why the screen works: it answers
+   "what do I do right now" before anything else talks. The compact rows
+   that used to follow the hero retired 2026-09-01 — every card that needed
+   picks rendered twice, as a row here and as a card below, and a reader in
+   four groups met eight cards before the fold. `x-slate-row` now renders
+   only on Home's picks strip.
+4. **My Groups** — the season-long, private half under its own heading,
+   `x-group-card`s with the mode mark, palette and pass 2's five-way state
+   row (waiting / upcoming / live / prelim / final) intact, the "Start a
+   group" escape on the heading row for a reader who already has groups,
+   and the invite-code disclosure ("Have an invite code?", auto-opens on a
+   code error) directly under the cards — ONE unconditional render site,
+   because a bad code has to open a form for a reader with no seats at all.
 
-   Two corrections, in order. 2026-08-29 SPLIT one "Your groups" heading
+   Three corrections, in order. 2026-08-29 SPLIT one "Your groups" heading
    into three, because a public room joined an hour ago sat under the
    season-long word beside a league and nothing said either was what it
    was. 2026-08-31 merged the headings back and moved the distinction onto
-   the cards: three headings over one thumb of cards read as three
-   products, which is a different way of failing at the same job. The
-   split fixed the wrong half.
+   the cards ("three headings over one thumb of cards read as three
+   products"). 2026-09-01 split them again — into TWO, and the same two the
+   switcher's menu shows: a stack of cards each carrying its own kind line
+   read as one product with fine print, and a reader in several groups and
+   rooms could not tell the cards apart. Two headings that are the menu's
+   own sections are the taxonomy said in two places, not three products.
 
-   So there is one heading, one Voice definition
-   (`picks.whereplay.subheading`), and a KIND-FIRST micro-line on every
-   card in the join landing's own grammar — "Private group, all season ·
-   12 members", "Public room · this Saturday · 8 of 20 seats", "Always
-   open · 40 members". The kind is said once per CARD instead of once per
-   zone. Kind lines are product facts and stay plain in every register;
-   only the definition under the heading is Voice.
+   So the kind is on the HEADING, and the card's micro-line is facts: "12
+   members · you're the commissioner". An evergreen alone keeps "Always
+   open ·" in front, because its section names a Saturday and a table is
+   not one — and never "table": the house has exactly two user-facing
+   container nouns. One Voice definition under the heading,
+   `picks.groups.subheading`.
+5. **Week N Contests** — the public half: this Saturday's rooms the reader
+   is seated in (`roomCards`, past Saturdays excluded), then the always-open
+   tables (`tableCards`), then the ONE Lobby door (`partials/lobby-door`: a
+   PLAIN COUNT, "3 public rooms open this Saturday", or `lobby.publics.empty`
+   at zero, over one optional Voice line, navigating to `/lobby`, reading
+   `Lobby::openRoomCount()` through Seats — never the inventory).
+   `LobbyRoomsTest` pins that count equal to what the Lobby actually lists.
+   The heading is `Cadence::displayWeekLabel()` + "Contests" — "Week 0
+   Contests" is a real string inside a split opening week — and it is
+   SKIPPED when the calendar has no week, never the cards, never the door,
+   never a substituted week. One Voice definition, `picks.contests.subheading`.
 
-   Order still carries meaning, and the three projections still exist:
-   `whereYouPlay()` concatenates `groupCards` (alphabetical) then
-   `roomCards` (past Saturdays last) then `tableCards` (evergreen house
-   lobbies, `kind = lobby` with no week). All projections of `cards()` —
-   no query is added. An evergreen is "Always open", never a room's
-   one-Saturday label and never "table": the house has exactly two
-   user-facing container nouns.
+   The door renders in exactly two mutually exclusive places: here, for a
+   reader with groups, and hoisted up beside the mode doors on a first run,
+   where the two ways to play have to sit next to each other — both off the
+   ONE `roomsOpen` read. A rooms-only reader has no My Groups block, so the
+   tour's `seats` stop anchors on this section instead of stepping over
+   itself.
 
-   The heading row keeps ONE escape, "Start a group" to the wizard, and
-   only for a reader who already has groups — on a first run the three
-   mode doors are the only create affordance. "Find a room" is retired:
-   the Lobby door at the foot is the same destination, and one door is
-   that partial's own rule.
-
-   A room's `week_id` is compared against the current `defaultWeekId` into
-   a `past` flag, because a room keeps its URL forever and leaves the
-   inventory when its week ends: with no slate on the current week it fell
-   through the state match to `waiting` and told the reader their PUBLIC
-   room was waiting on a commissioner it never had, on a week that was
-   never coming. `group.room.past` replaces that line, `roomCards` sorts
-   past rooms to the bottom, and the kind line says "Saturday played"
-   rather than "this Saturday" — the past branch is tested first on both.
+   A room's `past` flag is read off its OWN Saturday against the card being
+   sold (`Seats::isPast()`), never `week_id` alone, because a room keeps its
+   URL forever and leaves the inventory when its week ends — and an ESPN
+   week can hold two Saturdays. A played room is in neither section nor the
+   switcher; `pastRooms` counts it and the sidecar's "Rooms you've played"
+   door sends the reader to History.
 
    **The you-strip** sits above all of it, at the top of This week
    (`x-you-strip`, the standings component unchanged): rung, XP, Tallboys
@@ -675,46 +705,33 @@ urgency:
    a full-width card underneath them); what is new is that the block says
    what the doors are doors TO, and puts the weekly public alternative
    beside the choice instead of 600px below it.
-4. **Last week** — the Monday payoff, compact: settled entries from the
+6. **Last week** — the Monday payoff, compact: settled entries from the
    past seven days, each row carrying the Winner badge or, failing that,
    your place in the field ("2nd of 12", `places()`, History's own
    one-query pattern read only from this branch). A week you WON is called
    out above them by the emerald payoff banner
    (`picks.payoff.banner` / `_many`) — the house's second celebration, and
    its entrance is spent once per session against the wins themselves.
-5. **The ladder**, one bordered row: rung name, tabular XP, an `h-1` bar and
+7. **The ladder**, one bordered row: rung name, tabular XP, an `h-1` bar and
    the climb line. `RankLadder` returns NULL at the top rung, so the climb
    line is skipped rather than drawn as a finished bar under a promotion
    that is not coming.
-6. **The invite code**, folded into a disclosure ("Have an invite code?")
-   that auto-opens on a code error — links are the primary way in now, the
-   code is the spoken-word fallback.
-7. **The Lobby, as a door** (`partials/lobby-door`): a dashed card carrying
-   a PLAIN COUNT ("3 public rooms open this Saturday", or
-   `lobby.publics.empty` at zero) over one optional Voice line, navigating
-   to `/lobby`. A partial because it renders in two mutually exclusive
-   places — at the foot of the screen for a reader with groups, hoisted up
-   beside the mode doors on a first run — and both must read the ONE
-   `roomsOpen` computed. It reads `Lobby::openRoomCount()`,
-   never the inventory — a dashboard paying for the whole graph to print an
-   integer is how the old screen got heavy. `LobbyRoomsTest` pins that count
-   equal to what the Lobby actually lists, because two reads of one question
-   is exactly how a teaser starts lying about the door it opens.
 
-Everything above the teaser is a projection of ONE `cards()` read (one query
-per concern across all groups — contests, slates, my picks, my entries, my
-wins); `needsPicks` and the ribbon clock filter that collection and never
+Everything on the This week tab is a projection of ONE `cards()` read (one
+query per concern across all groups — contests, slates, my picks, my
+entries, my wins), which itself stands on the Seats read the switcher
+shares; `needsPicks` and the ribbon clock filter that collection and never
 query. Section chips: a room or group visit lights **My Picks**, because a
 reader inside one is a seated member playing, not somebody browsing.
 
 **Since the Aug-29 overhaul and the Aug-31 pass**: the screen forks into
 **This week | Results** on an `x-plate` (first-run readers keep the single
 scroll; Results holds Last week, the rank ladder and the Season-history
-door), the needs-picks zone leads with ONE mode-tinted hero card wearing
-the zone's only button, the compact rows beneath it are the shared
-`x-slate-row` component (Home's picks strip renders the very same one),
-and a finished entry says "Entry in" — or amber "Tiebreaker left" when the
-question is the one thing open — instead of a fraction.
+door), and a finished entry says "Entry in" — or amber "Tiebreaker left"
+when the question is the one thing open — instead of a fraction. The
+sidecar (20rem from `lg`, the foot of the page below it) now holds only the
+"Rooms you've played" door, the ladder and Season history on Results, and
+"How this works".
 
 ## Two guided walks, one component, two columns
 
@@ -918,6 +935,18 @@ left it and the first pickable card rose ~300px. A bare visit opens to
 Standings once the entry is in and the card is live-through-final (explicit
 `?view=` always wins; the answer is asked once, at mount), and the tab polls
 every 30s only while a slate game is live, reading only our own database.
+
+**The name is the switcher, since 2026-09-01.** The hero's `h1` gave way to
+`x-group-hero`'s `title` slot, where the clubhouse renders `x-group-switcher`
+in its `hero` variant — `currentColor` on the band, no ring, the name clamped
+to two lines instead of truncated beside the mark and the two controls at
+390 — with an sr-only h1 beside it: the house shows no visible h1 off Scores,
+and the name is a control now. Same rows as My Picks' switcher, the current
+group bold; a lobby previewed without a seat, or a room whose Saturday is
+played, is spliced in as a bare row so the trigger never reads "All my
+picks" on a clubhouse. One Seats read, held in the screen's own
+`#[Computed] seats()`, and slate-size independent, so the flat-query pin
+still holds.
 
 **One strip, four stops, since 2026-09-01.** The clubhouse briefly carried
 TWO rows — a plate of Slate|Standings with an `x-gutter-tabs` of

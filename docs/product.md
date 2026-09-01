@@ -483,7 +483,7 @@ rate-stat minimums) and the PWA's offline floor are a different word and stay.
 
 Two more that are easy to slip: a group plays a **mode**, never "a game"
 (the pivot lever, its Voice lines and the create form all say mode), and
-what a reader sees on My Picks is **your groups**, not "your games".
+what a reader sees on My Picks is **My Groups**, not "your games".
 
 ## Say TRENDS, not "form"
 

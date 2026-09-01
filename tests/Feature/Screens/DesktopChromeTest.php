@@ -274,8 +274,9 @@ describe('flat card lists claim the width', function () {
         // viewport gives 356px cells. `lg` gives 484px.
         ['lobby', 'grid gap-2 lg:grid-cols-2 xl:grid-cols-3'],
         // Beside the sidecar the main column is ~648px at `lg`, so seats
-        // do not go two-up until `xl`.
-        ['pickem-home', 'grid gap-2 xl:grid-cols-2'],
+        // do not go two-up until `xl`. `gap-3`, not `gap-2`: the cards
+        // carry a surface, and at 8px a stack of them ran together.
+        ['pickem-home', 'grid gap-3 xl:grid-cols-2'],
     ]);
 
     it('cancels the pick surface bleed only where it sits in a column', function () {
@@ -329,13 +330,17 @@ describe('flat card lists claim the width', function () {
          * "Needs your picks" and Home's picks strip are ordered by urgency:
          * a grid makes "first" mean top-LEFT rather than top, which is a
          * weaker signal for the zone `docs/screens.md` calls the reason the
-         * screen works. They stay flat on purpose.
+         * screen works. The zone is one hero and one count now (the
+         * compact rows retired 2026-09-01), and the run from its heading
+         * to the hero stays flat on purpose.
          */
         $picks = file_get_contents(resource_path('views/livewire/pickem-home.blade.php'));
 
-        $needs = strpos($picks, '@foreach ($this->needsRest as $card)');
+        $hero = strpos($picks, 'wire:key="hero-');
+        $zone = substr($picks, $hero - 1500, 1500);
 
-        expect($needs)->not->toBeFalse()
-            ->and(substr($picks, $needs - 200, 200))->not->toContain('grid-cols');
+        expect($hero)->not->toBeFalse()
+            ->and($zone)->toContain('Needs your picks')
+            ->and($zone)->not->toContain('grid-cols');
     });
 });

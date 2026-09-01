@@ -70,7 +70,7 @@ new class extends Component
 
     <div class="flex items-center justify-between gap-3">
         <x-gutter-tabs
-            :items="['groups' => 'My groups', 'everyone' => 'Everyone']"
+            :items="['groups' => 'My Groups', 'everyone' => 'Everyone']"
             :selected="$scope"
             model="scope"
             label="Whose leaderboard"

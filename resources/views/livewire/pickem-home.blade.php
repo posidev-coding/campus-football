@@ -19,6 +19,7 @@ use App\Support\Cadence;
 use App\Support\Lobby;
 use App\Support\SlateFeasibility;
 use App\Support\RankLadder;
+use App\Support\Seats;
 use App\Support\Voice;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -219,6 +220,17 @@ new class extends Component
     }
 
     /**
+     * EVERY SEAT THE READER HOLDS, read once. The group switcher above the
+     * fork and the card query below both stand on this one read, so the
+     * menu and the overview can never list a different set of groups.
+     */
+    #[Computed]
+    public function seats(): Seats
+    {
+        return Seats::for(auth()->user());
+    }
+
+    /**
      * Every group card's state, assembled flat.
      *
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
@@ -226,7 +238,7 @@ new class extends Component
     #[Computed]
     public function cards()
     {
-        $groups = auth()->user()->groups()->withCount('memberships')->orderBy('name')->get();
+        $groups = $this->seats->groups;
 
         if ($groups->isEmpty()) {
             return collect();
@@ -238,19 +250,21 @@ new class extends Component
             ->get()
             ->keyBy('group_id');
 
-        $weekId = $contests->isEmpty()
-            ? null
-            : app(CfbCalendar::class)->defaultWeekId($contests->first()->season_year);
-
         /*
-         * The week is resolved BEFORE the slates now, because the card
-         * being played is a SATURDAY and an ESPN week can hold two of
-         * them. Keyed on the week alone, keyBy() silently kept whichever
-         * row came last — the published card here, while the clubhouse's
+         * The week is resolved BEFORE the slates, because the card being
+         * played is a SATURDAY and an ESPN week can hold two of them.
+         * Keyed on the week alone, keyBy() silently kept whichever row
+         * came last — the published card here, while the clubhouse's
          * ->first() took the other one. Two screens, one week, two
          * answers. See Slate::scopeOnCard().
+         *
+         * Read off the Seats read the switcher shares, and STILL gated on
+         * the contests: with none there is no card to sell, and a week
+         * resolved anyway would hand ribbonClock() a deadline for a group
+         * that has no contest to build one for.
          */
-        $week = $weekId === null ? null : Week::find($weekId);
+        $week = $contests->isEmpty() ? null : $this->seats->week();
+        $weekId = $week?->id;
 
         $slates = $week === null ? collect() : Slate::query()
             ->whereIn('contest_id', $contests->pluck('id'))
@@ -276,36 +290,6 @@ new class extends Component
             ->get()
             ->keyBy('slate_id');
 
-        /*
-         * THE SATURDAY EACH ROOM ACTUALLY PLAYS — the one read `$slates`
-         * cannot answer, because it is filtered to the card being sold
-         * and a played room is by definition off it. Dates only, no
-         * eager loads, and only when the reader holds a public seat at
-         * all: this is what tells "the Saturday you played" apart from
-         * "your slate was taken away", which are the same absence in the
-         * card query and two different sentences on the card.
-         */
-        $roomContestIds = $groups
-            ->filter(fn (Group $group) => $group->isRoom())
-            ->map(fn (Group $group) => $contests->get($group->id)?->id)
-            ->filter()
-            ->values();
-
-        $roomSaturdays = $roomContestIds->isEmpty() ? collect() : Slate::query()
-            ->whereIn('contest_id', $roomContestIds)
-            ->orderBy('saturday')
-            ->pluck('saturday', 'contest_id')
-            /*
-             * DATE STRINGS, and the comparison downstream is a string
-             * one. `slates.saturday` is a date column cast at the app's
-             * timezone while the card being sold is an ET midnight —
-             * comparing the two as instants makes the SAME Saturday four
-             * hours "earlier" and files a live room under played. Every
-             * other Saturday comparison in this codebase is
-             * toDateString(); this one is too.
-             */
-            ->map(fn (?CarbonInterface $day) => $day?->toDateString());
-
         // Season wins, and a practice week never earned one — the same
         // ledger rule the clubhouse's season table reads.
         $wins = SlateEntry::query()
@@ -327,7 +311,7 @@ new class extends Component
          * already reads `$slate->saturday` and the publish sweep already
          * reads activeSaturday(); this is the third caller agreeing with them.
          */
-        $pending = $week === null ? null : Cadence::activeSaturday($week);
+        $pending = $week === null ? null : $this->seats->saturday();
         $fallbackDeadline = $pending === null ? null : Cadence::slateDeadline($pending);
 
         /*
@@ -340,10 +324,9 @@ new class extends Component
          */
         $viable = null;
 
-        return $groups->map(function (Group $group) use ($contests, $slates, $roomSaturdays, $made, $entries, $wins, $fallbackDeadline, $weekId, $week, $pending, &$viable) {
+        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $fallbackDeadline, $week, $pending, &$viable) {
             $contest = $contests->get($group->id);
             $slate = $contest === null ? null : $slates->get($contest->id);
-            $roomSaturday = $contest === null ? null : $roomSaturdays->get($contest->id);
             $tally = $slate === null ? null : $made->get($slate->id);
             $entry = $slate === null ? null : $entries->get($slate->id);
 
@@ -395,29 +378,11 @@ new class extends Component
                 'won' => (bool) ($entry->won ?? false),
                 'wins' => (int) ($wins[$contest?->id] ?? 0),
                 'firstKick' => $slate?->firstKickoff(),
-                /*
-                 * A ROOM WHOSE SATURDAY HAS BEEN PLAYED — a week behind
-                 * us, OR a Saturday behind the one being sold.
-                 *
-                 * The second half is the fix: an ESPN week holds two
-                 * Saturdays (2026 Week 1 = 8/29 and 9/5), so a room that
-                 * played 8/29 still satisfied `week_id === $weekId` on
-                 * the Tuesday after and carried into the fresh week as
-                 * "Public room · this Saturday" — three dead seats
-                 * stacked over the reader's own groups, saying they were
-                 * already in this Saturday's public contests. Read the
-                 * room's OWN Saturday and compare it to the card being
-                 * sold, the same rule every other read on this screen
-                 * follows (.ai/rules/views-livewire-support.md).
-                 *
-                 * A room with no slate at all is NOT past: its card was
-                 * never published or was taken away, which is a
-                 * different sentence on the card and must not be
-                 * inferred from a missing row.
-                 */
-                'past' => $group->isRoom()
-                    && ($group->week_id !== $weekId
-                        || ($roomSaturday !== null && $pending !== null && $roomSaturday < $pending->toDateString())),
+                // A ROOM WHOSE SATURDAY HAS BEEN PLAYED — the rule lives
+                // on Seats now, beside the switcher that has to agree
+                // with it: read off the room's OWN Saturday, never the
+                // week id alone (.ai/rules/components-support.md).
+                'past' => $this->seats->isPast($group),
                 // A published slate answers for its OWN Saturday; a group
                 // still waiting on one is told about the card being sold.
                 'deadline' => $slate === null
@@ -431,10 +396,12 @@ new class extends Component
      * THE PRIVATE HALF — season-long groups the reader belongs to. A
      * pure projection of cards(), like every zone on this screen.
      *
-     * The split exists because one heading over both products is what
-     * made them indistinguishable: a public room joined an hour ago sat
-     * in the same stack, under the same word, as a group somebody runs
-     * to the bowls.
+     * Its own heading again since 2026-09-01: "My Groups", mirrored by
+     * the switcher's menu. The 08-31 merge put the kind on every card
+     * instead, and a stack of cards each carrying its own kind line read
+     * as one product with fine print — the two headings are the same two
+     * sections the menu shows, so the taxonomy is one thing said in two
+     * places.
      *
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
      */
@@ -505,34 +472,6 @@ new class extends Component
     }
 
     /**
-     * EVERY SEAT YOU ARE STILL PLAYING, in one stack: groups
-     * alphabetical, then this Saturday's rooms, then the always-open
-     * tables. A room whose Saturday has been played is NOT here — it is
-     * a transient contest that has ended, and `pastRooms` sends it to
-     * History.
-     *
-     * The three zones above still exist and are still the thing this
-     * concatenates — the first-run fork and the lobby door both key off
-     * `groupCards`, and each zone's own ordering rule survives inside the
-     * stack. What merged is the HEADINGS: three of them over one thumb of
-     * cards read as three products. The distinction did not merge — every
-     * card leads its micro-line with its kind now, so it is said once per
-     * CARD instead of once per zone.
-     *
-     * A projection of projections of cards(). Never a fourth query.
-     *
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
-     */
-    #[Computed]
-    public function whereYouPlay()
-    {
-        return $this->groupCards
-            ->concat($this->roomCards)
-            ->concat($this->tableCards)
-            ->values();
-    }
-
-    /**
      * The zone that answers "what do I do right now": published slates
      * still taking picks where mine are not all in. A pure projection of
      * cards() — no query of its own.
@@ -589,15 +528,18 @@ new class extends Component
     }
 
     /**
-     * Everything else still taking picks, in the same compact row the
-     * zone has always used. The hero is one card, not a new species.
-     *
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     * HOW MANY MORE still want picks below the hero — a fact for one
+     * plain line, never a second stack of rows. Every card that needed
+     * picks used to render TWICE on this screen: as a compact row up
+     * here and again as its own card in the sections below, which is
+     * how a reader in four groups met eight cards before the fold. The
+     * hero keeps the zone's one button; the cards below keep their own
+     * state (the count, "Entry in", "Tiebreaker left").
      */
     #[Computed]
-    public function needsRest()
+    public function needsMore(): int
     {
-        return $this->byUrgency()->slice(1)->values();
+        return max(0, $this->needsPicks->count() - 1);
     }
 
     /**
@@ -814,7 +756,7 @@ new class extends Component
     #[Computed]
     public function roomsOpen(): int
     {
-        return Lobby::openRoomCount(auth()->user());
+        return $this->seats->openCount();
     }
 
     public function join(JoinGroup $action)
@@ -874,6 +816,18 @@ new class extends Component
             <x-notice tone="success">{{ session('status') }}</x-notice>
         @endif
 
+        {{-- THE SWITCHER: which of your seats you are looking at, and one
+             tap to any other. Pure navigation off the one Seats read —
+             no Livewire state, no query of its own — and the one row
+             that sits ABOVE the fork, because "where am I" comes before
+             "which half". Centered; the same control is the clubhouse's
+             title. Guarded on SEATS rather than on the fork, so the first
+             run stays byte-identical. Not sticky: the z-ladder in
+             views.md, and the tour overlay under the page root. --}}
+        @if ($this->seats->hasSeats())
+            <x-group-switcher :seats="$this->seats" class="items-center" />
+        @endif
+
         {{-- THE FORK. Two areas, so a plate and not a gutter: what you can
              still act on, and what already happened. Above it sits only
              chrome that belongs to the whole screen — the callout and the
@@ -920,10 +874,11 @@ new class extends Component
                 <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Needs your picks</flux:subheading>
                 <flux:subheading>{{ Voice::line('lobby.needs.subheading') }}</flux:subheading>
 
-                {{-- ONE HERO, then compact rows. The card closest to
-                     locking wears the mode's own tile and carries the
-                     only button on the zone; four heroes would be four
-                     cards nobody reads. --}}
+                {{-- ONE HERO, and a count. The card closest to locking
+                     wears the mode's own tile and carries the only button
+                     on the zone; four heroes would be four cards nobody
+                     reads, and the compact rows that used to follow were
+                     every one of those cards drawn a second time. --}}
                 @php
                     $hero = $this->heroCard;
                     $heroGroup = $hero['group'];
@@ -990,13 +945,16 @@ new class extends Component
                     <flux:button :href="$heroHref" wire:navigate variant="primary" class="w-full md:w-auto md:self-start">
                         {{ $hero['made'] === 0 ? 'Make your picks' : 'Finish your picks' }}
                     </flux:button>
-                </div>
 
-                {{-- The shared compact row — Home's picks strip renders
-                     the very same component, not a copy. --}}
-                @foreach ($this->needsRest as $card)
-                    <x-slate-row :card="$card" wire:key="needs-{{ $card['group']->id }}" />
-                @endforeach
+                    {{-- The rest, as a COUNT: the cards below carry their
+                         own state, so the zone points at them rather than
+                         drawing them again. A fact, plain in every
+                         register, in the palette's body weight so it reads
+                         on the Woodshed's black tile too. --}}
+                    @if ($this->needsMore > 0)
+                        <p class="text-micro {{ $heroPalette['body'] }}">and {{ $this->needsMore }} more below</p>
+                    @endif
+                </div>
             </div>
         @elseif ($this->allIn)
             {{-- ALL IN. The zone that asks for picks simply vanished when
@@ -1058,48 +1016,96 @@ new class extends Component
             </div>
         @endif
 
-        {{-- WHERE YOU PLAY — every seat the reader holds, in ONE stack:
-             groups first, then rooms with past Saturdays last, then the
-             always-open tables. Three headings over one thumb of cards
-             read as three products; the DISTINCTION did not merge with
-             them, it moved onto every card as a kind-first micro-line.
-             (Amends the two-headings rule in .ai/rules/components.md.)
-
-             The projections behind it are unchanged, so the first-run
-             fork above and the lobby door below still key off groupCards
-             exactly as they did. --}}
-        @if ($this->whereYouPlay->isNotEmpty())
+        {{-- MY GROUPS — the season-long, private half, under its own
+             heading again (2026-09-01; reverses the 08-31 merge). The
+             heading carries the KIND now — the same two sections the
+             switcher's menu shows, so the taxonomy is one thing said in
+             two places rather than fine print on every card. The escape
+             to the wizard stays on the heading row for a reader who
+             already has groups; on a first run the three mode doors
+             above are the ONLY create affordance. --}}
+        @if ($this->groupCards->isNotEmpty())
             <div class="flex flex-col gap-2" data-tour="seats">
                 <div class="flex items-baseline justify-between gap-3">
-                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Where you play</flux:subheading>
-                    {{-- The small escape to the wizard, for a reader who
-                         already has groups. On a first run the three mode
-                         doors above are the ONLY create affordance, and a
-                         fourth link beside them is the same destination
-                         drawn twice — the mistake that block exists to
-                         retire.
-
-                         There is no "Find a room" beside it either: the
-                         lobby door below is that destination, and one
-                         door is the partial's own rule. --}}
-                    @if ($this->groupCards->isNotEmpty())
-                        <a href="{{ route('pickem.create') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
-                            Start a group
-                        </a>
-                    @endif
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">My Groups</flux:subheading>
+                    <a href="{{ route('pickem.create') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
+                        Start a group
+                    </a>
                 </div>
-                <flux:subheading>{{ Voice::line('picks.whereplay.subheading') }}</flux:subheading>
+                <flux:subheading>{{ Voice::line('picks.groups.subheading') }}</flux:subheading>
 
                 {{-- Two-up only from `xl`: this sits in the main column
                      beside the sidecar, so it is ~648px at `lg` and does
                      not have room for two seats until `xl`. `min-w-0` at
                      the call site because group-card's root carries none
                      and a grid item keeps its min-content width. --}}
-                <div class="grid gap-2 xl:grid-cols-2">
-                    @foreach ($this->whereYouPlay as $card)
+                <div class="grid gap-3 xl:grid-cols-2">
+                    @foreach ($this->groupCards as $card)
                         <x-group-card class="min-w-0" wire:key="play-{{ $card['group']->id }}" :card="$card" />
                     @endforeach
                 </div>
+            </div>
+        @endif
+
+        {{-- THE INVITE CODE, folded — under the groups it joins you to,
+             and ONE unconditional site: a bad code has to open a form
+             for a reader with no seats at all. Links are how a group
+             travels now; the code is the spoken-word fallback. --}}
+        <div
+            x-data="{ open: @js($errors->has('code')) }"
+            class="rounded-xl border border-zinc-200 dark:border-zinc-700"
+        >
+            <button
+                type="button"
+                x-on:click="open = ! open"
+                x-bind:aria-expanded="open"
+                class="flex w-full items-center justify-between gap-3 p-4 text-start"
+            >
+                <div class="min-w-0">
+                    <p class="font-semibold">Have an invite code?</p>
+                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('groups.join.subheading') }}</p>
+                </div>
+                <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
+            </button>
+
+            <div x-show="open" x-cloak class="border-t border-zinc-100 p-4 dark:border-zinc-800/60">
+                <form wire:submit="join" class="flex flex-col gap-3">
+                    {{-- The format rule stays plain: 8 characters, told straight. --}}
+                    <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />
+                    <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="join" class="self-start">Join the group</flux:button>
+                </form>
+            </div>
+        </div>
+
+        {{-- WEEK N CONTESTS — the public half: this Saturday's rooms the
+             reader is seated in, the always-open tables, and the ONE
+             door to the Lobby, where a room is joined. The heading names
+             the Saturday being sold and is SKIPPED when the calendar has
+             no week — never the cards, never the door, never a
+             substituted week. On a first run the door has already
+             rendered beside the mode doors, so it stays out of here; and
+             a rooms-only reader has no My Groups block, so the tour's
+             `seats` stop anchors here instead of stepping over itself. --}}
+        @if ($this->groupCards->isNotEmpty() || $this->roomCards->isNotEmpty() || $this->tableCards->isNotEmpty())
+            @php $contestsHeading = $this->seats->weekLabel() === null ? null : $this->seats->weekLabel().' Contests'; @endphp
+
+            <div class="flex flex-col gap-2" @if ($this->groupCards->isEmpty()) data-tour="seats" @endif>
+                @if ($contestsHeading !== null)
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">{{ $contestsHeading }}</flux:subheading>
+                    <flux:subheading>{{ Voice::line('picks.contests.subheading') }}</flux:subheading>
+                @endif
+
+                @if ($this->roomCards->isNotEmpty() || $this->tableCards->isNotEmpty())
+                    <div class="grid gap-3 xl:grid-cols-2">
+                        @foreach ($this->roomCards->concat($this->tableCards) as $card)
+                            <x-group-card class="min-w-0" wire:key="play-{{ $card['group']->id }}" :card="$card" />
+                        @endforeach
+                    </div>
+                @endif
+
+                @if ($this->groupCards->isNotEmpty())
+                    @include('partials.lobby-door')
+                @endif
             </div>
         @endif
         @endif
@@ -1185,9 +1191,10 @@ new class extends Component
              screen, so below `lg` nothing moved: the column collapses and
              they land exactly where a phone reader has always found them.
              From `lg` they ride alongside instead of pushing the spine down
-             the page — the same trade the game screen makes. Not sticky: the
-             picks walk spotlights `room` and `how` in here, and it scrolls to
-             a measured box. --}}
+             the page — the same trade the game screen makes. The invite
+             code and the Lobby door left here 2026-09-01 for the sections
+             they belong to. Not sticky: the picks walk spotlights `how` in
+             here, and it scrolls to a measured box. --}}
         <div class="flex flex-col gap-6">
         @if ($this->activeView === 'week')
         {{-- THE ROOMS THAT ARE OVER, as a door and never as cards.
@@ -1214,42 +1221,6 @@ new class extends Component
             </x-link-row>
         @endif
 
-        {{-- The code stays as the spoken-word fallback, folded away —
-             links are how a group travels now. --}}
-        <div
-            x-data="{ open: @js($errors->has('code')) }"
-            class="rounded-xl border border-zinc-200 dark:border-zinc-700"
-        >
-            <button
-                type="button"
-                x-on:click="open = ! open"
-                x-bind:aria-expanded="open"
-                class="flex w-full items-center justify-between gap-3 p-4 text-start"
-            >
-                <div class="min-w-0">
-                    <p class="font-semibold">Have an invite code?</p>
-                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('groups.join.subheading') }}</p>
-                </div>
-                <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
-            </button>
-
-            <div x-show="open" x-cloak class="border-t border-zinc-100 p-4 dark:border-zinc-800/60">
-                <form wire:submit="join" class="flex flex-col gap-3">
-                    {{-- The format rule stays plain: 8 characters, told straight. --}}
-                    <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />
-                    <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="join" class="self-start">Join the group</flux:button>
-                </form>
-            </div>
-        </div>
-
-        {{-- THE LOBBY, as a door — ONE of them. On a first run it has
-             already rendered up beside the mode doors, where the two ways
-             to play sit together; drawing it again down here would be the
-             same destination twice on one screen, which is the mistake
-             the first-run block itself was built to retire. --}}
-        @if ($this->groupCards->isNotEmpty())
-            @include('partials.lobby-door')
-        @endif
         @endif
 
         {{-- THE LADDER belongs to Results — XP is what a settled week

@@ -15,6 +15,11 @@
     already truncating the group name at 390px before it had one: at 40px
     it costs the title five characters, at 36px it costs three. Every
     caller passes the same pair of sizes.
+
+    The `title` slot replaces the h1: the clubhouse passes the group
+    switcher here, worn as the name, with an sr-only h1 beside it so the
+    heading survives for assistive tech. The caller that passes one owns
+    the heading semantics; nothing else about the band changes.
 --}}
 @props([
     'group',
@@ -34,7 +39,11 @@
 
     <div class="min-w-0 flex-1">
         <div class="flex min-w-0 items-center gap-2">
-            <h1 class="min-w-0 truncate text-xl font-bold leading-tight sm:text-2xl">{{ $group->name }}</h1>
+            @if ($title ?? false)
+                {{ $title }}
+            @else
+                <h1 class="min-w-0 truncate text-xl font-bold leading-tight sm:text-2xl">{{ $group->name }}</h1>
+            @endif
 
             {{-- The kind, always — one word. It used to render only for
                  lobbies, which made "Public" a mark some rooms wore and

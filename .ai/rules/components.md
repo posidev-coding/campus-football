@@ -5,25 +5,14 @@ paths:
 
 # Components
 
-## GROUPS and ROOMS are two products; one stack, with the kind said on every card
-(Amended 2026-09, supersedes "never share a heading".) My Picks sells every seat STILL IN PLAY in ONE
-"Where you play" stack: groupCards (`! isLobby()`, alphabetical)
-then roomCards (`isRoom()` and still on the card) then tableCards (evergreen
-`isLobby() && ! isRoom()`), concatenated by whereYouPlay() — projections of cards() only;
-never a fourth query. A room whose Saturday has been played is NOT in the stack: it is a
-transient contest that ended, and `pastRooms` sends it to History (components-support.md). The
-HEADINGS merged because three headings over one thumb of cards read as three products; the
-DISTINCTION did not: every card leads its micro-line with its kind in the join-landing's
-grammar ("Private group, all season ·" / "Public room · this Saturday ·" / "Always
-open ·"), so the kind is said once per CARD instead of once per zone. group-card's past
-line ("Saturday played") is a GUARD now, not a display path — this screen retires a played
-room rather than stacking it. An evergreen is "Always open", never a
-room's one-Saturday label and never "table" — two user-facing container nouns, still. The
-definition line under the heading is Voice (`picks.whereplay.subheading`); the kind lines
-are facts and stay plain.
+## GROUPS and ROOMS are two products — the one-stack merge (SUPERSEDED 2026-09-01, see the two-sections rule below)
+The 2026-08-29 pass split one "Your groups" heading into three; 2026-08-31 merged them into ONE "Where you play" stack with the kind said on every card, because three headings over one thumb of cards read as three products; 2026-09-01 split them again into TWO sections that mirror the group switcher's menu. What survived every version: a played room is NOT stacked (components-support.md), an evergreen is "Always open" and never "table" (two user-facing container nouns), and the definition line under a heading is Voice while kind facts stay plain.
 
 A room keeps its URL forever and leaves the inventory when its week ends, so it has no slate for the CURRENT week and falls through the state match to `waiting` — which told a reader their public room was waiting on a commissioner it never had. `cards()` carries a `past` flag (read off the room's OWN Saturday, never `week_id` alone — components-support.md) and group-card's waiting branch tests it FIRST.
 
 First-run means no PRIVATE groups, not no memberships: one public seat must not suppress the pitch. The three x-mode-door tiles stay the ONLY create affordance, and the Lobby door lives in `partials/lobby-door` so the first-run block and the screen foot render one door off one `roomsOpen` read — never two.
 
 `x-group-hero`'s chip renders for both kinds (Public / Private). A badge only one side of a pair wears is a badge nobody reads as a pair.
+
+## GROUPS and ROOMS are two products; two sections, mirrored by a switcher that navigates
+(Amended 2026-09-01; REVERSES the 2026-08-31 one-stack merge above, which is superseded.) My Picks sells the reader's seats in TWO sections that mirror `<x-group-switcher>`'s menu: "My Groups" (groupCards, `! isLobby()`, alphabetical; the "Start a group" link on its heading row, the invite-code disclosure directly under it — one unconditional site, because a bad code must open a form for a reader with no seats) and "Week {N} Contests" (roomCards — `isRoom()` and still on the Saturday being sold — then tableCards, then the ONE lobby door from `partials/lobby-door`; on a first run the door has already rendered beside the mode doors and stays out of the section). The kind is on the HEADINGS, so group-card's micro-line is facts only ("12 members · you're the commissioner"); an evergreen keeps "Always open ·" because its section names a Saturday and a table is not one. A null week label skips the Contests HEADING, never the cards or the door — never a substituted week. A played room is in neither section nor the switcher (History door; components-support.md). Every group-level read — groups, week, Saturday, room Saturdays, open-room count — is `App\Support\Seats`, held in a `#[Computed] seats()` on each screen and handed to the switcher as a prop; `cards()` consumes it and never issues a second groups query. The switcher is an `x-filter-menu` whose rows carry `href`, holds NO Livewire state, renders exactly once per screen (`data-group-switcher`), sits centered above the plate on /picks (the one exception to the row-order rule) and is the clubhouse hero's `title` slot with an sr-only h1 beside it; nothing here is named `$scope`. Each section's definition line is Voice (`picks.groups.subheading`, `picks.contests.subheading`); headings, kind facts, switcher rows and the needs zone's "and N more below" stay plain. The needs zone is ONE hero plus that count — the compact rows retired the same day because every card that needed picks rendered twice.

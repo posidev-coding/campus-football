@@ -122,8 +122,8 @@ Two consequences worth keeping straight:
 
 Every screen's top chrome is built from five components in
 `resources/views/components/` — `filter-menu` (and its wrappers
-`scope-filter` and `season-menu`), `plate`, `gutter-tabs`, `filter-bar` —
-plus the existing `week-scroller`. `ChromeConsistencyTest` sweeps the views,
+`scope-filter`, `season-menu` and, in the Picks area, `group-switcher`),
+`plate`, `gutter-tabs`, `filter-bar` — plus the existing `week-scroller`. `ChromeConsistencyTest` sweeps the views,
 so inlining the old markup is a red test rather than a quiet drift. The rules
 the components encode:
 
@@ -184,7 +184,11 @@ the components encode:
    cannot fit either way belongs in a `filter-menu`.
 8. **Row order, top down**: plate or team nav → filter bar → gutter →
    content. The WHEN menu rides the plate's actions slot when one exists,
-   else the filter bar's — or, on the team page, the hero.
+   else the filter bar's — or, on the team page, the hero. ONE exception,
+   and it is the Picks area's: `x-group-switcher` (2026-09-01) sits
+   centered ABOVE the plate on `/picks`, because "which of my seats am I
+   looking at" comes before "which half of this seat"; on the clubhouse
+   the same control is the hero's title. Nothing else goes above a plate.
 9. **Names**: `$year`, `$q`, `$scope`, `$sort`, `$view`, `$position`;
    `$perPage` never `#[Url]`; `wire:key` prefixes are per-screen (the team
    page and `/stats` once collided on `statsview-`).
@@ -220,6 +224,27 @@ Note the verification trap this turned up: stripping `.dark` from `<html>` at
 runtime to "check light mode" reports a color mid-transition — the trigger read
 zinc-100 against a light hero, which looks exactly like a broken inherit. Set
 `localStorage['flux.appearance']` and RELOAD instead.
+
+**A dropdown that NAVIGATES is still an `x-filter-menu`.** The Picks area's
+group switcher (`x-group-switcher`, 2026-09-01) is the one menu whose rows go
+somewhere rather than setting a property: an item may carry `href`, and the
+component renders it as a navigating `flux:menu.item` with `wire:navigate`,
+keyed and bolded exactly like a setting row, with `note` riding as the menu
+item's suffix ("3 open"). It holds no Livewire state and reads one thing, the
+host screen's `App\Support\Seats` computed — the same read My Picks' cards()
+stands on — so the menu can never list a different set of groups than the
+page under it. Its rows are sectioned the way the product is: "All my picks",
+then **My Groups** (private, season-long), then **Week N Contests** (the
+public rooms the reader is SEATED in this Saturday, the always-open tables,
+and "Browse the Lobby · N open" — the Lobby is where a room is joined, so the
+menu lists what you hold, never what is for sale). The page the reader is ON
+is always on the trigger: a lobby previewed without a seat or a room whose
+Saturday is played is spliced in as a bare row rather than letting the menu
+fall back to its first item. The `hero` variant is the clubhouse title:
+`currentColor` like `accent`, but no ring (a ring around a title reads as a
+button, not a name), and a label that clamps to two lines instead of
+truncating, because the band at 390 already spends its width on a mark and
+two controls.
 
 ## Sticky offsets are measured, not hardcoded
 

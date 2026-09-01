@@ -1,5 +1,5 @@
 @props([
-    /** list<array{value:string, label:string, menuLabel?:string, disabled?:bool, note?:string, group?:?string}> */
+    /** list<array{value:string, label:string, menuLabel?:string, href?:string, disabled?:bool, note?:string, group?:?string}> */
     'items' => [],
     'selected' => '',
     /** Livewire property to $set — or pass `action`, a method called with the value. */
@@ -17,6 +17,14 @@
      * the one pairing TeamPalette already proved readable there. Same ring as
      * the follow button's Following state, so the two read as a matched pair —
      * one filled action, one outlined qualifier.
+     *
+     * `hero` is the clubhouse TITLE: the group switcher worn as the name on
+     * the group hero's band. It inherits `currentColor` like `accent`, but
+     * carries no ring — a ring around a title reads as a button, not a name —
+     * so the chevron is the whole affordance. The label wraps to two lines
+     * rather than truncating, because at 390px the band already spends its
+     * width on a mark and two controls and a clipped name is a name nobody
+     * can read.
      */
     'variant' => 'default',
 ])
@@ -31,8 +39,10 @@
      *
      * Items may carry `group` (rendered as menu group headings when it
      * changes), `disabled` (rendered as a plain div — menu items are focusable
-     * and selectable, so a disabled one still lands under the keyboard), and
-     * `note` (small text beside a disabled label saying why).
+     * and selectable, so a disabled one still lands under the keyboard),
+     * `note` (small text beside the label — why a row is disabled, or a count
+     * on a live one), and `href` (the row NAVIGATES instead of setting the
+     * property — the group switcher's rows; the same idiom, going somewhere).
      */
     $current = collect($items)->firstWhere('value', $selected) ?? collect($items)->first();
 
@@ -51,25 +61,30 @@
     }
 @endphp
 
-<div {{ $attributes->class(['flex flex-col gap-0.5']) }}>
+<div {{ $attributes->class(['flex flex-col gap-0.5', 'min-w-0' => $variant === 'hero']) }}>
     <flux:dropdown position="bottom" :align="$align">
         <button
             type="button"
             @if ($label) aria-label="{{ $label }}" @endif
             @class([
-                'group flex w-fit items-center gap-1 text-sm font-medium transition-colors',
+                'group flex items-center transition-colors',
+                'w-fit gap-1 text-sm font-medium' => $variant !== 'hero',
                 '-mx-1 -my-1.5 px-1 py-2 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100' => $variant === 'default',
                 '-my-1 h-9 shrink-0 rounded-md px-2.5 ring-1 ring-current/50 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current' => $variant === 'accent',
+                'min-w-0 max-w-full gap-1.5 rounded-md text-start text-xl font-bold leading-tight hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current sm:text-2xl' => $variant === 'hero',
             ])
         >
-            {{ $current['label'] ?? '' }}
+            {{-- The hero label CLAMPS rather than truncates: two lines of a
+                 long name beat one line of a clipped one on a band that
+                 has no width to spare. --}}
+            <span @class(['min-w-0', 'line-clamp-2 break-words' => $variant === 'hero'])>{{ $current['label'] ?? '' }}</span>
             <flux:icon
                 name="chevron-down"
-                variant="micro"
+                :variant="$variant === 'hero' ? 'mini' : 'micro'"
                 @class([
-                    'transition-colors',
+                    'shrink-0 transition-colors',
                     'text-zinc-400 group-hover:text-current' => $variant === 'default',
-                    'opacity-70' => $variant === 'accent',
+                    'opacity-70' => $variant !== 'default',
                 ])
             />
         </button>

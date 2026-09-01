@@ -18,6 +18,7 @@ use App\Models\SlateEntry;
 use App\Models\SlateGame;
 use App\Models\User;
 use App\Models\Week;
+use App\Support\Cadence;
 use App\Support\Navigation;
 use App\Support\Voice;
 use Carbon\Carbon;
@@ -63,6 +64,51 @@ function heroClockText(string $html): string
     return trim($matches[1] ?? '');
 }
 
+/** The switcher's own markup — everything above the fork. */
+function switcherOf(string $html): string
+{
+    return (string) str($html)->before('wire:key="picks-view-week"');
+}
+
+/** The overview under the fork, where the sections and their cards are. */
+function overviewOf(string $html): string
+{
+    return (string) str($html)->after('wire:key="picks-view-results"');
+}
+
+/** The contests heading for the Saturday being sold — never a hardcoded week. */
+function contestsHeading(Week $week): string
+{
+    return Cadence::displayWeekLabel($week, Cadence::activeSaturday($week)).' Contests';
+}
+
+/** The one menu row carrying the key, from its `<` to its `>`. */
+function switcherRow(string $html, string $key): string
+{
+    $at = strpos($html, 'wire:key="'.$key.'"');
+
+    expect($at)->not->toBeFalse("no switcher row carries {$key}");
+
+    $start = strrpos(substr($html, 0, $at), '<');
+    $end = strpos($html, '>', $at);
+
+    return substr($html, $start, $end - $start + 1);
+}
+
+/** Each needle after the last, inside one string. */
+function expectInOrder(string $haystack, array $needles): void
+{
+    $at = -1;
+
+    foreach ($needles as $needle) {
+        $next = strpos($haystack, $needle, $at + 1);
+
+        expect($next)->not->toBeFalse("missing or out of order: {$needle}");
+
+        $at = $next;
+    }
+}
+
 describe('the promise (outside the flag)', function () {
     it('renders for a guest', function () {
         // Public like every area except Account: the tab is in a guest's
@@ -79,7 +125,7 @@ describe('the promise (outside the flag)', function () {
             ->get(route('pickem.home'))
             ->assertOk()
             ->assertSee('Coming soon')
-            ->assertDontSee('Where you play');
+            ->assertDontSee('My Groups');
     });
 
     it('shows an admin the real screen, at both doors', function () {
@@ -126,10 +172,12 @@ describe('my week (inside the flag)', function () {
             ->assertSeeInOrder([
                 'My Picks',
                 'Needs your picks',
-                // ONE stack for every seat: the three container headings
-                // merged, and the kind moved onto each card.
-                'Where you play',
+                // The two sections the switcher's menu shows, in the same
+                // order: the invite code under the first, the Lobby door
+                // closing the second.
+                'My Groups',
                 'Have an invite code?',
+                'Contests',
                 'The Lobby',
             ])
             // The payoff is a FORK away now, not four zones down: the week
@@ -232,7 +280,8 @@ describe('my week (inside the flag)', function () {
             ])
             ->assertSee(route('pickem.create'), escape: false)
             ->assertSee(route('pickem.lobby'), escape: false)
-            ->assertDontSee('Where you play');
+            ->assertDontSee('My Groups')
+            ->assertDontSeeHtml('data-group-switcher');
     });
 
     it('draws the lobby door exactly once on a first run', function () {
@@ -258,7 +307,7 @@ describe('my week (inside the flag)', function () {
         [$commissioner] = pickemContest();
 
         Livewire::actingAs($commissioner)->test('pickem-home')
-            ->assertSee('Where you play')
+            ->assertSee('My Groups')
             ->assertSee('Start a group')
             ->assertSee(route('pickem.create'), escape: false)
             // With groups in hand the doors are the wizard's job, not the
@@ -267,21 +316,17 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee('Start your own group');
     });
 
-    it('stacks a private group and a joined room together, each saying which it is', function () {
+    it('files a private group and a joined room under their own headings, and the switcher mirrors them', function () {
         /*
-         * THE ORIGINAL BUG: one heading, "Your groups", over both
-         * products — a public room joined an hour ago sat in the same
-         * stack under the same word as a season-long group, and nothing
-         * on the screen said either one was what it was.
+         * 2026-08-29 split one "Your groups" heading into three; 08-31
+         * merged them back and put the kind on every card; 09-01 splits
+         * them again — into TWO, and the same two the switcher's menu
+         * shows. A stack of cards each carrying its own kind line read
+         * as one product with fine print; two headings that are the
+         * menu's own sections are the taxonomy said in two places.
          *
-         * THE 2026-08-31 AMENDMENT: splitting the HEADINGS fixed the
-         * wrong half. Three headings over one thumb of cards read as
-         * three products, so they merged back into one "Where you play"
-         * stack — and the distinction moved onto every CARD as a
-         * kind-first line, in the join landing's own grammar. Said once
-         * per card instead of once per zone.
-         *
-         * Order still carries meaning: groups before rooms.
+         * The invite code sits under the groups it joins you to; the
+         * one Lobby door closes the contests.
          */
         $this->travelTo('2026-09-02 12:00:00');
 
@@ -292,24 +337,38 @@ describe('my week (inside the flag)', function () {
         $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
         app(JoinGroup::class)->handle($commissioner, $room);
 
-        Livewire::actingAs($commissioner->fresh())->test('pickem-home')
-            ->assertSeeInOrder([
-                'Where you play',
-                'Rocky Top Rejects',
-                $room->name,
-            ])
-            // The kind, on each card, leading its own micro-line.
-            ->assertSee('Private group, all season')
-            ->assertSee('Public room · this Saturday', escape: false)
-            // One heading, one definition — and it is Voice.
-            ->assertSee(Voice::line('picks.whereplay.subheading', for: $commissioner))
+        $html = Livewire::actingAs($commissioner->fresh())->test('pickem-home')->html();
+        $overview = overviewOf($html);
+
+        expectInOrder($overview, [
+            'My Groups',
+            'Rocky Top Rejects',
+            'Have an invite code?',
+            contestsHeading($week),
+            $room->name,
+            'The Lobby',
+        ]);
+
+        expect($overview)
+            // Facts on the card; the kind is on the heading now.
+            ->toContain('1 member')
+            ->toContain(e("you're the commissioner"))
+            ->not->toContain('Private group, all season')
+            ->not->toContain('Public room')
+            // One definition under each heading — and both are Voice.
+            ->toContain(e(Voice::line('picks.groups.subheading', for: $commissioner)))
+            ->toContain(e(Voice::line('picks.contests.subheading', for: $commissioner)))
             // The lobby door survives as the ONE way to the store.
-            ->assertSee(route('pickem.lobby'), escape: false)
-            ->assertDontSee('Your groups')
-            ->assertDontSee('Public rooms')
-            // "Find a room" is retired: the door below is that same
-            // destination, and one door is the partial's own rule.
-            ->assertDontSee('Find a room');
+            ->toContain(route('pickem.lobby'))
+            ->not->toContain('Your groups')
+            ->not->toContain('Public rooms')
+            ->not->toContain('Where you play')
+            // "Find a room" is retired: the door is that same destination,
+            // and one door is the partial's own rule.
+            ->not->toContain('Find a room');
+
+        // And the switcher above the fork lists the same two sections.
+        expectInOrder(switcherOf($html), ['My Groups', 'Rocky Top Rejects', contestsHeading($week), $room->name]);
     });
 
     it('calls an always-open table what it is, and never a room', function () {
@@ -325,7 +384,6 @@ describe('my week (inside the flag)', function () {
         GroupMember::factory()->create(['group_id' => $table->id, 'user_id' => $viewer->id]);
 
         Livewire::actingAs($viewer->fresh())->test('pickem-home')
-            ->assertSee('Where you play')
             ->assertSee('The Big Lobby')
             ->assertSee('Always open')
             ->assertDontSee('Public room')
@@ -350,9 +408,10 @@ describe('my week (inside the flag)', function () {
             // ...and their one seat is still stacked below the pitch. The
             // stack renders off whereYouPlay(), not off groupCards, or a
             // rooms-only reader would lose the room they hold.
-            ->assertSee('Where you play')
+            ->assertSee(contestsHeading($week))
             ->assertSee($room->name)
             ->assertDontSee('Your groups')
+            ->assertDontSee('My Groups')
             // No second create affordance beside the three mode doors.
             ->assertDontSee('Start a group');
     });
@@ -388,7 +447,7 @@ describe('my week (inside the flag)', function () {
         $screen = Livewire::actingAs($viewer->fresh())->test('pickem-home');
 
         expect($screen->instance()->pastRooms->pluck('group.id')->all())->toBe([$room->id])
-            ->and($screen->instance()->whereYouPlay->pluck('group.id')->all())->not->toContain($room->id);
+            ->and($screen->instance()->roomCards->pluck('group.id')->all())->not->toContain($room->id);
 
         $screen
             ->assertDontSee($room->name)
@@ -455,7 +514,7 @@ describe('my week (inside the flag)', function () {
         $screen
             ->assertDontSee($played->name)
             ->assertSee($selling->name)
-            ->assertSee('Public room · this Saturday', escape: false);
+            ->assertSee(contestsHeading($week));
     });
 
     it('says nothing about history to a reader whose rooms are all still live', function () {
@@ -637,12 +696,14 @@ describe('my week (inside the flag)', function () {
             ->whereIn('id', $soonSlate->games->pluck('game_id'))
             ->update(['kickoff_at' => '2026-09-05 12:00:00']);
 
-        // The earlier kickoff takes the hero; the other keeps its compact
-        // row, which is what the zone has always drawn.
-        Livewire::actingAs($reader)->test('pickem-home')
-            ->assertSeeInOrder(['The Noon Kick', 'Make your picks', 'The Late Window'])
-            ->assertSeeHtml('wire:key="hero-'.$soon->id.'"')
-            ->assertSeeHtml('wire:key="needs-'.$late->id.'"');
+        // The earlier kickoff takes the hero; the other is a COUNT under
+        // its button and its own card below — never a second row.
+        $html = Livewire::actingAs($reader)->test('pickem-home')->html();
+
+        expectInOrder(overviewOf($html), ['The Noon Kick', 'Make your picks', 'and 1 more below', 'The Late Window']);
+
+        expect($html)->toContain('wire:key="hero-'.$soon->id.'"')
+            ->not->toContain('wire:key="needs-');
 
         /*
          * A slate already under way outranks any clock: "Live" is the
@@ -662,7 +723,38 @@ describe('my week (inside the flag)', function () {
 
         Livewire::actingAs($reader)->test('pickem-home')
             ->assertSeeHtml('wire:key="hero-'.$late->id.'"')
-            ->assertSeeHtml('wire:key="needs-'.$soon->id.'"');
+            ->assertDontSeeHtml('wire:key="hero-'.$soon->id.'"')
+            ->assertSee('and 1 more below');
+    });
+
+    it('says how many more want picks, once, under the button — and nothing when the hero is alone', function () {
+        /*
+         * Every card that needed picks rendered TWICE here: as a compact
+         * row in this zone and again as its own card below. A reader in
+         * four groups met eight cards before the fold. The zone is one
+         * hero and one count now; the cards keep their own state.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$reader, , $first] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($reader, pickemDraftSlate($first));
+
+        Livewire::actingAs($reader)->test('pickem-home')
+            ->assertSee('Make your picks')
+            ->assertDontSee('more below');
+
+        foreach (['The Back Porch', 'The Noon Kick'] as $name) {
+            $group = Group::factory()->create(['name' => $name]);
+            GroupMember::factory()->commissioner()->create(['group_id' => $group->id, 'user_id' => $reader->id]);
+            $contest = Contest::factory()->create(['group_id' => $group->id, 'mode' => ContestMode::Classic]);
+            app(PublishSlate::class)->handle($reader, pickemDraftSlate($contest));
+        }
+
+        $html = Livewire::actingAs($reader->fresh())->test('pickem-home')->html();
+
+        expect(substr_count($html, 'and 2 more below'))->toBe(1)
+            ->and(substr_count($html, 'wire:key="hero-'))->toBe(1)
+            ->and($html)->not->toContain('wire:key="needs-');
     });
 
     it('forks into This week and Results, and normalizes a nonsense tab both ways', function () {
@@ -1247,4 +1339,263 @@ it('lights My Picks, and lets the Lobby chip keep the store', function () {
 
     expect(collect($sections)->pluck('label')->all())->toBe(['My Picks', 'Lobby', 'Leaderboard', 'History'])
         ->and($sections[0]['route'])->toBe('pickem.home');
+});
+
+describe('the seats read', function () {
+    it('reads every seat once for the whole screen', function () {
+        /*
+         * The group switcher and the card query both stand on ONE Seats
+         * read. A second groups query here is the drift this pins
+         * against: two answers to "which groups am I in", one for the
+         * menu and one for the page under it.
+         */
+        $reader = pickemAdmin();
+
+        foreach (['Rocky Top Rejects', 'The Back Porch', 'The Noon Kick'] as $name) {
+            $group = Group::factory()->create(['name' => $name]);
+            GroupMember::factory()->commissioner()->create(['group_id' => $group->id, 'user_id' => $reader->id]);
+            Contest::factory()->create(['group_id' => $group->id]);
+        }
+
+        DB::enableQueryLog();
+
+        Livewire::actingAs($reader->fresh())->test('pickem-home')->assertSee('Rocky Top Rejects');
+
+        $seats = collect(DB::getQueryLog())
+            ->pluck('query')
+            ->filter(fn (string $query) => str_contains($query, 'pivot_role'))
+            ->count();
+
+        DB::disableQueryLog();
+
+        expect($seats)->toBe(1);
+    });
+});
+
+describe('the group switcher', function () {
+    beforeEach(function () {
+        $this->travelTo('2026-09-02 12:00:00');
+    });
+
+    it('lists every seat, groups before this Saturday\'s rooms, then the door to the Lobby', function () {
+        $reader = pickemAdmin();
+        [, $week] = pickemHomeWeek();
+
+        foreach (['The Back Porch', 'Rocky Top Rejects'] as $name) {
+            $group = Group::factory()->create(['name' => $name]);
+            GroupMember::factory()->commissioner()->create(['group_id' => $group->id, 'user_id' => $reader->id]);
+            Contest::factory()->create(['group_id' => $group->id]);
+        }
+
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        app(JoinGroup::class)->handle($reader, $room);
+        $room->update(['name' => 'The Joined Room']);
+
+        $unseated = app(SpawnPublicContest::class)->handle(ContestMode::Tiered, $week);
+        $unseated->update(['name' => 'The Unjoined Room']);
+
+        $html = Livewire::actingAs($reader->fresh())->test('pickem-home')->html();
+        $switcher = switcherOf($html);
+
+        // ONE switcher, above the fork.
+        expect($switcher)->toContain('data-group-switcher')
+            ->and(substr_count($html, 'data-group-switcher'))->toBe(1);
+
+        // Order IS the taxonomy: the overview, the season-long groups by
+        // name, this Saturday's rooms under the week they play, the store.
+        expectInOrder($switcher, [
+            'All my picks',
+            'My Groups',
+            'Rocky Top Rejects',
+            'The Back Porch',
+            contestsHeading($week),
+            'The Joined Room',
+            'Browse the Lobby',
+            '1 open',
+        ]);
+
+        $rejects = Group::query()->where('name', 'Rocky Top Rejects')->first();
+
+        expect($switcher)
+            ->toContain(route('pickem.home'))
+            ->toContain(route('pickem.group', $rejects))
+            ->toContain(route('pickem.room', $room))
+            ->toContain(route('pickem.lobby'))
+            ->toContain('wire:key="switch-all"')
+            ->toContain('wire:key="switch-g-'.$rejects->id.'"')
+            ->toContain('wire:key="switch-g-'.$room->id.'"')
+            ->toContain('wire:key="switch-lobby"')
+            ->toContain('wire:navigate')
+            // A room the reader has NOT joined is the Lobby's to sell, not
+            // the switcher's to list.
+            ->not->toContain('The Unjoined Room')
+            // And never the door's own sentence: that one is counted once.
+            ->not->toContain('public room open');
+
+        // On /picks the overview is the current row, and nothing else is.
+        expect(switcherRow($switcher, 'switch-all'))->toContain('font-semibold')
+            ->and(switcherRow($switcher, 'switch-g-'.$rejects->id))->not->toContain('font-semibold');
+    });
+
+    it('leaves a played room out of the switcher', function () {
+        /*
+         * The split opening week, again: an 8/29 room still matches the
+         * week id on the Tuesday after. The switcher reads the same
+         * Seats partition the overview does, so the room leaves both.
+         */
+        $this->travelTo('2026-08-26 12:00:00');
+
+        $viewer = pickemAdmin();
+        [, $week] = splitPickemWeek();
+
+        foreach (Game::query()->whereNotNull('kickoff_at')->get() as $game) {
+            pickemOdd($game);
+            $game->predictor()->create(['matchup_quality' => 90.0]);
+        }
+
+        $played = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, Carbon::parse('2026-08-29'));
+        app(JoinGroup::class)->handle($viewer, $played);
+
+        $this->travelTo('2026-09-01 12:00:00');
+
+        $selling = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, Carbon::parse('2026-09-05'));
+        app(JoinGroup::class)->handle($viewer, $selling);
+
+        $played->update(['name' => 'The 8/29 Room']);
+        $selling->update(['name' => 'The 9/5 Room']);
+
+        $switcher = switcherOf(Livewire::actingAs($viewer->fresh())->test('pickem-home')->html());
+
+        expect($switcher)->toContain('The 9/5 Room')
+            ->toContain('Week 1 Contests')
+            ->not->toContain('The 8/29 Room');
+    });
+
+    it('labels the contests by the Saturday being sold, Week 0 included', function () {
+        $this->travelTo('2026-08-26 12:00:00');
+
+        $viewer = pickemAdmin();
+        [, $week] = splitPickemWeek();
+
+        foreach (Game::query()->whereNotNull('kickoff_at')->get() as $game) {
+            pickemOdd($game);
+            $game->predictor()->create(['matchup_quality' => 90.0]);
+        }
+
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week, Carbon::parse('2026-08-29'));
+        app(JoinGroup::class)->handle($viewer, $room);
+
+        expect(switcherOf(Livewire::actingAs($viewer->fresh())->test('pickem-home')->html()))
+            ->toContain('Week 0 Contests')
+            ->toContain($room->name);
+    });
+
+    it('draws no switcher on a first run, and exactly one for any seated reader', function () {
+        // A reader with no seats has nothing to switch between — and the
+        // first run stays the screen it has always been.
+        Livewire::actingAs(pickemAdmin())->test('pickem-home')
+            ->assertSee('Two ways to play')
+            ->assertDontSeeHtml('data-group-switcher');
+
+        // A room is a seat.
+        $viewer = pickemAdmin();
+        [, $week] = pickemHomeWeek();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+        app(JoinGroup::class)->handle($viewer, $room);
+
+        expect(substr_count(Livewire::actingAs($viewer->fresh())->test('pickem-home')->html(), 'data-group-switcher'))->toBe(1);
+
+        // So is a group.
+        [$commissioner] = pickemContest();
+
+        expect(substr_count(Livewire::actingAs($commissioner)->test('pickem-home')->html(), 'data-group-switcher'))->toBe(1);
+    });
+
+    it('skips the contests heading when the calendar has no week, and keeps the Lobby row', function () {
+        // No season, no week, no heading — never a substituted one. The
+        // way to the store is not a Saturday product and stays.
+        [$commissioner, $group] = pickemContest();
+
+        $switcher = switcherOf(Livewire::actingAs($commissioner)->test('pickem-home')->html());
+
+        expect($switcher)->toContain($group->name)
+            ->toContain('My Groups')
+            ->toContain('Browse the Lobby')
+            ->not->toContain('Contests');
+    });
+
+    it('never says the door\'s sentence twice on a seated reader\'s screen', function () {
+        [$commissioner] = pickemContest();
+        [, $week] = pickemHomeWeek();
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+
+        expect(substr_count($html, '1 public room open this Saturday'))->toBe(1)
+            ->and(switcherOf($html))->toContain('1 open');
+    });
+});
+
+describe('the two sections', function () {
+    beforeEach(function () {
+        $this->travelTo('2026-09-02 12:00:00');
+    });
+
+    it('draws exactly one lobby door for every kind of reader', function () {
+        [, $week] = pickemHomeWeek();
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        // Zero seats: the first-run block hoists the door beside the mode
+        // doors, and nothing else draws one.
+        expect(substr_count(Livewire::actingAs(pickemAdmin())->test('pickem-home')->html(), 'data-tour="room"'))->toBe(1);
+
+        // Rooms only: still the first run's door — and the room's card
+        // under its week, where the tour's seats stop now anchors.
+        $viewer = pickemAdmin();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Tiered, $week);
+        app(JoinGroup::class)->handle($viewer, $room);
+
+        $html = Livewire::actingAs($viewer->fresh())->test('pickem-home')->html();
+
+        expect(substr_count($html, 'data-tour="room"'))->toBe(1)
+            ->and(substr_count($html, 'data-tour="seats"'))->toBe(1)
+            ->and($html)->toContain(contestsHeading($week));
+
+        // Groups: the door closes the contests section, and only there —
+        // the sidecar has nothing left but the reference and the archive.
+        [$commissioner] = pickemContest();
+
+        $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+
+        expect(substr_count($html, 'data-tour="room"'))->toBe(1);
+
+        expectInOrder(overviewOf($html), ['My Groups', 'Have an invite code?', contestsHeading($week), 'The Lobby', 'How this works']);
+    });
+
+    it('keeps the door when the calendar has no week, and skips only the heading', function () {
+        // No season, no week, no "Week N Contests" — never a substituted
+        // one. The way to the store is not a Saturday product and stays.
+        [$commissioner] = pickemContest();
+
+        $overview = overviewOf(Livewire::actingAs($commissioner)->test('pickem-home')->html());
+
+        expect($overview)->toContain('My Groups')
+            ->toContain('The Lobby')
+            ->toContain(route('pickem.lobby'))
+            ->not->toContain('Contests');
+    });
+
+    it('keeps the invite form on a screen with no seats at all', function () {
+        // ONE unconditional site: a bad code has to open a form for a
+        // reader who holds nothing, or the spoken-word fallback is gone
+        // for exactly the person who needs it.
+        $admin = pickemAdmin();
+
+        Livewire::actingAs($admin)->test('pickem-home')
+            ->assertSee('Have an invite code?')
+            ->set('code', 'NOPENOPE')
+            ->call('join')
+            ->assertHasErrors('code')
+            ->assertSee('{ open: true }', escape: false);
+    });
 });
