@@ -371,6 +371,72 @@ class Brand
     }
 
     /**
+     * The share card a group invite unfurls as: the mode's ground color,
+     * the app icon centered.
+     *
+     * The same composition {@see self::splash()} does, and deliberately so
+     * — GD, the icon read through the resolver, cached under the settings
+     * version, null when the icon cannot be read so the route can 404.
+     * What differs is the shape (1200x630, the OG contract) and that the
+     * ground is passed in rather than being the brand's ink: the card is
+     * about which GAME the group plays.
+     *
+     * There is no TEXT on it. `imagettftext()` needs a TTF and the app
+     * ships only `.woff2`, which GD cannot read — and a card with the
+     * group's name burned in is not worth committing a font binary for
+     * when Slack already prints og:title and og:description beside the
+     * image. The group's name reaches the reader either way.
+     */
+    public static function inviteCard(string $hex): ?string
+    {
+        $version = self::settings()['version'] ?? 0;
+
+        return Cache::remember(
+            "brand:invite-card:{$version}:{$hex}",
+            self::TTL,
+            function () use ($hex): ?string {
+                if (($bytes = self::bytes('icon-512')) === null) {
+                    return null;
+                }
+
+                if (($icon = imagecreatefromstring($bytes)) === false) {
+                    return null;
+                }
+
+                $canvas = imagecreatetruecolor(1200, 630);
+
+                [$r, $g, $b] = sscanf($hex, '#%02x%02x%02x');
+                imagefill($canvas, 0, 0, imagecolorallocate($canvas, $r, $g, $b));
+
+                // A third of the short edge: big enough to read as a mark
+                // in a Slack card, small enough that the color still says
+                // which game this is.
+                $size = 210;
+
+                imagecopyresampled(
+                    $canvas,
+                    $icon,
+                    intdiv(1200 - $size, 2),
+                    intdiv(630 - $size, 2),
+                    0,
+                    0,
+                    $size,
+                    $size,
+                    imagesx($icon),
+                    imagesy($icon),
+                );
+                imagedestroy($icon);
+
+                ob_start();
+                imagepng($canvas);
+                imagedestroy($canvas);
+
+                return ob_get_clean() ?: null;
+            },
+        );
+    }
+
+    /**
      * The raw bytes behind an asset slot, uploaded or shipped.
      */
     public static function bytes(string $key): ?string

@@ -10,6 +10,7 @@ use App\Models\Contest;
 use App\Models\Group;
 use App\Models\Slate;
 use App\Models\User;
+use App\Support\PageMeta;
 use App\Support\Voice;
 use Laravel\Pennant\Feature;
 use Livewire\Attributes\Computed;
@@ -81,7 +82,47 @@ new class extends Component
                 $this->group,
                 navigate: true,
             );
+
+            return;
         }
+
+        $this->describeForSharing();
+    }
+
+    /**
+     * What this link unfurls as in Slack, iMessage and every other card.
+     *
+     * Only the LIVE-code branch says anything. A codeless app invite and a
+     * dead code both fall through to the brand's own answer, which is the
+     * null-means-no-data law wearing a share card: neither one is a group,
+     * so neither one may invent a name for one.
+     *
+     * The group's name and the game it plays, and NOTHING about its
+     * people. The link is already the credential — anybody holding it
+     * reads the name off the page a second later — but a member count in
+     * a card is data that outlives the tap, cached by every crawler that
+     * ever touched the URL, and it buys nothing.
+     *
+     * The image carries no group identifier either: one card per MODE, so
+     * a private group's existence never becomes a distinct image URL in a
+     * proxy log.
+     */
+    private function describeForSharing(): void
+    {
+        $group = $this->group;
+        $contest = $this->contest;
+
+        if ($group === null || $contest === null) {
+            return;
+        }
+
+        $games = $contest->mode->engine($contest->settings)->slateSize();
+
+        app(PageMeta::class)->set(
+            title: $group->name.' · '.$contest->mode->label(),
+            description: $group->flavorEnum()?->blurb($games) ?? $contest->mode->blurb($games),
+            image: route('brand.invite-card', ['mode' => $contest->mode->value]),
+        );
     }
 
     /**

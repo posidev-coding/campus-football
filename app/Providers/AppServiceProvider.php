@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\Espn\EspnClient;
 use App\Services\Nil\KeywordNilNewsProvider;
 use App\Services\Nil\NilNewsProvider;
+use App\Support\PageMeta;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -46,6 +47,13 @@ class AppServiceProvider extends ServiceProvider
          * can replace it without touching a page.
          */
         $this->app->bind(NilNewsProvider::class, KeywordNilNewsProvider::class);
+
+        /*
+         * What THIS page's <head> says. Scoped, never singleton: a queue
+         * worker holds one container for its whole life, so a singleton
+         * would leak one reader's group name into the next reader's card.
+         */
+        $this->app->scoped(PageMeta::class);
     }
 
     public function boot(): void

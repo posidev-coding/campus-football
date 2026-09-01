@@ -25,7 +25,31 @@
     'variant' => 'panel',
     /** panel only: the server-rendered initial disclosure state. */
     'open' => false,
+    /**
+     * Ready-to-send messages, from App\Support\InviteTemplates. Empty is
+     * a real answer (a caller with no contest to describe), not a missing
+     * one — the block simply does not render.
+     *
+     * @var list<array{key: string, label: string, hint: string, subject: string|null, body: string}>
+     */
+    'templates' => [],
 ])
+
+@php
+    /*
+     * The bodies ride the Alpine scope as a keyed map rather than being
+     * interpolated into each button's handler: a Blade directive inside a
+     * COMPONENT TAG's attribute (`<flux:button x-on:click="c(@js($body))">`)
+     * ships the literal string `@js($body)` to the browser and the handler
+     * is INERT — no console error, no exception. Handlers below therefore
+     * pass a plain key and read the text from here.
+     */
+    $clipboard = collect($templates)
+        ->mapWithKeys(fn (array $t): array => [
+            $t['key'] => ($t['subject'] === null ? '' : $t['subject']."\n\n").$t['body'],
+        ])
+        ->all();
+@endphp
 
 <div
     x-data="{
@@ -47,6 +71,16 @@
 
                 this.copiedCode = true;
                 setTimeout(() => this.copiedCode = false, 2000);
+            });
+        },
+        bodies: @js($clipboard),
+        copiedTemplate: null,
+        copyTemplate(key) {
+            window.cfbClipboard.copy(this.bodies[key]).then((ok) => {
+                if (! ok) return;
+
+                this.copiedTemplate = key;
+                setTimeout(() => this.copiedTemplate = null, 2000);
             });
         },
         share() {
@@ -105,6 +139,8 @@
                     </flux:button>
                 </div>
             @endif
+
+            @include('partials.invite-extras')
         </div>
     @else
         <div class="flex flex-col items-center gap-3 px-4 py-6">
@@ -129,6 +165,10 @@
                     <p class="font-mono text-2xl font-bold tracking-[0.3em]">{{ $code }}</p>
                 </div>
             @endif
+
+            <div class="w-full text-start">
+                @include('partials.invite-extras')
+            </div>
         </div>
     @endif
 </div>

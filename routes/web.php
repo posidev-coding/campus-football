@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ContestMode;
 use App\Http\Controllers\ClientErrorController;
 use App\Http\Controllers\LeaveImpersonationController;
 use App\Http\Controllers\PushSubscriptionController;
@@ -138,6 +139,32 @@ Route::get('apple-touch-icon-{variant}.png', $appleTouchIcon)->where('variant', 
     ShareErrorsFromSession::class,
     // The CSRF layer BOTH validates (moot on GET) and sets the XSRF
     // cookie — the other half of the Set-Cookie these routes must not send.
+    PreventRequestForgery::class,
+    AddQueuedCookiesToResponse::class,
+]);
+
+/*
+ * The share card a group invite unfurls as, one per contest mode. The mode
+ * is validated against the enum rather than parsed, so this cannot be asked
+ * to render an arbitrary color — and it carries no group identifier at all,
+ * which keeps a private group's name out of a URL that link crawlers,
+ * proxies and Slack's own cache all keep.
+ *
+ * Session-free for the same reason the splash is: an unfurl is fetched by a
+ * crawler that must never be handed a Set-Cookie.
+ */
+Route::get('brand/invite/{mode}.png', function (string $mode) {
+    abort_if(($case = ContestMode::tryFrom($mode)) === null, 404);
+
+    abort_if(($png = Brand::inviteCard($case->cardHex())) === null, 404);
+
+    return response($png, 200, [
+        'Content-Type' => 'image/png',
+        'Cache-Control' => 'public, max-age=86400',
+    ]);
+})->name('brand.invite-card')->withoutMiddleware([
+    StartSession::class,
+    ShareErrorsFromSession::class,
     PreventRequestForgery::class,
     AddQueuedCookiesToResponse::class,
 ]);

@@ -3,6 +3,8 @@
 use App\Actions\CreateGroup;
 use App\Enums\ContestMode;
 use App\Exceptions\PickemParticipationGated;
+use App\Models\Group;
+use App\Support\InviteTemplates;
 use App\Support\Voice;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
@@ -102,6 +104,38 @@ new class extends Component
         $this->code = $group->code;
         $this->step = 3;
     }
+
+    /**
+     * The ready-to-send messages, for the moment the group exists and
+     * there is nobody in it yet.
+     *
+     * Re-reads the group rather than composing from `$name` and `$code`:
+     * CreateGroup owns the code, and a screen that formats its own copy
+     * of a row is how the two drift. One query, on a step reached once.
+     *
+     * @return list<array{key: string, label: string, hint: string, subject: string|null, body: string}>
+     */
+    #[Computed]
+    public function inviteTemplates(): array
+    {
+        if ($this->groupId === null) {
+            return [];
+        }
+
+        $group = Group::with('contests:id,group_id,mode,settings')->find($this->groupId);
+        $contest = $group?->contests->first();
+
+        if ($group === null || $contest === null) {
+            return [];
+        }
+
+        return InviteTemplates::for(
+            $group,
+            $contest->mode,
+            $this->joinUrl,
+            $contest->mode->engine($contest->settings)->slateSize(),
+        );
+    }
 }; ?>
 
 <div class="flex flex-col gap-5 lg:mx-auto lg:w-full lg:max-w-xl">
@@ -186,6 +220,7 @@ new class extends Component
                 :code="$code"
                 :title="$name"
                 :share-text="Voice::line('groups.invite.share_text', ['group' => $name])"
+                :templates="$this->inviteTemplates"
             />
 
             <p class="text-sm text-zinc-500 dark:text-zinc-400">

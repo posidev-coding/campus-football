@@ -946,6 +946,39 @@ class Voice
             'r' => 'Join :group. Every pick on the record, every excuse in writing.',
         ],
 
+        // Beneath the QR square. The instruction has to survive the joke:
+        // somebody is holding a phone up to a monitor and needs to know
+        // that is the whole gesture.
+        'groups.invite.qr_hint' => [
+            'pg' => 'Point a phone camera at this to join.',
+            'pg13' => 'Point a phone at it. That is the whole process.',
+            'r' => 'Point a phone at it. No excuses left.',
+        ],
+
+        // Under the ready-to-send messages. Says plainly that these go out
+        // from the SENDER's own number and inbox — the app never mails a
+        // stranger, and a commissioner should not think it did.
+        'groups.invite.templates_hint' => [
+            'pg' => 'Copy one and send it yourself — it goes from your number or inbox, not ours.',
+            'pg13' => 'Copy, paste, send. It comes from you, which is why anyone will believe it.',
+            'r' => 'Copy, paste, send. Coming from you is the only reason anyone will open it.',
+        ],
+
+        // The handoff confirm. A commissioner is about to give away the
+        // only seat that can publish a slate, so the funny version still
+        // has to say exactly what happens.
+        'groups.handoff.confirm' => [
+            'pg' => 'Make :name the commissioner of :group? They take over the slate, and you become a regular member.',
+            'pg13' => 'Hand :group to :name? They run the slate from here, and you go back to being just another entrant.',
+            'r' => 'Hand :group to :name? They take the keys, you take your seat with everyone else.',
+        ],
+
+        'groups.handoff.done' => [
+            'pg' => ':name is now the commissioner of :group.',
+            'pg13' => ':name has the keys to :group. Blame them now.',
+            'r' => ':name runs :group now. Their mess.',
+        ],
+
         'groups.leave.commissioner' => [
             'pg' => "Commissioners can't leave while the group has members.",
             'pg13' => "You're the commissioner — the last one out. Everyone else leaves first.",
