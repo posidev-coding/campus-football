@@ -11,6 +11,7 @@ use App\Models\Slate;
 use App\Models\SlateEntry;
 use App\Models\Team;
 use App\Models\User;
+use App\Models\Week;
 use App\Support\GameRanks;
 use App\Support\Voice;
 use Illuminate\Support\Facades\DB;
@@ -369,7 +370,102 @@ it('navigates the clubhouse from ONE strip of four stops', function () {
     // second strip is the regression this test exists to catch, and it
     // would pass every assertion above.
     expect(substr_count($html, 'wire:key="group-tab-'))->toBe(4)
-        ->and($html)->not->toContain('group-pane-');
+        ->and($html)->not->toContain('group-pane-')
+        // The switcher in the hero is not a strip: its rows are keyed
+        // `switch-`, and there is exactly one of it.
+        ->and(substr_count($html, 'data-group-switcher'))->toBe(1);
+});
+
+/*
+ * THE NAME IS THE SWITCHER. The hero's title is the same group switcher
+ * My Picks carries above its fork, so a reader inside one seat reaches
+ * any other in one tap instead of back out through the overview.
+ */
+it('wears the group switcher as its title, and lists the reader\'s other seats', function () {
+    [$commissioner, $a] = pickemContest(ContestMode::Classic);
+    $a->update(['name' => 'Rocky Top Rejects']);
+
+    $b = Group::factory()->create(['name' => 'The Back Porch']);
+    GroupMember::factory()->commissioner()->create(['group_id' => $b->id, 'user_id' => $commissioner->id]);
+    Contest::factory()->create(['group_id' => $b->id]);
+
+    $html = Livewire::actingAs($commissioner)->test('group', ['group' => $a->fresh()])->html();
+
+    // The visible name is the trigger, clamped rather than clipped; the
+    // heading survives sr-only; the old truncating h1 is gone.
+    $trigger = (string) str($html)->after('data-group-switcher')->before('<ui-menu');
+
+    expect($trigger)->toContain('Rocky Top Rejects')
+        ->toContain('line-clamp-2')
+        ->and($html)->toContain('<h1 class="sr-only">Rocky Top Rejects</h1>')
+        ->not->toContain('<h1 class="min-w-0 truncate');
+
+    $menu = (string) str($html)->after('<ui-menu')->before('</ui-menu>');
+
+    expect($menu)->toContain('All my picks')
+        ->toContain(route('pickem.home'))
+        ->toContain('My Groups')
+        ->toContain('The Back Porch')
+        ->toContain(route('pickem.group', $b))
+        ->toContain('Browse the Lobby')
+        ->toContain(route('pickem.lobby'));
+
+    // The page you are ON is the bold row; the other seat is not.
+    $rowOf = function (string $key) use ($menu): string {
+        $at = strpos($menu, 'wire:key="'.$key.'"');
+        $start = strrpos(substr($menu, 0, $at), '<');
+
+        return substr($menu, $start, strpos($menu, '>', $at) - $start + 1);
+    };
+
+    expect($rowOf('switch-g-'.$a->id))->toContain('font-semibold')
+        ->and($rowOf('switch-g-'.$b->id))->not->toContain('font-semibold')
+        ->and($rowOf('switch-all'))->not->toContain('font-semibold');
+});
+
+it('keeps a previewed lobby\'s name on the trigger without a seat in it', function () {
+    // A lobby is readable from outside. The reader holds no seat there,
+    // so it is in none of the switcher's lists — and the trigger must
+    // still say where they are, never "All my picks".
+    $outsider = pickemAdmin();
+    $lobby = Group::factory()->lobby()->create(['name' => 'Walk-Ons Welcome']);
+    Contest::factory()->create(['group_id' => $lobby->id]);
+
+    $html = Livewire::actingAs($outsider)->test('group', ['group' => $lobby])->html();
+    $trigger = (string) str($html)->after('data-group-switcher')->before('<ui-menu');
+
+    expect($trigger)->toContain('Walk-Ons Welcome')
+        ->not->toContain('All my picks')
+        ->and($html)->toContain('All my picks')
+        ->toContain('Browse the Lobby')
+        ->not->toContain('My Groups');
+});
+
+it('keeps a played room\'s own name on its clubhouse, outside the week it is not in', function () {
+    $this->travelTo('2026-09-02 12:00:00');
+
+    $viewer = pickemAdmin();
+    [$season, $week] = pickemSeasonWeek();
+    $gone = Week::factory()->create(['season_id' => $season->id, 'number' => 0]);
+
+    $room = Group::factory()->room($gone->id)->create(['name' => 'The 8/29 Room']);
+    GroupMember::factory()->create(['group_id' => $room->id, 'user_id' => $viewer->id]);
+    Contest::factory()->create(['group_id' => $room->id]);
+
+    $html = Livewire::actingAs($viewer->fresh())->test('group', ['group' => $room])->html();
+    $trigger = (string) str($html)->after('data-group-switcher')->before('<ui-menu');
+    $menu = (string) str($html)->after('<ui-menu')->before('</ui-menu>');
+
+    expect($trigger)->toContain('The 8/29 Room')
+        // Spliced in as a bare row right after the overview, ahead of
+        // any Contests heading — a played room is not this Saturday's.
+        ->and(strpos($menu, 'The 8/29 Room'))->toBeGreaterThan(strpos($menu, 'All my picks'))
+        ->and(strpos($menu, 'The 8/29 Room'))->toBeLessThan(strpos($menu, 'Browse the Lobby'))
+        ->and(substr_count($menu, 'wire:key="switch-g-'.$room->id.'"'))->toBe(1);
+
+    if (($contests = strpos($menu, 'Contests')) !== false) {
+        expect(strpos($menu, 'The 8/29 Room'))->toBeLessThan($contests);
+    }
 });
 
 it('keeps the hero out of the invite business, now that a stop owns it', function () {
