@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * A pick'em group: the people one leaderboard is shouted across.
@@ -103,5 +105,34 @@ class Group extends Model
     public function flavorEnum(): ?LobbyFlavor
     {
         return $this->flavor === null ? null : LobbyFlavor::tryFrom($this->flavor);
+    }
+
+    /**
+     * The commissioner's uploaded clubhouse icon, or null to fall back to
+     * initials.
+     *
+     * Null is the normal case and every icon surface renders initials without
+     * one — the fallback is the path most groups are on, not an error state.
+     * The column holds a PATH; the disk decides what it resolves to.
+     */
+    public function iconUrl(): ?string
+    {
+        if (blank($this->icon)) {
+            return null;
+        }
+
+        return Storage::disk(config('cfb.upload_disk'))->url($this->icon);
+    }
+
+    /**
+     * Initials for the icon fallback — the group's own name, up to two words.
+     */
+    public function initials(): string
+    {
+        return Str::of($this->name)
+            ->explode(' ')
+            ->take(2)
+            ->map(fn (string $part) => Str::of($part)->substr(0, 1))
+            ->implode('');
     }
 }

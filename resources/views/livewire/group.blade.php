@@ -6,6 +6,7 @@ use App\Actions\JoinGroup;
 use App\Actions\LeaveGroup;
 use App\Actions\RecordUxEvent;
 use App\Actions\RemoveGroupMember;
+use App\Actions\SetGroupIcon;
 use App\Enums\ContestMode;
 use App\Enums\UxSignal;
 use App\Exceptions\ContestFull;
@@ -34,6 +35,7 @@ use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 /**
  * THE CLUBHOUSE — one group's home, rebuilt from the app's own DNA: the
@@ -59,6 +61,7 @@ new class extends Component
     use MakesPicks {
         refreshPicks as refreshPickState;
     }
+    use WithFileUploads;
 
     /** The palette columns ride every card-feeding load — drop one and the cards silently un-brand. */
     private const TEAM_COLUMNS = 'id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark,color,alt_color,header_style';
@@ -96,6 +99,13 @@ new class extends Component
 
     /** The pivot modal's chosen target — a ContestMode backing value. */
     public ?string $pivotTo = null;
+
+    /**
+     * The commissioner's chosen icon file, held only between the file
+     * dialog and the write. Named for the file rather than the column so
+     * nothing reads it as the group's current mark.
+     */
+    public $iconFile = null;
 
     public function mount(Group $group): void
     {
@@ -898,6 +908,44 @@ new class extends Component
         );
     }
 
+    /**
+     * Stored the moment a file is chosen rather than behind a save button:
+     * an icon is not a field anyone wants to review before committing, and
+     * seeing it land on the band IS the confirmation. Same discipline as
+     * the account photo, and the same cap — there is no resizing pipeline
+     * in this app, so the size limit is the whole defense.
+     */
+    public function updatedIconFile(SetGroupIcon $action): void
+    {
+        $this->validate([
+            'iconFile' => ['image', 'max:1024', 'dimensions:min_width=64,min_height=64'],
+        ], [
+            'iconFile.max' => 'That image is over 1MB. Crop it or pick a smaller one.',
+            'iconFile.dimensions' => 'That image is too small to read at icon size.',
+        ]);
+
+        try {
+            $action->handle(auth()->user(), $this->group, $this->iconFile);
+        } catch (NotGroupCommissioner) {
+            abort(403);
+        }
+
+        $this->iconFile = null;
+    }
+
+    /**
+     * Back to initials. The @if around the control is presentation; the
+     * Action is the gate, as everywhere else on this screen.
+     */
+    public function removeIcon(SetGroupIcon $action): void
+    {
+        try {
+            $action->clear(auth()->user(), $this->group);
+        } catch (NotGroupCommissioner) {
+            abort(403);
+        }
+    }
+
     public function remove(int $userId, RemoveGroupMember $action): void
     {
         $member = User::findOrFail($userId);
@@ -1025,6 +1073,34 @@ new class extends Component
     @endphp
 
     <x-group-hero :group="$group" :contest="$this->contest" :members-count="$this->members->count()" :meta="$heroMeta">
+        {{-- THE MARK IS THE CONTROL, the same gesture the account photo
+             teaches: tapping the thing you want to change beats a second
+             button on a row that is already tight at 390px. The label
+             wraps a hidden input so it stays keyboard-reachable and
+             screen-reader-named, which a click handler on a div is not.
+
+             Commissioners of PRIVATE groups only. A public room is
+             house-run with no commissioner seat, so this never renders
+             there — and the Action would refuse it anyway. --}}
+        @if ($this->isCommissioner && ! $group->isLobby())
+            <x-slot:icon>
+                <label class="group relative shrink-0 cursor-pointer" title="Change the group icon">
+                    <x-group-icon :group="$group" class="size-9 text-micro sm:size-11 sm:text-sm" />
+
+                    {{-- Only on hover and focus, so the mark is not
+                         permanently wearing a badge. --}}
+                    <span
+                        class="absolute inset-0 flex items-center justify-center rounded-xl bg-zinc-900/60 text-white opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
+                        aria-hidden="true"
+                    >
+                        <flux:icon name="camera" variant="micro" />
+                    </span>
+
+                    <input type="file" wire:model="iconFile" accept="image/*" class="sr-only" aria-label="Upload a group icon">
+                </label>
+            </x-slot:icon>
+        @endif
+
         <x-slot:actions>
             @if ($this->isMember)
                 {{-- The thread's door — a destination, never an embed
@@ -1079,6 +1155,30 @@ new class extends Component
             @endif
         </x-slot:actions>
     </x-group-hero>
+
+    {{-- BELOW the band, never inside it: the validation messages are a
+         sentence long and the hero has no width for them at 390px.
+         Without this a rejected image looks like nothing happened at
+         all. Removal lives here too — only once there is something to
+         remove, so the line is absent for every group on the initials
+         fallback. --}}
+    @if ($this->isCommissioner && ! $group->isLobby())
+        <div class="flex items-center gap-3">
+            <flux:error name="iconFile" />
+
+            <flux:icon.loading wire:loading wire:target="iconFile" class="size-4 shrink-0 text-zinc-400" />
+
+            @if ($group->icon !== null)
+                <button
+                    type="button"
+                    wire:click="removeIcon"
+                    class="ms-auto shrink-0 text-sm font-medium text-zinc-500 hover:underline"
+                >
+                    Remove icon
+                </button>
+            @endif
+        </div>
+    @endif
 
     {{-- WHAT THIS GROUP IS. The room half of this pair has said its
          piece here since the contest card was retired; the private half

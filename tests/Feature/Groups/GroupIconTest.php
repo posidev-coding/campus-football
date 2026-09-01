@@ -1,0 +1,167 @@
+<?php
+
+use App\Actions\SetGroupIcon;
+use App\Exceptions\NotGroupCommissioner;
+use App\Models\Group;
+use App\Models\GroupMember;
+use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Livewire\Livewire;
+
+/*
+ * THE CLUBHOUSE MARK — a commissioner's one piece of group identity.
+ *
+ * Two disciplines these hold. The seat is the gate and it lives in the
+ * Action, so a public Livewire method cannot be talked past the @if that
+ * hides the control. And NULL IS THE NORMAL STATE: a group without an icon
+ * renders initials, and nothing on any path writes a stand-in path to make
+ * the column look populated.
+ */
+
+beforeEach(function () {
+    Storage::fake(config('cfb.upload_disk'));
+});
+
+it('stores a commissioner\'s icon and serves it off the upload disk', function () {
+    [$commissioner, $group] = pickemContest();
+
+    app(SetGroupIcon::class)->handle(
+        $commissioner,
+        $group,
+        UploadedFile::fake()->image('clubhouse.jpg', 256, 256),
+    );
+
+    $group->refresh();
+
+    expect($group->icon)->not->toBeNull()
+        ->and($group->iconUrl())->toContain($group->icon);
+
+    Storage::disk(config('cfb.upload_disk'))->assertExists($group->icon);
+});
+
+it('renders initials rather than inventing an icon when there is none', function () {
+    $group = Group::factory()->create(['name' => 'Rocky Top Regulars', 'icon' => null]);
+
+    expect($group->iconUrl())->toBeNull()
+        ->and($group->initials())->toBe('RT');
+});
+
+it('forgets the previous file only AFTER the new path is committed', function () {
+    [$commissioner, $group] = pickemContest();
+
+    app(SetGroupIcon::class)->handle($commissioner, $group, UploadedFile::fake()->image('first.jpg', 256, 256));
+    $first = $group->refresh()->icon;
+
+    app(SetGroupIcon::class)->handle($commissioner, $group, UploadedFile::fake()->image('second.jpg', 256, 256));
+    $second = $group->refresh()->icon;
+
+    expect($second)->not->toBe($first);
+
+    Storage::disk(config('cfb.upload_disk'))->assertExists($second);
+    Storage::disk(config('cfb.upload_disk'))->assertMissing($first);
+});
+
+it('clears back to null, and to initials with it', function () {
+    [$commissioner, $group] = pickemContest();
+
+    app(SetGroupIcon::class)->handle($commissioner, $group, UploadedFile::fake()->image('icon.jpg', 256, 256));
+    $path = $group->refresh()->icon;
+
+    app(SetGroupIcon::class)->clear($commissioner, $group);
+
+    expect($group->refresh()->icon)->toBeNull()
+        ->and($group->iconUrl())->toBeNull();
+
+    Storage::disk(config('cfb.upload_disk'))->assertMissing($path);
+});
+
+it('refuses a plain member, whatever the screen showed them', function () {
+    [, $group] = pickemContest();
+    $member = User::factory()->create();
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    expect(fn () => app(SetGroupIcon::class)->handle(
+        $member,
+        $group,
+        UploadedFile::fake()->image('mine.jpg', 256, 256),
+    ))->toThrow(NotGroupCommissioner::class);
+
+    expect(fn () => app(SetGroupIcon::class)->clear($member, $group))
+        ->toThrow(NotGroupCommissioner::class);
+
+    expect($group->refresh()->icon)->toBeNull();
+});
+
+it('refuses a stranger to the group entirely', function () {
+    [, $group] = pickemContest();
+
+    expect(fn () => app(SetGroupIcon::class)->handle(
+        User::factory()->create(),
+        $group,
+        UploadedFile::fake()->image('mine.jpg', 256, 256),
+    ))->toThrow(NotGroupCommissioner::class);
+});
+
+it('uploads from the clubhouse and shows the commissioner the way back', function () {
+    [$commissioner, $group] = pickemContest();
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSee('Upload a group icon')
+        ->assertDontSee('Remove icon')
+        ->set('iconFile', UploadedFile::fake()->image('clubhouse.jpg', 256, 256))
+        ->assertHasNoErrors()
+        ->assertSee('Remove icon');
+
+    expect($group->refresh()->icon)->not->toBeNull();
+});
+
+it('rejects an image too small to read at icon size, and writes nothing', function () {
+    [$commissioner, $group] = pickemContest();
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('iconFile', UploadedFile::fake()->image('speck.jpg', 32, 32))
+        ->assertHasErrors('iconFile');
+
+    expect($group->refresh()->icon)->toBeNull();
+});
+
+it('offers no control to a plain member', function () {
+    [, $group] = pickemContest();
+    $member = User::factory()->create();
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    Livewire::actingAs($member)->test('group', ['group' => $group])
+        ->assertDontSee('Upload a group icon')
+        ->assertDontSee('Remove icon');
+});
+
+it('offers no control in a public room, which has no commissioner seat', function () {
+    $group = Group::factory()->create(['kind' => Group::KIND_LOBBY]);
+    $visitor = User::factory()->create();
+
+    Livewire::actingAs($visitor)->test('group', ['group' => $group])
+        ->assertDontSee('Upload a group icon');
+});
+
+/*
+ * The kind chip, held HERE because the mark is what moved it. At 390px the
+ * hero's title row now carries a mark, a chip and three controls, and the
+ * h1 was losing to two characters — so the chip is sm-and-up and the kind
+ * moves to the head of the meta line below that. It is still said on both
+ * sides at every width, which is the part the rule pins.
+ */
+it('says the kind on both sides of the pair, at every width', function () {
+    $private = Group::factory()->create(['kind' => Group::KIND_PRIVATE]);
+    $room = Group::factory()->create(['kind' => Group::KIND_LOBBY]);
+    $reader = User::factory()->create();
+    GroupMember::factory()->create(['group_id' => $private->id, 'user_id' => $reader->id]);
+
+    $band = fn (Group $group) => Livewire::actingAs($reader)
+        ->test('group', ['group' => $group])
+        ->html();
+
+    // Twice each: the sm-and-up chip, and the base-width meta lead.
+    expect(substr_count($band($private), 'Private'))->toBeGreaterThanOrEqual(2)
+        ->and(substr_count($band($room), 'Public'))->toBeGreaterThanOrEqual(2);
+});
