@@ -174,10 +174,17 @@ class Voice
             'r' => 'Butchering your fight song...',
         ],
 
+        /*
+         * THE CLOSER, and it names the sink now. It held the screen longest
+         * while promising a currency with nothing to buy — the loudest
+         * promise in the app attached to the emptiest fact. Every register
+         * says THE LOBBY, because that is where a Tallboy is worth
+         * something, and the last thing read is the thing remembered.
+         */
         'splash.warmup.tallboy' => [
-            'pg' => 'Chilling the Tallboys...',
-            'pg13' => 'Icing down the Tallboys...',
-            'r' => 'Hiding the good Tallboys...',
+            'pg' => 'Stocking the Lobby cooler with Tallboys...',
+            'pg13' => 'Icing down Tallboys for the Lobby...',
+            'r' => 'Hiding the good Tallboys from the Lobby regulars...',
         ],
 
         /*
@@ -368,10 +375,22 @@ class Voice
             'r' => 'Get paid in Tallboys',
         ],
 
+        /*
+         * EARNED EVERYWHERE, SPENT IN THE LOBBY — both halves, because
+         * either one alone is a lie by omission. "The app runs on Tallboys"
+         * over a balance with nowhere to go was the promise-debt this whole
+         * economy exists to pay off, and a stop that still said only "earn
+         * them" would leave a private-league player holding a number.
+         *
+         * The canonical verbs ride these lines (ice down, crush) so the
+         * Lobby's buttons say the same words the tour did. PG keeps the
+         * facts and skips the consumption slang — mild is a register, not a
+         * punishment, and the plain version has to be as useful.
+         */
         'tour.wallet.body' => [
-            'pg' => "The app runs on Tallboys. Earn them and stack XP by playing Pick'em — your balance and rank live up here.",
-            'pg13' => 'The app runs on Tallboys. Win picks, stack XP, climb the ranks — your balance sits up here, judging quietly.',
-            'r' => 'The app runs on Tallboys. Win picks, stack XP, climb the ranks — and your balance up here will say exactly how good you really are.',
+            'pg' => 'The app runs on Tallboys. Earn them anywhere you play, and spend them in the Lobby — a marquee seat, or five points riding on one game.',
+            'pg13' => 'The app runs on Tallboys. Earn them everywhere, spend them in the Lobby: ice one down for a Spotlight seat, or crush one on a game for five either way.',
+            'r' => 'The app runs on Tallboys. Earn everywhere, spend in the Lobby — ice one down for a marquee seat, or crush one on a game and live with it.',
         ],
 
         /*

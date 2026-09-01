@@ -10,6 +10,12 @@
     screen, which says "Coming soon" out loud outside the flag, so the
     numbers never pretend the game is live before it is.
 
+    THE LABEL NAMES THE SINK. "Earning starts with Pick'em" was true and
+    useless — it promised a currency and said nothing about what it buys,
+    which is the promise-debt the economy exists to pay off. Earned
+    everywhere, spent in the Lobby: both halves, because either alone
+    leaves a private-league reader holding a number they cannot place.
+
     This file is THE seam for the currency's NAME, and x-tallboy-mark is the
     seam for its ART — split when the wager gave the mark a second render
     site, because a seam with two copies is not a seam. If App Store review
@@ -40,7 +46,7 @@
         href="{{ route('pickem.home') }}"
         wire:navigate
         class="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100"
-        aria-label="{{ $wallet['credits'] }} {{ str('Tallboy')->plural($wallet['credits']) }} — earning starts with Pick'em"
+        aria-label="{{ $wallet['credits'] }} {{ str('Tallboy')->plural($wallet['credits']) }} — earned everywhere, spent in the Lobby"
     >
         <x-tallboy-mark :size="18" />
         <span>{{ $wallet['credits'] }}</span>

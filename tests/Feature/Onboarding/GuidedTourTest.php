@@ -593,6 +593,38 @@ describe('the voice', function () {
         }
     });
 
+    it('names where a Tallboy is SPENT, not just that one exists', function () {
+        /*
+         * The promise-debt this economy exists to pay off. "The app runs on
+         * Tallboys" over a balance with nowhere to go was the loudest claim
+         * in the app attached to the emptiest fact — and a stop that still
+         * said only "earn them" would leave a private-league reader holding
+         * a number they cannot place.
+         *
+         * Both halves, in every register: earned everywhere, spent in the
+         * LOBBY. The named place is the load-bearing word; the slang around
+         * it is free to vary.
+         */
+        foreach ([ContentRating::Pg, ContentRating::Pg13, ContentRating::R] as $rating) {
+            $body = Voice::line('tour.wallet.body', for: User::factory()->make(['content_rating' => $rating]));
+
+            expect($body)->toContain('Lobby')
+                ->and(str_contains($body, 'Earn') || str_contains($body, 'earn'))->toBeTrue()
+                ->and(str_contains($body, 'spend') || str_contains($body, 'Spend'))->toBeTrue();
+        }
+    });
+
+    it('closes the signup splash on the sink, in every register', function () {
+        // The closer holds the screen longest because the last thing read
+        // is the thing remembered — so it is the one phrase that must not
+        // sell a currency with nothing to buy.
+        foreach ([ContentRating::Pg, ContentRating::Pg13, ContentRating::R] as $rating) {
+            expect(Voice::line('splash.warmup.tallboy', for: User::factory()->make(['content_rating' => $rating])))
+                ->toContain('Tallboy')
+                ->toContain('Lobby');
+        }
+    });
+
     it('speaks the live picks stop in every register, escalating', function () {
         foreach (['tour.picks_live.heading', 'tour.picks_live.body'] as $key) {
             $pg = Voice::line($key, for: User::factory()->make(['content_rating' => ContentRating::Pg]));
