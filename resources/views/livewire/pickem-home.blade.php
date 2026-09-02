@@ -422,7 +422,8 @@ new class extends Component
      * already in this Saturday's public contests — which is the exact
      * opposite of the product. The rooms that played are not deleted
      * (their leaderboards and their URLs outlive them); they leave THIS
-     * screen for {@see pastRooms()}, which points at History.
+     * screen for {@see pastRooms()}; History (linked from the Results
+     * heading row, and a section chip) is where they went.
      *
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
      */
@@ -1129,7 +1130,9 @@ new class extends Component
                 @endif
 
                 @if ($this->groupCards->isNotEmpty())
-                    @include('partials.lobby-door')
+                    {{-- No pitch at the section foot: the definition line
+                         over these cards already said what a room is. --}}
+                    @include('partials.lobby-door', ['pitch' => false])
                 @endif
             </div>
         @endif
@@ -1172,10 +1175,31 @@ new class extends Component
         @endif
 
         {{-- The Monday payoff, compact: last week's settled results while
-             they are still the conversation. --}}
-        @if ($this->lastWeek->isNotEmpty())
-            <div class="flex flex-col gap-2">
-                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Last week</flux:subheading>
+             they are still the conversation. HISTORY rides the heading
+             row as a text door (Home's heading-door idiom) since pass 2 —
+             Results is this week's payoff, History every week that ever
+             settled, and the row is where a reader looking at one goes
+             looking for the other. The door renders whether or not a
+             week has settled — on the empty-state row when nothing has,
+             because an empty Results must not say "Last week" over
+             nothing — so the archive is reachable either way. --}}
+        <div class="flex flex-col gap-2">
+            <div class="flex items-baseline justify-between gap-3">
+                @if ($this->lastWeek->isNotEmpty())
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Last week</flux:subheading>
+                @else
+                    {{-- Nothing settled is not an empty screen to apologize
+                         for — it is a Saturday that has not happened yet,
+                         and the line says so rather than leaving the tab
+                         blank. --}}
+                    <p class="min-w-0 text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('picks.results.empty') }}</p>
+                @endif
+                <a href="{{ route('pickem.history') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
+                    History
+                </a>
+            </div>
+
+            @if ($this->lastWeek->isNotEmpty())
                 @foreach ($this->lastWeek as $entry)
                     <a
                         href="{{ $entry->slate->contest->group->isRoom() ? route('pickem.room', $entry->slate->contest->group_id) : route('pickem.group', $entry->slate->contest->group_id) }}"
@@ -1201,13 +1225,8 @@ new class extends Component
                         </p>
                     </a>
                 @endforeach
-            </div>
-        @else
-            {{-- Nothing settled is not an empty screen to apologize for —
-                 it is a Saturday that has not happened yet, and the line
-                 says so rather than leaving the tab blank. --}}
-            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('picks.results.empty') }}</p>
-        @endif
+            @endif
+        </div>
         @endif
 
         </div>
@@ -1221,33 +1240,11 @@ new class extends Component
              they belong to. Not sticky: the picks walk spotlights `how` in
              here, and it scrolls to a measured box. --}}
         <div class="flex flex-col gap-6">
-        @if ($this->activeView === 'week')
-        {{-- THE ROOMS THAT ARE OVER, as a door and never as cards.
-
-             A public room is a TRANSIENT contest: one Saturday, then it
-             dies. Stacking last week's three above a reader's own groups
-             said they were already seated in this Saturday's public
-             contests, when the whole point is that a fresh week starts
-             with the decision unmade. So the played rooms leave the
-             stack and keep exactly one thing here — a way back to them.
-
-             The count is a projection of cards(); History is the screen
-             that holds every week the reader has played, in the section
-             strip already. --}}
-        @if ($this->pastRooms->isNotEmpty())
-            <x-link-row :href="route('pickem.history')" title="Rooms you've played">
-                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-                    {{ $this->pastRooms->count() }} finished {{ Str::plural('room', $this->pastRooms->count()) }} — your settled weeks are in History
-                </span>
-                @php $roomsPast = Voice::line('picks.rooms.past'); @endphp
-                @if ($roomsPast !== '')
-                    <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">{{ $roomsPast }}</span>
-                @endif
-            </x-link-row>
-        @endif
-
-        @endif
-
+        {{-- The played rooms leave this tab with NO door of their own
+             (pass 2): a public room is a transient contest and the way
+             back to it is History, which the Results heading row links
+             and the section strip already names. pastRooms() still
+             projects them off cards() so nothing else can stack them. --}}
         {{-- THE LADDER belongs to Results — XP is what a settled week
              paid. It stays on a TABLESS first run too, because XP is
              earned before the first slate is and that reader has no
@@ -1291,15 +1288,6 @@ new class extends Component
         @endif
         @endif
 
-        {{-- The archive, one row: Results is this week's payoff while it
-             is still the conversation, History is every week that ever
-             settled. --}}
-        @if ($this->activeView === 'results')
-            <x-link-row :href="route('pickem.history')" title="Season history">
-                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Every week you have played, and what it paid.</span>
-            </x-link-row>
-        @endif
-
         {{-- THE REFERENCE, on BOTH views: the rules are what you go
              looking for mid-week as readily as on a Sunday, and a door
              that only exists on one fork is a door somebody cannot find.
@@ -1307,8 +1295,12 @@ new class extends Component
              already carries the week, the seats, the payoff and the
              ladder, and the Lobby folded its own rules away for exactly
              that reason. --}}
+        {{-- The subline says what a day-one reader can parse — "Tallboys"
+             and "the cooler" were the explainer's own jargon, sold on the
+             door to the explainer (a follow-up from pass 1, closed here).
+             Still a full dashed door: the tour needs a box to spotlight. --}}
         <x-link-row :href="route('pickem.how')" title="How this works" data-tour="how">
-            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Tallboys, the cooler, and what every room costs.</span>
+            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Scoring, ranks, and what a room costs.</span>
         </x-link-row>
         </div>
         </div>

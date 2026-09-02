@@ -194,7 +194,7 @@ describe('my week (inside the flag)', function () {
             // already happened.
             ->assertDontSee('Last week')
             ->set('view', 'results')
-            ->assertSeeInOrder(['Last week', 'Season history'])
+            ->assertSeeInOrder(['Last week', 'History'])
             // ...and the fork holds in the other direction.
             ->assertDontSee('Needs your picks');
     });
@@ -468,12 +468,13 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee($room->name)
             ->assertDontSee('Public room · Saturday played', escape: false)
             ->assertDontSee('Public room · this Saturday', escape: false)
-            // ...and the way back to it, which is the only thing a played
-            // room leaves behind here.
-            ->assertSee('Rooms you\'ve played')
-            ->assertSee('1 finished room')
-            ->assertSee(route('pickem.history'), escape: false)
-            ->assertSee(Voice::line('picks.rooms.past', for: $viewer));
+            // ...and no door of its own on the week tab (pass 2 retired
+            // "Rooms you've played"): the way back is History, linked
+            // from the Results heading row and the section strip.
+            ->assertDontSee('Rooms you\'ve played')
+            ->assertDontSee(route('pickem.history'), escape: false)
+            ->set('view', 'results')
+            ->assertSee(route('pickem.history'), escape: false);
 
         // The seat itself is untouched — history is read off it.
         expect($room->fresh()->memberships()->where('user_id', $viewer->id)->exists())->toBeTrue();
@@ -542,9 +543,14 @@ describe('my week (inside the flag)', function () {
         $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
         app(JoinGroup::class)->handle($viewer, $room);
 
+        // The week tab links History nowhere; Results does. (The door
+        // this once pinned the absence of is gone for everyone now, so the
+        // pin points at where the archive actually lives.)
         Livewire::actingAs($viewer->fresh())->test('pickem-home')
             ->assertSee($room->name)
-            ->assertDontSee('Rooms you\'ve played');
+            ->assertDontSee(route('pickem.history'), escape: false)
+            ->set('view', 'results')
+            ->assertSee(route('pickem.history'), escape: false);
     });
 
     it('never tells a room to go rattle a commissioner it does not have', function () {
@@ -853,7 +859,12 @@ describe('my week (inside the flag)', function () {
             ->assertSee('This week')
             ->set('view', 'results')
             ->assertSee(Voice::line('picks.results.empty', for: $reader))
-            ->assertSee('Season history');
+            // The archive is reachable from an EMPTY Results too: the
+            // History door rides the empty-state row, never a "Last week"
+            // heading over nothing.
+            ->assertDontSee('Last week')
+            ->assertSee('History')
+            ->assertSee(route('pickem.history'), escape: false);
     });
 
     it('says ENTRY IN on the card, and keeps the count while one is missing', function () {
@@ -1355,6 +1366,74 @@ it('lights My Picks, and lets the Lobby chip keep the store', function () {
 
     expect(collect($sections)->pluck('label')->all())->toBe(['My Picks', 'Lobby', 'Leaderboard', 'History'])
         ->and($sections[0]['route'])->toBe('pickem.home');
+});
+
+describe('the tail doors', function () {
+    it('keeps two doors at the foot: History on the Results heading, and a plain How-this-works', function () {
+        /*
+         * The foot carried three dashed doors at 68–88px each: "Rooms
+         * you've played", "Season history" and "How this works". Two
+         * things now — History as a text door on the "Last week" heading
+         * row (Home's heading-door idiom), and the one full dashed door
+         * the tour needs a box for, with a subline a day-one reader can
+         * parse instead of the explainer's own jargon.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $week = Livewire::actingAs($commissioner->fresh())->test('pickem-home')
+            ->assertSee('How this works')
+            ->assertSee('Scoring, ranks, and what a room costs.')
+            ->assertDontSee('Tallboys, the cooler')
+            ->assertDontSee('Rooms you\'ve played')
+            ->assertDontSee('Season history')
+            ->html();
+
+        expect(substr_count($week, 'data-tour="how"'))->toBe(1)
+            ->and($week)->not->toContain(route('pickem.history'));
+
+        $results = Livewire::actingAs($commissioner->fresh())->test('pickem-home')
+            ->set('view', 'results')
+            ->assertDontSee('Season history')
+            ->html();
+
+        // Nothing has settled here, so the door rides the empty-state row
+        // — a text link, never a dashed door, and still the one History.
+        $tail = (string) str($results)->after('wire:key="picks-view-results"')->before(route('pickem.how'));
+
+        expect(substr_count($results, route('pickem.history')))->toBe(1)
+            ->and($tail)->toMatch('/>\s*History\s*<\/a>/')
+            ->and($tail)->toContain(e(Voice::line('picks.results.empty', for: $commissioner)))
+            ->and($tail)->not->toContain('border-dashed');
+
+        // And the line that sold the retired door is gone from Voice.
+        expect((new ReflectionClass(Voice::class))->getConstant('LINES'))->not->toHaveKey('picks.rooms.past');
+    });
+
+    it('pitches the Lobby only on the first run, never at the section foot', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [, $week] = pickemHomeWeek();
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        // Zero seats: the hoisted door carries the pitch.
+        $admin = pickemAdmin();
+
+        Livewire::actingAs($admin)->test('pickem-home')
+            ->assertSee('1 public room open this Saturday')
+            ->assertSee(Voice::line('lobby.teaser.zinger', for: $admin));
+
+        // Groups: the door closes the contests section as one plain
+        // count — the definition line above the cards already said what
+        // a room is.
+        [$commissioner] = pickemContest();
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('1 public room open this Saturday')
+            ->assertDontSee(Voice::line('lobby.teaser.zinger', for: $commissioner));
+    });
 });
 
 describe('the ask, the count and the one definition', function () {

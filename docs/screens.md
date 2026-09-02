@@ -700,9 +700,11 @@ urgency:
    two (this and the hero's zinger).
 
    The door renders in exactly two mutually exclusive places: here, for a
-   reader with groups, and hoisted up beside the mode doors on a first run,
-   where the two ways to play have to sit next to each other — both off the
-   ONE `roomsOpen` read. A rooms-only reader has no My Groups block, so the
+   reader with groups (as one plain count — `$pitch` false, because the
+   definition line over the cards already said what a room is), and
+   hoisted up beside the mode doors on a first run, where the two ways to
+   play have to sit next to each other and the `lobby.teaser.zinger` pitch
+   renders — both off the ONE `roomsOpen` read. A rooms-only reader has no My Groups block, so the
    tour's `seats` stop anchors on this section instead of stepping over
    itself.
 
@@ -710,8 +712,10 @@ urgency:
    sold (`Seats::isPast()`), never `week_id` alone, because a room keeps its
    URL forever and leaves the inventory when its week ends — and an ESPN
    week can hold two Saturdays. A played room is in neither section nor the
-   switcher; `pastRooms` counts it and the sidecar's "Rooms you've played"
-   door sends the reader to History.
+   switcher; `pastRooms` still projects it, and the way back is History —
+   a text door on the Results "Last week" heading row since pass 2 (the
+   week tab's "Rooms you've played" door retired with `picks.rooms.past`;
+   the section strip names History too).
 
    **The you-strip** sits above all of it, the second row of the week
    band at the top of This week (`x-you-strip` in its `bare` variant; the
@@ -735,8 +739,10 @@ urgency:
    a full-width card underneath them); what is new is that the block says
    what the doors are doors TO, and puts the weekly public alternative
    beside the choice instead of 600px below it.
-6. **Last week** — the Monday payoff, compact: settled entries from the
-   past seven days, each row carrying the Winner badge or, failing that,
+6. **Last week** — the Monday payoff, compact, with `History` as a text
+   door on its heading row (Home's heading-door idiom; the row renders on
+   an empty Results too): settled entries from the past seven days, each
+   row carrying the Winner badge or, failing that,
    your place in the field ("2nd of 12", `places()`, History's own
    one-query pattern read only from this branch). A week you WON is called
    out above them by the emerald payoff banner
@@ -759,9 +765,13 @@ reader inside one is a seated member playing, not somebody browsing.
 scroll; Results holds Last week, the rank ladder and the Season-history
 door), and a finished entry says "Entry in" — or amber "Tiebreaker left"
 when the question is the one thing open — instead of a fraction. The
-sidecar (20rem from `lg`, the foot of the page below it) now holds only the
-"Rooms you've played" door, the ladder and Season history on Results, and
-"How this works".
+foot of the page (pass 2, 2026-09-01) holds the ladder on Results and one
+dashed door, "How this works" ("Scoring, ranks, and what a room costs." —
+the "Tallboys, the cooler" subline was the explainer's own jargon on the
+door to the explainer); "Rooms you've played" retired with
+`picks.rooms.past`, and "Season history" became a `History` text door on
+the Results "Last week" heading row, which renders whether or not a week
+has settled so the archive is reachable from an empty Results.
 
 ## Two guided walks, one component, two columns
 

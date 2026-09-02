@@ -108,8 +108,11 @@ history; "How this works"; the pick surface; the Lobby screen.
 
 - Chrome density at 390: chips, switcher, plate, ribbon, you-strip before
   content. Candidate: fold the ribbon's dateline into the switcher row.
+  (CLOSED in pass 2 by `x-week-band`: one light card carrying the dateline
+  and the you-strip as sibling rows.)
 - The Lobby at zero rooms says the emptiness twice (band count + callout).
-- "How this works" subline is jargon to a day-one reader.
+- "How this works" subline is jargon to a day-one reader. (CLOSED in pass
+  2: "Scoring, ranks, and what a room costs.")
 - A switcher-use signal (`UxSignal` is a closed enum).
 - Place-in-field on live/final group cards.
 

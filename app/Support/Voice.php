@@ -1417,20 +1417,6 @@ class Voice
         ],
 
         /*
-         * The door to History, under the count of rooms that have
-         * played. Its job is to say the RULE — a public room is a
-         * transient contest and next week is a fresh decision — because
-         * the reader is looking at a screen those rooms just vanished
-         * from. Rooms are already sold as one-Saturday over the lobby
-         * door; this is where that promise is kept.
-         */
-        'picks.rooms.past' => [
-            'pg' => 'Rooms play one Saturday and close. Next week\'s are a fresh decision.',
-            'pg13' => 'Rooms don\'t carry over. One Saturday, one verdict, and next week you pick your spots again.',
-            'r' => 'Rooms die on Sunday. What you did in there is on the record forever.',
-        ],
-
-        /*
          * The first run's group path, over the three mode doors. The
          * doors say what each MODE is; this says what the thing you are
          * about to create is — a season-long room of your own people.
