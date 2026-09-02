@@ -234,9 +234,9 @@ it('sizes the pitch from the CONTEST, never the mode default', function () {
 });
 
 it('warns the invitee about the one step people skip', function () {
-    // JoinGroup throws PickemParticipationGated until the address is
-    // confirmed, so an invitee who ignores the verification mail cannot
-    // take the seat they were just handed.
+    // The seat is theirs on arrival, but MakePick throws
+    // PickemParticipationGated until the address is confirmed, so an
+    // invitee who ignores the verification mail cannot pick from it.
     $group = Group::factory()->make(['name' => 'Behind the Woodshed', 'code' => 'RQUZXKLZ']);
 
     $email = collect(InviteTemplates::for($group, ContestMode::Woodshed, 'https://x.test/j', 15))

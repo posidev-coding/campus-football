@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\JoinGroup;
 use App\Actions\RecordUxEvent;
 use App\Enums\ContestMode;
 use App\Models\Contest;
@@ -7,8 +8,10 @@ use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Slate;
 use App\Models\User;
+use App\Models\WalletEntry;
 use App\Support\Voice;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Pennant\Feature;
 use Livewire\Livewire;
 
@@ -34,7 +37,7 @@ it('shows a guest the whole preview: name, game, people — before any wall', fu
         ->assertSee('Triple Option')
         ->assertSee('1 member')
         ->assertSee('Take your seat')
-        ->assertSee("You'll sign in or create an account first", escape: false);
+        ->assertSee("You'll create an account (or sign in) first", escape: false);
 });
 
 it('says which KIND of thing the link opens, before the mode or the count', function () {
@@ -127,7 +130,7 @@ it('seats a signed-in joiner and lands them in the clubhouse', function () {
     expect(GroupMember::where(['group_id' => $group->id, 'user_id' => $joiner->id])->exists())->toBeTrue();
 });
 
-it('tells an unverified joiner to verify, in Voice', function () {
+it('seats an unverified joiner in a private group — verification gates the picks, not the seat', function () {
     Feature::define('pickem', true);
 
     [, $group] = pickemContest();
@@ -136,8 +139,75 @@ it('tells an unverified joiner to verify, in Voice', function () {
     Livewire::actingAs($unverified)
         ->test('join', ['code' => $group->code])
         ->call('join')
+        ->assertHasNoErrors()
+        ->assertRedirect(route('pickem.group', $group));
+
+    expect(GroupMember::where(['group_id' => $group->id, 'user_id' => $unverified->id])->exists())->toBeTrue()
+        // An unverified seat earns nothing — the first-group XP waits for
+        // the first seat taken after verifying.
+        ->and(WalletEntry::where('user_id', $unverified->id)->exists())->toBeFalse();
+});
+
+it('still gates a public room on a verified email, in Voice', function () {
+    Feature::define('pickem', true);
+
+    [, $week] = pickemSeasonWeek();
+    $room = Group::factory()->lobby()->create(['week_id' => $week->id, 'member_cap' => 20]);
+    $unverified = User::factory()->unverified()->create();
+
+    Livewire::actingAs($unverified)
+        ->test('join', ['code' => $room->code])
+        ->call('join')
         ->assertHasErrors('join')
         ->assertSee(Voice::line('groups.verify_first', for: $unverified));
+
+    expect(GroupMember::where(['group_id' => $room->id, 'user_id' => $unverified->id])->exists())->toBeFalse();
+});
+
+it('seats a registered joiner on the way back from register, with no second tap', function () {
+    Feature::define('pickem', true);
+
+    [, $group] = pickemContest();
+
+    // The guest tap parks the code beside the intended URL...
+    Livewire::test('join', ['code' => strtolower($group->code)])
+        ->call('join')
+        ->assertRedirect(route('register'));
+
+    expect(session('join.auto'))->toBe($group->code);
+
+    // ...and the landing after registration takes the seat and goes
+    // straight to the clubhouse — never this card a second time.
+    $registered = User::factory()->unverified()->create();
+
+    Livewire::actingAs($registered)
+        ->test('join', ['code' => $group->code])
+        ->assertRedirect(route('pickem.group', $group));
+
+    expect(GroupMember::where(['group_id' => $group->id, 'user_id' => $registered->id])->exists())->toBeTrue()
+        ->and(session()->has('join.auto'))->toBeFalse();
+});
+
+it('nudges a fresh unverified seat from the clubhouse itself', function () {
+    Feature::define('pickem', true);
+
+    [, $group] = pickemContest();
+    $unverified = User::factory()->unverified()->create();
+    app(JoinGroup::class)->handle($unverified, $group);
+
+    Livewire::actingAs($unverified)
+        ->test('group', ['group' => $group])
+        ->assertSee(Voice::line('verify.picks.body', for: $unverified));
+});
+
+it('names the group on the register screen a guest was sent to', function () {
+    [, $group] = pickemContest();
+    $group->update(['name' => 'Third Saturday Pickers']);
+
+    session(['url.intended' => '/join/'.$group->code.'?by=taylor']);
+
+    Livewire::test('auth.register')
+        ->assertSee('take your seat in Third Saturday Pickers');
 });
 
 it('skips the pitch for someone already seated — straight to their clubhouse, by kind', function () {
@@ -369,4 +439,38 @@ it('counts a codeless open on the signal that already exists', function () {
     $counts = (array) Redis::connection('pulse')->hgetall(RecordUxEvent::dayKey('2026-09-02'));
 
     expect(array_map('intval', $counts))->toBe(['invite_opened' => 1]);
+});
+
+it('wears the group\'s own mark on the preview, and the mode tile only when it has none', function () {
+    Feature::define('pickem', true);
+    Storage::fake(config('cfb.upload_disk'));
+
+    [, $group] = pickemContest(ContestMode::Tiered);
+
+    // Unmarked: the mode tile stands in, and no image is invented for it.
+    Livewire::test('join', ['code' => strtolower($group->code)])
+        ->assertDontSeeHtml('object-cover');
+
+    // Marked: the uploaded icon is the mark a QR scan lands on — the same
+    // one the clubhouse wears — never the mode's tile in its place.
+    $group->forceFill(['icon' => 'group-icons/vols.jpg'])->save();
+
+    Livewire::test('join', ['code' => strtolower($group->code)])
+        ->assertSeeHtml('src="'.$group->fresh()->iconUrl().'"')
+        ->assertSeeHtml('object-cover');
+});
+
+it('lets a long name wrap beside the chip instead of truncating it', function () {
+    Feature::define('pickem', true);
+
+    [, $group] = pickemContest(ContestMode::Tiered);
+    $group->update(['name' => 'VOLS 101: No Prerequisites Whatsoever']);
+
+    // The name is the one thing a scan has to confirm: two lines, never an
+    // ellipsis, and the chip off the title row below sm so it has the width.
+    Livewire::test('join', ['code' => strtolower($group->code)])
+        ->assertSee('VOLS 101: No Prerequisites Whatsoever')
+        ->assertSeeHtml('line-clamp-2 break-words text-xl')
+        ->assertDontSeeHtml('class="truncate text-xl')
+        ->assertSeeHtml('hidden shrink-0 rounded-full');
 });

@@ -9,6 +9,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Support/Voice.php,resources/views/livewire/**,public/brand/currency/**,app/Actions/GrantWalletEntry.php | .ai/rules/actions.md |
 | app/Ai/**,app/Support/Recap*.php,app/Support/AiFailure.php,app/Support/GamedayFallback.php,app/Support/StatAnswer.php,app/Support/Stats/StatCatalog.php,app/Livewire/Concerns/AsksQuestions.php | .ai/rules/ai-layer.md |
 | app/**,resources/views/**,tests/**,docs/** | .ai/rules/app-views.md |
+| app/Actions/JoinGroup.php,resources/views/livewire/join.blade.php,resources/views/livewire/auth/register.blade.php,resources/views/livewire/group.blade.php | .ai/rules/auth-views-livewire.md |
 | app/Http/**, routes/** | .ai/rules/boost/http-routes.md |
 | app/Livewire/**, resources/views/** | .ai/rules/boost/livewire-views.md |
 | app/Models/** | .ai/rules/boost/models.md |
@@ -34,6 +35,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Livewire/**, resources/views/livewire/**, resources/views/components/** | .ai/rules/livewire-alpine.md |
 | resources/views/livewire/**,app/Livewire/** | .ai/rules/livewire-livewire.md |
 | resources/views/livewire/pickem-home.blade.php,resources/views/livewire/lobby.blade.php,app/Support/Lobby.php,routes/web.php | .ai/rules/livewire-support.md |
+| config/livewire.php,resources/views/livewire/home.blade.php,resources/views/livewire/onboarding.blade.php,resources/views/livewire/tour.blade.php | .ai/rules/livewire-views-livewire-views-livewire.md |
 | app/Support/SlateFeasibility.php,resources/views/livewire/group.blade.php,resources/views/livewire/slate-builder.blade.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/livewire-views-livewire.md |
 | app/Actions/PostToConversation.php,app/Actions/DeleteConversationPost.php,resources/views/livewire/conversation.blade.php | .ai/rules/livewire.md |
 | app/Models/**, database/migrations/**, resources/views/** | .ai/rules/migrations-views.md |
