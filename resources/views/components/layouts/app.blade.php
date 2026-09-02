@@ -184,6 +184,18 @@
                                 >
                                     Log out
                                 </flux:menu.item>
+
+                                {{-- The release, last and quiet: a line of
+                                     text rather than an item, so the keyboard
+                                     walk skips it. Account carries the same
+                                     stamp below `sm`, where this menu does not
+                                     exist. Nothing renders without a stamp —
+                                     Release never invents one. --}}
+                                @php $release = App\Support\Release::tag(); @endphp
+                                @if ($release !== null)
+                                    <flux:menu.separator />
+                                    <div class="px-2 py-1 text-micro text-zinc-400 dark:text-zinc-500" data-release>{{ $release }}</div>
+                                @endif
                             </flux:menu>
                         </flux:dropdown>
 

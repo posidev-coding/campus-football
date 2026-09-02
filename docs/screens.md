@@ -113,6 +113,14 @@ already says "Account", so the word survives as `sr-only` — the same call ever
 League screen makes. Scores keeps its heading and gains the mark beside it,
 because it is still the app's one non-redundant screen title.
 
+**Account ends on the release stamp.** `App\Support\Release::tag()` — `v` plus
+the `VERSION` file — closes the screen as one `text-micro` line under the last
+card, and the same line closes the desktop avatar menu. Below `sm` the footer
+is the only copy, which is the additive rule again: the menu does not exist on
+a phone. No stamp, no line — `Release` resolves null rather than a number
+nobody chose. The strategy, and the workflow that bumps the file, are in
+[operations.md](operations.md#releases-version-is-the-stamp-the-tag-is-v--version-and-every-merge-is-one).
+
 ## Search: three surfaces, one backend, and deliberately no FULLTEXT
 
 Search is the bar at the top of Home (expands full-screen IN PLACE — never
