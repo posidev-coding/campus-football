@@ -89,7 +89,6 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'wizard.published',
     'lobby.publics.empty',
     'lobby.first_run.body',
-    'lobby.needs.subheading',
     // My Picks' hero and its Results tab: the line over the one card
     // closest to locking, and the tab before anything has settled.
     'picks.hero.zinger',
@@ -114,12 +113,12 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'picks.next.locked',
     'picks.next.join',
     'lobby.rules.subheading',
-    // The two products, told apart: the definitions under My Picks' two
-    // section headings (My Groups / Week N Contests), the public half
-    // named over the first run's lobby door, the first run's group path,
-    // the store's own framing, and the two lines that say what a private
-    // group is and what a room whose Saturday is gone is.
-    'picks.groups.subheading',
+    // The two products, told apart: the overview's ONE definition (under
+    // Week N Contests, carrying the contrast with the groups above it),
+    // the public half named over the first run's lobby door, the first
+    // run's group path, the store's own framing, and the two lines that
+    // say what a private group is and what a room whose Saturday is gone
+    // is.
     'picks.contests.subheading',
     'picks.rooms.subheading',
     'picks.first_run.group',

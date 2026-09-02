@@ -879,14 +879,26 @@ new class extends Component
              each row walking straight into its clubhouse. --}}
         @if ($this->needsPicks->isNotEmpty())
             <div class="flex flex-col gap-2">
-                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Needs your picks</flux:subheading>
-                <flux:subheading>{{ Voice::line('lobby.needs.subheading') }}</flux:subheading>
+                {{-- The heading row says the count: "and N more below" is
+                     a fact, plain in every register, and it points at the
+                     cards under the hero that carry their own state. It
+                     rode inside the hero until pass 2; on the heading it
+                     costs no height and reads before the ask. The Voice
+                     line that sat here retired with it — the heading is
+                     the definition, and this zone spends its words on the
+                     hero's own zinger. --}}
+                <div class="flex items-baseline justify-between gap-3">
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Needs your picks</flux:subheading>
+                    @if ($this->needsMore > 0)
+                        <span class="text-micro shrink-0 text-zinc-500 dark:text-zinc-400">and {{ $this->needsMore }} more below</span>
+                    @endif
+                </div>
 
-                {{-- ONE HERO, and a count. The card closest to locking
-                     wears the mode's own tile and carries the only button
-                     on the zone; four heroes would be four cards nobody
-                     reads, and the compact rows that used to follow were
-                     every one of those cards drawn a second time. --}}
+                {{-- ONE HERO. The card closest to locking wears the mode's
+                     own tile and carries the only button on the zone; four
+                     heroes would be four cards nobody reads, and the
+                     compact rows that used to follow were every one of
+                     those cards drawn a second time. --}}
                 @php
                     $hero = $this->heroCard;
                     $heroGroup = $hero['group'];
@@ -939,28 +951,23 @@ new class extends Component
                         @endif
                     </div>
 
-                    {{-- Render-guarded: an unwritten register is a quieter
-                         hero, never a hole. --}}
-                    @if ($heroZinger !== '')
-                        <p class="text-sm {{ $heroPalette['body'] }}">{{ $heroZinger }}</p>
-                    @endif
-
-                    {{-- The AFFORDANCE stays plain in every register —
-                         the joke is the line above it. --}}
-                    {{-- `w-full` only while the card is one: uncapped, this
-                         hero is ~648px wide and a button that fills it is
-                         not an affordance, it is a wall. --}}
+                    {{-- FACT → ACTION → FLAVOR. The button sits directly
+                         under the count and the clock, so the first button
+                         on the screen lands ~147px higher at 390 than it
+                         did under the zinger; the zinger closes the card.
+                         The AFFORDANCE stays plain in every register — the
+                         joke is the line under it. `w-full` only while
+                         the card is one: uncapped, this hero is ~648px
+                         wide and a button that fills it is not an
+                         affordance, it is a wall. --}}
                     <flux:button :href="$heroHref" wire:navigate variant="primary" class="w-full md:w-auto md:self-start">
                         {{ $hero['made'] === 0 ? 'Make your picks' : 'Finish your picks' }}
                     </flux:button>
 
-                    {{-- The rest, as a COUNT: the cards below carry their
-                         own state, so the zone points at them rather than
-                         drawing them again. A fact, plain in every
-                         register, in the palette's body weight so it reads
-                         on the Woodshed's black tile too. --}}
-                    @if ($this->needsMore > 0)
-                        <p class="text-micro {{ $heroPalette['body'] }}">and {{ $this->needsMore }} more below</p>
+                    {{-- Render-guarded: an unwritten register is a quieter
+                         hero, never a hole. --}}
+                    @if ($heroZinger !== '')
+                        <p class="text-sm {{ $heroPalette['body'] }}">{{ $heroZinger }}</p>
                     @endif
                 </div>
             </div>
@@ -1034,13 +1041,18 @@ new class extends Component
              above are the ONLY create affordance. --}}
         @if ($this->groupCards->isNotEmpty())
             <div class="flex flex-col gap-2" data-tour="seats">
+                {{-- No definition line under this heading (pass 2): the
+                     heading, the switcher's menu group and every card
+                     already say what a group is, and each section spent
+                     60px on a heading + Voice line over an 87px card. The
+                     screen's ONE definition is under Week N Contests — the
+                     noun a day-one reader lacks. --}}
                 <div class="flex items-baseline justify-between gap-3">
                     <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">My Groups</flux:subheading>
                     <a href="{{ route('pickem.create') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
                         Start a group
                     </a>
                 </div>
-                <flux:subheading>{{ Voice::line('picks.groups.subheading') }}</flux:subheading>
 
                 {{-- Two-up only from `xl`: this sits in the main column
                      beside the sidecar, so it is ~648px at `lg` and does
@@ -1058,25 +1070,30 @@ new class extends Component
         {{-- THE INVITE CODE, folded — under the groups it joins you to,
              and ONE unconditional site: a bad code has to open a form
              for a reader with no seats at all. Links are how a group
-             travels now; the code is the spoken-word fallback. --}}
+             travels now; the code is the spoken-word fallback.
+
+             A borderless text row since pass 2: a bordered box between
+             two card stacks read as a third card species, and its Voice
+             line under the question was a definition of a control. One
+             semibold line and the rotating chevron; `-my-2 py-2` keeps a
+             40px hit area without spending the stack's gap on it. The
+             x-data literal is byte-identical — `{ open: true }` on a
+             code error is a pin. --}}
         <div
             x-data="{ open: @js($errors->has('code')) }"
-            class="rounded-xl border border-zinc-200 dark:border-zinc-700"
+            class="-my-2"
         >
             <button
                 type="button"
                 x-on:click="open = ! open"
                 x-bind:aria-expanded="open"
-                class="flex w-full items-center justify-between gap-3 p-4 text-start"
+                class="flex w-full items-center justify-between gap-3 py-2 text-start"
             >
-                <div class="min-w-0">
-                    <p class="font-semibold">Have an invite code?</p>
-                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('groups.join.subheading') }}</p>
-                </div>
+                <span class="min-w-0 truncate font-semibold">Have an invite code?</span>
                 <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
             </button>
 
-            <div x-show="open" x-cloak class="border-t border-zinc-100 p-4 dark:border-zinc-800/60">
+            <div x-show="open" x-cloak class="pt-1 pb-2">
                 <form wire:submit="join" class="flex flex-col gap-3">
                     {{-- The format rule stays plain: 8 characters, told straight. --}}
                     <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />

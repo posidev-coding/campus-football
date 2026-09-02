@@ -902,12 +902,6 @@ class Voice
             'r' => 'No invite? Public lobbies take anybody. Jump in and prove something.',
         ],
 
-        'groups.join.subheading' => [
-            'pg' => "Got a code? Enter it and you're in.",
-            'pg13' => 'Got a code from your group? Punch it in.',
-            'r' => 'Got a code? Punch it in and get in here.',
-        ],
-
         /*
          * THE UPLOAD THAT DID NOT LAND. The storage side refused (R2
          * answering NotImplemented to an ACL was months of exactly this),
@@ -1400,22 +1394,20 @@ class Voice
          * survives because the FIRST RUN still names the public product
          * over the lobby door, where there are no cards to say it.
          */
-        'picks.groups.subheading' => [
-            'pg' => 'Invite-only, and the standings run all season.',
-            'pg13' => 'Invite-only, all season. Your people, your mode, one long argument.',
-            'r' => 'Invite-only, all season. The people you picked, and the receipts you can\'t outrun.',
-        ],
-
         /*
-         * "The ones you're seated in": a public room that has played its
-         * Saturday leaves this section, and the Lobby is where the rest
-         * are joined — the line says both, so the section reads as what
-         * it is rather than as a store. See picks.rooms.past.
+         * THE OVERVIEW'S ONE DEFINITION (pass 2, 2026-09-01). The screen
+         * used to carry a Voice line under every heading — five on the
+         * seated tab, 60px each over an 87px card. It keeps ONE, here,
+         * spent on the noun a day-one reader lacks: a public room is a
+         * one-Saturday thing, and the groups above it are not. The
+         * contrast is the whole line. A played room leaves this section
+         * (History holds it), and the Lobby door under the cards is where
+         * the rest are joined.
          */
         'picks.contests.subheading' => [
-            'pg' => 'This Saturday\'s public rooms — the ones you are seated in, and the door to the rest.',
-            'pg13' => 'This Saturday\'s public rooms. One Saturday each — the ones you\'re in, and the Lobby for more.',
-            'r' => 'This Saturday\'s flings: one Saturday, one verdict, no rematch — and the Lobby is always selling another.',
+            'pg' => 'Public rooms, one Saturday each. Your groups up there run all season.',
+            'pg13' => 'Public rooms, one Saturday each — win it or wait for next week. Your groups up there run all season.',
+            'r' => 'Public rooms: one Saturday, one verdict, then they\'re gone. Your groups up there are stuck with you all season.',
         ],
 
         'picks.rooms.subheading' => [
@@ -1585,12 +1577,6 @@ class Voice
             'pg' => ':rooms open this Saturday. Grab a seat.',
             'pg13' => ":rooms open and your name's on none of them. Saturday is coming either way.",
             'r' => ":rooms open and you're loitering in the parking lot. Get in there and pick some games.",
-        ],
-
-        'lobby.needs.subheading' => [
-            'pg' => 'Slates are open — get your picks in before kickoff.',
-            'pg13' => "Open slates don't pick themselves. Kickoff is the deadline.",
-            'r' => "Unpicked games become zeros at kickoff. Zeros are how legends don't happen.",
         ],
 
         'lobby.rules.subheading' => [

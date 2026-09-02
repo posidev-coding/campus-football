@@ -640,10 +640,14 @@ urgency:
    seated reader met switcher 24 · plate 33 · ribbon 49 · you-strip 59
    before any content, in three container treatments.
 3. **Needs your picks** — renders only when a published slate is still
-   taking picks the reader hasn't finished: ONE mode-tinted hero card (the
-   slate closest to locking: live first, then soonest kickoff, a missing
-   kickoff last) wearing the zone's only button, and under it one plain
-   "and N more below" line. This zone is why the screen works: it answers
+   taking picks the reader hasn't finished: the heading row with a plain
+   "and N more below" on its right (pass 2 moved it up out of the tile;
+   the `lobby.needs.subheading` line under the heading retired), then ONE
+   mode-tinted hero card (the slate closest to locking: live first, then
+   soonest kickoff, a missing kickoff last) ordered fact → action →
+   flavor: the name and progress, the clock, the zone's only button, and
+   the zinger last — the first button on the screen lands ~147px higher
+   at 390 than it did under the zinger. This zone is why the screen works: it answers
    "what do I do right now" before anything else talks. The compact rows
    that used to follow the hero retired 2026-09-01 — every card that needed
    picks rendered twice, as a row here and as a card below, and a reader in
@@ -672,8 +676,13 @@ urgency:
    members · you're the commissioner". An evergreen alone keeps "Always
    open ·" in front, because its section names a Saturday and a table is
    not one — and never "table": the house has exactly two user-facing
-   container nouns. One Voice definition under the heading,
-   `picks.groups.subheading`.
+   container nouns. No definition line under this heading since pass 2
+   (`picks.groups.subheading` retired): the heading, the switcher's menu
+   group and every card already say what a group is, and the screen keeps
+   ONE definition, under Week N Contests. The invite-code disclosure is a
+   borderless semibold text row with the rotating chevron (`-my-2 py-2`
+   for a 40px hit area; `groups.join.subheading` retired — the field's
+   plain description is the instruction), its `x-data` byte-identical.
 5. **Week N Contests** — the public half: this Saturday's rooms the reader
    is seated in (`roomCards`, past Saturdays excluded), then the always-open
    tables (`tableCards`), then the ONE Lobby door (`partials/lobby-door`: a
@@ -684,7 +693,11 @@ urgency:
    The heading is `Cadence::displayWeekLabel()` + "Contests" — "Week 0
    Contests" is a real string inside a split opening week — and it is
    SKIPPED when the calendar has no week, never the cards, never the door,
-   never a substituted week. One Voice definition, `picks.contests.subheading`.
+   never a substituted week. The screen's ONE Voice definition sits here,
+   `picks.contests.subheading`, rewritten in pass 2 to carry the contrast
+   a day-one reader lacks: "Public rooms, one Saturday each. Your groups
+   up there run all season." — five Voice lines on the seated tab became
+   two (this and the hero's zinger).
 
    The door renders in exactly two mutually exclusive places: here, for a
    reader with groups, and hoisted up beside the mode doors on a first run,
