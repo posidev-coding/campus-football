@@ -82,9 +82,18 @@ new class extends Component
      * case x-gutter-tabs exists for ("more tabs than two-or-three").
      *
      * `invite` normalizes away for a room — rooms are joined from the
-     * lobby, never by invitation — so a room's strip is three stops.
+     * lobby, never by invitation — so a room's strip is one stop shorter.
+     *
+     * `talk` (2026-09-01) is the thread's stop, members only: the hero's
+     * Talk icon and the Standings-foot link-row both went, because a stop
+     * that owns the door does not need two worse ones. A non-member's
+     * `?view=talk` folds to the slate the way a room's `invite` folds. The
+     * pick SURFACE stays chat-free — the thread mounts on its own tab and
+     * nowhere near partials/pick-slate. Five stops fit at 390 only with the
+     * gutter's `fill` variant (cells sized to their words); a sixth would
+     * not fit at all, which is why the mode brief is an accordion.
      */
-    private const VIEWS = ['slate', 'standings', 'members', 'invite'];
+    private const VIEWS = ['slate', 'standings', 'members', 'invite', 'talk'];
 
     public Group $group;
 
@@ -730,8 +739,9 @@ new class extends Component
     }
 
     /**
-     * Two tabs, both kinds: the pick surface, and everything social. A
-     * room's Standings simply skips the season ledger it does not have.
+     * The strip's stops, both kinds: the pick surface, everything social,
+     * and — for a member — the thread. A room's Standings simply skips the
+     * season ledger it does not have.
      *
      * @return array<string, string>
      */
@@ -748,6 +758,12 @@ new class extends Component
         // them — matching normalizedView(), which sends the address back.
         if (! $this->group->isLobby()) {
             $tabs['invite'] = 'Invite';
+        }
+
+        // The thread belongs to the people in it: last stop, members only,
+        // matching normalizedView(), which folds an outsider's address.
+        if ($this->isMember) {
+            $tabs['talk'] = 'Talk';
         }
 
         return $tabs;
@@ -829,7 +845,8 @@ new class extends Component
         }
 
         session()->flash('status', Voice::line('groups.joined', ['group' => $this->group->name]));
-        unset($this->members, $this->isMember, $this->isCommissioner);
+        // The strip too: a seat is what puts the Talk stop on it.
+        unset($this->members, $this->isMember, $this->isCommissioner, $this->tabs);
     }
 
     public function leave(LeaveGroup $action)
@@ -1003,6 +1020,12 @@ new class extends Component
         // cannot disagree about which stops exist.
         if ($view === 'invite' && $this->group->isLobby()) {
             return 'standings';
+        }
+
+        // The thread is members-only, and the tab is absent for anyone
+        // else — so the address folds to the pick surface, the same law.
+        if ($view === 'talk' && ! $this->isMember) {
+            return 'slate';
         }
 
         return in_array($view, self::VIEWS, true) ? $view : 'slate';
@@ -1233,7 +1256,7 @@ new class extends Component
         :items="$this->tabs"
         :selected="$view"
         model="view"
-        variant="block"
+        variant="fill"
         label="Group sections"
         key-prefix="group-tab"
     />
@@ -1390,13 +1413,6 @@ new class extends Component
                     :games="$this->contest->mode->engine($this->contest->settings)->slateSize()"
                 />
             @endif
-
-            {{-- The thread's second door, where the arguing starts. --}}
-            @if ($this->isMember)
-                <x-link-row :href="route('pickem.talk', $group)" :title="$group->isRoom() ? 'Room talk' : 'Group talk'">
-                    <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('talk.door.hint') }}</span>
-                </x-link-row>
-            @endif
         </div>
     @elseif ($view === 'members')
         {{-- THE ROSTER, and the management that goes with it. This was a
@@ -1488,6 +1504,16 @@ new class extends Component
                 />
             @endif
         </div>
+    @elseif ($view === 'talk')
+        {{-- THE THREAD, on its own stop. Not lazy: the tab tap IS the
+             intersection, and the exclusive branch mounts fresh per entry.
+             Members only — the strip has no stop for anyone else and
+             normalizedView() folds their address, so this @if is the
+             belt to those braces. The pick surface above never mounts
+             one; the conversation renders its own subheading line. --}}
+        @if ($this->isMember)
+            <livewire:conversation :topic="$group" :key="'talk-group-'.$group->id" />
+        @endif
     @endif
 
     </div>

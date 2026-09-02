@@ -321,12 +321,18 @@ Route::middleware(['auth'])->group(function () {
         Route::livewire('groups/{group}/build', 'slate-builder')->name('pickem.build');
 
         /*
-         * The thread's own door (2026-08-30): one address for both kinds
-         * — Talk is reached from inside a clubhouse, never by shared
-         * link, so the kind is already resolved on arrival. Members only;
-         * the screen 403s everyone else.
+         * The thread's old door (2026-08-30 to 2026-09-01). Talk is a
+         * gutter tab of the clubhouse now, so the address walks to the
+         * kind's own home with `?view=talk` — a 301, because the old
+         * link is in people's threads and every one of them keeps
+         * working. The tab is members-only and the clubhouse still 403s
+         * a stranger to a private group. Plain RedirectResponse, for
+         * the reason the legacy redirects below give.
          */
-        Route::livewire('groups/{group}/talk', 'group-talk')->name('pickem.talk');
+        Route::get('groups/{group}/talk', fn (Group $group) => new RedirectResponse(
+            route($group->isRoom() ? 'pickem.room' : 'pickem.group', [$group, 'view' => 'talk']),
+            301,
+        ))->name('pickem.talk');
 
         /*
          * HOW THIS WORKS: the Picks area's reference screen. A side room

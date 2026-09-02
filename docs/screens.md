@@ -958,7 +958,7 @@ picks" on a clubhouse. One Seats read, held in the screen's own
 `#[Computed] seats()`, and slate-size independent, so the flat-query pin
 still holds.
 
-**One strip, four stops, since 2026-09-01.** The clubhouse briefly carried
+**One strip, five stops, since 2026-09-01.** The clubhouse briefly carried
 TWO rows — a plate of Slate|Standings with an `x-gutter-tabs` of
 Standings|Members|Invite beneath it — which stacked three levels of
 navigation over the content once the area nav is counted, and printed the
@@ -966,15 +966,18 @@ word "Standings" on two of them. A reader cannot tell which row owns which
 decision.
 
 The plate is the one that went: `x-plate` is documented as two tabs and
-throws above three, and four stops is exactly the case `x-gutter-tabs`
-exists for ("more tabs than two-or-three"). So `$view` alone drives
-**Slate · Standings · Members · Invite**, still `#[Url]` and still
-normalized in both hooks. There is no `$pane`.
+throws above three, and four-or-five stops is exactly the case
+`x-gutter-tabs` exists for ("more tabs than two-or-three"). So `$view`
+alone drives **Slate · Standings · Members · Invite · Talk**, still
+`#[Url]` and still normalized in both hooks. There is no `$pane`. Five
+fit at 390 only in the gutter's `fill` variant — cells sized to their
+words, sharing the spare width — because five equal fifths clip
+"Standings" and "Members" (docs/ui-system.md rule 7 has the numbers).
 
 - **Slate** — pure play.
 - **Standings** — `x-you-strip`, the week and season tables, the picks
   grid, and `x-mode-rules` sized from the contest as the scoring panel
-  beneath the numbers it explains, then the Talk door.
+  beneath the numbers it explains.
 - **Members** — the roster, the commissioner badge, the handoff, Remove
   and Leave. It was a collapsed disclosure at the foot of the standings,
   which put the one control that transfers a league behind a chevron.
@@ -986,10 +989,21 @@ normalized in both hooks. There is no `$pane`.
   `GroupPageTest` guards that on the clipboard handler rather than the
   word "Invite" — the button and the tab label read identically to
   `assertSee`, and only the copy handler tells them apart.
+- **Talk** — the group thread, members only, last stop of both kinds
+  (since 2026-09-01). It was a screen of its own at `/groups/{g}/talk`
+  for two days, reached from a hero icon, a Standings-foot link-row and
+  the entry celebration; the tab owns the door now, the way the Invite
+  stop took the hero's copy button, and the other two doors went with
+  the icon. The old address 301s to `?view=talk` on the kind's home so
+  every link in a text thread keeps working. The pick SURFACE stays
+  chat-free: `partials/pick-slate` never mounts a conversation, and the
+  slate view renders none — `ConversationTest` pins both, and that a
+  non-member's `?view=talk` folds to the slate with no stop on the strip.
 
-A room gets **three** stops: `normalizedView()` sends `invite` back to the
+A room gets **four** stops: `normalizedView()` sends `invite` back to the
 standings for a lobby, so the strip and the content cannot disagree about
-which stops exist. `?view=season` still folds to Standings; `?view=members`
+which stops exist — and `talk` back to the slate for anyone without a seat,
+the same law. `?view=season` still folds to Standings; `?view=members`
 is a live address again and lands where it says. `GroupPageTest` counts the
 `group-tab-` keys and asserts there is no second strip — a two-strip
 regression passes every content assertion, so the count is the guard.

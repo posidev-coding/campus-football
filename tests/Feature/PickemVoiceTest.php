@@ -113,7 +113,6 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'picks.next.settled',
     'picks.next.locked',
     'picks.next.join',
-    'talk.door.hint',
     'lobby.rules.subheading',
     // The two products, told apart: the definitions under My Picks' two
     // section headings (My Groups / Week N Contests), the public half

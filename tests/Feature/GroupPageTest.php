@@ -342,7 +342,7 @@ it('normalizes the three-tab era\'s addresses onto the one strip', function () {
         ->assertSet('view', 'slate');
 });
 
-it('navigates the clubhouse from ONE strip of four stops', function () {
+it('navigates the clubhouse from ONE strip of five stops', function () {
     /*
      * There was briefly a plate of Slate|Standings with a gutter of
      * Standings|Members|Invite beneath it — three rows of navigation
@@ -362,14 +362,13 @@ it('navigates the clubhouse from ONE strip of four stops', function () {
         ->assertSee('Wk rank')
         ->assertSee('—')
         ->assertSee('Triple Option')
-        ->assertSee('Group talk')
-        ->assertSee(route('pickem.talk', $group), escape: false)
+        ->assertSee('Talk')
         ->html();
 
-    // Exactly ONE navigation strip: four buttons, one set of keys. A
+    // Exactly ONE navigation strip: five buttons, one set of keys. A
     // second strip is the regression this test exists to catch, and it
     // would pass every assertion above.
-    expect(substr_count($html, 'wire:key="group-tab-'))->toBe(4)
+    expect(substr_count($html, 'wire:key="group-tab-'))->toBe(5)
         ->and($html)->not->toContain('group-pane-')
         // The switcher in the hero is not a strip: its rows are keyed
         // `switch-`, and there is exactly one of it.
@@ -583,23 +582,32 @@ it('keeps a public room\'s roster on handles too, not just its tables', function
         ->assertDontSee('Dale Trickett');
 });
 
-it('gives a room three stops and a group four, and sends ?view=invite back', function () {
+it('gives a room four stops and a group five, and sends ?view=invite back', function () {
     /*
      * The strip and the content must not disagree about which stops
      * exist: a room has no invite to advertise, so the tab is absent AND
-     * the address is refused.
+     * the address is refused. Talk is the last stop of both for a member.
      */
     [$commissioner, $group] = pickemContest(ContestMode::Classic);
 
-    Livewire::withQueryParams(['view' => 'invite'])
+    $html = Livewire::withQueryParams(['view' => 'invite'])
         ->actingAs($commissioner)->test('group', ['group' => $group])
-        ->assertSet('view', 'invite');
+        ->assertSet('view', 'invite')
+        ->html();
+
+    expect(substr_count($html, 'wire:key="group-tab-'))->toBe(5)
+        ->and(strpos($html, 'wire:key="group-tab-talk"'))->toBeGreaterThan(strpos($html, 'wire:key="group-tab-invite"'));
 
     $group->update(['kind' => Group::KIND_LOBBY]);
 
-    Livewire::withQueryParams(['view' => 'invite'])
+    $html = Livewire::withQueryParams(['view' => 'invite'])
         ->actingAs($commissioner)->test('group', ['group' => $group])
-        ->assertSet('view', 'standings');
+        ->assertSet('view', 'standings')
+        ->html();
+
+    expect(substr_count($html, 'wire:key="group-tab-'))->toBe(4)
+        ->and($html)->not->toContain('wire:key="group-tab-invite"')
+        ->and(strpos($html, 'wire:key="group-tab-talk"'))->toBeGreaterThan(strpos($html, 'wire:key="group-tab-members"'));
 });
 
 it('polls the Standings tab only while the card is live', function () {
@@ -662,8 +670,8 @@ it('previews the surface read-only for a lobby outsider', function () {
         ->assertSee('Join this lobby')
         ->assertDontSee('optimistic(', escape: false)
         ->assertDontSee('No pick')
-        // No seat, no thread door.
-        ->assertDontSee('Room talk');
+        // No seat, no Talk stop.
+        ->assertDontSeeHtml('wire:key="group-tab-talk"');
 });
 
 it('301s the old nested URL to the clubhouse', function () {

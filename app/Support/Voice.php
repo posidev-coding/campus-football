@@ -2031,12 +2031,6 @@ class Voice
          * THE TALK DOORS — the link-row into a contest's own thread.
          * Kind-free on purpose: one line serves groups and rooms both.
          */
-        'talk.door.hint' => [
-            'pg' => 'Argue the calls with your people.',
-            'pg13' => 'Where the calls get argued. Bring receipts.',
-            'r' => 'Where the calls get argued and the receipts get read. Come armed.',
-        ],
-
         'talk.house_rule' => [
             'pg' => 'Roast the pick, the team, the record. Never the person.',
             'pg13' => 'Roast the pick, the team, the record — never the person.',

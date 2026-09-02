@@ -231,9 +231,13 @@
             <p class="min-w-0 flex-1 text-sm text-zinc-700 dark:text-zinc-300">
                 {{ App\Support\Voice::line('picks.entry.celebration') }}
                 {{-- The highest-intent moment the surface produces walks
-                     straight into the thread. Plain words, own door. --}}
+                     straight into the thread — the clubhouse's Talk tab.
+                     Plain words, own door. Built off the slate's own
+                     group, because this partial has no $group of its own
+                     (the slate builder includes it too). --}}
+                @php $talkGroup = $slate->contest->group; @endphp
                 <a
-                    href="{{ route('pickem.talk', $slate->contest->group) }}"
+                    href="{{ route($talkGroup->isRoom() ? 'pickem.room' : 'pickem.group', [$talkGroup, 'view' => 'talk']) }}"
                     wire:navigate
                     class="font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
                 >Talk it over</a>
