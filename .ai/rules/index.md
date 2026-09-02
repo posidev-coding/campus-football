@@ -42,6 +42,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Providers/AppServiceProvider.php,app/Support/R2SignedUploadUrl.php,app/Support/R2Writes.php,config/filesystems.php,config/livewire.php | .ai/rules/providers-support-support.md |
 | app/Providers/AppServiceProvider.php,app/Support/R2SignedUploadUrl.php,config/filesystems.php,config/livewire.php | .ai/rules/providers-support.md |
 | app/Providers/** | .ai/rules/providers.md |
+| VERSION,app/Support/Release.php,.github/workflows/release.yml,.github/scripts/next-version.sh,config/cfb.php | .ai/rules/scripts.md |
 | app/Support/**, app/Services/** | .ai/rules/services.md |
 | routes/**,app/Http/Controllers/Ops/**,app/Support/RemoteBoard.php,app/Console/Commands/Issue*.php | .ai/rules/support-console-commands.md |
 | app/Actions/GrantWalletEntry.php,app/Actions/EnterFilmRoom.php,app/Support/RankLadder.php,app/Support/PickemPreflight.php | .ai/rules/support-support.md |
