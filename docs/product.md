@@ -360,6 +360,20 @@ Pick'em actions and XP earning (bar the seeded first-team grant) — never
 reading your own data. `/account` sits behind `auth` alone; the v3 lesson in
 that route comment is "middleware actually applied", not "verify early".
 
+**A private seat is not participation** (2026-09-02). `JoinGroup` seats an
+unverified account in a private group: the invite code is the credential,
+and the seat earns and risks nothing — picks, the Lock, the tiebreaker and
+every wallet write keep their gate in their own actions, and the first-group
+XP waits for the first seat taken verified. Public rooms keep the gate, since
+their seats are capped and house-run. The reason is the funnel it replaced:
+scan the QR, register, land back on the same invite card with a button that
+refused you, then lose the invite when the verification click landed on
+Home. Now the join screen parks the code beside the intended URL
+(`join.auto`) and seats the reader on the way back from `register`, the
+clubhouse carries the verify nudge, and the register screen names the group
+off the intended URL. A seat that never verifies goes with the account at
+`User::VERIFICATION_GRACE_DAYS`.
+
 - **Verifying pays**: `Illuminate\Auth\Events\Verified` →
   `GrantVerificationReward` → one idempotent `wallet_entries` row (100 XP +
   1 Tallboy, key `email-verified`). The unique `(user_id, key)` index

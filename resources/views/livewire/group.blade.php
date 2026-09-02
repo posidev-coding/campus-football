@@ -1141,6 +1141,13 @@ new class extends Component
         </x-slot:actions>
     </x-group-hero>
 
+    {{-- A fresh seat's one remaining step. A private group seats an
+         unverified account (JoinGroup), so this is where the nudge has to
+         live: picks, the Lock and the tiebreaker stay behind the gate, and
+         the row says so until the address is confirmed. Its own component,
+         so its poll re-renders the row alone. --}}
+    <livewire:verify-callout :body-key="'verify.picks.body'" :dismissable="false" @email-verified="$refresh" />
+
     {{-- BELOW the band, never inside it: the validation messages are a
          sentence long and the hero has no width for them at 390px.
          Without this a rejected image looks like nothing happened at

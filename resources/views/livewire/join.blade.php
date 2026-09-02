@@ -86,7 +86,40 @@ new class extends Component
             return;
         }
 
+        if ($this->seatOnReturn()) {
+            return;
+        }
+
         $this->describeForSharing();
+    }
+
+    /**
+     * The seat a registration walks straight back into.
+     *
+     * The guest arm of join() parks this group's code in the session beside
+     * the intended URL, so the reader who tapped Take your seat, made an
+     * account and got redirected here is SEATED on arrival — the clubhouse,
+     * not the same card a second time with the same button on it. That
+     * second look was the confusing beat in the funnel: they had already
+     * answered the question this screen asks.
+     *
+     * Pulled, never read: the code is consumed on the first landing whether
+     * or not the seat is given, so a refused room (full, played) shows its
+     * state once and a later visit is an ordinary one.
+     */
+    private function seatOnReturn(): bool
+    {
+        if (auth()->guest() || $this->group === null) {
+            return false;
+        }
+
+        if (session()->pull('join.auto') !== $this->group->code) {
+            return false;
+        }
+
+        $this->join(app(JoinGroup::class));
+
+        return ! $this->getErrorBag()->has('join');
     }
 
     /**
@@ -243,6 +276,11 @@ new class extends Component
                 'by' => $this->by,
             ]), absolute: false));
 
+            // And the seat itself, taken by mount() on the way back — see
+            // seatOnReturn(). The code, not the group: a session value that
+            // survives registration must be a scalar.
+            session()->put('join.auto', $this->group->code);
+
             // REGISTER, not login: the invite link is the PRIMARY
             // acquisition path, and the guest holding one is almost always
             // brand new — a login form is a door they cannot open. The
@@ -358,6 +396,9 @@ new class extends Component
             $modeGames = $this->contest === null
                 ? null
                 : $this->contest->mode->engine($this->contest->settings)->slateSize();
+            // The group's own mark, where it has one — the same test
+            // x-group-card applies before it swaps the mode tile out.
+            $marked = $this->group->iconUrl() !== null || $this->group->conferenceLogoUrl() !== null;
         @endphp
 
         @if ($this->inviter !== null)
@@ -370,14 +411,26 @@ new class extends Component
         {{-- THE PREVIEW: what you were invited to, before any wall. --}}
         <div class="flex flex-col gap-4 rounded-xl border border-zinc-200 p-5 dark:border-zinc-700">
             <div class="flex items-start gap-3">
-                @if ($mode !== null)
+                {{-- THE MARK: the group's uploaded icon (or a conference
+                     shield) where it has one — the mark the clubhouse and
+                     x-group-card wear, so the seat somebody scans into
+                     looks like the seat they land in. Unmarked, the mode
+                     tile stands in, exactly as on the card. --}}
+                @if ($marked)
+                    <x-group-icon :group="$this->group" shape="rounded-lg" class="size-11 text-sm" />
+                @elseif ($mode !== null)
                     <span class="flex size-11 shrink-0 items-center justify-center rounded-lg border {{ $palette['tile'] }}">
                         <flux:icon :name="$mode->icon()" variant="mini" class="{{ $palette['icon'] }}" />
                     </span>
                 @endif
 
                 <div class="min-w-0 flex-1">
-                    <p class="truncate text-xl font-bold leading-tight">{{ $this->group->name }}</p>
+                    {{-- Two lines, never an ellipsis. Beside the chip, a
+                         40-character name was "VOLS 101: No Prere…" at
+                         390px, and the name is the one thing a QR scan has
+                         to confirm. Below sm the chip leaves this row for
+                         the meta line, as the hero's kind chip does. --}}
+                    <p class="line-clamp-2 break-words text-xl font-bold leading-tight">{{ $this->group->name }}</p>
                     {{-- The KIND leads. A link lands somebody who has
                          never seen the app on a name, a mode chip and a
                          member count — none of which say whether they
@@ -399,11 +452,14 @@ new class extends Component
                             Private group, all season ·
                             {{ $this->group->memberships_count }} {{ Str::plural('member', $this->group->memberships_count) }}
                         @endif
+                        @if ($mode !== null)
+                            <span class="sm:hidden">· {{ $mode->label() }}</span>
+                        @endif
                     </p>
                 </div>
 
                 @if ($mode !== null)
-                    <span class="shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold {{ $palette['chip'] }}">{{ $mode->label() }}</span>
+                    <span class="hidden shrink-0 rounded-full px-2 py-0.5 text-micro font-semibold sm:inline-block {{ $palette['chip'] }}">{{ $mode->label() }}</span>
                 @endif
             </div>
 
@@ -436,7 +492,7 @@ new class extends Component
 
                     @guest
                         {{-- What the tap does, told straight. --}}
-                        <p class="text-micro text-zinc-500">You'll sign in or create an account first — then you land right back here, seated.</p>
+                        <p class="text-micro text-zinc-500">You'll create an account (or sign in) first — then you land in the group, seated.</p>
                     @endguest
                 </div>
             @endif

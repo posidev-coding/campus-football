@@ -219,9 +219,20 @@ return [
     | are applied to nested components that don't have them. This makes using
     | nested components more reliable by ensuring that they all have keys.
     |
+    | OFF here, on purpose (2026-09-02). The feature appends whatever
+    | `wire:key` and loop context rendered BEFORE a child to that child's key,
+    | and it never clears that context when the keyed element closes — so a
+    | child's key depends on what its siblings rendered. Home's onboarding
+    | child carried a leaked loop index on the no-team render and lost it on
+    | the first-team refresh; a moved key is a NEW child, and the signup
+    | splash inside it died half a second in with the tour over it. The tour
+    | remounted on every refresh for the same reason. Nothing in this app
+    | mounts a child inside a loop without its own `:key`, so plain
+    | positional keys are what every child gets. GuidedSetupTest pins it.
+    |
     */
 
-    'smart_wire_keys' => true,
+    'smart_wire_keys' => false,
 
     /*
     |---------------------------------------------------------------------------

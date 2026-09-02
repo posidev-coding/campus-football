@@ -19,13 +19,26 @@ use Illuminate\Support\Facades\DB;
  * Joining twice is a no-op rather than an error, the FollowTeam idempotency
  * shape: the button you already pressed must never scold you.
  *
- * PUBLIC ROOMS add three rules and one side effect. A room refuses a seat
- * once its cap is reached or its week is already being played (a seat you
- * cannot pick from is not a seat), and a MARQUEE room refuses one the
- * wallet cannot cover. And the join that FILLS the room spawns the next
- * one — through the atomic `filled_at` claim, so two racing joiners
- * provision exactly one Room N+1. The hourly sweep is the belt; this hook
- * is the suspenders that keeps the lobby stocked in real time.
+ * A PRIVATE GROUP seats an unverified account. The invite code is the
+ * credential — somebody handed it over — and the seat itself earns and
+ * risks nothing: picks, the Lock, the tiebreaker and every wallet write
+ * stay behind the verified gate in their own actions. Before 2026-09-02
+ * the gate sat here too, and the funnel it produced was: scan the QR,
+ * register, land back on the same invite card with a button that refused
+ * you, then lose the invite entirely when the verification click landed
+ * on Home. Now the reader is IN the clubhouse, where the verify nudge is
+ * the one thing between them and a pick. A seat that never verifies goes
+ * with the account at User::VERIFICATION_GRACE_DAYS.
+ *
+ * PUBLIC ROOMS keep the gate and add three rules and one side effect. A
+ * house-run room's seats are capped, so an unverified drop-in would hold
+ * one it can never pick from. A room refuses a seat once its cap is
+ * reached or its week is already being played (a seat you cannot pick from
+ * is not a seat), and a MARQUEE room refuses one the wallet cannot cover.
+ * And the join that FILLS the room spawns the next one — through the
+ * atomic `filled_at` claim, so two racing joiners provision exactly one
+ * Room N+1. The hourly sweep is the belt; this hook is the suspenders that
+ * keeps the lobby stocked in real time.
  */
 class JoinGroup
 {
@@ -34,13 +47,13 @@ class JoinGroup
     ) {}
 
     /**
-     * @throws PickemParticipationGated when the joiner is unverified
+     * @throws PickemParticipationGated when an unverified joiner asks for a PUBLIC seat
      * @throws ContestFull when a public room has no seat to give
      * @throws WalletTooLight when the seat is priced and the wallet is short
      */
     public function handle(User $user, Group $group): void
     {
-        if (! $user->hasVerifiedEmail()) {
+        if ($group->isLobby() && ! $user->hasVerifiedEmail()) {
             throw new PickemParticipationGated;
         }
 
@@ -66,14 +79,19 @@ class JoinGroup
             $this->charge($user, $group);
         });
 
-        // Once-ever, whichever group was first — the key is the cap.
-        $this->wallet->handle(
-            $user,
-            GrantWalletEntry::FIRST_GROUP_XP,
-            0,
-            GrantWalletEntry::REASON_FIRST_GROUP,
-            GrantWalletEntry::REASON_FIRST_GROUP,
-        );
+        // Once-ever, whichever group was first — the key is the cap. An
+        // unverified seat earns nothing (the one earn before verification
+        // is the first-team seed); the key is still unspent, so the first
+        // seat taken AFTER verifying pays it.
+        if ($user->hasVerifiedEmail()) {
+            $this->wallet->handle(
+                $user,
+                GrantWalletEntry::FIRST_GROUP_XP,
+                0,
+                GrantWalletEntry::REASON_FIRST_GROUP,
+                GrantWalletEntry::REASON_FIRST_GROUP,
+            );
+        }
 
         if ($group->isRoom() && $group->member_cap !== null) {
             $this->spawnIfFilled($group);

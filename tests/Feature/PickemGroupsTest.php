@@ -61,14 +61,22 @@ it('pays founding and joining XP exactly once, ever', function () {
         ->and(WalletEntry::where('user_id', $creator->id)->where('reason', 'first-group')->count())->toBe(1);
 });
 
-it('gates creating and joining on a verified email', function () {
+it('gates creating a group and a public seat on a verified email — a private seat is open', function () {
     $unverified = User::factory()->unverified()->create();
     $group = Group::factory()->create();
+    [, $week] = pickemSeasonWeek();
+    $room = Group::factory()->lobby()->create(['week_id' => $week->id, 'member_cap' => 20]);
 
     expect(fn () => app(CreateGroup::class)->handle($unverified, 'No Ghosts', ContestMode::Classic))
         ->toThrow(PickemParticipationGated::class)
-        ->and(fn () => app(JoinGroup::class)->handle($unverified, $group))
+        ->and(fn () => app(JoinGroup::class)->handle($unverified, $room))
         ->toThrow(PickemParticipationGated::class);
+
+    // The invite code is the credential; the picks stay gated in MakePick.
+    app(JoinGroup::class)->handle($unverified, $group);
+
+    expect($group->memberships()->where('user_id', $unverified->id)->exists())->toBeTrue()
+        ->and(WalletEntry::where('user_id', $unverified->id)->where('reason', 'first-group')->exists())->toBeFalse();
 });
 
 it('seats a joiner once — joining again is a no-op, not an error', function () {

@@ -939,7 +939,7 @@ class Voice
         ],
 
         'groups.verify_first' => [
-            'pg' => 'Verify your email first — then you can create and join groups.',
+            'pg' => 'Verify your email first — then you can create a group or take a public seat.',
             'pg13' => "Verify your email first. The league needs to know you're real.",
             'r' => 'Verify your email first. No ghosts in this league.',
         ],

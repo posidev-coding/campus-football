@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\FollowTeam;
 use App\Enums\ContentRating;
 use App\Jobs\SyncTeamNews;
 use App\Models\Game;
@@ -785,4 +786,68 @@ describe('the picker rows', function () {
         expect($vols)->toHaveKeys(['id', 'name', 'logo', 'logo_dark'])
             ->and($vols['logo'])->toBe('https://espn/2633.png');
     });
+});
+
+/**
+ * The Livewire children on Home, by name → wire:id, off a rendered page:
+ * a full render carries the id in `wire:snapshot`, a stubbed re-render in
+ * `wire:name`. Either way a child that keeps its id kept its Alpine state.
+ *
+ * @return array<string, string>
+ */
+function homeChildIds(string $html): array
+{
+    preg_match_all('/<[a-z]+[^>]*\bwire:id="([^"]+)"[^>]*>/i', $html, $tags, PREG_SET_ORDER);
+
+    $ids = [];
+
+    foreach ($tags as [$tag, $id]) {
+        if (preg_match('/\bwire:name="([^"]+)"/', $tag, $m) === 1) {
+            $ids[$m[1]] = $id;
+
+            continue;
+        }
+
+        if (preg_match('/\bwire:snapshot="([^"]*)"/', $tag, $m) === 1) {
+            $snapshot = json_decode(html_entity_decode($m[1], ENT_QUOTES), true);
+            $ids[$snapshot['memo']['name'] ?? '?'] = $id;
+        }
+    }
+
+    return $ids;
+}
+
+it('keeps the wizard and the tour mounted across the refresh the first pick triggers', function () {
+    /*
+     * The signup splash lives inside the onboarding child, and `team-followed`
+     * re-renders Home from the same request. Livewire 4's smart wire keys
+     * append whatever `wire:key` and loop context rendered BEFORE a child to
+     * that child's key, so the key moved between Home's no-team render and
+     * its first-team render — and a moved key is a NEW child: the splash
+     * island came back with `show: false` half a second into its 12.5s, the
+     * hold-off went with it, and the tour claimed the screen. Same leak
+     * remounted the tour on every later refresh. Smart keys are off in
+     * config/livewire.php; this pins that both children keep their ids.
+     */
+    $user = User::factory()->create(['onboarded_at' => null]);
+
+    $component = Livewire::actingAs($user)->test('home');
+    $before = homeChildIds($component->html());
+
+    expect($before)->toHaveKey('onboarding');
+
+    app(FollowTeam::class)->handle($user, $this->vols);
+    $user->forceFill(['onboarded_at' => now()])->save();
+
+    $component->call('refreshTeams');
+    $afterPick = homeChildIds($component->html());
+
+    expect($afterPick['onboarding'] ?? null)->toBe($before['onboarding'])
+        ->and($afterPick)->toHaveKey('tour');
+
+    $component->call('refreshTeams');
+    $afterAgain = homeChildIds($component->html());
+
+    expect($afterAgain['onboarding'] ?? null)->toBe($before['onboarding'])
+        ->and($afterAgain['tour'] ?? null)->toBe($afterPick['tour']);
 });

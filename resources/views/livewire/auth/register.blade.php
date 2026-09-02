@@ -1,12 +1,14 @@
 <?php
 
 use App\Enums\ContentRating;
+use App\Models\Group;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
 
@@ -28,6 +30,25 @@ new #[Layout('components.layouts.auth')] class extends Component
      * has to research before they can sign up.
      */
     public string $content_rating = 'pg13';
+
+    /**
+     * The group an invite link is walking this account into, read off the
+     * intended URL the join screen parked — so the form says what the tap
+     * was for instead of a generic pitch. Null for everyone else, and null
+     * for a code that resolves to nothing: the join screen answers a dead
+     * code with its own words, this one says nothing.
+     */
+    #[Computed]
+    public function invitedTo(): ?string
+    {
+        $intended = session('url.intended');
+
+        if (! is_string($intended) || preg_match('~/join/([A-Za-z0-9]{8})~', $intended, $match) !== 1) {
+            return null;
+        }
+
+        return Group::query()->where('code', strtoupper($match[1]))->value('name');
+    }
 
     public function register(): void
     {
@@ -80,7 +101,9 @@ new #[Layout('components.layouts.auth')] class extends Component
 <div class="flex flex-col gap-6">
     <x-auth-header
         title="Get in the game"
-        description="Create an account and start making picks."
+        :description="$this->invitedTo !== null
+            ? 'Create an account to take your seat in '.$this->invitedTo.'.'
+            : 'Create an account and start making picks.'"
     />
 
     <x-auth-session-status class="text-center" :status="session('status')" />
