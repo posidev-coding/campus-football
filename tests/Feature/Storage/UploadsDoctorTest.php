@@ -151,3 +151,42 @@ it('refuses to probe a disk it could not even build, instead of dying of it', fu
         ->expectsOutputToContain('not run — the disk above is not configured, so there is nothing to write to')
         ->assertExitCode(1);
 });
+
+it('points at the mounted disk when this one is empty and another holds a bucket', function () {
+    /*
+     * THE ANSWER LARAVEL CLOUD'S SECOND RUN NEEDED (2026-09-02). Cloud
+     * mounts a bucket by injecting a DISK — `app`, with the s3 driver and
+     * real credentials — not by setting the AWS_* names the disk in this
+     * repository reads. So `r2` sat empty while a working disk stood beside
+     * it in the same config array, and nothing in the report said so.
+     */
+    useR2();
+    config([
+        'filesystems.disks.r2.bucket' => null,
+        'filesystems.disks.app' => [
+            'driver' => 's3', 'key' => 'k', 'secret' => 's', 'region' => 'auto',
+            'bucket' => 'fls-a2746aeb', 'endpoint' => 'https://367be3a2.r2.cloudflarestorage.com',
+        ],
+    ]);
+    Storage::forgetDisk('r2');
+
+    $this->artisan('cfb:uploads:doctor')
+        ->expectsOutputToContain('app (s3, bucket set)')
+        ->expectsOutputToContain("holds a bucket and 'r2' does not")
+        // Booleans and names, never the bucket's own value.
+        ->doesntExpectOutputToContain('fls-a2746aeb')
+        ->assertExitCode(1);
+});
+
+it('says it cannot tell about the public URL rather than defaulting to an answer', function () {
+    // The first version reported "the bucket's own endpoint" whenever the
+    // endpoint was unset — a default written where a value was missing,
+    // which is the one thing this codebase does not do.
+    useR2();
+    config(['filesystems.disks.r2.endpoint' => null]);
+    Storage::forgetDisk('r2');
+
+    $this->artisan('cfb:uploads:doctor')
+        ->expectsOutputToContain('no endpoint to compare it against')
+        ->assertExitCode(1);
+});

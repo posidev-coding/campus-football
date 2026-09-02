@@ -372,6 +372,12 @@ new class extends Component
 
         try {
             $path = $this->photo->store('avatars', config('cfb.upload_disk'));
+
+            // A disk with `throw => false` returns FALSE instead of raising,
+            // and that false would blank the avatar and look like a success.
+            if (! is_string($path) || $path === '') {
+                throw new \RuntimeException('The upload disk refused the avatar write and returned no path.');
+            }
         } catch (\Throwable $e) {
             // The disk refused. Report it and say so on the photo's own
             // error line rather than a 500 — the avatar stays what it was.

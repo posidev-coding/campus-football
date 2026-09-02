@@ -218,3 +218,34 @@ it('refuses a HEIC by name, with the mime message and nothing else', function ()
     expect(ImageUpload::accept())->toBe('image/jpeg,image/png,image/gif,image/webp')
         ->and(file_get_contents(resource_path('views/components/image-file-input.blade.php')))->not->toContain('accept="image/*"');
 });
+
+it('refuses a write the disk answered with false, instead of blanking the mark', function () {
+    /*
+     * A disk with `throw => false` reports a refused write by RETURNING
+     * FALSE, and false written into the column would blank the group's mark
+     * while reporting success. The Action refuses it. Note what this does
+     * NOT cover, and why R2Writes::harden() forces `throw`: Livewire's
+     * TemporaryUploadedFile::storeAs() discards what put() returned and
+     * hands back the path it meant to write, so on the path production takes
+     * a refusal is invisible to any caller check — the disk has to raise.
+     */
+    [$commissioner, $group] = pickemContest();
+
+    app(SetGroupIcon::class)->handle($commissioner, $group, UploadedFile::fake()->image('first.jpg', 256, 256));
+    $existing = $group->refresh()->icon;
+
+    expect($existing)->not->toBeNull();
+
+    $disk = Mockery::mock(Filesystem::class);
+    $disk->shouldReceive('putFileAs')->once()->andReturnFalse();
+    Storage::set(config('cfb.upload_disk'), $disk);
+
+    expect(fn () => app(SetGroupIcon::class)->handle(
+        $commissioner,
+        $group,
+        UploadedFile::fake()->image('second.jpg', 256, 256),
+    ))->toThrow(RuntimeException::class);
+
+    // The mark it had is still the mark it has.
+    expect($group->refresh()->icon)->toBe($existing);
+});

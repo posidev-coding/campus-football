@@ -8,6 +8,7 @@ use App\Models\GroupMember;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 
 /**
  * The clubhouse icon — a commissioner's one piece of group identity.
@@ -32,6 +33,18 @@ class SetGroupIcon
 
         $previous = $group->icon;
         $path = $file->store('group-icons', config('cfb.upload_disk'));
+
+        /*
+         * A disk with `throw => false` answers a refused write with FALSE
+         * rather than an exception — and the upload disk may be one this
+         * repository does not configure (a platform-mounted bucket). Writing
+         * that false into the column would blank the group's mark and report
+         * success. Developer message only; what the reader sees comes from
+         * Voice, at the screen that catches this.
+         */
+        if (! is_string($path) || $path === '') {
+            throw new RuntimeException('The upload disk refused the group icon write and returned no path.');
+        }
 
         $group->forceFill(['icon' => $path])->save();
 

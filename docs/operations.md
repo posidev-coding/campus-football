@@ -328,6 +328,28 @@ one line, because reading config alone sends somebody to re-read
 make the names present when the config is built (set them as plain
 environment variables) and redeploy — never to add a fallback in the disk.
 
+**The platform injects the DISK, not the AWS_* names.** Confirmed on Cloud
+2026-09-02: the doctor's disk line read `… r2 (s3, no bucket), app (s3,
+bucket set)`, and `app` is in no file in this repository. Attaching a bucket
+in Cloud's UI adds a fully-configured disk under the name given there; the
+`AWS_*` values shown on the Resources tab are for reference, not variables
+injected into the app. So the disk this repository owns stayed empty while a
+working one sat beside it in the same config array. `UPLOAD_DISK` and
+`LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK` point at the mounted disk's name; the
+`r2` disk stays for a deployment that supplies its own credentials. The
+doctor now prints every disk with whether it holds a bucket, and says which
+one to point at.
+
+**A mounted disk is configured by somebody else, so three things are forced
+on the way past.** `R2Writes::harden()` fills in, for any disk carrying
+`no_acl` or an R2 endpoint: both checksum pins, and `throw => true`. That
+last one is load-bearing — a disk with `throw => false` reports a refused
+write by RETURNING FALSE, and Livewire's `TemporaryUploadedFile::storeAs()`
+discards what `put()` returned and hands back the path it meant to write, so
+on the path production actually takes a refusal is indistinguishable from a
+success and the column takes a path to an object that does not exist. No
+caller check can close that; the disk has to raise.
+
 **The disk NAME is the platform's to choose, so `no_acl` cannot be the only
 switch.** Laravel Cloud mounts a bucket under a disk name given in its own UI
 (`app`, in this deployment), and nobody can add a key to an array that is not
