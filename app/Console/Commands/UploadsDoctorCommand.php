@@ -129,14 +129,47 @@ class UploadsDoctorCommand extends Command
                 .' variable so it is present when the config is built, then redeploy.</>');
         }
 
-        // Which disks this app actually defines, so a bucket "mounted as
-        // disk X" somewhere else is visibly not a disk here.
-        $defined = collect(config('filesystems.disks'))
-            ->map(fn (array $d, string $name) => $name.' ('.($d['driver'] ?? '?').')')
-            ->values()
-            ->implode(', ');
+        /*
+         * Every disk in the RESOLVED config, with whether it actually holds a
+         * bucket — which is how a platform-mounted disk announces itself. On
+         * Laravel Cloud (2026-09-02) this line read `… r2 (s3), app (s3)`,
+         * and `app` was not in config/filesystems.php at all: Cloud injects
+         * the DISK, not the AWS_* names, so the disk this repository owns
+         * stayed empty while a working one sat beside it. Booleans only, no
+         * values.
+         */
+        $disks = collect(config('filesystems.disks'));
 
-        $this->line("  <fg=gray>disks defined here: {$defined}</>");
+        $this->line('  <fg=gray>disks defined here: '.$disks
+            ->map(function (array $d, string $name) {
+                $driver = $d['driver'] ?? '?';
+
+                return $driver === 's3'
+                    ? $name.' (s3, '.(filled($d['bucket'] ?? null) ? 'bucket set' : 'no bucket').')'
+                    : $name.' ('.$driver.')';
+            })
+            ->values()
+            ->implode(', ').'</>');
+
+        // The pointed line: this disk is empty and another s3 disk is not.
+        if (! filled($config['bucket'] ?? null)) {
+            $mounted = $disks
+                ->filter(fn (array $d, string $name) => ($d['driver'] ?? null) === 's3'
+                    && $name !== $disk
+                    && filled($d['bucket'] ?? null))
+                ->keys();
+
+            if ($mounted->isNotEmpty()) {
+                // ALL of them, never the first: which one is the platform's
+                // is not this command's to guess, and picking arbitrarily
+                // from a list is how a report starts being quietly wrong.
+                $names = $mounted->map(fn (string $name) => "'{$name}'")->implode(', ');
+
+                $this->line("  <fg=yellow>→ {$names} holds a bucket and '{$disk}' does not."
+                    .' A platform that mounts a bucket injects the DISK, not the AWS_* names — point'
+                    .' UPLOAD_DISK (and LIVEWIRE_TEMPORARY_FILE_UPLOAD_DISK) at it.</>');
+            }
+        }
 
         if (filled($config['url'] ?? null)) {
             /*
@@ -150,9 +183,21 @@ class UploadsDoctorCommand extends Command
              */
             $urlHost = (string) parse_url((string) $config['url'], PHP_URL_HOST);
             $endpointHost = (string) parse_url((string) ($config['endpoint'] ?? ''), PHP_URL_HOST);
-            $custom = $urlHost !== '' && $endpointHost !== '' && ! str_ends_with($urlHost, $endpointHost);
 
-            $this->line('  <fg=gray>public URL is '.($custom ? 'a custom domain' : "the bucket's own endpoint")
+            /*
+             * Three answers, not two. With no endpoint to compare against
+             * there is NO DATA, and the first version of this line said "the
+             * bucket's own endpoint" over a null — a default written where a
+             * value was missing, which is the one thing this codebase does
+             * not do. It says it cannot tell instead.
+             */
+            $verdict = match (true) {
+                $urlHost === '' || $endpointHost === '' => 'set, but there is no endpoint to compare it against',
+                str_ends_with($urlHost, $endpointHost) => "the bucket's own endpoint",
+                default => 'a custom domain',
+            };
+
+            $this->line('  <fg=gray>public URL is '.$verdict
                 .' — it must be bound to this bucket, which only --probe\'s HEAD can confirm</>');
         }
 

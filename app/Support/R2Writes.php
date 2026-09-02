@@ -77,6 +77,39 @@ class R2Writes
         }), self::NAME);
     }
 
+    /**
+     * The checksum pins, for a disk config that wants R2 treatment.
+     *
+     * `config/filesystems.php` writes these on the `r2` disk it owns. A disk
+     * MOUNTED BY THE PLATFORM carries whatever that platform wrote, so the
+     * pins are applied here too, on the way past — the same reasoning as the
+     * ACL middleware, and the same place to do it. Never overwrite a value
+     * somebody set on purpose; only fill in what is absent.
+     *
+     * `throw` rides along, and it is the load-bearing one. A disk with
+     * `throw => false` reports a refused write by RETURNING FALSE — and
+     * Livewire's own `TemporaryUploadedFile::storeAs()` discards what
+     * `put()` returned and hands back the path it intended to write, so on
+     * the path production actually takes a refusal is indistinguishable from
+     * a success and the column gets a path to an object that does not exist.
+     * No caller check can close that; the disk has to raise.
+     *
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>
+     */
+    public static function harden(array $config): array
+    {
+        if (! self::wants($config)) {
+            return $config;
+        }
+
+        return $config + [
+            'request_checksum_calculation' => 'when_required',
+            'response_checksum_validation' => 'when_required',
+            'throw' => true,
+        ];
+    }
+
     /** Whether this client carries the middleware — what the doctor reports. */
     public static function attached(S3Client $client): bool
     {

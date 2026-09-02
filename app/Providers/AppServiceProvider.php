@@ -71,6 +71,11 @@ class AppServiceProvider extends ServiceProvider
          * the tests never see and does not survive forgetDisk().
          */
         Storage::extend('s3', function ($app, array $config) {
+            // Hardened BEFORE construction, because the checksum pins are
+            // constructor arguments to the SDK client; the ACL middleware is
+            // bolted on after, because it is a handler-list entry.
+            $config = R2Writes::harden($config);
+
             $disk = Storage::createS3Driver($config);
 
             if (R2Writes::wants($config)) {

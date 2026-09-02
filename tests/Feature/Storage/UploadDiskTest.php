@@ -155,6 +155,46 @@ describe('the configurable disk', function () {
             ->and($request->hasHeader('x-amz-checksum-crc32'))->toBeFalse();
     });
 
+    it('pins the checksum mode on a disk it did not configure, before the client is built', function () {
+        /*
+         * config/filesystems.php writes the checksum pins on the `r2` disk it
+         * OWNS. A bucket mounted by the platform arrives as a disk this
+         * repository never wrote — Cloud's `app` — carrying whatever that
+         * platform chose, so the pins are applied on the way past, the same
+         * as the ACL. Constructor arguments, so it happens BEFORE the client
+         * exists; the middleware is a handler-list entry and goes on after.
+         */
+        config(['filesystems.disks.cloud-mounted' => [
+            'driver' => 's3', 'key' => 'k', 'secret' => 's', 'region' => 'auto',
+            'bucket' => 'fls-a2746aeb', 'endpoint' => 'https://367be3a2.r2.cloudflarestorage.com',
+        ]]);
+
+        $client = Storage::disk('cloud-mounted')->getClient();
+
+        expect($client->getConfig('request_checksum_calculation'))->toBe('when_required')
+            ->and($client->getConfig('response_checksum_validation'))->toBe('when_required')
+            ->and(R2Writes::attached($client))->toBeTrue();
+
+        /*
+         * And `throw`, which is the load-bearing one: Livewire's
+         * TemporaryUploadedFile::storeAs() discards what put() returned and
+         * hands back the path it meant to write, so on a disk that answers a
+         * refusal with FALSE the caller cannot tell — the column would take
+         * a path to an object that was never written. The disk has to raise.
+         */
+        expect(R2Writes::harden(['endpoint' => 'https://367be3a2.r2.cloudflarestorage.com'])['throw'])->toBeTrue()
+            ->and(R2Writes::harden(['endpoint' => 'https://367be3a2.r2.cloudflarestorage.com', 'throw' => false])['throw'])->toBeFalse();
+
+        // A deliberate setting is never overwritten, and a non-R2 disk is
+        // left exactly as it was.
+        expect(R2Writes::harden([
+            'endpoint' => 'https://367be3a2.r2.cloudflarestorage.com',
+            'request_checksum_calculation' => 'when_supported',
+        ])['request_checksum_calculation'])->toBe('when_supported')
+            ->and(R2Writes::harden(['endpoint' => 'https://s3.us-east-1.amazonaws.com']))
+            ->not->toHaveKey('request_checksum_calculation');
+    });
+
     it('attaches the middleware when the disk resolves, so it survives forgetDisk', function () {
         useR2();
 
