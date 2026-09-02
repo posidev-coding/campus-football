@@ -80,8 +80,8 @@ it('keeps a disabled row off the keyboard, note and all', function () {
 
 it('reads the first item on the trigger when the selection is unlisted', function () {
     // The reason the group switcher splices the page it is ON into its
-    // own list: an unlisted selection would put "All my picks" on a
-    // clubhouse's title.
+    // own list: an unlisted selection would put "My groups and rooms" on
+    // a clubhouse's title.
     $html = renderFilterMenu([
         ['value' => 'a', 'label' => 'Alpha', 'href' => '/alpha'],
         ['value' => 'b', 'label' => 'Beta', 'href' => '/beta'],

@@ -902,10 +902,22 @@ class Voice
             'r' => 'No invite? Public lobbies take anybody. Jump in and prove something.',
         ],
 
-        'groups.join.subheading' => [
-            'pg' => "Got a code? Enter it and you're in.",
-            'pg13' => 'Got a code from your group? Punch it in.',
-            'r' => 'Got a code? Punch it in and get in here.',
+        /*
+         * THE UPLOAD THAT DID NOT LAND. The storage side refused (R2
+         * answering NotImplemented to an ACL was months of exactly this),
+         * and the reader needs to know it was not their picture. Plain
+         * about what to do, loud about whose fault it is.
+         */
+        'groups.icon.failed' => [
+            'pg' => "The icon didn't upload. Try again in a minute — if it keeps failing, the storage side is the problem, not your picture.",
+            'pg13' => "The icon didn't make it to the shelf. Try again in a minute — if it keeps failing, the storage side is the problem, not your picture.",
+            'r' => "The icon didn't make it to the shelf, and that's on the storage, not your picture. Try again in a minute; if it keeps failing, somebody owes you an apology.",
+        ],
+
+        'account.photo.failed' => [
+            'pg' => "The photo didn't upload. Try again in a minute — if it keeps failing, the storage side is the problem, not your picture.",
+            'pg13' => "The photo didn't make it to the shelf. Try again in a minute — if it keeps failing, the storage side is the problem, not your face.",
+            'r' => "The photo didn't make it to the shelf, and that's on the storage, not your face. Try again in a minute; if it keeps failing, somebody owes you an apology.",
         ],
 
         'groups.join.bad_code' => [
@@ -1382,42 +1394,26 @@ class Voice
          * survives because the FIRST RUN still names the public product
          * over the lobby door, where there are no cards to say it.
          */
-        'picks.groups.subheading' => [
-            'pg' => 'Invite-only, and the standings run all season.',
-            'pg13' => 'Invite-only, all season. Your people, your mode, one long argument.',
-            'r' => 'Invite-only, all season. The people you picked, and the receipts you can\'t outrun.',
-        ],
-
         /*
-         * "The ones you're seated in": a public room that has played its
-         * Saturday leaves this section, and the Lobby is where the rest
-         * are joined — the line says both, so the section reads as what
-         * it is rather than as a store. See picks.rooms.past.
+         * THE OVERVIEW'S ONE DEFINITION (pass 2, 2026-09-01). The screen
+         * used to carry a Voice line under every heading — five on the
+         * seated tab, 60px each over an 87px card. It keeps ONE, here,
+         * spent on the noun a day-one reader lacks: a public room is a
+         * one-Saturday thing, and the groups above it are not. The
+         * contrast is the whole line. A played room leaves this section
+         * (History holds it), and the Lobby door under the cards is where
+         * the rest are joined.
          */
         'picks.contests.subheading' => [
-            'pg' => 'This Saturday\'s public rooms — the ones you are seated in, and the door to the rest.',
-            'pg13' => 'This Saturday\'s public rooms. One Saturday each — the ones you\'re in, and the Lobby for more.',
-            'r' => 'This Saturday\'s flings: one Saturday, one verdict, no rematch — and the Lobby is always selling another.',
+            'pg' => 'Public rooms, one Saturday each. Your groups up there run all season.',
+            'pg13' => 'Public rooms, one Saturday each — win it or wait for next week. Your groups up there run all season.',
+            'r' => 'Public rooms: one Saturday, one verdict, then they\'re gone. Your groups up there are stuck with you all season.',
         ],
 
         'picks.rooms.subheading' => [
             'pg' => 'Public rooms, open to anyone. Each one plays a single Saturday.',
             'pg13' => 'Public and open to anyone. One Saturday each — win it or wait for the next.',
             'r' => 'Open to anybody with a thumb. One Saturday, one verdict, no rematch.',
-        ],
-
-        /*
-         * The door to History, under the count of rooms that have
-         * played. Its job is to say the RULE — a public room is a
-         * transient contest and next week is a fresh decision — because
-         * the reader is looking at a screen those rooms just vanished
-         * from. Rooms are already sold as one-Saturday over the lobby
-         * door; this is where that promise is kept.
-         */
-        'picks.rooms.past' => [
-            'pg' => 'Rooms play one Saturday and close. Next week\'s are a fresh decision.',
-            'pg13' => 'Rooms don\'t carry over. One Saturday, one verdict, and next week you pick your spots again.',
-            'r' => 'Rooms die on Sunday. What you did in there is on the record forever.',
         ],
 
         /*
@@ -1567,12 +1563,6 @@ class Voice
             'pg' => ':rooms open this Saturday. Grab a seat.',
             'pg13' => ":rooms open and your name's on none of them. Saturday is coming either way.",
             'r' => ":rooms open and you're loitering in the parking lot. Get in there and pick some games.",
-        ],
-
-        'lobby.needs.subheading' => [
-            'pg' => 'Slates are open — get your picks in before kickoff.',
-            'pg13' => "Open slates don't pick themselves. Kickoff is the deadline.",
-            'r' => "Unpicked games become zeros at kickoff. Zeros are how legends don't happen.",
         ],
 
         'lobby.rules.subheading' => [
@@ -2031,12 +2021,6 @@ class Voice
          * THE TALK DOORS — the link-row into a contest's own thread.
          * Kind-free on purpose: one line serves groups and rooms both.
          */
-        'talk.door.hint' => [
-            'pg' => 'Argue the calls with your people.',
-            'pg13' => 'Where the calls get argued. Bring receipts.',
-            'r' => 'Where the calls get argued and the receipts get read. Come armed.',
-        ],
-
         'talk.house_rule' => [
             'pg' => 'Roast the pick, the team, the record. Never the person.',
             'pg13' => 'Roast the pick, the team, the record — never the person.',

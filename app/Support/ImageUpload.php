@@ -35,7 +35,29 @@ class ImageUpload
      */
     public static function rules(): array
     {
-        return ['image', 'max:'.self::MAX_KB, 'dimensions:min_width=64,min_height=64'];
+        /*
+         * `bail`, because the rules disagree about a HEIC: an iPhone hands
+         * one over under `image/*`, Laravel 13's `image` rule ACCEPTS it,
+         * and `dimensions` then cannot read it and reports "too small" —
+         * a lie about a file the reader could never have fixed by
+         * cropping. The mime rule names the four formats the app can
+         * actually serve, and `bail` keeps the dimensions message from
+         * riding along behind it. The browser control narrows `accept`
+         * to the same four, so the picker steers before the rule refuses.
+         */
+        return ['bail', 'image', 'mimes:jpg,jpeg,png,gif,webp', 'max:'.self::MAX_KB, 'dimensions:min_width=64,min_height=64'];
+    }
+
+    /** The four formats, as the ACCEPT attribute the browser control wears. */
+    public static function accept(): string
+    {
+        return 'image/jpeg,image/png,image/gif,image/webp';
+    }
+
+    /** Plain, like the size message: which formats, and nothing else. */
+    public static function mimeMessage(): string
+    {
+        return 'Use a JPG, PNG, GIF or WebP.';
     }
 
     /**

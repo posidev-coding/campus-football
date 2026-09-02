@@ -603,10 +603,16 @@ at three heights, with the Saturday it was selling 1,400px above the rooms.
 This half keeps everything that is ABOUT THE READER, one column ordered by
 urgency:
 
-1. **The group switcher** (`x-group-switcher`, 2026-09-01) — centered above
-   the This week | Results fork, the one piece of chrome allowed above a
-   plate (`docs/ui-system.md` rule 8). It answers "which of my seats am I
-   looking at" before the plate asks "which half": "All my picks", then
+1. **The group switcher** (`x-group-switcher`, 2026-09-01) — above the
+   This week | Results fork at title weight (the `hero` variant,
+   start-aligned, clamped to two lines: the same first row the clubhouse
+   opens with, so the two screens read as one system), the one piece of
+   chrome allowed above a plate (`docs/ui-system.md` rule 8). It IS the
+   screen's name — the trigger reads "My groups and rooms" (both container
+   nouns, the possession, no third naming of "My Picks"), its menu row
+   "All my groups and rooms" because that row sits directly above the My
+   Groups heading; "All my picks" retired with pass 2. It answers "which
+   of my seats am I looking at" before the plate asks "which half", then
    **My Groups** (private, by name), then **Week N Contests** (the public
    rooms the reader is SEATED in this Saturday, the always-open tables, and
    "Browse the Lobby · N open" — the Lobby is where a room is joined, so
@@ -619,15 +625,29 @@ urgency:
    title, so a reader inside one seat reaches any other in one tap. It came
    from the first onboarded readers, who held several groups and rooms at
    once and could not tell one card from the next.
-2. **The week ribbon** (`x-week-ribbon`, the group-hero band grammar) — the
-   dateline from `CfbCalendar::defaultWeekEntry()` plus ONE clock line by
-   urgency: games live now → the next kickoff → a commissioner's slate
-   deadline. No calendar entry, no ribbon — never a substituted week.
+2. **The week band** (`x-week-band`, since pass 2 on 2026-09-01; it replaced
+   the dark `x-week-ribbon` and the blue you-strip tile under it) — one
+   light card in the clubhouse hero's own grammar. Row 1: the dateline
+   from `CfbCalendar::defaultWeekEntry()` plus ONE clock line by urgency
+   (games live now → the next kickoff → a commissioner's slate deadline),
+   carrying `data-tour="week"` on its own element. Row 2: `x-you-strip` in
+   its `bare` variant (the four columns, no border or fill; the band
+   supplies the surface), carrying `data-you-strip` and
+   `data-tour="balance"` on the strip itself. The rows are siblings —
+   one root attribute bag cannot carry two anchors — and sit side by
+   side from `md`. No calendar entry, no dateline; no seat, no strip —
+   never a substituted week, never an invented line. Measured before: a
+   seated reader met switcher 24 · plate 33 · ribbon 49 · you-strip 59
+   before any content, in three container treatments.
 3. **Needs your picks** — renders only when a published slate is still
-   taking picks the reader hasn't finished: ONE mode-tinted hero card (the
-   slate closest to locking: live first, then soonest kickoff, a missing
-   kickoff last) wearing the zone's only button, and under it one plain
-   "and N more below" line. This zone is why the screen works: it answers
+   taking picks the reader hasn't finished: the heading row with a plain
+   "and N more below" on its right (pass 2 moved it up out of the tile;
+   the `lobby.needs.subheading` line under the heading retired), then ONE
+   mode-tinted hero card (the slate closest to locking: live first, then
+   soonest kickoff, a missing kickoff last) ordered fact → action →
+   flavor: the name and progress, the clock, the zone's only button, and
+   the zinger last — the first button on the screen lands ~147px higher
+   at 390 than it did under the zinger. This zone is why the screen works: it answers
    "what do I do right now" before anything else talks. The compact rows
    that used to follow the hero retired 2026-09-01 — every card that needed
    picks rendered twice, as a row here and as a card below, and a reader in
@@ -656,8 +676,13 @@ urgency:
    members · you're the commissioner". An evergreen alone keeps "Always
    open ·" in front, because its section names a Saturday and a table is
    not one — and never "table": the house has exactly two user-facing
-   container nouns. One Voice definition under the heading,
-   `picks.groups.subheading`.
+   container nouns. No definition line under this heading since pass 2
+   (`picks.groups.subheading` retired): the heading, the switcher's menu
+   group and every card already say what a group is, and the screen keeps
+   ONE definition, under Week N Contests. The invite-code disclosure is a
+   borderless semibold text row with the rotating chevron (`-my-2 py-2`
+   for a 40px hit area; `groups.join.subheading` retired — the field's
+   plain description is the instruction), its `x-data` byte-identical.
 5. **Week N Contests** — the public half: this Saturday's rooms the reader
    is seated in (`roomCards`, past Saturdays excluded), then the always-open
    tables (`tableCards`), then the ONE Lobby door (`partials/lobby-door`: a
@@ -668,12 +693,18 @@ urgency:
    The heading is `Cadence::displayWeekLabel()` + "Contests" — "Week 0
    Contests" is a real string inside a split opening week — and it is
    SKIPPED when the calendar has no week, never the cards, never the door,
-   never a substituted week. One Voice definition, `picks.contests.subheading`.
+   never a substituted week. The screen's ONE Voice definition sits here,
+   `picks.contests.subheading`, rewritten in pass 2 to carry the contrast
+   a day-one reader lacks: "Public rooms, one Saturday each. Your groups
+   up there run all season." — five Voice lines on the seated tab became
+   two (this and the hero's zinger).
 
    The door renders in exactly two mutually exclusive places: here, for a
-   reader with groups, and hoisted up beside the mode doors on a first run,
-   where the two ways to play have to sit next to each other — both off the
-   ONE `roomsOpen` read. A rooms-only reader has no My Groups block, so the
+   reader with groups (as one plain count — `$pitch` false, because the
+   definition line over the cards already said what a room is), and
+   hoisted up beside the mode doors on a first run, where the two ways to
+   play have to sit next to each other and the `lobby.teaser.zinger` pitch
+   renders — both off the ONE `roomsOpen` read. A rooms-only reader has no My Groups block, so the
    tour's `seats` stop anchors on this section instead of stepping over
    itself.
 
@@ -681,11 +712,14 @@ urgency:
    sold (`Seats::isPast()`), never `week_id` alone, because a room keeps its
    URL forever and leaves the inventory when its week ends — and an ESPN
    week can hold two Saturdays. A played room is in neither section nor the
-   switcher; `pastRooms` counts it and the sidecar's "Rooms you've played"
-   door sends the reader to History.
+   switcher; `pastRooms` still projects it, and the way back is History —
+   a text door on the Results "Last week" heading row since pass 2 (the
+   week tab's "Rooms you've played" door retired with `picks.rooms.past`;
+   the section strip names History too).
 
-   **The you-strip** sits above all of it, at the top of This week
-   (`x-you-strip`, the standings component unchanged): rung, XP, Tallboys
+   **The you-strip** sits above all of it, the second row of the week
+   band at the top of This week (`x-you-strip` in its `bare` variant; the
+   clubhouse's Standings tab keeps the blue `panel`): rung, XP, Tallboys
    and wins. Below `sm` the app header does not render, so this is the
    only place a phone reader meets their own ladder on the screen the
    ladder is played on. Wins renders an em dash until a week has been won.
@@ -705,8 +739,10 @@ urgency:
    a full-width card underneath them); what is new is that the block says
    what the doors are doors TO, and puts the weekly public alternative
    beside the choice instead of 600px below it.
-6. **Last week** — the Monday payoff, compact: settled entries from the
-   past seven days, each row carrying the Winner badge or, failing that,
+6. **Last week** — the Monday payoff, compact, with `History` as a text
+   door on its heading row (Home's heading-door idiom; the row renders on
+   an empty Results too): settled entries from the past seven days, each
+   row carrying the Winner badge or, failing that,
    your place in the field ("2nd of 12", `places()`, History's own
    one-query pattern read only from this branch). A week you WON is called
    out above them by the emerald payoff banner
@@ -729,9 +765,13 @@ reader inside one is a seated member playing, not somebody browsing.
 scroll; Results holds Last week, the rank ladder and the Season-history
 door), and a finished entry says "Entry in" — or amber "Tiebreaker left"
 when the question is the one thing open — instead of a fraction. The
-sidecar (20rem from `lg`, the foot of the page below it) now holds only the
-"Rooms you've played" door, the ladder and Season history on Results, and
-"How this works".
+foot of the page (pass 2, 2026-09-01) holds the ladder on Results and one
+dashed door, "How this works" ("Scoring, ranks, and what a room costs." —
+the "Tallboys, the cooler" subline was the explainer's own jargon on the
+door to the explainer); "Rooms you've played" retired with
+`picks.rooms.past`, and "Season history" became a `History` text door on
+the Results "Last week" heading row, which renders whether or not a week
+has settled so the archive is reachable from an empty Results.
 
 ## Two guided walks, one component, two columns
 
@@ -886,13 +926,25 @@ other.** `/picks` used to 301 to `/lobby`; browsers cache a 301 forever, so a
 redirect pointing back would loop on every dev machine holding the old one.
 Guests and flag-off readers get the same `partials.pickem-promise` at both.
 
+**The band is light since 2026-09-01**: white with a zinc-200 border
+(zinc-900 with a zinc-800 border in dark), the grammar of every card under
+it. It was a deep zinc surface in both modes, which read as one object
+beside the branded team pages but gave an uploaded mark nothing to contrast
+against — a dark icon on a dark band vanished, and the initials tile was a
+white wash on a wash. The tile, the kind chip, the cog and the meta line were
+repainted with it. The band holds ONE control, the commissioner's cog; the
+Talk icon left the row for a gutter tab the same day, giving the title row
+~44px back at 390, and a member's empty slot renders no wrapper at all.
+
 The `x-group-hero` chip renders for BOTH kinds — `Public` for a lobby,
 `Private` otherwise. It used to render for lobbies only, which made the mark
 something some rooms wore and said nothing at all about the container a
 private group is; a badge one side of a pair wears is a badge nobody reads
-as a pair. A private group also gets the symmetric half of the room blurb
-below the hero: its mode's blurb sized from the contest, over
-`group.private.frame`. The invite landing's meta line leads with the kind
+as a pair. A private group also gets the symmetric half of the room blurb —
+its mode's blurb sized from the contest, over `group.private.frame` — which
+since 2026-09-01 lives on the identity row and inside the payload of ONE
+collapsed `x-mode-rules` at the top of the Slate tab (below), not under the
+hero. The invite landing's meta line leads with the kind
 for the same reason — "Private group, all season · 4 members" /
 "Public room · Week 1 · 3 of 20 seats" — because a link lands somebody who
 has never seen the app on a name, a mode chip and a member count, none of
@@ -921,8 +973,10 @@ draft nobody could publish. A null answer — no week, no Saturday — leaves
 the door exactly where it was.
 
 The room screen carries what the old `x-contest-card` used to: the flavor's
-blurb (or the mode's) and its optional zinger render under the room hero,
-where somebody who tapped a row decides whether to sit down. The blurb is
+blurb (or the mode's) and its optional zinger — on the mode accordion at the
+top of the Slate tab since 2026-09-01 (the pitch as the identity line,
+clamped to two lines; the zinger inside the payload), where somebody who
+tapped a row decides whether to sit down. The blurb is
 SIZED FROM THE CONTEST — `blurb($contest->mode->engine($contest->settings)
 ->slateSize())`, the same on the invite landing — because Shotgun's size is
 frozen per Saturday and the room screen used to read "10 games, 10 points
@@ -939,7 +993,7 @@ every 30s only while a slate game is live, reading only our own database.
 **The name is the switcher, since 2026-09-01.** The hero's `h1` gave way to
 `x-group-hero`'s `title` slot, where the clubhouse renders `x-group-switcher`
 in its `hero` variant — `currentColor` on the band, no ring, the name clamped
-to two lines instead of truncated beside the mark and the two controls at
+to two lines instead of truncated beside the mark and the one control at
 390 — with an sr-only h1 beside it: the house shows no visible h1 off Scores,
 and the name is a control now. Same rows as My Picks' switcher, the current
 group bold; a lobby previewed without a seat, or a room whose Saturday is
@@ -948,7 +1002,7 @@ picks" on a clubhouse. One Seats read, held in the screen's own
 `#[Computed] seats()`, and slate-size independent, so the flat-query pin
 still holds.
 
-**One strip, four stops, since 2026-09-01.** The clubhouse briefly carried
+**One strip, five stops, since 2026-09-01.** The clubhouse briefly carried
 TWO rows — a plate of Slate|Standings with an `x-gutter-tabs` of
 Standings|Members|Invite beneath it — which stacked three levels of
 navigation over the content once the area nav is counted, and printed the
@@ -956,15 +1010,28 @@ word "Standings" on two of them. A reader cannot tell which row owns which
 decision.
 
 The plate is the one that went: `x-plate` is documented as two tabs and
-throws above three, and four stops is exactly the case `x-gutter-tabs`
-exists for ("more tabs than two-or-three"). So `$view` alone drives
-**Slate · Standings · Members · Invite**, still `#[Url]` and still
-normalized in both hooks. There is no `$pane`.
+throws above three, and four-or-five stops is exactly the case
+`x-gutter-tabs` exists for ("more tabs than two-or-three"). So `$view`
+alone drives **Slate · Standings · Members · Invite · Talk**, still
+`#[Url]` and still normalized in both hooks. There is no `$pane`. Five
+fit at 390 only in the gutter's `fill` variant — cells sized to their
+words, sharing the spare width — because five equal fifths clip
+"Standings" and "Members" (docs/ui-system.md rule 7 has the numbers).
 
-- **Slate** — pure play.
-- **Standings** — `x-you-strip`, the week and season tables, the picks
-  grid, and `x-mode-rules` sized from the contest as the scoring panel
-  beneath the numbers it explains, then the Talk door.
+- **Slate** — the mode brief, collapsed, then pure play. The brief is
+  ONE `x-mode-rules` accordion (2026-09-01): the identity row carries the
+  mode and its blurb — a room's flavor pitch instead, clamped to two lines
+  because a pitch is a sentence and the shelf's one-line truncation is
+  what `LobbyFlavorTest` exists to catch — and the payload the rule
+  lines, the private frame line or the room's zinger, and the laws every
+  mode shares (`partials/pickem-laws`). It sits ABOVE the published fork
+  and is ungated on membership, so a group with no slate yet still says
+  what it is. It replaced two things: the blurb + frame line under the
+  hero (60px between the band and the strip that a returning member never
+  read) and the rules card at the Standings foot — the same facts in two
+  places. The accordion stays outside the sidecar grid wrapper.
+- **Standings** — `x-you-strip`, the week and season tables, and the
+  picks grid. The scoring panel left for the Slate tab's accordion.
 - **Members** — the roster, the commissioner badge, the handoff, Remove
   and Leave. It was a collapsed disclosure at the foot of the standings,
   which put the one control that transfers a league behind a chevron.
@@ -972,14 +1039,25 @@ normalized in both hooks. There is no `$pane`.
   standings because it now carries a QR and three ready-to-send messages
   and was burying what people came for. The HERO's copy-link button went
   with it: a stop that owns the link, the code, a QR and three channel
-  templates does not need a second, worse door beside the Talk icon.
+  templates does not need a second, worse door beside the name.
   `GroupPageTest` guards that on the clipboard handler rather than the
   word "Invite" — the button and the tab label read identically to
   `assertSee`, and only the copy handler tells them apart.
+- **Talk** — the group thread, members only, last stop of both kinds
+  (since 2026-09-01). It was a screen of its own at `/groups/{g}/talk`
+  for two days, reached from a hero icon, a Standings-foot link-row and
+  the entry celebration; the tab owns the door now, the way the Invite
+  stop took the hero's copy button, and the other two doors went with
+  the icon. The old address 301s to `?view=talk` on the kind's home so
+  every link in a text thread keeps working. The pick SURFACE stays
+  chat-free: `partials/pick-slate` never mounts a conversation, and the
+  slate view renders none — `ConversationTest` pins both, and that a
+  non-member's `?view=talk` folds to the slate with no stop on the strip.
 
-A room gets **three** stops: `normalizedView()` sends `invite` back to the
+A room gets **four** stops: `normalizedView()` sends `invite` back to the
 standings for a lobby, so the strip and the content cannot disagree about
-which stops exist. `?view=season` still folds to Standings; `?view=members`
+which stops exist — and `talk` back to the slate for anyone without a seat,
+the same law. `?view=season` still folds to Standings; `?view=members`
 is a live address again and lands where it says. `GroupPageTest` counts the
 `group-tab-` keys and asserts there is no second strip — a two-strip
 regression passes every content assertion, so the count is the guard.

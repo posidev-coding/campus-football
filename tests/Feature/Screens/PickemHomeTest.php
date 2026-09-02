@@ -64,10 +64,19 @@ function heroClockText(string $html): string
     return trim($matches[1] ?? '');
 }
 
-/** The switcher's own markup — everything above the fork. */
+/**
+ * The switcher's own markup — everything above the fork. Asserted
+ * non-empty here, because a helper that slices HTML by a marker must say
+ * so when the marker is gone: the switcher moving into the plate's actions
+ * slot would empty every slice and pass every `not->toContain` on it.
+ */
 function switcherOf(string $html): string
 {
-    return (string) str($html)->before('wire:key="picks-view-week"');
+    $switcher = (string) str($html)->before('wire:key="picks-view-week"');
+
+    expect($switcher)->not->toBeEmpty()->toContain('data-group-switcher');
+
+    return $switcher;
 }
 
 /** The overview under the fork, where the sections and their cards are. */
@@ -185,12 +194,12 @@ describe('my week (inside the flag)', function () {
             // already happened.
             ->assertDontSee('Last week')
             ->set('view', 'results')
-            ->assertSeeInOrder(['Last week', 'Season history'])
+            ->assertSeeInOrder(['Last week', 'History'])
             // ...and the fork holds in the other direction.
             ->assertDontSee('Needs your picks');
     });
 
-    it('carries the week\'s state onto each group card, under the week ribbon', function () {
+    it('carries the week\'s state onto each group card, under the week band', function () {
         [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
         $group->update(['name' => 'Rocky Top Rejects']);
         app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
@@ -354,14 +363,18 @@ describe('my week (inside the flag)', function () {
             ->toContain('1 member')
             ->toContain(e("you're the commissioner"))
             ->not->toContain('Private group, all season')
-            ->not->toContain('Public room')
-            // One definition under each heading — and both are Voice.
-            ->toContain(e(Voice::line('picks.groups.subheading', for: $commissioner)))
+            // The card's own kind line, by its separator — the contests
+            // definition above the cards says "Public rooms" on purpose.
+            ->not->toContain('Public room ·')
+            // ONE definition on the screen, under the contests, carrying
+            // the contrast; the groups heading stands alone.
             ->toContain(e(Voice::line('picks.contests.subheading', for: $commissioner)))
             // The lobby door survives as the ONE way to the store.
             ->toContain(route('pickem.lobby'))
-            ->not->toContain('Your groups')
-            ->not->toContain('Public rooms')
+            // The retired heading by its tag; the definition line says
+            // "Your groups up there" in prose on purpose.
+            ->not->toContain('>Your groups<')
+            ->not->toContain('>Public rooms<')
             ->not->toContain('Where you play')
             // "Find a room" is retired: the door is that same destination,
             // and one door is the partial's own rule.
@@ -410,7 +423,9 @@ describe('my week (inside the flag)', function () {
             // rooms-only reader would lose the room they hold.
             ->assertSee(contestsHeading($week))
             ->assertSee($room->name)
-            ->assertDontSee('Your groups')
+            // The retired HEADING, by its tag — the contests definition
+            // says "Your groups up there" in prose on purpose.
+            ->assertDontSeeHtml('>Your groups<')
             ->assertDontSee('My Groups')
             // No second create affordance beside the three mode doors.
             ->assertDontSee('Start a group');
@@ -453,12 +468,13 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee($room->name)
             ->assertDontSee('Public room · Saturday played', escape: false)
             ->assertDontSee('Public room · this Saturday', escape: false)
-            // ...and the way back to it, which is the only thing a played
-            // room leaves behind here.
-            ->assertSee('Rooms you\'ve played')
-            ->assertSee('1 finished room')
-            ->assertSee(route('pickem.history'), escape: false)
-            ->assertSee(Voice::line('picks.rooms.past', for: $viewer));
+            // ...and no door of its own on the week tab (pass 2 retired
+            // "Rooms you've played"): the way back is History, linked
+            // from the Results heading row and the section strip.
+            ->assertDontSee('Rooms you\'ve played')
+            ->assertDontSee(route('pickem.history'), escape: false)
+            ->set('view', 'results')
+            ->assertSee(route('pickem.history'), escape: false);
 
         // The seat itself is untouched — history is read off it.
         expect($room->fresh()->memberships()->where('user_id', $viewer->id)->exists())->toBeTrue();
@@ -527,9 +543,14 @@ describe('my week (inside the flag)', function () {
         $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
         app(JoinGroup::class)->handle($viewer, $room);
 
+        // The week tab links History nowhere; Results does. (The door
+        // this once pinned the absence of is gone for everyone now, so the
+        // pin points at where the archive actually lives.)
         Livewire::actingAs($viewer->fresh())->test('pickem-home')
             ->assertSee($room->name)
-            ->assertDontSee('Rooms you\'ve played');
+            ->assertDontSee(route('pickem.history'), escape: false)
+            ->set('view', 'results')
+            ->assertSee(route('pickem.history'), escape: false);
     });
 
     it('never tells a room to go rattle a commissioner it does not have', function () {
@@ -700,7 +721,8 @@ describe('my week (inside the flag)', function () {
         // its button and its own card below — never a second row.
         $html = Livewire::actingAs($reader)->test('pickem-home')->html();
 
-        expectInOrder(overviewOf($html), ['The Noon Kick', 'Make your picks', 'and 1 more below', 'The Late Window']);
+        // The count rides the heading row, ahead of the hero it points past.
+        expectInOrder(overviewOf($html), ['and 1 more below', 'The Noon Kick', 'Make your picks', 'The Late Window']);
 
         expect($html)->toContain('wire:key="hero-'.$soon->id.'"')
             ->not->toContain('wire:key="needs-');
@@ -837,7 +859,12 @@ describe('my week (inside the flag)', function () {
             ->assertSee('This week')
             ->set('view', 'results')
             ->assertSee(Voice::line('picks.results.empty', for: $reader))
-            ->assertSee('Season history');
+            // The archive is reachable from an EMPTY Results too: the
+            // History door rides the empty-state row, never a "Last week"
+            // heading over nothing.
+            ->assertDontSee('Last week')
+            ->assertSee('History')
+            ->assertSee(route('pickem.history'), escape: false);
     });
 
     it('says ENTRY IN on the card, and keeps the count while one is missing', function () {
@@ -1341,6 +1368,206 @@ it('lights My Picks, and lets the Lobby chip keep the store', function () {
         ->and($sections[0]['route'])->toBe('pickem.home');
 });
 
+describe('the tail doors', function () {
+    it('keeps two doors at the foot: History on the Results heading, and a plain How-this-works', function () {
+        /*
+         * The foot carried three dashed doors at 68–88px each: "Rooms
+         * you've played", "Season history" and "How this works". Two
+         * things now — History as a text door on the "Last week" heading
+         * row (Home's heading-door idiom), and the one full dashed door
+         * the tour needs a box for, with a subline a day-one reader can
+         * parse instead of the explainer's own jargon.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $week = Livewire::actingAs($commissioner->fresh())->test('pickem-home')
+            ->assertSee('How this works')
+            ->assertSee('Scoring, ranks, and what a room costs.')
+            ->assertDontSee('Tallboys, the cooler')
+            ->assertDontSee('Rooms you\'ve played')
+            ->assertDontSee('Season history')
+            ->html();
+
+        expect(substr_count($week, 'data-tour="how"'))->toBe(1)
+            ->and($week)->not->toContain(route('pickem.history'));
+
+        $results = Livewire::actingAs($commissioner->fresh())->test('pickem-home')
+            ->set('view', 'results')
+            ->assertDontSee('Season history')
+            ->html();
+
+        // Nothing has settled here, so the door rides the empty-state row
+        // — a text link, never a dashed door, and still the one History.
+        $tail = (string) str($results)->after('wire:key="picks-view-results"')->before(route('pickem.how'));
+
+        expect(substr_count($results, route('pickem.history')))->toBe(1)
+            ->and($tail)->toMatch('/>\s*History\s*<\/a>/')
+            ->and($tail)->toContain(e(Voice::line('picks.results.empty', for: $commissioner)))
+            ->and($tail)->not->toContain('border-dashed');
+
+        // And the line that sold the retired door is gone from Voice.
+        expect((new ReflectionClass(Voice::class))->getConstant('LINES'))->not->toHaveKey('picks.rooms.past');
+    });
+
+    it('pitches the Lobby only on the first run, never at the section foot', function () {
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [, $week] = pickemHomeWeek();
+        app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        // Zero seats: the hoisted door carries the pitch.
+        $admin = pickemAdmin();
+
+        Livewire::actingAs($admin)->test('pickem-home')
+            ->assertSee('1 public room open this Saturday')
+            ->assertSee(Voice::line('lobby.teaser.zinger', for: $admin));
+
+        // Groups: the door closes the contests section as one plain
+        // count — the definition line above the cards already said what
+        // a room is.
+        [$commissioner] = pickemContest();
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee('1 public room open this Saturday')
+            ->assertDontSee(Voice::line('lobby.teaser.zinger', for: $commissioner));
+    });
+});
+
+describe('the ask, the count and the one definition', function () {
+    it('puts the button above the zinger, and the count on the heading row', function () {
+        /*
+         * Fact → action → flavor. The first button on the screen used to
+         * sit under the hero's zinger; it is directly under the count and
+         * the clock now (~147px higher at 390), and "and N more below"
+         * rides the heading row rather than the tile — a fact, plain in
+         * every register, read before the ask.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$reader, , $first] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($reader, pickemDraftSlate($first));
+
+        $group = Group::factory()->create(['name' => 'The Back Porch']);
+        GroupMember::factory()->commissioner()->create(['group_id' => $group->id, 'user_id' => $reader->id]);
+        app(PublishSlate::class)->handle($reader, pickemDraftSlate(Contest::factory()->create(['group_id' => $group->id, 'mode' => ContestMode::Classic])));
+
+        $html = Livewire::actingAs($reader->fresh())->test('pickem-home')->html();
+        $overview = overviewOf($html);
+
+        $heading = (string) str($overview)->after('Needs your picks')->before('wire:key="hero-');
+        $hero = (string) str($overview)->after('wire:key="hero-')->before('My Groups');
+
+        expect($heading)->toContain('and 1 more below')
+            ->and($hero)->not->toContain('more below')
+            ->and(strpos($hero, 'Make your picks'))->toBeLessThan(strpos($hero, e(Voice::line('picks.hero.zinger', for: $reader))))
+            ->and($overview)->not->toContain(e(Voice::line('picks.hero.zinger', for: $reader)).'</p>'."\n".'<flux:button');
+    });
+
+    it('spends its one definition under the contests, and retires the other three', function () {
+        /*
+         * Five Voice lines on the seated tab, one per heading, at 60px
+         * each over 87px cards. Two now: the hero's zinger and the line
+         * under Week N Contests, which carries the contrast a day-one
+         * reader lacks (a room is one Saturday; the groups above are not).
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        [, $week] = pickemHomeWeek();
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $lines = (new ReflectionClass(Voice::class))->getConstant('LINES');
+
+        foreach (['lobby.needs.subheading', 'picks.groups.subheading', 'groups.join.subheading'] as $retired) {
+            expect($lines)->not->toHaveKey($retired);
+        }
+
+        foreach (['pg', 'pg13', 'r'] as $register) {
+            expect($lines['picks.contests.subheading'][$register])->toContain('all season');
+        }
+
+        $overview = overviewOf(Livewire::actingAs($commissioner->fresh())->test('pickem-home')->html());
+
+        expect($overview)->toContain(e(Voice::line('picks.contests.subheading', for: $commissioner)))
+            ->not->toContain("Open slates don't pick themselves")
+            ->not->toContain('Your people, your mode, one long argument')
+            ->not->toContain('Punch it in');
+    });
+
+    it('folds the invite code as a borderless text row, and still opens itself on an error', function () {
+        $admin = pickemAdmin();
+
+        $html = Livewire::actingAs($admin)->test('pickem-home')->html();
+        $row = (string) str($html)->after('x-data="{ open: false }"')->before('Have an invite code?');
+
+        // No box: the wrapper carries no border, and the row is one
+        // semibold line with the chevron — a 40px hit area from py-2.
+        expect($row)->not->toContain('border')
+            ->and((string) str($html)->before('Have an invite code?'))->toContain('class="-my-2"')
+            ->and($html)->toContain('x-data="{ open: false }"');
+
+        Livewire::actingAs($admin)->test('pickem-home')
+            ->set('code', 'NOPENOPE')
+            ->call('join')
+            ->assertHasErrors('code')
+            ->assertSee('{ open: true }', escape: false);
+    });
+});
+
+describe('the week band', function () {
+    it('opens the week on one light card: the dateline on one row, you on the next', function () {
+        /*
+         * A dark ribbon and a blue tile used to stack here — three
+         * container treatments before any content at 390. One light band
+         * now, the clubhouse hero's own surface: row 1 the dateline and
+         * the clock, row 2 the you-strip in its bare variant. The rows are
+         * siblings carrying their own tour anchors; the strip keeps
+         * `data-you-strip` on ITSELF, which is what the fork pins read.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        $commissioner->update(['handle' => 'marcus']);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $html = Livewire::actingAs($commissioner->fresh())->test('pickem-home')
+            ->assertSee('Week 1')
+            ->assertSee('@marcus')
+            ->assertSeeInOrder(['Rank', 'XP', 'Tallboys', 'Wins'])
+            ->html();
+
+        $band = (string) str($html)->after('wire:key="picks-view-results"')->before('Needs your picks');
+
+        expect($band)->toContain('bg-white')
+            ->toContain('border-zinc-200')
+            ->not->toContain('bg-zinc-900 px-4 py-3 text-white')
+            ->not->toContain('bg-blue-50/60')
+            ->and(strpos($band, 'data-tour="week"'))->toBeLessThan(strpos($band, 'data-tour="balance"'))
+            // The strip's own element carries both its marks.
+            ->and($band)->toMatch('/<div[^>]*data-you-strip[^>]*data-tour="balance"/');
+
+        // No band on Results.
+        Livewire::actingAs($commissioner->fresh())->test('pickem-home')
+            ->set('view', 'results')
+            ->assertDontSeeHtml('data-tour="week"')
+            ->assertDontSeeHtml('data-you-strip');
+    });
+
+    it('keeps the dateline alone on a first run, with no strip under it', function () {
+        // No seat, no fork, no you-strip — but the week is still the week,
+        // and the tour's first stop still has its box.
+        pickemHomeWeek();
+
+        Livewire::actingAs(pickemAdmin())->test('pickem-home')
+            ->assertSeeHtml('data-tour="week"')
+            ->assertDontSeeHtml('data-you-strip')
+            ->assertDontSeeHtml('data-tour="balance"');
+    });
+});
+
 describe('the seats read', function () {
     it('reads every seat once for the whole screen', function () {
         /*
@@ -1359,7 +1586,12 @@ describe('the seats read', function () {
 
         DB::enableQueryLog();
 
-        Livewire::actingAs($reader->fresh())->test('pickem-home')->assertSee('Rocky Top Rejects');
+        // The band rendered too (this fixture has no calendar week, so it
+        // is the you-strip row alone) — its figures are projections of the
+        // same cards() read, never a second question.
+        Livewire::actingAs($reader->fresh())->test('pickem-home')
+            ->assertSee('Rocky Top Rejects')
+            ->assertSeeHtml('data-you-strip');
 
         $seats = collect(DB::getQueryLog())
             ->pluck('query')
@@ -1373,6 +1605,33 @@ describe('the seats read', function () {
 });
 
 describe('the group switcher', function () {
+    it('is the screen\'s name: title weight, start-aligned, "My groups and rooms"', function () {
+        /*
+         * "All my picks" died at its one source (2026-09-01). The trigger is
+         * the screen's title — both container nouns, the possession, and no
+         * third naming of "My Picks" — and its menu row reads as everything
+         * because it sits directly above the "My Groups" section heading.
+         * Sentence case on purpose: the capital G in "My Groups" is what
+         * keeps the two strings apart in the ordered assertion below.
+         */
+        [$commissioner] = pickemContest();
+
+        $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+        $switcher = switcherOf($html);
+        $trigger = (string) str($switcher)->after('data-group-switcher')->before('<ui-menu');
+
+        expect($trigger)->toContain('My groups and rooms')
+            ->toContain('text-xl')
+            ->toContain('line-clamp-2')
+            ->not->toContain('text-sm')
+            // Start-aligned: the root no longer wears the centering class.
+            ->and((string) str($switcher)->before('data-group-switcher'))->not->toContain('items-center')
+            ->and($switcher)->toContain('All my groups and rooms')
+            ->and($html)->not->toContain('All my picks');
+
+        expectInOrder($switcher, ['My groups and rooms', 'All my groups and rooms', 'My Groups']);
+    });
+
     beforeEach(function () {
         $this->travelTo('2026-09-02 12:00:00');
     });
@@ -1404,7 +1663,7 @@ describe('the group switcher', function () {
         // Order IS the taxonomy: the overview, the season-long groups by
         // name, this Saturday's rooms under the week they play, the store.
         expectInOrder($switcher, [
-            'All my picks',
+            'All my groups and rooms',
             'My Groups',
             'Rocky Top Rejects',
             'The Back Porch',

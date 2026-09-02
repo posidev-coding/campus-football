@@ -15,6 +15,7 @@ use App\Services\Nil\KeywordNilNewsProvider;
 use App\Services\Nil\NilNewsProvider;
 use App\Support\PageMeta;
 use App\Support\R2SignedUploadUrl;
+use App\Support\R2Writes;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -27,6 +28,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Pennant\Feature;
 use Livewire\Features\SupportFileUploads\GenerateSignedUploadUrl;
@@ -56,6 +58,26 @@ class AppServiceProvider extends ServiceProvider
          * would leak one reader's group name into the next reader's card.
          */
         $this->app->scoped(PageMeta::class);
+
+        /*
+         * ACL-free writes to R2, attached when the disk RESOLVES. The
+         * manager consults custom creators before its built-in one, so
+         * this wraps the stock S3 driver for every s3-driver disk and
+         * bolts R2Writes onto the client of any disk carrying a plain
+         * `'no_acl' => true` (config-cache safe; the SDK ignores the extra
+         * key). The driver stays `s3`, so Livewire's isUsingS3() branch is
+         * untouched. Never at boot: a boot-time attach lands on a client
+         * the tests never see and does not survive forgetDisk().
+         */
+        Storage::extend('s3', function ($app, array $config) {
+            $disk = Storage::createS3Driver($config);
+
+            if ($config['no_acl'] ?? false) {
+                R2Writes::attach($disk->getClient());
+            }
+
+            return $disk;
+        });
     }
 
     public function boot(): void

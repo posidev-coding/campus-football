@@ -32,10 +32,10 @@ use Livewire\Component;
 
 /**
  * MY PICKS — the reader's own pick'em week, and nothing anybody else's.
- * One column ordered by urgency: the week's dateline, the slates still
- * waiting on picks, the groups they play in, last week's payoff, their
- * rung on the ladder, and the two doors out (an invite code, and the
- * Lobby). Outside the `pickem` flag it keeps the coming-soon promise the
+ * One column ordered by urgency: the week band (the dateline and the
+ * reader's own line), the slates still waiting on picks, the groups they
+ * play in, last week's payoff, their rung on the ladder, and the two
+ * doors out (an invite code, and the Lobby). Outside the `pickem` flag it keeps the coming-soon promise the
  * Picks tab shipped with, verbatim, at this address too.
  *
  * Split from the lobby 2026-08-20: one screen was doing two jobs — your
@@ -260,7 +260,7 @@ new class extends Component
          *
          * Read off the Seats read the switcher shares, and STILL gated on
          * the contests: with none there is no card to sell, and a week
-         * resolved anyway would hand ribbonClock() a deadline for a group
+         * resolved anyway would hand weekClock() a deadline for a group
          * that has no contest to build one for.
          */
         $week = $contests->isEmpty() ? null : $this->seats->week();
@@ -422,7 +422,8 @@ new class extends Component
      * already in this Saturday's public contests — which is the exact
      * opposite of the product. The rooms that played are not deleted
      * (their leaderboards and their URLs outlive them); they leave THIS
-     * screen for {@see pastRooms()}, which points at History.
+     * screen for {@see pastRooms()}; History (linked from the Results
+     * heading row, and a section chip) is where they went.
      *
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
      */
@@ -610,14 +611,14 @@ new class extends Component
     }
 
     /**
-     * The ribbon's one clock line, by urgency: games live now beats the
+     * The week band's one clock line, by urgency: games live now beats the
      * next kickoff beats a commissioner's slate deadline. Null when none
-     * of it applies — the ribbon then carries the dateline alone.
+     * of it applies — the band then carries the dateline alone.
      *
      * @return array{type: string, at: \Carbon\CarbonInterface|null}|null
      */
     #[Computed]
-    public function ribbonClock(): ?array
+    public function weekClock(): ?array
     {
         $cards = $this->cards;
 
@@ -803,7 +804,7 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-5">
     @if ($this->showPersonal)
         {{-- ============================== MY PICKS =================== --}}
         {{-- The section strip names this place — the h1 stays for screen
@@ -816,16 +817,18 @@ new class extends Component
             <x-notice tone="success">{{ session('status') }}</x-notice>
         @endif
 
-        {{-- THE SWITCHER: which of your seats you are looking at, and one
-             tap to any other. Pure navigation off the one Seats read —
-             no Livewire state, no query of its own — and the one row
-             that sits ABOVE the fork, because "where am I" comes before
-             "which half". Centered; the same control is the clubhouse's
-             title. Guarded on SEATS rather than on the fork, so the first
-             run stays byte-identical. Not sticky: the z-ladder in
-             views.md, and the tour overlay under the page root. --}}
+        {{-- THE SWITCHER IS THE SCREEN'S NAME: which of your seats you are
+             looking at, and one tap to any other. Pure navigation off the
+             one Seats read — no Livewire state, no query of its own — and
+             the one row that sits ABOVE the fork, because "where am I"
+             comes before "which half". The hero variant since pass 2:
+             title weight, start-aligned, the same first row the clubhouse
+             opens with, so the two screens read as one system. Guarded on
+             SEATS rather than on the fork, so the first run stays
+             byte-identical. Not sticky: the z-ladder in views.md, and the
+             tour overlay under the page root. --}}
         @if ($this->seats->hasSeats())
-            <x-group-switcher :seats="$this->seats" class="items-center" />
+            <x-group-switcher :seats="$this->seats" variant="hero" />
         @endif
 
         {{-- THE FORK. Two areas, so a plate and not a gutter: what you can
@@ -841,44 +844,70 @@ new class extends Component
             />
         @endif
 
+        {{-- ONE MEASURE (pass 2, 2026-09-01). The lg sidecar is gone: it
+             held the played-rooms door, the ladder, the archive and the
+             reference, and after the tail thinned it was a 20rem column
+             carrying one door and a bar beside a spine that starved at
+             ~648px. The whole personal branch is one column now, capped
+             at max-w-3xl and centered — UNPREFIXED, so the cap engages
+             the moment the content box reaches it and the measure never
+             narrows as the window widens (the lg-cap sweep in
+             DesktopChromeTest is what that guards). Nothing moves on a
+             phone: the DOM order was already the phone order. --}}
         <div
             wire:loading.class="opacity-60 pointer-events-none"
             wire:target="view"
-            class="flex flex-col gap-6 motion-safe:transition-opacity lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6"
+            class="mx-auto flex w-full max-w-3xl flex-col gap-5 motion-safe:transition-opacity"
         >
-        {{-- MAIN COLUMN: the urgency spine, in one column and in order. --}}
-        <div class="flex min-w-0 flex-col gap-6">
         @if ($this->activeView === 'week')
-        {{-- The week's dateline. No calendar entry, no ribbon — never a
-             substituted week. --}}
-        @if ($this->weekEntry !== null)
-            <x-week-ribbon data-tour="week" :entry="$this->weekEntry" :clock="$this->ribbonClock" />
-        @endif
+        {{-- THE WEEK BAND: the dateline and ONE clock line on its first
+             row, YOU on its second — one light card where a dark ribbon
+             and a blue tile used to stack (pass 2). No calendar entry,
+             no dateline — never a substituted week.
 
-        {{-- YOU, before anything on the screen asks you for something.
-             Below `sm` there is no app header, so this is the only place
-             a phone reader meets their own rung, XP and credits on the
-             screen the whole ladder is played on.
-
-             Guarded on the FORK, not on the wallet: a first run has no
-             seat and no settled week, and the pitch it gets instead is
-             byte-identical to the one it has always had. --}}
-        @if ($this->hasTabs && $this->youStrip !== null)
-            <x-you-strip data-you-strip data-tour="balance" :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
+             The strip is on the second row for the same reason it was
+             here before: below `sm` there is no app header, so this is
+             the only place a phone reader meets their own rung, XP and
+             credits on the screen the whole ladder is played on. It is
+             guarded on the FORK, not on the wallet: a first run has no
+             seat and no settled week, keeps the dateline alone, and the
+             pitch it gets instead is byte-identical to the one it has
+             always had. The two rows are siblings carrying their own
+             tour anchors; the band's root carries none. --}}
+        @php $bandName = $this->hasTabs && $this->youStrip !== null ? $this->youStrip['name'] : null; @endphp
+        @if ($this->weekEntry !== null || $bandName !== null)
+            <x-week-band
+                :entry="$this->weekEntry"
+                :clock="$this->weekClock"
+                :name="$bandName"
+                :stats="$bandName === null ? [] : $this->youStrip['stats']"
+            />
         @endif
 
         {{-- What needs you right now: slates still taking your picks,
              each row walking straight into its clubhouse. --}}
         @if ($this->needsPicks->isNotEmpty())
             <div class="flex flex-col gap-2">
-                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Needs your picks</flux:subheading>
-                <flux:subheading>{{ Voice::line('lobby.needs.subheading') }}</flux:subheading>
+                {{-- The heading row says the count: "and N more below" is
+                     a fact, plain in every register, and it points at the
+                     cards under the hero that carry their own state. It
+                     rode inside the hero until pass 2; on the heading it
+                     costs no height and reads before the ask. The Voice
+                     line that sat here retired with it — the heading is
+                     the definition, and this zone spends its words on the
+                     hero's own zinger. --}}
+                <div class="flex items-baseline justify-between gap-3">
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Needs your picks</flux:subheading>
+                    @if ($this->needsMore > 0)
+                        <span class="text-micro shrink-0 text-zinc-500 dark:text-zinc-400">and {{ $this->needsMore }} more below</span>
+                    @endif
+                </div>
 
-                {{-- ONE HERO, and a count. The card closest to locking
-                     wears the mode's own tile and carries the only button
-                     on the zone; four heroes would be four cards nobody
-                     reads, and the compact rows that used to follow were
-                     every one of those cards drawn a second time. --}}
+                {{-- ONE HERO. The card closest to locking wears the mode's
+                     own tile and carries the only button on the zone; four
+                     heroes would be four cards nobody reads, and the
+                     compact rows that used to follow were every one of
+                     those cards drawn a second time. --}}
                 @php
                     $hero = $this->heroCard;
                     $heroGroup = $hero['group'];
@@ -931,28 +960,23 @@ new class extends Component
                         @endif
                     </div>
 
-                    {{-- Render-guarded: an unwritten register is a quieter
-                         hero, never a hole. --}}
-                    @if ($heroZinger !== '')
-                        <p class="text-sm {{ $heroPalette['body'] }}">{{ $heroZinger }}</p>
-                    @endif
-
-                    {{-- The AFFORDANCE stays plain in every register —
-                         the joke is the line above it. --}}
-                    {{-- `w-full` only while the card is one: uncapped, this
-                         hero is ~648px wide and a button that fills it is
-                         not an affordance, it is a wall. --}}
+                    {{-- FACT → ACTION → FLAVOR. The button sits directly
+                         under the count and the clock, so the first button
+                         on the screen lands ~147px higher at 390 than it
+                         did under the zinger; the zinger closes the card.
+                         The AFFORDANCE stays plain in every register — the
+                         joke is the line under it. `w-full` only while
+                         the card is one: uncapped, this hero is ~648px
+                         wide and a button that fills it is not an
+                         affordance, it is a wall. --}}
                     <flux:button :href="$heroHref" wire:navigate variant="primary" class="w-full md:w-auto md:self-start">
                         {{ $hero['made'] === 0 ? 'Make your picks' : 'Finish your picks' }}
                     </flux:button>
 
-                    {{-- The rest, as a COUNT: the cards below carry their
-                         own state, so the zone points at them rather than
-                         drawing them again. A fact, plain in every
-                         register, in the palette's body weight so it reads
-                         on the Woodshed's black tile too. --}}
-                    @if ($this->needsMore > 0)
-                        <p class="text-micro {{ $heroPalette['body'] }}">and {{ $this->needsMore }} more below</p>
+                    {{-- Render-guarded: an unwritten register is a quieter
+                         hero, never a hole. --}}
+                    @if ($heroZinger !== '')
+                        <p class="text-sm {{ $heroPalette['body'] }}">{{ $heroZinger }}</p>
                     @endif
                 </div>
             </div>
@@ -1026,20 +1050,25 @@ new class extends Component
              above are the ONLY create affordance. --}}
         @if ($this->groupCards->isNotEmpty())
             <div class="flex flex-col gap-2" data-tour="seats">
+                {{-- No definition line under this heading (pass 2): the
+                     heading, the switcher's menu group and every card
+                     already say what a group is, and each section spent
+                     60px on a heading + Voice line over an 87px card. The
+                     screen's ONE definition is under Week N Contests — the
+                     noun a day-one reader lacks. --}}
                 <div class="flex items-baseline justify-between gap-3">
                     <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">My Groups</flux:subheading>
                     <a href="{{ route('pickem.create') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
                         Start a group
                     </a>
                 </div>
-                <flux:subheading>{{ Voice::line('picks.groups.subheading') }}</flux:subheading>
 
-                {{-- Two-up only from `xl`: this sits in the main column
-                     beside the sidecar, so it is ~648px at `lg` and does
-                     not have room for two seats until `xl`. `min-w-0` at
-                     the call site because group-card's root carries none
-                     and a grid item keeps its min-content width. --}}
-                <div class="grid gap-3 xl:grid-cols-2">
+                {{-- Two-up from `md`: the measure is the whole content box
+                     now (no sidecar), so two seats fit at 768 as they do on
+                     the clubhouse. `min-w-0` at the call site because
+                     group-card's root carries none and a grid item keeps
+                     its min-content width. --}}
+                <div class="grid gap-3 md:grid-cols-2">
                     @foreach ($this->groupCards as $card)
                         <x-group-card class="min-w-0" wire:key="play-{{ $card['group']->id }}" :card="$card" />
                     @endforeach
@@ -1050,25 +1079,30 @@ new class extends Component
         {{-- THE INVITE CODE, folded — under the groups it joins you to,
              and ONE unconditional site: a bad code has to open a form
              for a reader with no seats at all. Links are how a group
-             travels now; the code is the spoken-word fallback. --}}
+             travels now; the code is the spoken-word fallback.
+
+             A borderless text row since pass 2: a bordered box between
+             two card stacks read as a third card species, and its Voice
+             line under the question was a definition of a control. One
+             semibold line and the rotating chevron; `-my-2 py-2` keeps a
+             40px hit area without spending the stack's gap on it. The
+             x-data literal is byte-identical — `{ open: true }` on a
+             code error is a pin. --}}
         <div
             x-data="{ open: @js($errors->has('code')) }"
-            class="rounded-xl border border-zinc-200 dark:border-zinc-700"
+            class="-my-2"
         >
             <button
                 type="button"
                 x-on:click="open = ! open"
                 x-bind:aria-expanded="open"
-                class="flex w-full items-center justify-between gap-3 p-4 text-start"
+                class="flex w-full items-center justify-between gap-3 py-2 text-start"
             >
-                <div class="min-w-0">
-                    <p class="font-semibold">Have an invite code?</p>
-                    <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('groups.join.subheading') }}</p>
-                </div>
+                <span class="min-w-0 truncate font-semibold">Have an invite code?</span>
                 <flux:icon name="chevron-down" variant="micro" class="shrink-0 text-zinc-400 transition-transform" x-bind:class="open && 'rotate-180'" />
             </button>
 
-            <div x-show="open" x-cloak class="border-t border-zinc-100 p-4 dark:border-zinc-800/60">
+            <div x-show="open" x-cloak class="pt-1 pb-2">
                 <form wire:submit="join" class="flex flex-col gap-3">
                     {{-- The format rule stays plain: 8 characters, told straight. --}}
                     <flux:input wire:model="code" label="Invite code" description="The 8-character code from your group." maxlength="8" autocomplete="off" class="uppercase" />
@@ -1096,7 +1130,7 @@ new class extends Component
                 @endif
 
                 @if ($this->roomCards->isNotEmpty() || $this->tableCards->isNotEmpty())
-                    <div class="grid gap-3 xl:grid-cols-2">
+                    <div class="grid gap-3 md:grid-cols-2">
                         @foreach ($this->roomCards->concat($this->tableCards) as $card)
                             <x-group-card class="min-w-0" wire:key="play-{{ $card['group']->id }}" :card="$card" />
                         @endforeach
@@ -1104,7 +1138,9 @@ new class extends Component
                 @endif
 
                 @if ($this->groupCards->isNotEmpty())
-                    @include('partials.lobby-door')
+                    {{-- No pitch at the section foot: the definition line
+                         over these cards already said what a room is. --}}
+                    @include('partials.lobby-door', ['pitch' => false])
                 @endif
             </div>
         @endif
@@ -1147,10 +1183,31 @@ new class extends Component
         @endif
 
         {{-- The Monday payoff, compact: last week's settled results while
-             they are still the conversation. --}}
-        @if ($this->lastWeek->isNotEmpty())
-            <div class="flex flex-col gap-2">
-                <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Last week</flux:subheading>
+             they are still the conversation. HISTORY rides the heading
+             row as a text door (Home's heading-door idiom) since pass 2 —
+             Results is this week's payoff, History every week that ever
+             settled, and the row is where a reader looking at one goes
+             looking for the other. The door renders whether or not a
+             week has settled — on the empty-state row when nothing has,
+             because an empty Results must not say "Last week" over
+             nothing — so the archive is reachable either way. --}}
+        <div class="flex flex-col gap-2">
+            <div class="flex items-baseline justify-between gap-3">
+                @if ($this->lastWeek->isNotEmpty())
+                    <flux:subheading class="font-semibold text-zinc-900 dark:text-zinc-100">Last week</flux:subheading>
+                @else
+                    {{-- Nothing settled is not an empty screen to apologize
+                         for — it is a Saturday that has not happened yet,
+                         and the line says so rather than leaving the tab
+                         blank. --}}
+                    <p class="min-w-0 text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('picks.results.empty') }}</p>
+                @endif
+                <a href="{{ route('pickem.history') }}" wire:navigate class="text-micro shrink-0 font-medium text-blue-600 hover:underline dark:text-blue-400">
+                    History
+                </a>
+            </div>
+
+            @if ($this->lastWeek->isNotEmpty())
                 @foreach ($this->lastWeek as $entry)
                     <a
                         href="{{ $entry->slate->contest->group->isRoom() ? route('pickem.room', $entry->slate->contest->group_id) : route('pickem.group', $entry->slate->contest->group_id) }}"
@@ -1176,53 +1233,20 @@ new class extends Component
                         </p>
                     </a>
                 @endforeach
-            </div>
-        @else
-            {{-- Nothing settled is not an empty screen to apologize for —
-                 it is a Saturday that has not happened yet, and the line
-                 says so rather than leaving the tab blank. --}}
-            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('picks.results.empty') }}</p>
-        @endif
-        @endif
-
+            @endif
         </div>
-
-        {{-- THE SIDECAR. Every block below already sat at the FOOT of this
-             screen, so below `lg` nothing moved: the column collapses and
-             they land exactly where a phone reader has always found them.
-             From `lg` they ride alongside instead of pushing the spine down
-             the page — the same trade the game screen makes. The invite
-             code and the Lobby door left here 2026-09-01 for the sections
-             they belong to. Not sticky: the picks walk spotlights `how` in
-             here, and it scrolls to a measured box. --}}
-        <div class="flex flex-col gap-6">
-        @if ($this->activeView === 'week')
-        {{-- THE ROOMS THAT ARE OVER, as a door and never as cards.
-
-             A public room is a TRANSIENT contest: one Saturday, then it
-             dies. Stacking last week's three above a reader's own groups
-             said they were already seated in this Saturday's public
-             contests, when the whole point is that a fresh week starts
-             with the decision unmade. So the played rooms leave the
-             stack and keep exactly one thing here — a way back to them.
-
-             The count is a projection of cards(); History is the screen
-             that holds every week the reader has played, in the section
-             strip already. --}}
-        @if ($this->pastRooms->isNotEmpty())
-            <x-link-row :href="route('pickem.history')" title="Rooms you've played">
-                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
-                    {{ $this->pastRooms->count() }} finished {{ Str::plural('room', $this->pastRooms->count()) }} — your settled weeks are in History
-                </span>
-                @php $roomsPast = Voice::line('picks.rooms.past'); @endphp
-                @if ($roomsPast !== '')
-                    <span class="text-micro block pt-0.5 text-zinc-500 dark:text-zinc-400">{{ $roomsPast }}</span>
-                @endif
-            </x-link-row>
         @endif
 
-        @endif
-
+        {{-- THE FOOT: the ladder on Results and the one reference door.
+             These sat in an lg sidecar until pass 2; they are the tail of
+             the one column now, exactly where a phone reader always found
+             them. Not sticky: the picks walk spotlights `how` here, and it
+             scrolls to a measured box. --}}
+        {{-- The played rooms leave this tab with NO door of their own
+             (pass 2): a public room is a transient contest and the way
+             back to it is History, which the Results heading row links
+             and the section strip already names. pastRooms() still
+             projects them off cards() so nothing else can stack them. --}}
         {{-- THE LADDER belongs to Results — XP is what a settled week
              paid. It stays on a TABLESS first run too, because XP is
              earned before the first slate is and that reader has no
@@ -1266,15 +1290,6 @@ new class extends Component
         @endif
         @endif
 
-        {{-- The archive, one row: Results is this week's payoff while it
-             is still the conversation, History is every week that ever
-             settled. --}}
-        @if ($this->activeView === 'results')
-            <x-link-row :href="route('pickem.history')" title="Season history">
-                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Every week you have played, and what it paid.</span>
-            </x-link-row>
-        @endif
-
         {{-- THE REFERENCE, on BOTH views: the rules are what you go
              looking for mid-week as readily as on a Sunday, and a door
              that only exists on one fork is a door somebody cannot find.
@@ -1282,10 +1297,13 @@ new class extends Component
              already carries the week, the seats, the payoff and the
              ladder, and the Lobby folded its own rules away for exactly
              that reason. --}}
+        {{-- The subline says what a day-one reader can parse — "Tallboys"
+             and "the cooler" were the explainer's own jargon, sold on the
+             door to the explainer (a follow-up from pass 1, closed here).
+             Still a full dashed door: the tour needs a box to spotlight. --}}
         <x-link-row :href="route('pickem.how')" title="How this works" data-tour="how">
-            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Tallboys, the cooler, and what every room costs.</span>
+            <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Scoring, ranks, and what a room costs.</span>
         </x-link-row>
-        </div>
         </div>
     @else
         @include('partials.pickem-promise')

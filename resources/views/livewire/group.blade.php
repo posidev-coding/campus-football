@@ -82,9 +82,18 @@ new class extends Component
      * case x-gutter-tabs exists for ("more tabs than two-or-three").
      *
      * `invite` normalizes away for a room — rooms are joined from the
-     * lobby, never by invitation — so a room's strip is three stops.
+     * lobby, never by invitation — so a room's strip is one stop shorter.
+     *
+     * `talk` (2026-09-01) is the thread's stop, members only: the hero's
+     * Talk icon and the Standings-foot link-row both went, because a stop
+     * that owns the door does not need two worse ones. A non-member's
+     * `?view=talk` folds to the slate the way a room's `invite` folds. The
+     * pick SURFACE stays chat-free — the thread mounts on its own tab and
+     * nowhere near partials/pick-slate. Five stops fit at 390 only with the
+     * gutter's `fill` variant (cells sized to their words); a sixth would
+     * not fit at all, which is why the mode brief is an accordion.
      */
-    private const VIEWS = ['slate', 'standings', 'members', 'invite'];
+    private const VIEWS = ['slate', 'standings', 'members', 'invite', 'talk'];
 
     public Group $group;
 
@@ -730,8 +739,9 @@ new class extends Component
     }
 
     /**
-     * Two tabs, both kinds: the pick surface, and everything social. A
-     * room's Standings simply skips the season ledger it does not have.
+     * The strip's stops, both kinds: the pick surface, everything social,
+     * and — for a member — the thread. A room's Standings simply skips the
+     * season ledger it does not have.
      *
      * @return array<string, string>
      */
@@ -748,6 +758,12 @@ new class extends Component
         // them — matching normalizedView(), which sends the address back.
         if (! $this->group->isLobby()) {
             $tabs['invite'] = 'Invite';
+        }
+
+        // The thread belongs to the people in it: last stop, members only,
+        // matching normalizedView(), which folds an outsider's address.
+        if ($this->isMember) {
+            $tabs['talk'] = 'Talk';
         }
 
         return $tabs;
@@ -829,7 +845,8 @@ new class extends Component
         }
 
         session()->flash('status', Voice::line('groups.joined', ['group' => $this->group->name]));
-        unset($this->members, $this->isMember, $this->isCommissioner);
+        // The strip too: a seat is what puts the Talk stop on it.
+        unset($this->members, $this->isMember, $this->isCommissioner, $this->tabs);
     }
 
     public function leave(LeaveGroup $action)
@@ -902,6 +919,7 @@ new class extends Component
         $this->validate([
             'iconFile' => ImageUpload::rules(),
         ], [
+            'iconFile.mimes' => ImageUpload::mimeMessage(),
             'iconFile.max' => ImageUpload::oversizedMessage(),
             'iconFile.dimensions' => 'That image is too small to read at icon size.',
         ]);
@@ -910,6 +928,16 @@ new class extends Component
             $action->handle(auth()->user(), $this->group, $this->iconFile);
         } catch (NotGroupCommissioner) {
             abort(403);
+        } catch (\Throwable $e) {
+            // The disk refused (R2 answered NotImplemented for months, and
+            // `throw => true` made that a 500 on this update). Report it,
+            // say so in the icon's own error line, and leave the group on
+            // whatever mark it had — never a half-written path.
+            report($e);
+            $this->iconFile = null;
+            $this->addError('iconFile', Voice::line('groups.icon.failed'));
+
+            return;
         }
 
         $this->iconFile = null;
@@ -1005,6 +1033,12 @@ new class extends Component
             return 'standings';
         }
 
+        // The thread is members-only, and the tab is absent for anyone
+        // else — so the address folds to the pick surface, the same law.
+        if ($view === 'talk' && ! $this->isMember) {
+            return 'slate';
+        }
+
         return in_array($view, self::VIEWS, true) ? $view : 'slate';
     }
 
@@ -1086,25 +1120,18 @@ new class extends Component
             </x-slot:icon>
         @endif
 
+        {{-- ONE control on the band: the commissioner's cog. The Talk
+             icon left this row on 2026-09-01 for a gutter tab of its own,
+             the way the invite button left for the Invite stop — a stop
+             that owns the door does not need a worse one beside the name,
+             and the title row gets ~44px back at 390. The band renders NO
+             wrapper for a member, whose slot is empty. --}}
         <x-slot:actions>
-            @if ($this->isMember)
-                {{-- The thread's door — a destination, never an embed
-                     (the pick surface stays chat-free; Task D stands). --}}
-                <a
-                    href="{{ route('pickem.talk', $group) }}"
-                    wire:navigate
-                    aria-label="{{ $group->isRoom() ? 'Room talk' : 'Group talk' }}"
-                    class="rounded-lg bg-white/10 p-2 transition-colors hover:bg-white/20 dark:bg-zinc-800 dark:hover:bg-zinc-700"
-                >
-                    <flux:icon name="chat-bubble-left-right" variant="mini" />
-                </a>
-            @endif
-
             @if ($this->isCommissioner && $this->pivotChoices->isNotEmpty())
                 <flux:modal.trigger name="change-mode">
                     <button
                         type="button"
-                        class="rounded-lg bg-white/10 p-2 transition-colors hover:bg-white/20 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                        class="rounded-lg bg-zinc-100 p-2 text-zinc-700 transition-colors hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                         aria-label="Change the group's game"
                     >
                         <flux:icon name="cog-6-tooth" variant="mini" />
@@ -1134,47 +1161,6 @@ new class extends Component
                 >
                     Remove icon
                 </button>
-            @endif
-        </div>
-    @endif
-
-    {{-- WHAT THIS GROUP IS. The room half of this pair has said its
-         piece here since the contest card was retired; the private half
-         said nothing, so the one screen where a member sees the whole
-         container never mentioned that the container is theirs and runs
-         all season. The mode's blurb states the card, sized from the
-         CONTEST; the Voice line states the thing the mode cannot. --}}
-    @if (! $group->isLobby() && $this->contest !== null)
-        <div class="flex flex-col gap-1">
-            <p class="text-sm text-zinc-600 dark:text-zinc-300">
-                {{ $this->contest->mode->blurb($this->contest->mode->engine($this->contest->settings)->slateSize()) }}
-            </p>
-            <p class="text-micro text-zinc-400 dark:text-zinc-500">{{ Voice::line('group.private.frame') }}</p>
-        </div>
-    @endif
-
-    {{-- WHAT THIS ROOM IS. The lobby sells uniform rows now, so the
-         pitch — the flavor's own one-line rules, or the mode's, plus its
-         optional zinger — is said HERE, where somebody who tapped the row
-         is deciding whether to sit down. This was the contest card's
-         cargo and the card is gone; without this re-home the blurbs and
-         zingers have no render site at all. --}}
-    @if ($group->isRoom() && $this->contest !== null)
-        @php
-            $roomFlavor = $group->flavorEnum();
-            // The card THIS room deals, not the mode's default one:
-            // Shotgun's size is frozen per Saturday, so a Week 0 room of
-            // eight games must not be pitched as ten.
-            $roomGames = $this->contest->mode->engine($this->contest->settings)->slateSize();
-            $roomZinger = $roomFlavor === null
-                ? ''
-                : Voice::line($roomFlavor->zingerKey(), ['conference' => $roomFlavor->conferenceName() ?? '']);
-        @endphp
-
-        <div class="flex flex-col gap-1">
-            <p class="text-sm text-zinc-600 dark:text-zinc-300">{{ $roomFlavor?->blurb($roomGames) ?? $this->contest->mode->blurb($roomGames) }}</p>
-            @if ($roomZinger !== '')
-                <p class="text-micro italic text-zinc-400 dark:text-zinc-500">&ldquo;{{ $roomZinger }}&rdquo;</p>
             @endif
         </div>
     @endif
@@ -1240,7 +1226,7 @@ new class extends Component
         :items="$this->tabs"
         :selected="$view"
         model="view"
-        variant="block"
+        variant="fill"
         label="Group sections"
         key-prefix="group-tab"
     />
@@ -1251,6 +1237,47 @@ new class extends Component
         class="flex flex-col gap-5 motion-safe:transition-opacity"
     >
     @if ($view === 'slate')
+        {{-- WHAT THIS GROUP PLAYS — the mode brief, collapsed. It sat under
+             the hero as a blurb and a frame line (a room: the flavor's
+             pitch and its zinger), with the full rules card at the foot of
+             Standings: the same facts, two places, and 60px between the
+             band and the strip that a returning member never reads. One
+             accordion now, at the top of the pick surface, ungated on
+             membership and OUTSIDE the published fork — a group with no
+             slate yet still says what it is, and the frame line must be
+             in the DOM whatever the card is doing. The identity row
+             carries the pitch clamped to two lines (a room's flavor pitch
+             is a sentence; the shelf's one-line truncation is the thing
+             LobbyFlavorTest exists to catch), the payload the rule lines,
+             the frame or the zinger, and the laws every mode shares. --}}
+        @if ($this->contest !== null)
+            @php
+                $roomFlavor = $group->isRoom() ? $group->flavorEnum() : null;
+                // The card THIS contest deals, not the mode's default one:
+                // Shotgun's size is frozen per Saturday, so a Week 0 room
+                // of eight games must not be pitched as ten.
+                $briefGames = $this->contest->mode->engine($this->contest->settings)->slateSize();
+                $roomZinger = $roomFlavor === null
+                    ? ''
+                    : Voice::line($roomFlavor->zingerKey(), ['conference' => $roomFlavor->conferenceName() ?? '']);
+            @endphp
+
+            <x-mode-rules
+                :mode="$this->contest->mode"
+                :games="$briefGames"
+                :pitch="$roomFlavor?->blurb($briefGames)"
+                clamp
+            >
+                @if (! $group->isLobby())
+                    <p class="text-micro text-zinc-400 dark:text-zinc-500">{{ Voice::line('group.private.frame') }}</p>
+                @elseif ($roomZinger !== '')
+                    <p class="text-micro italic text-zinc-400 dark:text-zinc-500">&ldquo;{{ $roomZinger }}&rdquo;</p>
+                @endif
+
+                @include('partials.pickem-laws')
+            </x-mode-rules>
+        @endif
+
         @if ($this->slate?->isPublished())
             {{-- THE SIDECAR, and the guard is the whole design. Before
                  kickoff there is no table to show — everybody is on zero and
@@ -1389,21 +1416,6 @@ new class extends Component
                 @endif
             @endif
 
-            {{-- The scoring panel sits with the numbers it explains, not
-                 with the roster or the invite. --}}
-            @if ($this->contest !== null)
-                <x-mode-rules
-                    :mode="$this->contest->mode"
-                    :games="$this->contest->mode->engine($this->contest->settings)->slateSize()"
-                />
-            @endif
-
-            {{-- The thread's second door, where the arguing starts. --}}
-            @if ($this->isMember)
-                <x-link-row :href="route('pickem.talk', $group)" :title="$group->isRoom() ? 'Room talk' : 'Group talk'">
-                    <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('talk.door.hint') }}</span>
-                </x-link-row>
-            @endif
         </div>
     @elseif ($view === 'members')
         {{-- THE ROSTER, and the management that goes with it. This was a
@@ -1495,6 +1507,16 @@ new class extends Component
                 />
             @endif
         </div>
+    @elseif ($view === 'talk')
+        {{-- THE THREAD, on its own stop. Not lazy: the tab tap IS the
+             intersection, and the exclusive branch mounts fresh per entry.
+             Members only — the strip has no stop for anyone else and
+             normalizedView() folds their address, so this @if is the
+             belt to those braces. The pick surface above never mounts
+             one; the conversation renders its own subheading line. --}}
+        @if ($this->isMember)
+            <livewire:conversation :topic="$group" :key="'talk-group-'.$group->id" />
+        @endif
     @endif
 
     </div>

@@ -19,7 +19,9 @@ one was back out through the whole overview.
 
 1. A **group switcher** — the multi-tenant scope selector — at the top center
    of My Picks and as the clubhouse title. Selecting a group NAVIGATES to its
-   clubhouse; `/picks` stays the overview, listed first as "All my picks".
+   clubhouse; `/picks` stays the overview, listed first as "All my picks"
+   (renamed in pass 2, 2026-09-01: trigger "My groups and rooms", menu row
+   "All my groups and rooms" — see picks-pass-2.md).
 2. The menu's "Week N Contests" section lists the rooms the reader is
    **seated in** plus a trailing "Browse the Lobby · N open" row — never every
    open room. The Lobby stays its own section tab and is where a room is
@@ -54,7 +56,7 @@ under one is Voice in three registers.
 ### The switcher's menu
 
 ```
-All my picks
+All my picks                 (pass 2: "All my groups and rooms"; the trigger reads "My groups and rooms")
 ── My Groups ──────────
 Rocky Top Rejects   (bold when current)
 The Back Porch
@@ -80,7 +82,8 @@ All three registers; every key in the PickemVoiceTest dataset.
 | `tour.seats.body` (rewritten) | Your private groups run all season; this Saturday's public rooms sit just below them. The switcher up top jumps to any of them. | Season-long groups here, this Saturday's rooms underneath — and the switcher up top jumps straight to whichever one you're playing. | The season-long grudges live here, this Saturday's flings underneath. The switcher up top gets you to whichever one is currently ruining your weekend. |
 
 Retired: `picks.whereplay.subheading` (its only render site is gone).
-Deliberately plain: "All my picks", "My Groups", "Week N Contests", "Browse
+Deliberately plain: "All my picks" (pass 2: "My groups and rooms" / "All my
+groups and rooms"), "My Groups", "Week N Contests", "Browse
 the Lobby", "N open", "Always open", "and N more below", "12 members ·
 you're the commissioner".
 
@@ -105,8 +108,11 @@ history; "How this works"; the pick surface; the Lobby screen.
 
 - Chrome density at 390: chips, switcher, plate, ribbon, you-strip before
   content. Candidate: fold the ribbon's dateline into the switcher row.
+  (CLOSED in pass 2 by `x-week-band`: one light card carrying the dateline
+  and the you-strip as sibling rows.)
 - The Lobby at zero rooms says the emptiness twice (band count + callout).
-- "How this works" subline is jargon to a day-one reader.
+- "How this works" subline is jargon to a day-one reader. (CLOSED in pass
+  2: "Scoring, ranks, and what a room costs.")
 - A switcher-use signal (`UxSignal` is a closed enum).
 - Place-in-field on live/final group cards.
 

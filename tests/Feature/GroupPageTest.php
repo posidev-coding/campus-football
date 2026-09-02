@@ -342,7 +342,7 @@ it('normalizes the three-tab era\'s addresses onto the one strip', function () {
         ->assertSet('view', 'slate');
 });
 
-it('navigates the clubhouse from ONE strip of four stops', function () {
+it('navigates the clubhouse from ONE strip of five stops', function () {
     /*
      * There was briefly a plate of Slate|Standings with a gutter of
      * Standings|Members|Invite beneath it — three rows of navigation
@@ -362,14 +362,13 @@ it('navigates the clubhouse from ONE strip of four stops', function () {
         ->assertSee('Wk rank')
         ->assertSee('—')
         ->assertSee('Triple Option')
-        ->assertSee('Group talk')
-        ->assertSee(route('pickem.talk', $group), escape: false)
+        ->assertSee('Talk')
         ->html();
 
-    // Exactly ONE navigation strip: four buttons, one set of keys. A
+    // Exactly ONE navigation strip: five buttons, one set of keys. A
     // second strip is the regression this test exists to catch, and it
     // would pass every assertion above.
-    expect(substr_count($html, 'wire:key="group-tab-'))->toBe(4)
+    expect(substr_count($html, 'wire:key="group-tab-'))->toBe(5)
         ->and($html)->not->toContain('group-pane-')
         // The switcher in the hero is not a strip: its rows are keyed
         // `switch-`, and there is exactly one of it.
@@ -402,7 +401,7 @@ it('wears the group switcher as its title, and lists the reader\'s other seats',
 
     $menu = (string) str($html)->after('<ui-menu')->before('</ui-menu>');
 
-    expect($menu)->toContain('All my picks')
+    expect($menu)->toContain('All my groups and rooms')
         ->toContain(route('pickem.home'))
         ->toContain('My Groups')
         ->toContain('The Back Porch')
@@ -426,7 +425,7 @@ it('wears the group switcher as its title, and lists the reader\'s other seats',
 it('keeps a previewed lobby\'s name on the trigger without a seat in it', function () {
     // A lobby is readable from outside. The reader holds no seat there,
     // so it is in none of the switcher's lists — and the trigger must
-    // still say where they are, never "All my picks".
+    // still say where they are, never "My groups and rooms".
     $outsider = pickemAdmin();
     $lobby = Group::factory()->lobby()->create(['name' => 'Walk-Ons Welcome']);
     Contest::factory()->create(['group_id' => $lobby->id]);
@@ -435,8 +434,8 @@ it('keeps a previewed lobby\'s name on the trigger without a seat in it', functi
     $trigger = (string) str($html)->after('data-group-switcher')->before('<ui-menu');
 
     expect($trigger)->toContain('Walk-Ons Welcome')
-        ->not->toContain('All my picks')
-        ->and($html)->toContain('All my picks')
+        ->not->toContain('My groups and rooms')
+        ->and($html)->toContain('All my groups and rooms')
         ->toContain('Browse the Lobby')
         ->not->toContain('My Groups');
 });
@@ -459,7 +458,7 @@ it('keeps a played room\'s own name on its clubhouse, outside the week it is not
     expect($trigger)->toContain('The 8/29 Room')
         // Spliced in as a bare row right after the overview, ahead of
         // any Contests heading — a played room is not this Saturday's.
-        ->and(strpos($menu, 'The 8/29 Room'))->toBeGreaterThan(strpos($menu, 'All my picks'))
+        ->and(strpos($menu, 'The 8/29 Room'))->toBeGreaterThan(strpos($menu, 'All my groups and rooms'))
         ->and(strpos($menu, 'The 8/29 Room'))->toBeLessThan(strpos($menu, 'Browse the Lobby'))
         ->and(substr_count($menu, 'wire:key="switch-g-'.$room->id.'"'))->toBe(1);
 
@@ -583,23 +582,32 @@ it('keeps a public room\'s roster on handles too, not just its tables', function
         ->assertDontSee('Dale Trickett');
 });
 
-it('gives a room three stops and a group four, and sends ?view=invite back', function () {
+it('gives a room four stops and a group five, and sends ?view=invite back', function () {
     /*
      * The strip and the content must not disagree about which stops
      * exist: a room has no invite to advertise, so the tab is absent AND
-     * the address is refused.
+     * the address is refused. Talk is the last stop of both for a member.
      */
     [$commissioner, $group] = pickemContest(ContestMode::Classic);
 
-    Livewire::withQueryParams(['view' => 'invite'])
+    $html = Livewire::withQueryParams(['view' => 'invite'])
         ->actingAs($commissioner)->test('group', ['group' => $group])
-        ->assertSet('view', 'invite');
+        ->assertSet('view', 'invite')
+        ->html();
+
+    expect(substr_count($html, 'wire:key="group-tab-'))->toBe(5)
+        ->and(strpos($html, 'wire:key="group-tab-talk"'))->toBeGreaterThan(strpos($html, 'wire:key="group-tab-invite"'));
 
     $group->update(['kind' => Group::KIND_LOBBY]);
 
-    Livewire::withQueryParams(['view' => 'invite'])
+    $html = Livewire::withQueryParams(['view' => 'invite'])
         ->actingAs($commissioner)->test('group', ['group' => $group])
-        ->assertSet('view', 'standings');
+        ->assertSet('view', 'standings')
+        ->html();
+
+    expect(substr_count($html, 'wire:key="group-tab-'))->toBe(4)
+        ->and($html)->not->toContain('wire:key="group-tab-invite"')
+        ->and(strpos($html, 'wire:key="group-tab-talk"'))->toBeGreaterThan(strpos($html, 'wire:key="group-tab-members"'));
 });
 
 it('polls the Standings tab only while the card is live', function () {
@@ -662,8 +670,8 @@ it('previews the surface read-only for a lobby outsider', function () {
         ->assertSee('Join this lobby')
         ->assertDontSee('optimistic(', escape: false)
         ->assertDontSee('No pick')
-        // No seat, no thread door.
-        ->assertDontSee('Room talk');
+        // No seat, no Talk stop.
+        ->assertDontSeeHtml('wire:key="group-tab-talk"');
 });
 
 it('301s the old nested URL to the clubhouse', function () {
@@ -823,4 +831,61 @@ it('keeps the movement quiet with only one settled week behind the table', funct
     // One week has no "before" worth inventing: null, never a zero.
     expect(Livewire::actingAs($commissioner)->test('group', ['group' => $group])
         ->instance()->seasonStandings->first()['delta'])->toBeNull();
+});
+
+/*
+ * THE LIGHT BAND, AND ONE CONTROL ON IT (2026-09-01). The hero was a deep
+ * zinc surface in both modes, which gave an uploaded mark nothing to sit
+ * against; it is white with a zinc-200 border now, the grammar of every
+ * card on the screen. The Talk icon left the row for a gutter tab and the
+ * cog is the only button left — and a member, whose slot is EMPTY, gets no
+ * wrapper at all: a passed slot is an object, an object is truthy, and
+ * `?? false` used to render an empty flex div that spent its gap on the
+ * title row.
+ */
+it('paints the hero band light, with the dark surface only behind dark:', function () {
+    $source = file_get_contents(resource_path('views/components/group-hero.blade.php'));
+
+    // The root's own class list, from the component's one attribute bag.
+    $root = (string) str($source)->after('<div {{ $attributes->class([\'')->before('\']) }}>');
+
+    expect($root)->not->toBe('')
+        ->toContain('bg-white')
+        ->toContain('border-zinc-200')
+        ->toContain('dark:bg-zinc-900')
+        ->toContain('dark:border-zinc-800')
+        ->and($root)->not->toMatch('/(?<!dark:)bg-zinc-900/')
+        ->not->toContain('text-white');
+
+    [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+    // And the rendered band wears it: the root's class list, verbatim.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSeeHtml('rounded-xl border border-zinc-200 bg-white px-4 py-4 text-zinc-900');
+});
+
+it('gives a commissioner one button on the band, and a member no wrapper at all', function () {
+    [$commissioner, $group] = pickemContest(ContestMode::Classic);
+    $member = User::factory()->create();
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    $heroOf = fn (User $viewer): string => (string) str(
+        Livewire::actingAs($viewer)->test('group', ['group' => $group])->html()
+    )->before('wire:key="group-tab-slate"');
+
+    $commissionerHero = $heroOf($commissioner);
+
+    // Exactly the cog: the pivot modal's trigger, once, and no thread door.
+    expect(substr_count($commissionerHero, 'aria-label="Change the group\'s game"'))->toBe(1)
+        ->and($commissionerHero)->not->toContain('aria-label="Group talk"')
+        ->not->toContain('aria-label="Room talk"')
+        ->and(substr_count($commissionerHero, 'flex shrink-0 items-center gap-2'))->toBe(1);
+
+    // A member has nothing to put on the band, so the band renders no
+    // actions wrapper — not an empty one.
+    $memberHero = $heroOf($member);
+
+    expect($memberHero)->not->toContain('aria-label="Change the group\'s game"')
+        ->not->toContain('aria-label="Group talk"')
+        ->not->toContain('flex shrink-0 items-center gap-2');
 });

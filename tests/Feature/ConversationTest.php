@@ -413,14 +413,56 @@ it('mounts the conversation on both host screens, and never in the clubhouse', f
 
     /*
      * The clubhouse dropped its thread on 2026-08-29: a chat foot under the
-     * pick surface read as distraction, not as the room talking. Only the
-     * RENDER SITE went — the group scope stays whitelisted in
-     * PostToConversation and every group post stays moderatable — so the pin
-     * is the inverse of the sweep above, and it is what stops the embed
-     * drifting back in on the next clubhouse edit.
+     * pick surface read as distraction, not as the room talking. Since
+     * 2026-09-01 the thread is the clubhouse's own Talk TAB — so the pin
+     * narrowed rather than went: the pick surface itself, `partials/
+     * pick-slate`, never mounts a conversation, and the behavioral pins
+     * below hold that the slate view renders none. The group scope stays
+     * whitelisted in PostToConversation and every group post stays
+     * moderatable.
      */
-    expect(file_get_contents(resource_path('views/livewire/group.blade.php')))
+    expect(file_get_contents(resource_path('views/partials/pick-slate.blade.php')))
         ->not->toContain('<livewire:conversation');
+});
+
+it('mounts the group thread on the Talk tab, and never on the pick surface', function () {
+    /*
+     * The tab tap is the intersection: the branch is exclusive, so the
+     * thread mounts fresh on entry and is simply absent from the slate
+     * view's DOM — not hidden, not lazy, not there.
+     */
+    $group = Group::factory()->create(['name' => 'The Loud Ones']);
+    $member = User::factory()->create();
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    app(PostToConversation::class)->handle($member, $group, 'First flag planted.');
+
+    $subheading = Voice::line('talk.subheading.group', for: $member);
+
+    Livewire::actingAs($member)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate')
+        ->assertSeeHtml('wire:key="group-tab-talk"')
+        ->assertDontSee($subheading)
+        ->assertDontSee('First flag planted.')
+        ->set('view', 'talk')
+        ->assertSet('view', 'talk')
+        ->assertSee('The Loud Ones')
+        ->assertSee($subheading)
+        ->assertSee('First flag planted.');
+});
+
+it('folds ?view=talk to the slate for a reader with no seat, and shows them no stop', function () {
+    // A lobby is readable from outside; its thread is not. The strip has
+    // no Talk stop for an outsider and the address folds the way a room's
+    // ?view=invite does, so the strip and the content cannot disagree.
+    $lobby = Group::factory()->lobby()->create(['name' => 'Walk-Ons Welcome']);
+    $outsider = User::factory()->create();
+
+    Livewire::withQueryParams(['view' => 'talk'])
+        ->actingAs($outsider)->test('group', ['group' => $lobby])
+        ->assertSet('view', 'slate')
+        ->assertDontSeeHtml('wire:key="group-tab-talk"')
+        ->assertDontSee(Voice::line('talk.subheading.group', for: $outsider));
 });
 
 it('embeds lazily inside the game screen, and hydrates to the real thread', function () {
@@ -512,29 +554,36 @@ it('never names a school in the conversation copy', function () {
     }
 });
 
-it('gives the group thread its own door: the Talk screen, members only', function () {
+it('walks the old talk address to the clubhouse tab, where a stranger still meets the wall', function () {
     /*
-     * 2026-08-30: Task D took the embed out from under the picks; this
-     * screen is where the thread went. The clubhouse pin below stands
-     * BESIDE this — the pick surface stays chat-free, and the dedicated
-     * screen is the one sanctioned group render site.
+     * 2026-08-30 gave the thread a screen of its own at /groups/{g}/talk;
+     * 2026-09-01 made it the clubhouse's last gutter tab. The address is
+     * in people's threads, so it 301s to `?view=talk` on the kind's own
+     * home rather than dying — and the membership answer moved with it:
+     * the clubhouse 403s a stranger to a private group on arrival.
      */
     $group = Group::factory()->create(['name' => 'The Loud Ones']);
     $member = User::factory()->create();
     GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
 
-    app(PostToConversation::class)->handle($member, $group, 'First flag planted.');
-
-    Livewire::actingAs($member)->test('group-talk', ['group' => $group])
-        ->assertSee('The Loud Ones')
-        ->assertSee('Group talk')
-        ->assertSee('First flag planted.');
-
-    // An outsider gets the wall, not the thread — through the open flag,
-    // so it is the SCREEN's membership check answering, not the gate.
     config()->set('cfb.pickem_open', true);
 
+    $this->actingAs($member)
+        ->get(route('pickem.talk', $group))
+        ->assertStatus(301)
+        ->assertRedirect(route('pickem.group', [$group, 'view' => 'talk']));
+
     $this->actingAs(User::factory()->create())
+        ->followingRedirects()
         ->get(route('pickem.talk', $group))
         ->assertForbidden();
+
+    // A room's old address walks to the room's own home, not the group's.
+    [, $week] = pickemSeasonWeek();
+    $room = Group::factory()->room($week->id)->create();
+
+    $this->actingAs($member)
+        ->get(route('pickem.talk', $room))
+        ->assertStatus(301)
+        ->assertRedirect(route('pickem.room', [$room, 'view' => 'talk']));
 });

@@ -14,8 +14,22 @@
     "public rooms", not "rooms": the word is the entire distinction this
     screen is now drawing, and the door to the store is where a reader
     who has never seen the store reads it.
+
+    `$pitch` (default true) renders the one Voice line under the count —
+    `lobby.teaser.zinger`, "No group? No problem…" — and the section foot
+    passes false: the definition line over the contests cards already said
+    what a room is, so the door there is one plain count. One door, one
+    read, one `data-tour="room"` either way.
+
+    A note for whoever brings Home's x-next-up onto /picks: PickemPulse's
+    `picks.next.join` line contains this same "N public rooms open this
+    Saturday" sentence, so that slot beside this door would double the
+    count on one screen. The design panel rejected it for exactly that.
 --}}
-@php $teaser = App\Support\Voice::line('lobby.teaser.zinger'); @endphp
+@php
+    $pitch ??= true;
+    $teaser = $pitch ? App\Support\Voice::line('lobby.teaser.zinger') : '';
+@endphp
 
 <x-link-row :href="route('pickem.lobby')" title="The Lobby" data-tour="room">
     <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">
