@@ -85,6 +85,36 @@ describe('the promise (outside the flag)', function () {
     });
 });
 
+describe('the store for a guest (inside the flag)', function () {
+    beforeEach(function () {
+        $this->travelTo('2026-09-02 12:00:00');
+        config()->set('cfb.pickem_open', true);
+    });
+
+    it('opens the rooms to a guest the moment the flag opens', function () {
+        // Launch day: a guest read "Coming soon" here with the flag open,
+        // because the store once required a session as well as the flag.
+        $this->get(route('pickem.lobby'))
+            ->assertOk()
+            ->assertDontSee('Coming soon')
+            ->assertSee('Public rooms')
+            // The invite foot shares the READER's own link — members only.
+            ->assertDontSee('Invite a friend');
+    });
+
+    it('walks a guest Join to register, with the Lobby as the way back', function () {
+        [, $week] = pickemSeasonWeek();
+        $room = Group::factory()->lobby()->create(['week_id' => $week->id, 'member_cap' => 20]);
+
+        Livewire::test('lobby')
+            ->call('joinLobby', $room->id)
+            ->assertRedirect(route('register'));
+
+        expect(session('url.intended'))->toBe(route('pickem.lobby', absolute: false))
+            ->and(GroupMember::query()->where('group_id', $room->id)->exists())->toBeFalse();
+    });
+});
+
 describe('the store (inside the flag)', function () {
     beforeEach(function () {
         $this->travelTo('2026-09-02 12:00:00');

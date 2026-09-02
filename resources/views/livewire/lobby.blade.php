@@ -71,10 +71,23 @@ new class extends Component
         return LobbyShelf::tryFrom($view)?->value ?? 'all';
     }
 
+    /**
+     * OPEN MEANS OPEN, GUESTS INCLUDED — the same law the flag's own
+     * definition states, applied at this door. A guest read the coming-soon
+     * promise here on launch day (2026-09-02) because this once required a
+     * session as well as the flag; the rooms are browsable by anyone, and a
+     * guest's Join walks to register with this screen as the way back.
+     *
+     * A guest reads the CONFIG mirror rather than Pennant: Pennant resolves
+     * a guest to the null scope and persists that answer, so a guest who
+     * loaded a page before the flip would keep "closed" until a purge.
+     */
     #[Computed]
     public function showLobby(): bool
     {
-        return auth()->check() && Feature::active('pickem');
+        return auth()->check()
+            ? Feature::active('pickem')
+            : config('cfb.pickem_open') === true;
     }
 
     /**
@@ -287,6 +300,16 @@ new class extends Component
 
     private function takeSeat(JoinGroup $action, Group $group, string $errorBag)
     {
+        if (auth()->guest()) {
+            // The join screen's guest arm, for a walk-on: REGISTER, with this
+            // store as the way back. A room seat is verified-only, so there
+            // is nothing to park for an automatic seat — the reader returns
+            // to a store that now shows them the gate.
+            session()->put('url.intended', route('pickem.lobby', absolute: false));
+
+            return $this->redirectRoute('register', navigate: true);
+        }
+
         try {
             $action->handle(auth()->user(), $group);
         } catch (PickemParticipationGated) {
@@ -535,6 +558,9 @@ new class extends Component
             </div>
         @endif
 
+        {{-- Members only: the link below carries the READER's handle and
+             their name in the share text, and a guest has neither. --}}
+        @auth
         {{-- BRING SOMEBODY. The lobby is the walk-on destination and the
              only surface with a link that never goes stale: a room code
              would rot weekly and a private group's code cannot field a
@@ -580,6 +606,7 @@ new class extends Component
                 </flux:button>
             </div>
         </div>
+        @endauth
 
         {{-- The other product, one line, and named as what it IS rather
              than as a mood: a reader standing in a store of one-Saturday
