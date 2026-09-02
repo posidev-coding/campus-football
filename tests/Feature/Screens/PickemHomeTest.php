@@ -137,6 +137,31 @@ describe('the promise (outside the flag)', function () {
             ->assertDontSee('My Groups');
     });
 
+    it('pitches a guest the real thing once the flag opens — never "Coming soon" over a live product', function () {
+        /*
+         * Launch day, 2026-09-02: a guest on the Picks tab read the promise
+         * with the flag open, because the personal screen requires a
+         * session and the fallback was the promise verbatim. The badge and
+         * the "on the way" pitch are for the CLOSED flag only; open, a
+         * guest gets the app invite's words and the one door they have.
+         */
+        config()->set('cfb.pickem_open', true);
+
+        $this->get(route('pickem.home'))
+            ->assertOk()
+            ->assertDontSee('Coming soon')
+            ->assertSee(Voice::line('join.app.body'))
+            ->assertSee('Create your account')
+            ->assertSee(route('pickem.lobby'), escape: false);
+
+        // The door: REGISTER, with this screen as the way back.
+        Livewire::test('pickem-home')
+            ->call('start')
+            ->assertRedirect(route('register'));
+
+        expect(session('url.intended'))->toBe(route('pickem.home', absolute: false));
+    });
+
     it('shows an admin the real screen, at both doors', function () {
         // The four-cell matrix's remaining corner: flag on, and both
         // routes are real 200s with no hop between them.

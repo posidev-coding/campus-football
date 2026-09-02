@@ -113,6 +113,23 @@ new class extends Component
     }
 
     /**
+     * A guest's one door off the pitch below: REGISTER, with this screen as
+     * the way back — the join screen's guest arm, for somebody who walked
+     * in through the tab rather than a link. A signed-in reader never sees
+     * the door; the branch that renders it is guest-only.
+     */
+    public function start()
+    {
+        if (auth()->guest()) {
+            session()->put('url.intended', route('pickem.home', absolute: false));
+
+            return $this->redirectRoute('register', navigate: true);
+        }
+
+        return $this->redirectRoute('pickem.home', navigate: true);
+    }
+
+    /**
      * THE PICKS WALK. Its own gate beside Home's, reading its OWN column:
      * `picks_tour_completed_at`, never `picks_first_seen_at`. The first-visit
      * stamp is the economy's — it is what pays the weekly top-off — and
