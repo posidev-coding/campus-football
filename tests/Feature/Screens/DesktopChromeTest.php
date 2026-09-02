@@ -223,33 +223,35 @@ describe('the measure never narrows as the window widens', function () {
             .' `md` instead, where the content box is still under it.');
     });
 
-    it('splits My Picks into a spine and a sidecar, in that order', function () {
+    it('gives My Picks ONE measure, capped and unprefixed, with the spine in order', function () {
         /*
-         * The urgency spine `docs/screens.md` documents — ribbon, needs your
-         * picks, where you play — keeps the main column and its order. Only
-         * the tail rides the sidecar, and it must stay AFTER the spine in
-         * source: below `lg` the grid collapses to the same flex column it
-         * always was, so DOM order IS the phone layout.
+         * The lg sidecar is gone (pass 2, 2026-09-01): after the tail
+         * thinned it was a 20rem column carrying one door and a bar beside
+         * a spine that starved at ~648px. The personal branch is one
+         * column capped at max-w-3xl — UNPREFIXED, so the cap engages the
+         * moment the content box reaches it and the lg-cap sweep above
+         * cannot trip — and the urgency spine keeps its source order,
+         * which IS the phone order.
          */
         $source = file_get_contents(resource_path('views/livewire/pickem-home.blade.php'));
 
-        $grid = strpos($source, 'lg:grid-cols-[minmax(0,1fr)_20rem]');
+        $measure = strpos($source, 'mx-auto flex w-full max-w-3xl flex-col gap-5');
         $seats = strpos($source, 'data-tour="seats"');
         $invite = strpos($source, 'Have an invite code?');
 
-        expect($grid)->not->toBeFalse()
-            ->and($seats)->toBeGreaterThan($grid)
+        expect($measure)->not->toBeFalse()
+            ->and($source)->not->toContain('lg:grid-cols-[minmax(0,1fr)_20rem]')
+            ->and($seats)->toBeGreaterThan($measure)
             ->and($invite)->toBeGreaterThan($seats);
     });
 
     it('keeps the ladder below the week tail, where a tabless reader had it', function () {
         /*
-         * The one branch this restructure could have broken. On a TABLESS
-         * first run the ladder renders inside the week flow (`! $hasTabs`),
-         * so if it had stayed in the main column it would have jumped ABOVE
-         * the invite disclosure on a phone. It sits in the sidecar after the
-         * moved tail instead, which restores the exact order. Source order
-         * is the guarantee, because below `lg` the columns concatenate.
+         * The one branch a restructure here could break. On a TABLESS first
+         * run the ladder renders inside the week flow (`! $hasTabs`), so if
+         * it rose above the invite disclosure it would jump ABOVE it on a
+         * phone. It sits at the foot after the invite instead; with one
+         * column, source order is the whole guarantee.
          */
         $source = file_get_contents(resource_path('views/livewire/pickem-home.blade.php'));
 
@@ -273,10 +275,10 @@ describe('flat card lists claim the width', function () {
         // measured to starve its name below 390px, and two-up at a 768px
         // viewport gives 356px cells. `lg` gives 484px.
         ['lobby', 'grid gap-2 lg:grid-cols-2 xl:grid-cols-3'],
-        // Beside the sidecar the main column is ~648px at `lg`, so seats
-        // do not go two-up until `xl`. `gap-3`, not `gap-2`: the cards
+        // One measure and no sidecar since pass 2, so seats go two-up at
+        // `md` like the clubhouse's cards. `gap-3`, not `gap-2`: the cards
         // carry a surface, and at 8px a stack of them ran together.
-        ['pickem-home', 'grid gap-3 xl:grid-cols-2'],
+        ['pickem-home', 'grid gap-3 md:grid-cols-2'],
     ]);
 
     it('cancels the pick surface bleed only where it sits in a column', function () {

@@ -230,3 +230,61 @@ the PRs land.
 4. `php artisan cfb:uploads:doctor` locally (public disk) and, after deploy, on Laravel Cloud with `--probe` — the founder runs the latter; its output decides whether AWS_URL / UPLOAD_DISK / CORS still need setting in the Cloud console.
 5. Break-it-back: remove `no_acl` from the r2 disk and watch the PutObject pin red; give `tmp-for-tests` the `no_acl` key in `LivewireBucketUploadTest` and confirm the presigned PUT still signs no ACL; put the accordion back inside the published fork and watch `PickemGroupsTest:222` red; restore `@if ($actions ?? false)` on the hero and watch the empty-wrapper pin red.
 6. Overview device pass with a reader in three groups and a room (a scratch user seeded through the test fixtures): the button top lands near 306px at 390; `data-tour="week"` and `data-tour="balance"` are sibling boxes; the Results tab shows no band; `/picks` light and dark at 390, 768 and 1280.
+
+## Shipped (2026-09-01/02)
+
+Ten stacked PRs, merge bottom-up: #106 `gutter-tabs-fill` → #107
+`clubhouse-hero-light` → #108 `clubhouse-talk-tab` → #109
+`clubhouse-rules-accordion` → #110 `r2-writes-drop-the-acl` → #111
+`picks-switcher-title` → #112 `picks-week-band` → #113 `picks-ask-and-voice`
+→ #114 `picks-tail-doors` → #115 `picks-one-measure`. Every PR ran the full
+suite green alone (2613 → 2638 tests) and was checked in the device harness
+at 390 and 768, light and dark, with `scrollX === 0` in every frame.
+
+### Voice manifest
+
+| Key | Change | Why |
+|---|---|---|
+| `talk.door.hint` | retired (PR 3) | its render site, the Standings-foot link-row, went with the Talk tab |
+| `groups.icon.failed` | new ×3 (PR 5) | a refused R2 write says so on the icon's own line instead of a 500 |
+| `account.photo.failed` | new ×3 (PR 5) | the same for the account photo — one register set per surface, never a shared line about "your picture/face" |
+| `lobby.needs.subheading` | retired (PR 8) | the heading is the definition; the count moved onto the heading row |
+| `picks.groups.subheading` | retired (PR 8) | the heading, the menu group and every card already say it |
+| `groups.join.subheading` | retired (PR 8) | a definition of a control; the field's description is the instruction |
+| `picks.contests.subheading` | rewritten ×3 (PR 8) | the screen's ONE definition, carrying the contrast: rooms are one Saturday, the groups above are not |
+| `picks.rooms.past` | retired (PR 9) | its door went; History is on the Results heading row |
+
+Plain, on purpose: "My groups and rooms", "All my groups and rooms",
+"and N more below", "Have an invite code?", "History", "Scoring, ranks, and
+what a room costs."
+
+### Move ledger (nothing silently lost)
+
+**Moves**: the Talk door → the clubhouse's last gutter tab (`/groups/{g}/talk`
+301s to `?view=talk`); the hero's blurb + frame line and the Standings-foot
+rules card → one collapsed `x-mode-rules` atop the Slate tab; the "and N more
+below" count → the needs heading row; the hero's button → above the zinger;
+"Season history" → a `History` text door on the Results "Last week" heading
+row (the empty-state row when nothing has settled); the you-strip → the week
+band's second row (`bare` variant; the clubhouse Standings keep `panel`); the
+tail blocks → the foot of the one column; the tour's `balance` stop → second,
+after `week`.
+
+**Removed**: the hero's Talk icon; `group-talk.blade.php`; `x-week-ribbon`;
+"Rooms you've played"; the lg sidecar wrapper; the invite row's border and
+Voice line; the Lobby teaser zinger at the section foot (`$pitch` false —
+it renders on the first-run include only).
+
+**Added**: `x-gutter-tabs` `fill`; `x-week-band`; `x-you-strip` `variant`;
+`x-mode-rules` `pitch` / `clamp` / slot; `App\Support\R2Writes` and the
+`no_acl` disk key; `ImageUpload::accept()` / `mimeMessage()`; `php artisan
+cfb:uploads:doctor [--probe] [--force]`.
+
+**Untouched**: the first-run "Two ways to play" block; "All in"; the plate
+fork; the ladder; the pick surface; the Lobby screen; every tour line.
+
+### Still the founder's
+
+After PR 5 deploys, on Laravel Cloud: `php artisan cfb:uploads:doctor
+--probe`. Its output says whether `UPLOAD_DISK`, `AWS_URL` and the bucket's
+CORS policy (PUT from the app origin) still need setting in the Cloud console.

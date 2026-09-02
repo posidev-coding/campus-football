@@ -804,7 +804,7 @@ new class extends Component
     }
 }; ?>
 
-<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-5">
     @if ($this->showPersonal)
         {{-- ============================== MY PICKS =================== --}}
         {{-- The section strip names this place — the h1 stays for screen
@@ -844,13 +844,21 @@ new class extends Component
             />
         @endif
 
+        {{-- ONE MEASURE (pass 2, 2026-09-01). The lg sidecar is gone: it
+             held the played-rooms door, the ladder, the archive and the
+             reference, and after the tail thinned it was a 20rem column
+             carrying one door and a bar beside a spine that starved at
+             ~648px. The whole personal branch is one column now, capped
+             at max-w-3xl and centered — UNPREFIXED, so the cap engages
+             the moment the content box reaches it and the measure never
+             narrows as the window widens (the lg-cap sweep in
+             DesktopChromeTest is what that guards). Nothing moves on a
+             phone: the DOM order was already the phone order. --}}
         <div
             wire:loading.class="opacity-60 pointer-events-none"
             wire:target="view"
-            class="flex flex-col gap-6 motion-safe:transition-opacity lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6"
+            class="mx-auto flex w-full max-w-3xl flex-col gap-5 motion-safe:transition-opacity"
         >
-        {{-- MAIN COLUMN: the urgency spine, in one column and in order. --}}
-        <div class="flex min-w-0 flex-col gap-6">
         @if ($this->activeView === 'week')
         {{-- THE WEEK BAND: the dateline and ONE clock line on its first
              row, YOU on its second — one light card where a dark ribbon
@@ -1055,12 +1063,12 @@ new class extends Component
                     </a>
                 </div>
 
-                {{-- Two-up only from `xl`: this sits in the main column
-                     beside the sidecar, so it is ~648px at `lg` and does
-                     not have room for two seats until `xl`. `min-w-0` at
-                     the call site because group-card's root carries none
-                     and a grid item keeps its min-content width. --}}
-                <div class="grid gap-3 xl:grid-cols-2">
+                {{-- Two-up from `md`: the measure is the whole content box
+                     now (no sidecar), so two seats fit at 768 as they do on
+                     the clubhouse. `min-w-0` at the call site because
+                     group-card's root carries none and a grid item keeps
+                     its min-content width. --}}
+                <div class="grid gap-3 md:grid-cols-2">
                     @foreach ($this->groupCards as $card)
                         <x-group-card class="min-w-0" wire:key="play-{{ $card['group']->id }}" :card="$card" />
                     @endforeach
@@ -1122,7 +1130,7 @@ new class extends Component
                 @endif
 
                 @if ($this->roomCards->isNotEmpty() || $this->tableCards->isNotEmpty())
-                    <div class="grid gap-3 xl:grid-cols-2">
+                    <div class="grid gap-3 md:grid-cols-2">
                         @foreach ($this->roomCards->concat($this->tableCards) as $card)
                             <x-group-card class="min-w-0" wire:key="play-{{ $card['group']->id }}" :card="$card" />
                         @endforeach
@@ -1229,17 +1237,11 @@ new class extends Component
         </div>
         @endif
 
-        </div>
-
-        {{-- THE SIDECAR. Every block below already sat at the FOOT of this
-             screen, so below `lg` nothing moved: the column collapses and
-             they land exactly where a phone reader has always found them.
-             From `lg` they ride alongside instead of pushing the spine down
-             the page — the same trade the game screen makes. The invite
-             code and the Lobby door left here 2026-09-01 for the sections
-             they belong to. Not sticky: the picks walk spotlights `how` in
-             here, and it scrolls to a measured box. --}}
-        <div class="flex flex-col gap-6">
+        {{-- THE FOOT: the ladder on Results and the one reference door.
+             These sat in an lg sidecar until pass 2; they are the tail of
+             the one column now, exactly where a phone reader always found
+             them. Not sticky: the picks walk spotlights `how` here, and it
+             scrolls to a measured box. --}}
         {{-- The played rooms leave this tab with NO door of their own
              (pass 2): a public room is a transient contest and the way
              back to it is History, which the Results heading row links
@@ -1302,7 +1304,6 @@ new class extends Component
         <x-link-row :href="route('pickem.how')" title="How this works" data-tour="how">
             <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Scoring, ranks, and what a room costs.</span>
         </x-link-row>
-        </div>
         </div>
     @else
         @include('partials.pickem-promise')
