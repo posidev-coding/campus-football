@@ -314,11 +314,39 @@ Four things R2 does differently, and none of them announces itself:
   `ImageUpload::rules()` is `bail` + a JPG/PNG/GIF/WebP mime rule, and the
   browser control's `accept` names the same four.
 
+**A platform injects bucket credentials at RUN time; `config:cache` freezes
+them at BUILD time.** The first Cloud run of the doctor (2026-09-02) reported
+`AWS_URL` set and `AWS_BUCKET`, `AWS_ENDPOINT` and `AWS_ACCESS_KEY_ID` unset —
+a disk that cannot be constructed at all, which is why no upload had ever
+worked there and why PR #97's presigned-PUT fix could not have helped. The
+config was right; the values simply were not in it. `AWS_URL` had been typed
+into the environment by hand (so it existed when the config was built) while
+the bucket's own names are attached to the environment by the platform and
+arrive later. The doctor now reads `env()` BESIDE `config()` and says so in
+one line, because reading config alone sends somebody to re-read
+`config/filesystems.php`, where the disk is perfectly correct. The fix is to
+make the names present when the config is built (set them as plain
+environment variables) and redeploy — never to add a fallback in the disk.
+
+**The disk NAME is the platform's to choose, so `no_acl` cannot be the only
+switch.** Laravel Cloud mounts a bucket under a disk name given in its own UI
+(`app`, in this deployment), and nobody can add a key to an array that is not
+in this tree. `R2Writes::wants()` therefore attaches the ACL-stripping
+middleware for a disk carrying `no_acl` OR one whose ENDPOINT host is
+`*.r2.cloudflarestorage.com`. The key stays the documented switch and the one
+to write; the endpoint is the net. Harmless in that direction — R2 rejects an
+ACL outright and a modern AWS bucket has ACLs disabled — so no bucket on that
+endpoint wants the header being dropped. `config('cfb.upload_disk')` is still
+the one env var that chooses which disk is used.
+
 **`php artisan cfb:uploads:doctor`** answers, in one screen, what this
 repository cannot: the resolved upload disk and Livewire's branch, which of
 `AWS_URL` / `AWS_BUCKET` / `AWS_ENDPOINT` / `AWS_ACCESS_KEY_ID` are set (names,
-never values), the checksum mode as the CLIENT reads it, and whether
-`r2.no-acl` is on that client. `--probe` writes a 12-byte object, reads it
+never values — and which are set in the ENVIRONMENT but missing from the
+config), the disks this app actually defines, whether the public URL is a
+custom domain, the checksum mode as the CLIENT reads it, and whether
+`r2.no-acl` is on that client. It never dies of the disease: a disk that
+cannot be built is reported, and `--probe` is skipped rather than throwing. `--probe` writes a 12-byte object, reads it
 back, HEADs its public URL (which is what tells you `AWS_URL` and the bucket's
 public access are right) and deletes it — it WRITES to whatever bucket the
 environment names, so it prints the disk and bucket name and refuses outside

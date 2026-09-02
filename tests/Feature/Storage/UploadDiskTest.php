@@ -174,13 +174,31 @@ describe('the configurable disk', function () {
         expect(substr_count((string) $client->getHandlerList(), 'Name: '.R2Writes::NAME))->toBe(1);
     });
 
-    it('leaves a plain s3 disk alone unless it asks for no_acl', function () {
-        config(['filesystems.disks.plain-s3' => [
-            'driver' => 's3', 'key' => 'k', 'secret' => 's', 'region' => 'auto',
-            'bucket' => 'b', 'endpoint' => 'https://account.r2.cloudflarestorage.com',
-        ]]);
+    it('leaves a genuine AWS disk alone, and follows R2 onto a disk that never asked', function () {
+        /*
+         * The key is the switch and stays the one to write. The ENDPOINT is
+         * the safety net for a disk whose config this repository does not
+         * own — Laravel Cloud mounts a bucket under a disk name of its own,
+         * where nobody can add `no_acl` to an array that is not in the tree
+         * (found on 2026-09-02, when the bucket turned out to be mounted as
+         * disk `app`). Harmless in that direction: R2 rejects an ACL and a
+         * modern AWS bucket has them disabled, so nothing on this endpoint
+         * wants the header being dropped.
+         */
+        $base = ['driver' => 's3', 'key' => 'k', 'secret' => 's', 'region' => 'auto', 'bucket' => 'b'];
 
-        expect(R2Writes::attached(Storage::disk('plain-s3')->getClient()))->toBeFalse();
+        config([
+            'filesystems.disks.real-aws' => $base + ['endpoint' => null],
+            'filesystems.disks.cloud-mounted' => $base + ['endpoint' => 'https://367be3a2.r2.cloudflarestorage.com'],
+        ]);
+
+        expect(R2Writes::attached(Storage::disk('real-aws')->getClient()))->toBeFalse()
+            ->and(R2Writes::attached(Storage::disk('cloud-mounted')->getClient()))->toBeTrue();
+
+        // And the endpoint test reads the HOST, never a substring: a bucket
+        // named for the suffix is not an R2 endpoint.
+        expect(R2Writes::wants($base + ['endpoint' => 'https://s3.amazonaws.com', 'bucket' => 'r2.cloudflarestorage.com']))->toBeFalse()
+            ->and(R2Writes::wants($base + ['endpoint' => null, 'no_acl' => true]))->toBeTrue();
     });
 });
 

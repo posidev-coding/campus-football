@@ -49,14 +49,28 @@ class UploadsDoctorCommand extends Command
         $temp = config('livewire.temporary_file_upload.disk') ?? config('filesystems.default');
         $this->check(true, 'Livewire temp disk', $temp.' · direct-to-bucket: '.(FileUploadConfiguration::isUsingS3() ? 'yes' : 'no'));
 
+        $usable = false;
+
         if (($config['driver'] ?? null) !== 's3') {
             $this->line('  <fg=gray>local disk — the R2 checks do not apply</>');
+            $usable = $config !== null;
         } else {
-            $this->checkBucketConfig($disk, $config);
+            $usable = $this->checkBucketConfig($disk, $config);
         }
 
         if ($this->option('probe')) {
-            $this->probe($disk, $config ?? []);
+            /*
+             * A probe against a disk that cannot even be CONSTRUCTED throws
+             * out of the command — which is how this first ran on Laravel
+             * Cloud: three env names unset, so Flysystem refused the adapter
+             * and the TypeError buried the report that had just explained
+             * why. A doctor may never die of the disease it diagnoses.
+             */
+            if ($usable) {
+                $this->probe($disk, $config ?? []);
+            } else {
+                $this->check(false, 'Probe', 'not run — the disk above is not configured, so there is nothing to write to');
+            }
         }
 
         $this->newLine();
@@ -72,13 +86,74 @@ class UploadsDoctorCommand extends Command
         return self::SUCCESS;
     }
 
-    /** @param  array<string, mixed>  $config */
-    private function checkBucketConfig(string $disk, array $config): void
+    /**
+     * @param  array<string, mixed>  $config
+     * @return bool whether the disk is complete enough to talk to a bucket
+     */
+    private function checkBucketConfig(string $disk, array $config): bool
     {
-        // Names, never values. Read off config rather than env(): with the
-        // config cached in production, env() answers null for everything.
-        foreach (['AWS_URL' => 'url', 'AWS_BUCKET' => 'bucket', 'AWS_ENDPOINT' => 'endpoint', 'AWS_ACCESS_KEY_ID' => 'key'] as $env => $key) {
-            $this->check(filled($config[$key] ?? null), $env, filled($config[$key] ?? null) ? 'set' : "unset (disks.{$disk}.{$key})");
+        /*
+         * Names, never values — and CONFIG beside ENVIRONMENT, because the
+         * gap between the two is its own diagnosis. `env()` reads the real
+         * process environment whether or not the config is cached, so a name
+         * the environment has and the config does not means the config was
+         * cached before that name existed: a platform that injects bucket
+         * credentials at RUN time, cached at BUILD time. That is the shape
+         * Laravel Cloud produced on 2026-09-02 — a hand-typed AWS_URL
+         * present, every injected bucket name absent — and no amount of
+         * re-reading config/filesystems.php explains it.
+         */
+        $names = ['AWS_URL' => 'url', 'AWS_BUCKET' => 'bucket', 'AWS_ENDPOINT' => 'endpoint', 'AWS_ACCESS_KEY_ID' => 'key'];
+        $cachedWithout = false;
+
+        foreach ($names as $env => $key) {
+            $inConfig = filled($config[$key] ?? null);
+            $inEnv = filled(env($env));
+
+            if ($inConfig) {
+                $this->check(true, $env, 'set');
+
+                continue;
+            }
+
+            $cachedWithout = $cachedWithout || $inEnv;
+
+            $this->check(false, $env, $inEnv
+                ? "the ENVIRONMENT has it, the config does not — disks.{$disk}.{$key} was cached without it"
+                : "unset (disks.{$disk}.{$key})");
+        }
+
+        if ($cachedWithout) {
+            $this->line('  <fg=yellow>→ the config is '.($this->laravel->configurationIsCached() ? 'CACHED' : 'not cached')
+                .'. A name injected after `config:cache` never reaches the disk: set it as a plain environment'
+                .' variable so it is present when the config is built, then redeploy.</>');
+        }
+
+        // Which disks this app actually defines, so a bucket "mounted as
+        // disk X" somewhere else is visibly not a disk here.
+        $defined = collect(config('filesystems.disks'))
+            ->map(fn (array $d, string $name) => $name.' ('.($d['driver'] ?? '?').')')
+            ->values()
+            ->implode(', ');
+
+        $this->line("  <fg=gray>disks defined here: {$defined}</>");
+
+        if (filled($config['url'] ?? null)) {
+            /*
+             * A custom public domain is right and expected — the S3 endpoint
+             * is authenticated, so AWS_URL has to be the bucket's own public
+             * hostname — but it must be BOUND to this bucket, and a domain
+             * pointing anywhere else 404s every asset while every upload
+             * succeeds. The VERDICT, not the domain: this report promises
+             * names and never values, and the probe's HEAD is what settles
+             * it anyway.
+             */
+            $urlHost = (string) parse_url((string) $config['url'], PHP_URL_HOST);
+            $endpointHost = (string) parse_url((string) ($config['endpoint'] ?? ''), PHP_URL_HOST);
+            $custom = $urlHost !== '' && $endpointHost !== '' && ! str_ends_with($urlHost, $endpointHost);
+
+            $this->line('  <fg=gray>public URL is '.($custom ? 'a custom domain' : "the bucket's own endpoint")
+                .' — it must be bound to this bucket, which only --probe\'s HEAD can confirm</>');
         }
 
         try {
@@ -86,7 +161,7 @@ class UploadsDoctorCommand extends Command
         } catch (Throwable $e) {
             $this->check(false, 'S3 client', get_class($e).': '.$e->getMessage());
 
-            return;
+            return false;
         }
 
         $checksum = $client->getConfig('request_checksum_calculation');
@@ -94,12 +169,16 @@ class UploadsDoctorCommand extends Command
 
         $attached = R2Writes::attached($client);
         $this->check($attached, 'ACL-free writes', $attached ? R2Writes::NAME.' middleware on the client' : R2Writes::NAME." missing — set 'no_acl' => true on the disk");
+
+        return true;
     }
 
     /** @param  array<string, mixed>  $config */
     private function probe(string $disk, array $config): void
     {
-        $bucket = $config['bucket'] ?? '(local)';
+        $bucket = ($config['driver'] ?? null) === 's3'
+            ? ($config['bucket'] ?? 'unset')
+            : '(local)';
 
         if (! app()->isProduction() && ! $this->option('force')) {
             $this->check(false, 'Probe', "refused: this would write to disk '{$disk}' (bucket {$bucket}) from the '".app()->environment()."' environment — pass --force if that is the intent");
