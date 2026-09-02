@@ -286,11 +286,44 @@ Four things R2 does differently, and none of them announces itself:
   `public`, which happens when the disk is literally named `public` or when
   `->visibility('public')` was called — so dropping that call is what makes an
   upload safe, and `UploadDiskTest` asserts the framework's default rather than
-  our source, because the risk is Filament changing it.
+  our source, because the risk is Filament changing it. **Not asking is not
+  enough for the app's own writes** (CFB-41, 2026-09-01): Flysystem's S3
+  adapter puts an `ACL` on EVERY PutObject (`private` when nothing asked) and
+  has no option to omit it, so `SetGroupIcon`'s copy-back, the account photo,
+  the brand assets and every Filament save were refused with `NotImplemented`
+  — and `throw => true` made each one a 500 on the Livewire update while the
+  suite stayed green. The fix is one seam: `App\Support\R2Writes` is an
+  init middleware on the S3 CLIENT that unsets `ACL` from the command, and
+  `AppServiceProvider::register()` wraps the `s3` driver through
+  `Storage::extend` so the middleware is attached when a disk carrying
+  `'no_acl' => true` RESOLVES — never at boot, where it would land on a client
+  the tests never see and would not survive `forgetDisk()`. The browser's
+  presigned PUT keeps its own fix (`R2SignedUploadUrl`); the init step runs on
+  it too and is a no-op there. A refused write now reports the exception and
+  says so on the icon's / photo's own error line (`groups.icon.failed`,
+  `account.photo.failed`).
 - **The AWS SDK sends checksum headers by default.** `request_checksum_calculation`
   defaults to `when_supported` (S3Client.php:295 in the installed 3.390.5),
   putting `x-amz-checksum-crc32` on every PutObject. Both checksum options are
-  pinned to `when_required`.
+  pinned to `when_required` — at the TOP level of the disk array, not under
+  `options`, which is the Flysystem adapter's per-write bag that the SDK never
+  reads (the pin sat there, inert, until 2026-09-01; `UploadDiskTest` now
+  asks the resolved client what it thinks rather than reading the config).
+- **An iPhone answers `accept="image/*"` with a HEIC**, which Laravel 13's
+  `image` rule accepts and `dimensions` then misreports as "too small".
+  `ImageUpload::rules()` is `bail` + a JPG/PNG/GIF/WebP mime rule, and the
+  browser control's `accept` names the same four.
+
+**`php artisan cfb:uploads:doctor`** answers, in one screen, what this
+repository cannot: the resolved upload disk and Livewire's branch, which of
+`AWS_URL` / `AWS_BUCKET` / `AWS_ENDPOINT` / `AWS_ACCESS_KEY_ID` are set (names,
+never values), the checksum mode as the CLIENT reads it, and whether
+`r2.no-acl` is on that client. `--probe` writes a 12-byte object, reads it
+back, HEADs its public URL (which is what tells you `AWS_URL` and the bucket's
+public access are right) and deletes it — it WRITES to whatever bucket the
+environment names, so it prints the disk and bucket name and refuses outside
+production unless `--force`. Run it on Laravel Cloud after a deploy; a CORS
+policy allowing PUT from the app origin is still Cloudflare's to hold.
 - **`league/flysystem-aws-s3-v3` is a separate package** and was not installed —
   `aws/aws-sdk-php` was only there for Cloud's queue driver. Without the adapter
   `Storage::disk('r2')` throws.

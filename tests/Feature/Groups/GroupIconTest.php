@@ -5,8 +5,12 @@ use App\Exceptions\NotGroupCommissioner;
 use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\User;
+use App\Support\ImageUpload;
+use App\Support\Voice;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Livewire\Livewire;
 
 /*
@@ -164,4 +168,53 @@ it('says the kind on both sides of the pair, at every width', function () {
     // Twice each: the sm-and-up chip, and the base-width meta lead.
     expect(substr_count($band($private), 'Private'))->toBeGreaterThanOrEqual(2)
         ->and(substr_count($band($room), 'Public'))->toBeGreaterThanOrEqual(2);
+});
+
+/*
+ * CFB-41's two failure modes, held here so the icon can never again fail
+ * SILENTLY: a disk that refuses the write, and a file the rules disagree
+ * about.
+ */
+it('says so on the icon\'s own line when the disk refuses, instead of a 500', function () {
+    [$commissioner, $group] = pickemContest();
+
+    // The shape R2 produced for months: the adapter throws (NotImplemented
+    // behind `throw => true`). A mock disk, so no fake filesystem answers
+    // for it.
+    // Livewire's temporary file stores through put(), not putFileAs().
+    $disk = Mockery::mock(Filesystem::class);
+    $disk->shouldReceive('put')->once()->andThrow(new RuntimeException('NotImplemented'));
+    Storage::set(config('cfb.upload_disk'), $disk);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->set('iconFile', UploadedFile::fake()->image('clubhouse.jpg', 256, 256))
+        ->assertHasErrors('iconFile')
+        ->assertSee(Voice::line('groups.icon.failed', for: $commissioner))
+        ->assertSet('iconFile', null);
+
+    expect($group->refresh()->icon)->toBeNull();
+});
+
+it('refuses a HEIC by name, with the mime message and nothing else', function () {
+    /*
+     * An iPhone answers accept="image/*" with a HEIC. Laravel 13's `image`
+     * rule accepts it and `dimensions` then cannot read it, so the reader
+     * was told the picture was "too small" — a lie they could not fix by
+     * cropping. `bail` + the mime rule name the real reason, once.
+     */
+    $heic = UploadedFile::fake()->createWithContent(
+        'photo.heic',
+        "\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic".str_repeat("\x00", 64),
+    );
+
+    $errors = Validator::make(['icon' => $heic], ['icon' => ImageUpload::rules()], [
+        'icon.mimes' => ImageUpload::mimeMessage(),
+        'icon.dimensions' => 'That image is too small to read at icon size.',
+    ])->errors()->get('icon');
+
+    expect($errors)->toBe([ImageUpload::mimeMessage()]);
+
+    // And the picker steers before the rule refuses.
+    expect(ImageUpload::accept())->toBe('image/jpeg,image/png,image/gif,image/webp')
+        ->and(file_get_contents(resource_path('views/components/image-file-input.blade.php')))->not->toContain('accept="image/*"');
 });

@@ -908,6 +908,24 @@ class Voice
             'r' => 'Got a code? Punch it in and get in here.',
         ],
 
+        /*
+         * THE UPLOAD THAT DID NOT LAND. The storage side refused (R2
+         * answering NotImplemented to an ACL was months of exactly this),
+         * and the reader needs to know it was not their picture. Plain
+         * about what to do, loud about whose fault it is.
+         */
+        'groups.icon.failed' => [
+            'pg' => "The icon didn't upload. Try again in a minute — if it keeps failing, the storage side is the problem, not your picture.",
+            'pg13' => "The icon didn't make it to the shelf. Try again in a minute — if it keeps failing, the storage side is the problem, not your picture.",
+            'r' => "The icon didn't make it to the shelf, and that's on the storage, not your picture. Try again in a minute; if it keeps failing, somebody owes you an apology.",
+        ],
+
+        'account.photo.failed' => [
+            'pg' => "The photo didn't upload. Try again in a minute — if it keeps failing, the storage side is the problem, not your picture.",
+            'pg13' => "The photo didn't make it to the shelf. Try again in a minute — if it keeps failing, the storage side is the problem, not your face.",
+            'r' => "The photo didn't make it to the shelf, and that's on the storage, not your face. Try again in a minute; if it keeps failing, somebody owes you an apology.",
+        ],
+
         'groups.join.bad_code' => [
             'pg' => "That code doesn't match any group. Check it and try again.",
             'pg13' => 'No group answers to that code. Check it with whoever sent it.',

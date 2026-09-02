@@ -79,12 +79,24 @@ return [
          *   them — Laravel Cloud's own docs are explicit that setting
          *   `visibility: 'public'` fails with `NotImplemented`. Visibility is a
          *   property of the BUCKET, chosen when it is created. So neither this
-         *   disk nor any FileUpload feeding it may ask for it.
+         *   disk nor any FileUpload feeding it may ask for it — and not asking
+         *   is not enough: Flysystem's S3 adapter puts an ACL on EVERY
+         *   PutObject (`private` when nothing asked) with no option to omit
+         *   it. `no_acl` is what turns that off: AppServiceProvider wraps the
+         *   s3 driver at resolution and, for a disk carrying this key,
+         *   attaches App\Support\R2Writes to the client, which unsets `ACL`
+         *   from every command. A plain boolean, so it survives config:cache.
          * - Since 3.337 the AWS SDK sends `x-amz-checksum-crc32` on every
          *   upload by default (`request_checksum_calculation: when_supported`,
          *   documented at S3Client.php:295 in the installed 3.390.5). That is
          *   the usual incompatibility surface for non-AWS implementations, and
-         *   `when_required` costs nothing to insure against.
+         *   `when_required` costs nothing to insure against. The two keys sit
+         *   at the TOP level of this disk, NOT under `options`: `options` is
+         *   the Flysystem adapter's per-write bag, which the SDK never reads,
+         *   so a pin there is inert (and UploadDiskTest was green over it).
+         *   Top-level keys reach `new S3Client($config)` through
+         *   formatS3Config(), where S3Client::getConfig() and the checksum
+         *   middleware actually read them.
          *
          * `throw` is true, unlike the disks above: an upload that silently
          * returns false leaves the admin looking at a form that appears to have
@@ -99,10 +111,9 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'options' => [
-                'request_checksum_calculation' => 'when_required',
-                'response_checksum_validation' => 'when_required',
-            ],
+            'request_checksum_calculation' => 'when_required',
+            'response_checksum_validation' => 'when_required',
+            'no_acl' => true,
             'throw' => true,
             'report' => false,
         ],

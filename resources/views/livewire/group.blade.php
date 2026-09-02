@@ -919,6 +919,7 @@ new class extends Component
         $this->validate([
             'iconFile' => ImageUpload::rules(),
         ], [
+            'iconFile.mimes' => ImageUpload::mimeMessage(),
             'iconFile.max' => ImageUpload::oversizedMessage(),
             'iconFile.dimensions' => 'That image is too small to read at icon size.',
         ]);
@@ -927,6 +928,16 @@ new class extends Component
             $action->handle(auth()->user(), $this->group, $this->iconFile);
         } catch (NotGroupCommissioner) {
             abort(403);
+        } catch (\Throwable $e) {
+            // The disk refused (R2 answered NotImplemented for months, and
+            // `throw => true` made that a 500 on this update). Report it,
+            // say so in the icon's own error line, and leave the group on
+            // whatever mark it had — never a half-written path.
+            report($e);
+            $this->iconFile = null;
+            $this->addError('iconFile', Voice::line('groups.icon.failed'));
+
+            return;
         }
 
         $this->iconFile = null;

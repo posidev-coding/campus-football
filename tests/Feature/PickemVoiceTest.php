@@ -131,6 +131,10 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'leaderboard.empty',
     'notify.mode_changed.body',
     'groups.invite.share_text',
+    // The upload that did not land — the storage side's refusal, said
+    // on the icon's and the photo's own error lines instead of a 500.
+    'groups.icon.failed',
+    'account.photo.failed',
     'join.pitch',
     'join.miss',
     'join.room.played',

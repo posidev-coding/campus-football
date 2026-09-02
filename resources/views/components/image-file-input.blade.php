@@ -12,6 +12,11 @@
     The cap and the message come from App\Support\ImageUpload; the host
     component must use App\Livewire\Concerns\UploadsImages for the knock.
 
+    `accept` names four formats, not `image/*`: an iPhone answers `image/*`
+    with a HEIC, which the server's `image` rule accepts and its
+    `dimensions` rule then misreports as "too small". The picker steers
+    toward JPG/PNG/GIF/WebP and the mime rule refuses the rest by name.
+
     The body lives in an `x-data` METHOD, never in the `x-on` expression —
     Alpine compiles an attribute expression as `result = <expr>`, so a
     multi-statement body there is a SyntaxError it swallows, and the
@@ -26,7 +31,7 @@
 
 <input
     type="file"
-    accept="image/*"
+    accept="{{ \App\Support\ImageUpload::accept() }}"
     class="sr-only"
     aria-label="{{ $label }}"
     x-data="{

@@ -84,6 +84,21 @@ it('asks R2 for no ACL, because R2 rejects one rather than ignoring it', functio
     expect(strtolower(json_encode($payload)))->not->toContain('acl');
 });
 
+it('still signs no ACL when the temp disk carries no_acl, the production shape', function () {
+    // Production's temp disk IS the r2 disk, which carries `no_acl`. The
+    // resolution-time middleware runs on the presigned PUT too (the SDK
+    // walks the whole handler list to serialize it) and must be a no-op
+    // beside R2SignedUploadUrl — never a second ACL, never an error.
+    useBucketTempDisk();
+    config(['filesystems.disks.tmp-for-tests.no_acl' => true]);
+    Storage::forgetDisk('tmp-for-tests');
+
+    $payload = GenerateSignedUploadUrlFacade::forS3(UploadedFile::fake()->image('tr.png', 400, 400));
+
+    expect(strtolower(json_encode($payload)))->not->toContain('acl')
+        ->and(parse_url($payload['url'], PHP_URL_HOST))->toBe('campus-football.abc123.r2.cloudflarestorage.com');
+});
+
 it('signs a PUT at the bucket, which is a cross-origin request from the app', function () {
     useBucketTempDisk();
 

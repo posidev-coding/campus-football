@@ -3,6 +3,12 @@
 use App\Models\BrandSetting;
 use App\Models\User;
 use App\Support\Brand;
+use App\Support\R2Writes;
+use Aws\History;
+use Aws\Middleware;
+use Aws\MockHandler;
+use Aws\Result;
+use Aws\S3\S3Client;
 use Filament\Forms\Components\FileUpload;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -98,11 +104,83 @@ describe('the configurable disk', function () {
             ->and(FileUpload::make('icon')->disk('public')->getVisibility())->toBe('public');
     });
 
-    it('turns the SDK checksum headers off, which non-AWS S3 does not implement', function () {
-        // Defaults to `when_supported` since SDK 3.337, which puts
-        // x-amz-checksum-crc32 on every PutObject.
-        expect(config('filesystems.disks.r2.options.request_checksum_calculation'))->toBe('when_required')
-            ->and(config('filesystems.disks.r2.options.response_checksum_validation'))->toBe('when_required');
+    it('turns the SDK checksum headers off, as the CLIENT reads it', function () {
+        /*
+         * Defaults to `when_supported` since SDK 3.337, which puts
+         * x-amz-checksum-crc32 on every PutObject. This used to assert the
+         * config key under `options` — the Flysystem adapter's per-write
+         * bag, which the SDK never reads — and was green over an inert
+         * setting for months. Ask the resolved client instead: it is what
+         * ApplyChecksumMiddleware consults.
+         */
+        useR2();
+        Storage::forgetDisk('r2');
+
+        $client = Storage::disk('r2')->getClient();
+
+        expect($client)->toBeInstanceOf(S3Client::class)
+            ->and($client->getConfig('request_checksum_calculation'))->toBe('when_required')
+            ->and($client->getConfig('response_checksum_validation'))->toBe('when_required');
+    });
+
+    /*
+     * CFB-41's other half. R2SignedUploadUrl took the ACL off the BROWSER's
+     * presigned PUT; the app's own copy-back (SetGroupIcon, the account
+     * photo, Brand, Filament) still went through Flysystem's adapter, which
+     * puts `ACL` on every PutObject with no option to omit it. R2 answers
+     * NotImplemented and `throw => true` made that a 500 — while every test
+     * here stayed green. The pin is on the WIRE: a mock handler and a
+     * history middleware on the resolved client, no bucket, no network.
+     */
+    it('puts to R2 with no ACL and no checksum header, through the resolved client', function () {
+        useR2();
+        Storage::forgetDisk('r2');
+
+        $client = Storage::disk('r2')->getClient();
+        $history = new History;
+
+        $client->getHandlerList()->setHandler(new MockHandler([new Result([])]));
+        $client->getHandlerList()->appendSign(Middleware::history($history));
+
+        Storage::disk('r2')->put('probe.txt', 'x');
+
+        expect($history->count())->toBe(1);
+
+        $command = $history->getLastCommand();
+        $request = $history->getLastRequest();
+
+        expect($command->getName())->toBe('PutObject')
+            ->and(isset($command['ACL']))->toBeFalse()
+            ->and($request->hasHeader('x-amz-acl'))->toBeFalse()
+            ->and($request->hasHeader('x-amz-checksum-crc32'))->toBeFalse();
+    });
+
+    it('attaches the middleware when the disk resolves, so it survives forgetDisk', function () {
+        useR2();
+
+        Storage::forgetDisk('r2');
+        expect(R2Writes::attached(Storage::disk('r2')->getClient()))->toBeTrue();
+
+        // Again: a fresh resolution carries it again, once.
+        Storage::forgetDisk('r2');
+        $client = Storage::disk('r2')->getClient();
+
+        expect(R2Writes::attached($client))->toBeTrue()
+            ->and(substr_count((string) $client->getHandlerList(), 'Name: '.R2Writes::NAME))->toBe(1);
+
+        // And a second attach on the same client replaces rather than stacks.
+        R2Writes::attach($client);
+
+        expect(substr_count((string) $client->getHandlerList(), 'Name: '.R2Writes::NAME))->toBe(1);
+    });
+
+    it('leaves a plain s3 disk alone unless it asks for no_acl', function () {
+        config(['filesystems.disks.plain-s3' => [
+            'driver' => 's3', 'key' => 'k', 'secret' => 's', 'region' => 'auto',
+            'bucket' => 'b', 'endpoint' => 'https://account.r2.cloudflarestorage.com',
+        ]]);
+
+        expect(R2Writes::attached(Storage::disk('plain-s3')->getClient()))->toBeFalse();
     });
 });
 

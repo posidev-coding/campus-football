@@ -362,6 +362,7 @@ new class extends Component
              */
             'photo' => ImageUpload::rules(),
         ], [
+            'photo.mimes' => ImageUpload::mimeMessage(),
             'photo.max' => ImageUpload::oversizedMessage(),
             'photo.dimensions' => 'That image is too small to read at avatar size.',
         ]);
@@ -369,7 +370,17 @@ new class extends Component
         $user = auth()->user();
         $previous = $user->avatar;
 
-        $path = $this->photo->store('avatars', config('cfb.upload_disk'));
+        try {
+            $path = $this->photo->store('avatars', config('cfb.upload_disk'));
+        } catch (\Throwable $e) {
+            // The disk refused. Report it and say so on the photo's own
+            // error line rather than a 500 — the avatar stays what it was.
+            report($e);
+            $this->photo = null;
+            $this->addError('photo', Voice::line('account.photo.failed'));
+
+            return;
+        }
 
         $user->forceFill(['avatar' => $path])->save();
 
