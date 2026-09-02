@@ -1154,47 +1154,6 @@ new class extends Component
         </div>
     @endif
 
-    {{-- WHAT THIS GROUP IS. The room half of this pair has said its
-         piece here since the contest card was retired; the private half
-         said nothing, so the one screen where a member sees the whole
-         container never mentioned that the container is theirs and runs
-         all season. The mode's blurb states the card, sized from the
-         CONTEST; the Voice line states the thing the mode cannot. --}}
-    @if (! $group->isLobby() && $this->contest !== null)
-        <div class="flex flex-col gap-1">
-            <p class="text-sm text-zinc-600 dark:text-zinc-300">
-                {{ $this->contest->mode->blurb($this->contest->mode->engine($this->contest->settings)->slateSize()) }}
-            </p>
-            <p class="text-micro text-zinc-400 dark:text-zinc-500">{{ Voice::line('group.private.frame') }}</p>
-        </div>
-    @endif
-
-    {{-- WHAT THIS ROOM IS. The lobby sells uniform rows now, so the
-         pitch — the flavor's own one-line rules, or the mode's, plus its
-         optional zinger — is said HERE, where somebody who tapped the row
-         is deciding whether to sit down. This was the contest card's
-         cargo and the card is gone; without this re-home the blurbs and
-         zingers have no render site at all. --}}
-    @if ($group->isRoom() && $this->contest !== null)
-        @php
-            $roomFlavor = $group->flavorEnum();
-            // The card THIS room deals, not the mode's default one:
-            // Shotgun's size is frozen per Saturday, so a Week 0 room of
-            // eight games must not be pitched as ten.
-            $roomGames = $this->contest->mode->engine($this->contest->settings)->slateSize();
-            $roomZinger = $roomFlavor === null
-                ? ''
-                : Voice::line($roomFlavor->zingerKey(), ['conference' => $roomFlavor->conferenceName() ?? '']);
-        @endphp
-
-        <div class="flex flex-col gap-1">
-            <p class="text-sm text-zinc-600 dark:text-zinc-300">{{ $roomFlavor?->blurb($roomGames) ?? $this->contest->mode->blurb($roomGames) }}</p>
-            @if ($roomZinger !== '')
-                <p class="text-micro italic text-zinc-400 dark:text-zinc-500">&ldquo;{{ $roomZinger }}&rdquo;</p>
-            @endif
-        </div>
-    @endif
-
     {{-- The pivot's announcement, lingering a week so members who missed
          the note still walk in on the news rather than a changed room. --}}
     @if ($this->contest?->mode_changed_at?->gt(now()->subDays(7)))
@@ -1267,6 +1226,47 @@ new class extends Component
         class="flex flex-col gap-5 motion-safe:transition-opacity"
     >
     @if ($view === 'slate')
+        {{-- WHAT THIS GROUP PLAYS — the mode brief, collapsed. It sat under
+             the hero as a blurb and a frame line (a room: the flavor's
+             pitch and its zinger), with the full rules card at the foot of
+             Standings: the same facts, two places, and 60px between the
+             band and the strip that a returning member never reads. One
+             accordion now, at the top of the pick surface, ungated on
+             membership and OUTSIDE the published fork — a group with no
+             slate yet still says what it is, and the frame line must be
+             in the DOM whatever the card is doing. The identity row
+             carries the pitch clamped to two lines (a room's flavor pitch
+             is a sentence; the shelf's one-line truncation is the thing
+             LobbyFlavorTest exists to catch), the payload the rule lines,
+             the frame or the zinger, and the laws every mode shares. --}}
+        @if ($this->contest !== null)
+            @php
+                $roomFlavor = $group->isRoom() ? $group->flavorEnum() : null;
+                // The card THIS contest deals, not the mode's default one:
+                // Shotgun's size is frozen per Saturday, so a Week 0 room
+                // of eight games must not be pitched as ten.
+                $briefGames = $this->contest->mode->engine($this->contest->settings)->slateSize();
+                $roomZinger = $roomFlavor === null
+                    ? ''
+                    : Voice::line($roomFlavor->zingerKey(), ['conference' => $roomFlavor->conferenceName() ?? '']);
+            @endphp
+
+            <x-mode-rules
+                :mode="$this->contest->mode"
+                :games="$briefGames"
+                :pitch="$roomFlavor?->blurb($briefGames)"
+                clamp
+            >
+                @if (! $group->isLobby())
+                    <p class="text-micro text-zinc-400 dark:text-zinc-500">{{ Voice::line('group.private.frame') }}</p>
+                @elseif ($roomZinger !== '')
+                    <p class="text-micro italic text-zinc-400 dark:text-zinc-500">&ldquo;{{ $roomZinger }}&rdquo;</p>
+                @endif
+
+                @include('partials.pickem-laws')
+            </x-mode-rules>
+        @endif
+
         @if ($this->slate?->isPublished())
             {{-- THE SIDECAR, and the guard is the whole design. Before
                  kickoff there is no table to show — everybody is on zero and
@@ -1405,14 +1405,6 @@ new class extends Component
                 @endif
             @endif
 
-            {{-- The scoring panel sits with the numbers it explains, not
-                 with the roster or the invite. --}}
-            @if ($this->contest !== null)
-                <x-mode-rules
-                    :mode="$this->contest->mode"
-                    :games="$this->contest->mode->engine($this->contest->settings)->slateSize()"
-                />
-            @endif
         </div>
     @elseif ($view === 'members')
         {{-- THE ROSTER, and the management that goes with it. This was a

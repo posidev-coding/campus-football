@@ -900,9 +900,11 @@ The `x-group-hero` chip renders for BOTH kinds — `Public` for a lobby,
 `Private` otherwise. It used to render for lobbies only, which made the mark
 something some rooms wore and said nothing at all about the container a
 private group is; a badge one side of a pair wears is a badge nobody reads
-as a pair. A private group also gets the symmetric half of the room blurb
-below the hero: its mode's blurb sized from the contest, over
-`group.private.frame`. The invite landing's meta line leads with the kind
+as a pair. A private group also gets the symmetric half of the room blurb —
+its mode's blurb sized from the contest, over `group.private.frame` — which
+since 2026-09-01 lives on the identity row and inside the payload of ONE
+collapsed `x-mode-rules` at the top of the Slate tab (below), not under the
+hero. The invite landing's meta line leads with the kind
 for the same reason — "Private group, all season · 4 members" /
 "Public room · Week 1 · 3 of 20 seats" — because a link lands somebody who
 has never seen the app on a name, a mode chip and a member count, none of
@@ -931,8 +933,10 @@ draft nobody could publish. A null answer — no week, no Saturday — leaves
 the door exactly where it was.
 
 The room screen carries what the old `x-contest-card` used to: the flavor's
-blurb (or the mode's) and its optional zinger render under the room hero,
-where somebody who tapped a row decides whether to sit down. The blurb is
+blurb (or the mode's) and its optional zinger — on the mode accordion at the
+top of the Slate tab since 2026-09-01 (the pitch as the identity line,
+clamped to two lines; the zinger inside the payload), where somebody who
+tapped a row decides whether to sit down. The blurb is
 SIZED FROM THE CONTEST — `blurb($contest->mode->engine($contest->settings)
 ->slateSize())`, the same on the invite landing — because Shotgun's size is
 frozen per Saturday and the room screen used to read "10 games, 10 points
@@ -974,10 +978,20 @@ fit at 390 only in the gutter's `fill` variant — cells sized to their
 words, sharing the spare width — because five equal fifths clip
 "Standings" and "Members" (docs/ui-system.md rule 7 has the numbers).
 
-- **Slate** — pure play.
-- **Standings** — `x-you-strip`, the week and season tables, the picks
-  grid, and `x-mode-rules` sized from the contest as the scoring panel
-  beneath the numbers it explains.
+- **Slate** — the mode brief, collapsed, then pure play. The brief is
+  ONE `x-mode-rules` accordion (2026-09-01): the identity row carries the
+  mode and its blurb — a room's flavor pitch instead, clamped to two lines
+  because a pitch is a sentence and the shelf's one-line truncation is
+  what `LobbyFlavorTest` exists to catch — and the payload the rule
+  lines, the private frame line or the room's zinger, and the laws every
+  mode shares (`partials/pickem-laws`). It sits ABOVE the published fork
+  and is ungated on membership, so a group with no slate yet still says
+  what it is. It replaced two things: the blurb + frame line under the
+  hero (60px between the band and the strip that a returning member never
+  read) and the rules card at the Standings foot — the same facts in two
+  places. The accordion stays outside the sidecar grid wrapper.
+- **Standings** — `x-you-strip`, the week and season tables, and the
+  picks grid. The scoring panel left for the Slate tab's accordion.
 - **Members** — the roster, the commissioner badge, the handoff, Remove
   and Leave. It was a collapsed disclosure at the foot of the standings,
   which put the one control that transfers a league behind a chevron.

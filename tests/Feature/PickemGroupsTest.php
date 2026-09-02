@@ -15,6 +15,7 @@ use App\Models\WalletEntry;
 use App\Services\CfbCalendar;
 use App\Support\Navigation;
 use App\Support\Voice;
+use Illuminate\Support\Facades\Blade;
 use Laravel\Pennant\Feature;
 use Livewire\Livewire;
 
@@ -258,4 +259,68 @@ it('never shows a lobby an invite code', function () {
         ->assertDontSee($lobby->code)
         ->set('view', 'members')
         ->assertDontSee($lobby->code);
+});
+
+/*
+ * THE BRIEF IS AN ACCORDION (2026-09-01). The blurb-and-frame under the
+ * hero and the rules card at the Standings foot were the same facts in
+ * two places; one collapsed x-mode-rules at the top of the Slate tab says
+ * them once, ungated on membership and outside the published fork, with
+ * the laws every mode shares inside it. x-show keeps the lines in the
+ * DOM, which is what lets the frame-line pins above keep holding.
+ */
+it('states the mode once, as a collapsed accordion atop the slate, laws and all', function () {
+    $admin = pickemAdmin();
+    $group = app(CreateGroup::class)->handle($admin, 'The Test Group', ContestMode::Tiered);
+
+    $html = Livewire::actingAs($admin)->test('group', ['group' => $group])
+        ->assertSet('view', 'slate')
+        ->assertSee(Voice::line('group.private.frame', for: $admin))
+        // The shared laws ride inside the accordion, so the clubhouse
+        // says the half-point rule the way the Lobby and the explainer do.
+        ->assertSee('no pushes, ever')
+        ->html();
+
+    // Exactly one accordion, collapsed, and its identity line clamps
+    // rather than truncates — a pitch is a sentence.
+    expect(substr_count($html, 'aria-controls="mode-rules-'))->toBe(1)
+        ->and($html)->toContain('aria-expanded="false"');
+
+    $identity = (string) str($html)->after('aria-controls="mode-rules-')->before('</button>');
+
+    expect($identity)->toContain('line-clamp-2')
+        ->not->toContain('truncate');
+
+    // The Standings tab says none of it any more.
+    Livewire::actingAs($admin)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->assertDontSee(Voice::line('group.private.frame', for: $admin))
+        ->assertDontSeeHtml('aria-controls="mode-rules-');
+});
+
+it('keeps the accordion outside the published fork, so a slateless group still says what it is', function () {
+    $admin = pickemAdmin();
+    $group = app(CreateGroup::class)->handle($admin, 'The Test Group', ContestMode::Classic);
+
+    // No slate at all: the else branch renders the build prompt, and the
+    // brief must still be in the DOM above it.
+    $html = Livewire::actingAs($admin)->test('group', ['group' => $group])
+        ->assertSee(Voice::line('group.slate.build_prompt', for: $admin))
+        ->html();
+
+    expect(strpos($html, 'aria-controls="mode-rules-'))->not->toBeFalse()
+        ->and(strpos($html, 'aria-controls="mode-rules-'))->toBeLessThan(strpos($html, Voice::line('group.slate.build_prompt', for: $admin)));
+});
+
+it('renders no empty slot wrapper where the accordion carries nothing extra', function () {
+    // The lobby and the explainer pass no slot; the guard is on content,
+    // so neither renders an empty div under the rule list.
+    $bare = Blade::render('<x-mode-rules :mode="$mode" />', ['mode' => ContestMode::Classic]);
+    $filled = Blade::render('<x-mode-rules :mode="$mode" clamp>extra</x-mode-rules>', ['mode' => ContestMode::Classic]);
+
+    expect($bare)->not->toContain('gap-1.5 pt-3')
+        ->toContain('truncate')
+        ->and($filled)->toContain('gap-1.5 pt-3')
+        ->toContain('extra')
+        ->toContain('line-clamp-2');
 });
