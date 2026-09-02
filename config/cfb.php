@@ -176,6 +176,21 @@ return [
     'board_url' => env('CFB_BOARD_URL'),
 
     /*
+     * THE RELEASE STAMP — where VERSION lives.
+     *
+     * The file at the repository root is the version this build is running:
+     * `4.0.0-beta.1`, no `v`, and the git tag is `v` plus that. The Release
+     * workflow bumps and tags it on every merge to main, so nothing in the
+     * app asks git, which the deployed image does not carry.
+     * `App\Support\Release` reads it; a missing or unreadable file resolves
+     * to null and the screens print nothing — never a number nobody chose.
+     *
+     * A path rather than the value itself, so a test can point it at an
+     * empty file the way `upload_disk` can be pointed at a fake.
+     */
+    'version_file' => base_path('VERSION'),
+
+    /*
      * The prefix on a workbook item's reference — `CFB-12`, the handle a human
      * types and a session is handed.
      *

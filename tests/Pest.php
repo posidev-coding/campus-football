@@ -6,6 +6,7 @@ use App\Support\Cadence;
 use App\Support\GameRanks;
 use App\Support\Navigation;
 use App\Support\PickemPulse;
+use App\Support\Release;
 use App\Support\TeamGlance;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -32,5 +33,8 @@ pest()->extend(TestCase::class)
         CfbCalendar::flush();
         Navigation::flush();
         PickemPulse::flush();
+        // Release memoizes the VERSION file the same way; a test that points
+        // cfb.version_file at a fixture must not hand its stamp to the next.
+        Release::flush();
     })
     ->in('Feature');

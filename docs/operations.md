@@ -644,6 +644,133 @@ password reset — so a per-USER rate limit on the form is the only thing betwee
 a form and an invoice. Per user, never per number: keyed on the number, somebody
 could walk a range and use us as a free SMS cannon.
 
+## Releases: VERSION is the stamp, the tag is `v` + VERSION, and every merge is one
+
+The app runs whatever number is in `VERSION` at the repository root —
+`4.0.0-beta.1`, no `v` — and the git tag for that build is `v` plus the file.
+`App\Support\Release` reads it (null when the file is missing, blank or not a
+version; the screens then print nothing, never a number nobody chose), and it
+shows in two quiet places: the last line of Account, and the last line of the
+desktop avatar menu. Nothing asks git at runtime: the deployed image does not
+carry `.git`, and Cloud injects no commit or tag variable, so the version has
+to travel IN the repository.
+
+### The numbers
+
+Semantic versioning, read the way this project actually ships:
+
+- **`4.0.0-beta.N` through the beta.** Every merge to main bumps N. The
+  hyphen is semver's pre-release marker, and GitHub badges those releases
+  "Pre-release" rather than "Latest".
+- **`4.0.0` when the beta is over.** A human decision: edit `VERSION` in a
+  pull request (see below). Nothing bumps out of a pre-release on its own.
+- **After that, PATCH by default.** A merged PR is a deploy and is usually
+  small, and a dozen merges in a September week is a dozen patches — that is
+  what patch numbers are for. `4.0.11` is not embarrassing; it is a count.
+- **MINOR when a reader would notice.** A new screen, a new mode, a change to
+  what a group can do. Also a decision made in the pull request.
+- **MAJOR is a rebuild.** v3 lives on the `production` branch; this is v4.
+  Never automatic.
+
+**How to choose a number: edit `VERSION` in the pull request.** The Release
+workflow tags whatever number it finds there untagged, as-is, with no bot
+commit. That is the whole override mechanism — a minor, the `4.0.0` cut, a
+`4.1.0-rc.1` — and it is a file in the diff rather than a label, so it is
+reviewed with the change and survives a squash. Leave the file alone and the
+bot takes one step: `beta.N+1` while the version is a pre-release, `PATCH+1`
+once it is not.
+
+### The moving parts
+
+- **`VERSION`** — the stamp. `config('cfb.version_file')` names it, so
+  `ReleaseTest` can point `Release` at a fixture.
+- **`.github/workflows/release.yml`** — runs on every push to `main`,
+  serialized (`concurrency: release`, so two merges seconds apart cannot race
+  for one number), and asks one question: is `v<VERSION>` already a tag?
+  - No → a pull request chose it. Tag `HEAD` as-is.
+  - Yes → bump with the script, commit `Release vX`, tag that commit.
+  - Either way, `gh release create --generate-notes` writes the GitHub
+    Release from the merged PR titles since the previous tag, and, when the
+    `LARAVEL_CLOUD_DEPLOY_HOOK` secret exists, POSTs Cloud's deploy hook with
+    `commit_hash=` the tagged commit.
+  - A re-run on a commit that already carries its tag does nothing.
+- **`.github/scripts/next-version.sh`** — the only place a number is
+  computed. Pre-release → last number +1; release → patch +1; anything else
+  exits non-zero and prints nothing. `ReleaseTest` drives it through
+  `Process::run`, so the ladder is tested even though Actions is not.
+- The bot commits as `github-actions[bot]` with `GITHUB_TOKEN`, and GitHub
+  never starts a workflow from a push made with that token, so it cannot
+  loop. The repository's default token is read-only; the workflow's own
+  `permissions: contents: write` is what lets it tag. `main` carries no
+  branch protection today — add any, and the bot needs a bypass.
+- **It is a tagger, not CI.** It does not run the suite (which needs MySQL
+  and Flux Pro credentials); `php artisan test` before merging is still the
+  gate, exactly as before.
+
+### Deploys, and the one switch to flip
+
+Cloud's **push-to-deploy** is on, so today a merge deploys the merge commit
+and, when the bot then bumps, the bot's push deploys again with the number on
+it — two deploys for a bumped merge, one for a PR that chose its own number.
+Harmless (zero-downtime, ~a minute each) but wasteful, and the first deploy
+briefly wears last release's stamp. The clean shape is **one deploy per
+merge, at the tagged commit**, and it is a five-minute switch:
+
+1. Cloud → the production environment → Settings → Deployments → enable
+   **Deploy hook** and copy the URL.
+2. GitHub → repository → Settings → Secrets and variables → Actions → **New
+   repository secret** named `LARAVEL_CLOUD_DEPLOY_HOOK`, value the URL.
+3. Back in Cloud's Deployments settings, turn **push-to-deploy OFF** — in the
+   same sitting, or every merge deploys twice and then a third time from the
+   hook.
+
+From then on the workflow is the deployer: tag, then `POST
+<hook>?commit_hash=<tag's commit>`. Nothing about the build changes; Cloud
+still pulls the commit and runs its own build and deploy commands.
+
+### The first tag, walked through
+
+There is nothing to type for it. Merging the pull request that added
+`VERSION` (saying `4.0.0-beta.1`) pushes to `main`, the Release run starts,
+finds no `v4.0.0-beta.1` tag, and tags the merge commit with it. Watch it:
+GitHub → **Actions** → "Release" → the run's log says which branch of the
+decision it took. Then GitHub → **Releases** shows `v4.0.0-beta.1` with a
+"Pre-release" badge and the generated notes, and → **Tags** lists the tag.
+Locally:
+
+```
+git switch main && git pull --tags      # tags are fetched separately from commits
+git tag --sort=-v:refname               # newest first
+git tag -n1 v4.0.0-beta.1               # the tag and its message
+git describe --tags                     # the nearest tag to HEAD, plus distance
+git log v4.0.0-beta.1..v4.0.0-beta.2 --oneline   # what shipped between two
+```
+
+What the bot did, so it can be done by hand when it has to be (a run that
+failed to push, a hotfix tagged outside `main`):
+
+```
+git tag -a v4.0.0-beta.1 -m "Release v4.0.0-beta.1"   # -a: ANNOTATED — a real object with author, date, message
+git push origin v4.0.0-beta.1                         # tags are not pushed with commits; name it
+git push origin --delete v4.0.0-beta.1                # undo, if it went on the wrong commit
+```
+
+A tag is a name for exactly one commit. Annotated (`-a`) is the only kind to
+use for a release: a lightweight tag is just a pointer and carries no record
+of who made it or when, and `git describe` ignores lightweight tags by
+default. Never move a tag that has been pushed — cut the next number instead.
+
+The second merge is the interesting one. `VERSION` still says `4.0.0-beta.1`,
+that tag exists, so the bot bumps to `4.0.0-beta.2`, commits "Release
+v4.0.0-beta.2", tags it, and the Releases page lists the PRs between the two.
+When the beta is over, open a pull request that changes `VERSION` to `4.0.0`
+— that merge is tagged `v4.0.0`, badged "Latest", and every merge after it
+counts patches.
+
+If a run goes red because somebody merged while it was pushing, nothing is
+lost: `VERSION` on `main` still names the taken number, so the next merge's
+run bumps from it — or re-run the failed job.
+
 ## Commands
 
 ```

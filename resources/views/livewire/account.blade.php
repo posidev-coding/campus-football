@@ -1148,4 +1148,15 @@ new class extends Component
             @csrf
         </form>
     </flux:card>
+
+    {{-- The release stamp, last and quiet, spanning both columns like the
+         card above it. Below `sm` this is the ONLY place it shows: the desktop
+         avatar menu carries the same line, and does not exist on a phone.
+         Nothing renders without a stamp — Release never invents one. --}}
+    @php $release = App\Support\Release::tag(); @endphp
+    @if ($release !== null)
+        <p class="text-center text-micro text-zinc-400 lg:col-span-2 dark:text-zinc-500" data-release>
+            {{ App\Support\Brand::name() }} {{ $release }}
+        </p>
+    @endif
 </div>
