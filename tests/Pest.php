@@ -3,8 +3,10 @@
 use App\Services\CfbCalendar;
 use App\Support\Brand;
 use App\Support\Cadence;
+use App\Support\ConferenceMarks;
 use App\Support\GameRanks;
 use App\Support\Navigation;
+use App\Support\Networks;
 use App\Support\PickemPulse;
 use App\Support\TeamGlance;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,5 +34,7 @@ pest()->extend(TestCase::class)
         CfbCalendar::flush();
         Navigation::flush();
         PickemPulse::flush();
+        Networks::flush();
+        ConferenceMarks::flush();
     })
     ->in('Feature');

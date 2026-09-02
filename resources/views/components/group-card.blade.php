@@ -28,6 +28,12 @@
     $palette = $mode?->palette();
     $members = $group->memberships_count ?? null;
 
+    // THE MARK before the mode: an uploaded icon or a conference shield
+    // names a group better than its mode's glyph, and the mode still says
+    // its name in the chip on the right. No mark keeps the mode tile — the
+    // identity seam every card wore before there were marks.
+    $marked = $group->iconUrl() !== null || $group->conferenceLogoUrl() !== null;
+
     // Facts, plain in every register. Null means no data and is skipped,
     // never a zero standing in for it.
     $facts = collect([
@@ -47,7 +53,9 @@
 >
     <div class="flex items-center justify-between gap-3">
         <span class="flex min-w-0 items-center gap-2.5">
-            @if ($mode !== null)
+            @if ($marked)
+                <x-group-icon :group="$group" shape="rounded-lg" class="size-8 text-micro" />
+            @elseif ($mode !== null)
                 <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border {{ $palette['tile'] }}">
                     <flux:icon :name="$mode->icon()" variant="micro" class="size-4 {{ $palette['icon'] }}" />
                 </span>

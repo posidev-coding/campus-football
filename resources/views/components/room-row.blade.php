@@ -84,9 +84,15 @@
         aria-label="{{ $room->name }} — {{ $mode->label() }}{{ $seated ? ' — view your picks' : '' }}"
     ></a>
 
-    <span class="pointer-events-none relative z-10 flex size-8 shrink-0 items-center justify-center rounded-lg border {{ $palette['tile'] }}">
-        <flux:icon :name="$mode->icon()" variant="micro" class="size-4 {{ $palette['icon'] }}" />
-    </span>
+    @if ($room->conferenceLogoUrl() !== null)
+        {{-- A conference room wears its conference — the shield ESPN synced,
+             through x-group-icon; the micro-line below still names the mode. --}}
+        <x-group-icon :group="$room" shape="rounded-lg" class="pointer-events-none relative z-10 size-8 text-micro" />
+    @else
+        <span class="pointer-events-none relative z-10 flex size-8 shrink-0 items-center justify-center rounded-lg border {{ $palette['tile'] }}">
+            <flux:icon :name="$mode->icon()" variant="micro" class="size-4 {{ $palette['icon'] }}" />
+        </span>
+    @endif
 
     <span class="pointer-events-none relative z-10 min-w-0 flex-1">
         <span class="block truncate font-semibold leading-tight">{{ $room->name }}</span>

@@ -10,6 +10,7 @@ use App\Models\GamePredictor;
 use App\Models\GameScoringPlay;
 use App\Models\GameSummary;
 use App\Models\GameTeamStat;
+use App\Models\Network;
 use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeason;
@@ -738,6 +739,21 @@ describe('the game information card', function () {
             // The card names itself by its contents; a "Game Information"
             // heading would be the widest thing in it.
             ->assertDontSee('Game Information');
+    });
+
+    it('wears a network\'s mark on Where to Watch, and its name where ESPN ships none', function () {
+        // ESPN sends artwork for its own family and none for FOX (2026-09-02):
+        // the mark where we hold one, the name where we do not, never a guess.
+        Network::factory()->create(['name' => 'ESPN', 'logo' => 'https://a.espncdn.com/guid/espn/logos/default.png']);
+
+        $this->game->update(['broadcasts' => ['ESPN', 'FOX']]);
+
+        Livewire::test('game', ['game' => $this->game->fresh()])
+            ->assertSee('Where to Watch')
+            ->assertSeeHtml('src="https://a.espncdn.com/guid/espn/logos/default.png"')
+            ->assertSeeHtml('alt="ESPN"')
+            ->assertSee('FOX')
+            ->assertDontSeeHtml('alt="FOX"');
     });
 
     it('renders without a venue photo, which two in five venues lack', function () {

@@ -68,9 +68,11 @@
                 <span class="text-sm font-semibold">Where to Watch</span>
 
                 <div class="flex flex-wrap gap-1">
+                    {{-- A chip per network: its mark where we hold one, its
+                         name where ESPN ships none — x-network-logo decides. --}}
                     @foreach ($game->broadcasts as $network)
-                        <span class="rounded border border-zinc-200 px-1.5 py-0.5 text-micro font-medium text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
-                            {{ $network }}
+                        <span class="inline-flex items-center rounded border border-zinc-200 px-1.5 py-0.5 text-micro font-medium text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
+                            <x-network-logo :network="$network" size="sm" />
                         </span>
                     @endforeach
                 </div>

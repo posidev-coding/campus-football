@@ -162,7 +162,7 @@
                                                     {{ $row->kickoffLabel('time') }}
                                                 </span>
                                                 @if ($row->broadcasts)
-                                                    <span class="truncate text-micro text-zinc-400">{{ $row->broadcasts[0] }}</span>
+                                                    <x-network-logo :network="$row->broadcasts[0]" class="truncate text-micro text-zinc-400" />
                                                 @endif
                                             @endif
                                         </span>
