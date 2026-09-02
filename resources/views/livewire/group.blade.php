@@ -1086,25 +1086,18 @@ new class extends Component
             </x-slot:icon>
         @endif
 
+        {{-- ONE control on the band: the commissioner's cog. The Talk
+             icon left this row on 2026-09-01 for a gutter tab of its own,
+             the way the invite button left for the Invite stop — a stop
+             that owns the door does not need a worse one beside the name,
+             and the title row gets ~44px back at 390. The band renders NO
+             wrapper for a member, whose slot is empty. --}}
         <x-slot:actions>
-            @if ($this->isMember)
-                {{-- The thread's door — a destination, never an embed
-                     (the pick surface stays chat-free; Task D stands). --}}
-                <a
-                    href="{{ route('pickem.talk', $group) }}"
-                    wire:navigate
-                    aria-label="{{ $group->isRoom() ? 'Room talk' : 'Group talk' }}"
-                    class="rounded-lg bg-white/10 p-2 transition-colors hover:bg-white/20 dark:bg-zinc-800 dark:hover:bg-zinc-700"
-                >
-                    <flux:icon name="chat-bubble-left-right" variant="mini" />
-                </a>
-            @endif
-
             @if ($this->isCommissioner && $this->pivotChoices->isNotEmpty())
                 <flux:modal.trigger name="change-mode">
                     <button
                         type="button"
-                        class="rounded-lg bg-white/10 p-2 transition-colors hover:bg-white/20 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                        class="rounded-lg bg-zinc-100 p-2 text-zinc-700 transition-colors hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
                         aria-label="Change the group's game"
                     >
                         <flux:icon name="cog-6-tooth" variant="mini" />

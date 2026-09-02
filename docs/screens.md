@@ -886,6 +886,16 @@ other.** `/picks` used to 301 to `/lobby`; browsers cache a 301 forever, so a
 redirect pointing back would loop on every dev machine holding the old one.
 Guests and flag-off readers get the same `partials.pickem-promise` at both.
 
+**The band is light since 2026-09-01**: white with a zinc-200 border
+(zinc-900 with a zinc-800 border in dark), the grammar of every card under
+it. It was a deep zinc surface in both modes, which read as one object
+beside the branded team pages but gave an uploaded mark nothing to contrast
+against — a dark icon on a dark band vanished, and the initials tile was a
+white wash on a wash. The tile, the kind chip, the cog and the meta line were
+repainted with it. The band holds ONE control, the commissioner's cog; the
+Talk icon left the row for a gutter tab the same day, giving the title row
+~44px back at 390, and a member's empty slot renders no wrapper at all.
+
 The `x-group-hero` chip renders for BOTH kinds — `Public` for a lobby,
 `Private` otherwise. It used to render for lobbies only, which made the mark
 something some rooms wore and said nothing at all about the container a
@@ -939,7 +949,7 @@ every 30s only while a slate game is live, reading only our own database.
 **The name is the switcher, since 2026-09-01.** The hero's `h1` gave way to
 `x-group-hero`'s `title` slot, where the clubhouse renders `x-group-switcher`
 in its `hero` variant — `currentColor` on the band, no ring, the name clamped
-to two lines instead of truncated beside the mark and the two controls at
+to two lines instead of truncated beside the mark and the one control at
 390 — with an sr-only h1 beside it: the house shows no visible h1 off Scores,
 and the name is a control now. Same rows as My Picks' switcher, the current
 group bold; a lobby previewed without a seat, or a room whose Saturday is
@@ -972,7 +982,7 @@ normalized in both hooks. There is no `$pane`.
   standings because it now carries a QR and three ready-to-send messages
   and was burying what people came for. The HERO's copy-link button went
   with it: a stop that owns the link, the code, a QR and three channel
-  templates does not need a second, worse door beside the Talk icon.
+  templates does not need a second, worse door beside the name.
   `GroupPageTest` guards that on the clipboard handler rather than the
   word "Invite" — the button and the tab label read identically to
   `assertSee`, and only the copy handler tells them apart.

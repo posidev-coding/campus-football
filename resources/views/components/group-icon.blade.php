@@ -10,6 +10,10 @@
     container, and the mode tile on x-group-card already taught the shape.
     Size and type scale come from the caller through `class`, because the
     hero wears it at 44px and a list row would not.
+
+    The initials tile is a zinc-100 pad with zinc-700 letters on the light
+    band (a white wash in dark), so it reads on the hero's white as well as
+    on any card; an uploaded image is unchanged — it brings its own color.
 --}}
 @props([
     'group',
@@ -19,7 +23,7 @@
     $iconUrl = $group->iconUrl();
 @endphp
 
-<span {{ $attributes->class(['flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white/15 font-bold uppercase leading-none']) }}>
+<span {{ $attributes->class(['flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-zinc-100 font-bold uppercase leading-none text-zinc-700 dark:bg-white/15 dark:text-zinc-100']) }}>
     @if ($iconUrl !== null)
         <img src="{{ $iconUrl }}" alt="" class="size-full object-cover">
     @else

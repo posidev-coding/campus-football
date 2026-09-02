@@ -824,3 +824,60 @@ it('keeps the movement quiet with only one settled week behind the table', funct
     expect(Livewire::actingAs($commissioner)->test('group', ['group' => $group])
         ->instance()->seasonStandings->first()['delta'])->toBeNull();
 });
+
+/*
+ * THE LIGHT BAND, AND ONE CONTROL ON IT (2026-09-01). The hero was a deep
+ * zinc surface in both modes, which gave an uploaded mark nothing to sit
+ * against; it is white with a zinc-200 border now, the grammar of every
+ * card on the screen. The Talk icon left the row for a gutter tab and the
+ * cog is the only button left — and a member, whose slot is EMPTY, gets no
+ * wrapper at all: a passed slot is an object, an object is truthy, and
+ * `?? false` used to render an empty flex div that spent its gap on the
+ * title row.
+ */
+it('paints the hero band light, with the dark surface only behind dark:', function () {
+    $source = file_get_contents(resource_path('views/components/group-hero.blade.php'));
+
+    // The root's own class list, from the component's one attribute bag.
+    $root = (string) str($source)->after('<div {{ $attributes->class([\'')->before('\']) }}>');
+
+    expect($root)->not->toBe('')
+        ->toContain('bg-white')
+        ->toContain('border-zinc-200')
+        ->toContain('dark:bg-zinc-900')
+        ->toContain('dark:border-zinc-800')
+        ->and($root)->not->toMatch('/(?<!dark:)bg-zinc-900/')
+        ->not->toContain('text-white');
+
+    [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+    // And the rendered band wears it: the root's class list, verbatim.
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSeeHtml('rounded-xl border border-zinc-200 bg-white px-4 py-4 text-zinc-900');
+});
+
+it('gives a commissioner one button on the band, and a member no wrapper at all', function () {
+    [$commissioner, $group] = pickemContest(ContestMode::Classic);
+    $member = User::factory()->create();
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    $heroOf = fn (User $viewer): string => (string) str(
+        Livewire::actingAs($viewer)->test('group', ['group' => $group])->html()
+    )->before('wire:key="group-tab-slate"');
+
+    $commissionerHero = $heroOf($commissioner);
+
+    // Exactly the cog: the pivot modal's trigger, once, and no thread door.
+    expect(substr_count($commissionerHero, 'aria-label="Change the group\'s game"'))->toBe(1)
+        ->and($commissionerHero)->not->toContain('aria-label="Group talk"')
+        ->not->toContain('aria-label="Room talk"')
+        ->and(substr_count($commissionerHero, 'flex shrink-0 items-center gap-2'))->toBe(1);
+
+    // A member has nothing to put on the band, so the band renders no
+    // actions wrapper — not an empty one.
+    $memberHero = $heroOf($member);
+
+    expect($memberHero)->not->toContain('aria-label="Change the group\'s game"')
+        ->not->toContain('aria-label="Group talk"')
+        ->not->toContain('flex shrink-0 items-center gap-2');
+});
