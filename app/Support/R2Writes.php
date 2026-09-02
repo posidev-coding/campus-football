@@ -33,6 +33,34 @@ class R2Writes
 {
     public const NAME = 'r2.no-acl';
 
+    /** R2's own S3 endpoint host, whatever account it belongs to. */
+    private const R2_HOST_SUFFIX = 'r2.cloudflarestorage.com';
+
+    /**
+     * Whether a resolved disk config wants ACL-free writes: it says so with
+     * `no_acl`, or its endpoint IS R2.
+     *
+     * The key is the documented switch and stays the one to write. The
+     * endpoint is the safety net for a disk whose config THIS REPOSITORY DOES
+     * NOT OWN — a bucket mounted by the platform under a name of its own
+     * choosing, where nobody can add a key to an array that is not in the
+     * tree. Getting it wrong in that direction is harmless: R2 rejects an
+     * ACL outright, and a modern AWS bucket has ACLs disabled anyway, so
+     * there is no bucket on this endpoint that wants the header we drop.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function wants(array $config): bool
+    {
+        if ($config['no_acl'] ?? false) {
+            return true;
+        }
+
+        $host = parse_url((string) ($config['endpoint'] ?? ''), PHP_URL_HOST);
+
+        return is_string($host) && str_ends_with($host, self::R2_HOST_SUFFIX);
+    }
+
     public static function attach(S3Client $client): void
     {
         $list = $client->getHandlerList();

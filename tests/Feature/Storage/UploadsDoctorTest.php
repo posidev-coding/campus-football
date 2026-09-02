@@ -42,9 +42,12 @@ it('reports the bucket-shaped disk: env names, checksum mode and the ACL middlew
         ->assertExitCode(0);
 });
 
-it('fails the ACL line when the disk does not ask for no_acl', function () {
+it('fails the ACL line when nothing asks for it and the endpoint is not R2', function () {
+    // Both halves have to be off: the key is the switch, and an R2 endpoint
+    // attaches the middleware on its own for a disk mounted by a platform
+    // whose config this repository does not own.
     useR2();
-    config(['filesystems.disks.r2.no_acl' => false]);
+    config(['filesystems.disks.r2.no_acl' => false, 'filesystems.disks.r2.endpoint' => 'https://s3.us-east-1.amazonaws.com']);
     Storage::forgetDisk('r2');
 
     $this->artisan('cfb:uploads:doctor')
@@ -73,4 +76,78 @@ it('probes a local disk end to end under --force, and cleans up', function () {
         ->run();
 
     expect(Storage::disk('public')->files('uploads-doctor'))->toBe([]);
+});
+
+it('names the gap when the environment has a bucket the cached config missed', function () {
+    /*
+     * THE SHAPE LARAVEL CLOUD PRODUCED (2026-09-02): a hand-typed AWS_URL
+     * present and every injected bucket name absent, because the config was
+     * built before the platform attached the bucket. Reading config alone
+     * says "unset" and sends somebody to re-read config/filesystems.php,
+     * where the disk is perfectly correct. Reading the environment BESIDE it
+     * names the actual fault in one line.
+     */
+    useR2();
+    config(['filesystems.disks.r2.bucket' => null]);
+    Storage::forgetDisk('r2');
+
+    $_SERVER['AWS_BUCKET'] = 'fls-a2746aeb-af6e-4cc8-bca9-4d3ecc98411a';
+
+    try {
+        $this->artisan('cfb:uploads:doctor')
+            ->expectsOutputToContain('the ENVIRONMENT has it, the config does not')
+            ->expectsOutputToContain('never reaches the disk')
+            // Names, never values, even here.
+            ->doesntExpectOutputToContain('fls-a2746aeb-af6e-4cc8-bca9-4d3ecc98411a')
+            ->assertExitCode(1);
+    } finally {
+        unset($_SERVER['AWS_BUCKET']);
+    }
+});
+
+it('lists the disks this app defines, so a bucket mounted elsewhere is visibly not one', function () {
+    // "The bucket is mounted as disk `app`" is a true sentence about the
+    // platform and a false one about this repository, and the only way to
+    // see that is to print what this repository actually has.
+    useR2();
+    Storage::forgetDisk('r2');
+
+    $this->artisan('cfb:uploads:doctor')
+        ->expectsOutputToContain('disks defined here:')
+        ->expectsOutputToContain('r2 (s3)')
+        ->assertExitCode(0);
+});
+
+it('judges the public URL without printing it, because names are the promise', function () {
+    useR2();
+    Storage::forgetDisk('r2');
+
+    /*
+     * A custom domain is right — the S3 endpoint is authenticated — but it
+     * has to be BOUND to this bucket, and only the probe's HEAD settles it.
+     * The verdict says so without echoing the domain: this report promises
+     * names and never values, and the sweep beside it holds that promise.
+     */
+    $this->artisan('cfb:uploads:doctor')
+        ->expectsOutputToContain('public URL is a custom domain')
+        ->doesntExpectOutputToContain('cdn.campusfootball.net')
+        ->assertExitCode(0);
+});
+
+it('refuses to probe a disk it could not even build, instead of dying of it', function () {
+    /*
+     * How this first ran on Cloud: three names unset, so Flysystem threw a
+     * TypeError constructing the adapter and the stack trace buried the
+     * report that had just explained why. A doctor may never die of the
+     * disease it diagnoses.
+     */
+    useR2();
+    config(['filesystems.disks.r2.bucket' => null]);
+    Storage::forgetDisk('r2');
+
+    // One expectation per LINE — the header's own rule: a line is consumed
+    // by the first substring it matches, and the second never comes.
+    $this->artisan('cfb:uploads:doctor --probe --force')
+        ->expectsOutputToContain('not run — the disk above is not configured, so there is nothing to write to')
+        ->assertExitCode(1);
 });

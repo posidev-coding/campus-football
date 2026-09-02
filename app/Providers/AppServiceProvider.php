@@ -63,16 +63,17 @@ class AppServiceProvider extends ServiceProvider
          * ACL-free writes to R2, attached when the disk RESOLVES. The
          * manager consults custom creators before its built-in one, so
          * this wraps the stock S3 driver for every s3-driver disk and
-         * bolts R2Writes onto the client of any disk carrying a plain
-         * `'no_acl' => true` (config-cache safe; the SDK ignores the extra
-         * key). The driver stays `s3`, so Livewire's isUsingS3() branch is
+         * bolts R2Writes onto the client of any disk that wants ACL-free
+         * writes — a plain `'no_acl' => true` (config-cache safe; the SDK
+         * ignores the extra key), or an R2 endpoint, which covers a bucket
+         * the platform mounts under a disk this repository does not own. The driver stays `s3`, so Livewire's isUsingS3() branch is
          * untouched. Never at boot: a boot-time attach lands on a client
          * the tests never see and does not survive forgetDisk().
          */
         Storage::extend('s3', function ($app, array $config) {
             $disk = Storage::createS3Driver($config);
 
-            if ($config['no_acl'] ?? false) {
+            if (R2Writes::wants($config)) {
                 R2Writes::attach($disk->getClient());
             }
 
