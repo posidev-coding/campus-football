@@ -51,6 +51,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Services/Espn/Sync/SyncGames.php,app/Console/Commands/SweepLiveSummariesCommand.php,routes/console.php | .ai/rules/sync-console-commands.md |
 | app/Models/Standing.php,app/Services/Espn/Sync/SyncStandings.php | .ai/rules/sync.md |
 | tests/** | .ai/rules/tests.md |
+| app/Services/Espn/Sync/SyncGames.php,app/Support/Networks.php,resources/views/components/network-logo.blade.php,resources/views/components/group-icon.blade.php | .ai/rules/views-components.md |
 | app/Models/Slate.php,resources/views/livewire/group.blade.php,resources/views/livewire/pickem-home.blade.php,app/Support/** | .ai/rules/views-livewire-support.md |
 | app/Actions/PublishSlate.php,app/Support/Cadence.php,app/Models/Slate.php,resources/views/livewire/group.blade.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/views-livewire-views-livewire.md |
 | app/Enums/ContestMode.php,app/Enums/LobbyFlavor.php,resources/views/livewire/group.blade.php,resources/views/livewire/join.blade.php | .ai/rules/views-livewire.md |

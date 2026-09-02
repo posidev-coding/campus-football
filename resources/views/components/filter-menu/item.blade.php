@@ -1,5 +1,5 @@
 @props([
-    /** array{value:string, label:string, menuLabel?:string, href?:string, disabled?:bool, note?:string} */
+    /** array{value:string, label:string, menuLabel?:string, href?:string, disabled?:bool, note?:string, mark?:\App\Models\Group} */
     'item' => [],
     'selected' => '',
     'model' => null,
@@ -33,7 +33,18 @@
         :suffix="$item['note'] ?? null"
         @class(['font-semibold' => $selected === $item['value']])
     >
-        {{ $item['menuLabel'] ?? $item['label'] }}
+        @if ($item['mark'] ?? null)
+            {{-- THE SEAT'S MARK beside its name — the uploaded icon, a
+                 conference room's shield, or initials (x-group-icon) — so a
+                 row in the menu is found by the same picture its card and
+                 its hero wear. --}}
+            <span class="flex min-w-0 items-center gap-2">
+                <x-group-icon :group="$item['mark']" shape="rounded-md" class="size-5 text-micro" />
+                <span class="min-w-0 truncate">{{ $item['menuLabel'] ?? $item['label'] }}</span>
+            </span>
+        @else
+            {{ $item['menuLabel'] ?? $item['label'] }}
+        @endif
     </flux:menu.item>
 @else
     @php

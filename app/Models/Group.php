@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\LobbyFlavor;
+use App\Support\ConferenceMarks;
 use Database\Factories\GroupFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -122,6 +123,19 @@ class Group extends Model
         }
 
         return Storage::disk(config('cfb.upload_disk'))->url($this->icon);
+    }
+
+    /**
+     * The conference's mark for a conference-flavored room — the SEC shield
+     * on the SEC Showdown — read off the logo ESPN synced onto
+     * `conferences.logo`, through the one map ConferenceMarks holds.
+     *
+     * Null for every other group, and null for a conference ESPN shipped no
+     * logo for: the caller keeps the mode tile, never an invented image.
+     */
+    public function conferenceLogoUrl(): ?string
+    {
+        return ConferenceMarks::logo($this->flavorEnum()?->conference());
     }
 
     /**

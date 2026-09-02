@@ -91,10 +91,13 @@
         @elseif ($final)
             <span class="shrink-0 font-medium text-zinc-500">Final</span>
         @else
-            <span class="shrink-0 text-right font-medium text-zinc-600 dark:text-zinc-400">
+            <span class="flex shrink-0 items-center gap-1 font-medium text-zinc-600 dark:text-zinc-400">
                 {{ $game->kickoffLabel('time') }}
                 @if ($broadcast)
-                    <span class="text-zinc-400">· {{ $broadcast }}</span>
+                    {{-- The network's MARK where we hold one, its name where
+                         ESPN ships none — x-network-logo decides. --}}
+                    <span class="text-zinc-400">·</span>
+                    <x-network-logo :network="$broadcast" class="text-zinc-400" />
                 @endif
             </span>
         @endif

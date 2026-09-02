@@ -51,12 +51,15 @@
         ? route('pickem.room', $group)
         : route('pickem.group', $group);
 
+    // `mark` is the group itself: the menu row wears the same picture the
+    // card and the hero wear (uploaded icon, conference shield, initials).
     $row = fn (App\Models\Group $group, ?string $section = null, ?string $note = null) => [
         'value' => 'g-'.$group->id,
         'label' => $group->name,
         'href' => $door($group),
         'group' => $section,
         'note' => $note,
+        'mark' => $group,
     ];
 
     // A null week label means the calendar has no week: the rooms are

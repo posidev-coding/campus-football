@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\SetGroupIcon;
+use App\Enums\ContestMode;
 use App\Exceptions\NotGroupCommissioner;
 use App\Models\Group;
 use App\Models\GroupMember;
@@ -146,6 +147,39 @@ it('offers no control in a public room, which has no commissioner seat', functio
 
     Livewire::actingAs($visitor)->test('group', ['group' => $group])
         ->assertDontSee('Upload a group icon');
+});
+
+it('wears the uploaded mark on the My Picks card and in the switcher, in place of the mode tile', function () {
+    /*
+     * The same picture everywhere the group is named (CFB-38): the card,
+     * the switcher's menu row and the hero. And the fallbacks are the ones
+     * each surface already had — the card keeps the mode tile, the menu row
+     * wears initials — never a stand-in image.
+     */
+    $this->travelTo('2026-09-02 12:00:00');
+    [$season, $week] = pickemSeasonWeek();
+    pickemGame($season, $week);
+
+    [$commissioner, $group] = pickemContest();
+    app(SetGroupIcon::class)->handle($commissioner, $group, UploadedFile::fake()->image('clubhouse.jpg', 256, 256));
+    $url = $group->refresh()->iconUrl();
+
+    $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+    $switcher = (string) str($html)->before('wire:key="picks-view-week"');
+    $cards = (string) str($html)->after('wire:key="picks-view-week"');
+
+    expect($switcher)->toContain('data-group-switcher')
+        ->toContain('src="'.$url.'"')
+        ->and($cards)->toContain('src="'.$url.'"')
+        ->not->toContain(ContestMode::Classic->palette()['tile']);
+
+    app(SetGroupIcon::class)->clear($commissioner, $group);
+
+    $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+
+    expect($html)->not->toContain('src="'.$url.'"')
+        ->and((string) str($html)->before('wire:key="picks-view-week"'))->toMatch('/>\s*'.$group->initials().'\s*</')
+        ->and((string) str($html)->after('wire:key="picks-view-week"'))->toContain(ContestMode::Classic->palette()['tile']);
 });
 
 /*

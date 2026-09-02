@@ -33,6 +33,20 @@ return [
     ),
 
     /*
+     * THE SHOW'S OWN SHIELD, for the Home card. Read off the same feed as
+     * the locations — `schedule.dates[].events[].imageSrc` beside the alt
+     * text "College GameDay logo" — and PINNED here the way `feed_url` is,
+     * because that page is hand-maintained decoration GamedayFeed refuses to
+     * believe at run time. Same `/2025/` scaffold, same rule: if it ever
+     * 404s the fix is GAMEDAY_LOGO_URL captured from a browser, never a
+     * computed year. Empty means no mark, and the card wears its tv glyph.
+     */
+    'logo_url' => env(
+        'GAMEDAY_LOGO_URL',
+        'https://a.espncdn.com/prod/styles/pagetype/otl/2025/college-gameday/img/static/index-logo.png',
+    ),
+
+    /*
      * Short, because this call is on a scheduled command and never on a
      * request path. A promo page that hangs should cost the run, not the
      * window — the same reasoning as the Redis timeouts.

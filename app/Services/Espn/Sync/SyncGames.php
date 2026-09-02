@@ -7,10 +7,12 @@ use App\Events\GameWentFinal;
 use App\Jobs\FetchGameSummary;
 use App\Models\Game;
 use App\Models\GameOdd;
+use App\Models\Network;
 use App\Models\Season;
 use App\Models\Venue;
 use App\Models\Week;
 use App\Services\Espn\EspnClient;
+use App\Support\Networks;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -280,6 +282,10 @@ class SyncGames
                 ]);
             }
         }
+
+        // The networks' marks ride the same payload — after the games, so a
+        // bad media entry can never cost a score.
+        $this->storeNetworks($body['events']);
 
         return $changed;
     }
@@ -702,6 +708,107 @@ class SyncGames
         }
 
         return $names === [] ? null : array_values(array_unique($names));
+    }
+
+    /**
+     * The marks of every network the payload names, written off the SAME
+     * request the scores came on — nothing against the tiers.
+     *
+     * `geoBroadcasts[].media` carries `logo`/`darkLogo` for the Disney family
+     * (ESPN, ESPN+, ESPNU, SEC Network, ACC Network, ABC, CW — measured
+     * 2026-09-02) and only a `shortName` for FOX, CBS, NBC, FS1 and BTN. A
+     * bare mention creates the row so the name is known and touches NOTHING
+     * else: a payload that did not carry artwork never nulls a mark we hold,
+     * which is "never write a default when a feed returns nothing" one
+     * column at a time. A `darkLogo` of "" is ESPN saying the light mark
+     * serves both surfaces, and is stored as null.
+     *
+     * Isolated like the events above it: a bad media entry costs the marks,
+     * never the games already written.
+     *
+     * @param  list<array<string, mixed>>  $events
+     */
+    private function storeNetworks(array $events): void
+    {
+        try {
+            $media = $this->networkMedia($events);
+
+            if ($media === []) {
+                return;
+            }
+
+            $existing = Network::query()->whereIn('name', array_keys($media))->get()->keyBy('name');
+            $learned = false;
+
+            foreach ($media as $name => $mark) {
+                $network = $existing->get($name) ?? new Network(['name' => $name]);
+
+                if ($mark['logo'] !== null) {
+                    $network->fill(['logo' => $mark['logo'], 'logo_dark' => $mark['logo_dark']]);
+                }
+
+                if (! $network->exists || $network->isDirty()) {
+                    $network->save();
+                    $learned = $learned || $mark['logo'] !== null;
+                }
+            }
+
+            // The day-long map would otherwise keep spelling the name until
+            // tomorrow. Only a mark changes the map; a bare name is not in it.
+            if ($learned) {
+                Networks::forget();
+            }
+        } catch (Throwable $e) {
+            Log::warning('Skipped the network marks', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Every network on the payload, by short name, with the first artwork
+     * any mention of it carried.
+     *
+     * @param  list<array<string, mixed>>  $events
+     * @return array<string, array{logo: ?string, logo_dark: ?string}>
+     */
+    private function networkMedia(array $events): array
+    {
+        $media = [];
+
+        foreach ($events as $event) {
+            foreach ($event['competitions'] ?? [] as $competition) {
+                foreach ($competition['geoBroadcasts'] ?? [] as $broadcast) {
+                    $entry = $broadcast['media'] ?? null;
+                    $name = is_array($entry) && is_string($entry['shortName'] ?? null) ? trim($entry['shortName']) : '';
+
+                    // The column is 40 wide; a name that does not fit is not
+                    // a network anybody prints.
+                    if ($name === '' || mb_strlen($name) > 40) {
+                        continue;
+                    }
+
+                    $logo = $this->logoUrl($entry['logo'] ?? null);
+
+                    // The first mention carrying artwork wins; a bare mention
+                    // later in the payload must not erase it.
+                    if (isset($media[$name]) && ($media[$name]['logo'] !== null || $logo === null)) {
+                        continue;
+                    }
+
+                    $media[$name] = [
+                        'logo' => $logo,
+                        'logo_dark' => $logo === null ? null : $this->logoUrl($entry['darkLogo'] ?? null),
+                    ];
+                }
+            }
+        }
+
+        return $media;
+    }
+
+    /** A URL or nothing — ESPN's "" for a missing dark variant is nothing. */
+    private function logoUrl(mixed $value): ?string
+    {
+        return is_string($value) && str_starts_with($value, 'http') ? $value : null;
     }
 
     /**

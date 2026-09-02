@@ -469,8 +469,14 @@ new class extends Component
                                 wire:key="closed-{{ $closed['mode']->value }}-{{ $closed['flavor']?->value ?? 'standard' }}"
                                 class="flex items-center gap-3 rounded-xl border border-dashed border-zinc-200 px-3 py-2.5 dark:border-zinc-800"
                             >
+                                @php $closedLogo = App\Support\ConferenceMarks::logo($closed['flavor']?->conference()); @endphp
                                 <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-zinc-200 dark:border-zinc-800">
-                                    <flux:icon :name="$closed['mode']->icon()" variant="micro" class="size-4 text-zinc-300 dark:text-zinc-600" />
+                                    @if ($closedLogo !== null)
+                                        {{-- The conference's shield, dimmed like the label beside it. --}}
+                                        <img src="{{ $closedLogo }}" alt="" loading="lazy" decoding="async" class="size-5 object-contain opacity-40 grayscale">
+                                    @else
+                                        <flux:icon :name="$closed['mode']->icon()" variant="micro" class="size-4 text-zinc-300 dark:text-zinc-600" />
+                                    @endif
                                 </span>
                                 <span class="min-w-0 flex-1">
                                     <span class="block truncate font-medium leading-tight text-zinc-400 dark:text-zinc-500">{{ $closed['label'] }}</span>

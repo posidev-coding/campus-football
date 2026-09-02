@@ -24,6 +24,12 @@
     $yours = Gameday::isFollowed($week, auth()->user());
     $palette = $yours ? $team?->palette() : null;
 
+    // The show's own shield, pinned in config the way the feed path is —
+    // never fetched at render. Empty is a real state and gets the tv glyph
+    // the card wore before: chrome, not a stand-in for the mark.
+    $logo = config('gameday.logo_url');
+    $logo = is_string($logo) && trim($logo) !== '' ? trim($logo) : null;
+
     $line = match (true) {
         ! $known => Voice::line('home.gameday.unknown'),
         $yours && $team !== null => Voice::line('home.gameday.yours', ['team' => $team->placeName()]),
@@ -49,45 +55,67 @@
             '--team-keyline: '.$team?->altAccentColor() => $yours && $team?->altAccentColor(),
         ])
     >
-        <div class="flex items-center gap-2">
-            {{-- `tv` rather than a vendored bootstrap `broadcast`: game-info already
-                 uses it for the same idea, and Flux ships it. --}}
-            <flux:icon.tv variant="mini" class="shrink-0 text-zinc-400" />
-            <span class="font-semibold">College GameDay</span>
-
-            @if ($known)
-                <flux:badge size="sm" :color="$yours ? 'amber' : 'zinc'">
-                    {{ $week->saturday->setTimezone(config('cfb.timezone'))->format('M j') }}
-                </flux:badge>
-            @else
-                <flux:badge size="sm" color="zinc">TBA</flux:badge>
+        {{-- THE SHIELD is the card's mark, on the left of everything the
+             card says — the glance-card grammar — so the header row keeps
+             its height. It brings its own dark ground and a gray outline,
+             so it reads on the white card, the dark one and a followed
+             team's keyline alike. --}}
+        <div class="flex gap-3">
+            @if ($logo)
+                <img
+                    src="{{ $logo }}"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    class="h-12 w-auto shrink-0 self-center object-contain"
+                    data-gameday-mark="true"
+                >
             @endif
-        </div>
 
-        @if ($known)
-            {{-- The fact, plainly. A logo never sits on the team's own color,
-                 so it rides a neutral puck exactly as the glance cards do. --}}
-            <div class="flex items-center gap-2 pt-2">
-                @if ($team)
-                    <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/10 dark:bg-transparent dark:shadow-none dark:ring-0">
-                        <x-team-logo :team="$team" size="size-6" />
-                    </span>
-                @endif
+            <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                    @unless ($logo)
+                        {{-- `tv` rather than a vendored bootstrap `broadcast`: game-info already
+                             uses it for the same idea, and Flux ships it. --}}
+                        <flux:icon.tv variant="mini" class="shrink-0 text-zinc-400" data-gameday-glyph="true" />
+                    @endunless
+                    <span class="font-semibold">College GameDay</span>
 
-                <div class="min-w-0">
-                    <p class="truncate font-bold leading-tight">{{ $week->city }}, {{ $week->state }}</p>
-
-                    @if ($game)
-                        <p class="truncate text-sm text-zinc-500 dark:text-zinc-400">
-                            {{ $game->name }} · {{ $game->kickoffLabel('date') }}
-                        </p>
-                    @elseif ($week->site)
-                        <p class="truncate text-sm text-zinc-500 dark:text-zinc-400">{{ $week->site }}</p>
+                    @if ($known)
+                        <flux:badge size="sm" :color="$yours ? 'amber' : 'zinc'">
+                            {{ $week->saturday->setTimezone(config('cfb.timezone'))->format('M j') }}
+                        </flux:badge>
+                    @else
+                        <flux:badge size="sm" color="zinc">TBA</flux:badge>
                     @endif
                 </div>
-            </div>
-        @endif
 
-        <p class="pt-2 text-sm text-zinc-500 dark:text-zinc-400">{{ $line }}</p>
+                @if ($known)
+                    {{-- The fact, plainly. A logo never sits on the team's own color,
+                         so it rides a neutral puck exactly as the glance cards do. --}}
+                    <div class="flex items-center gap-2 pt-2">
+                        @if ($team)
+                            <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-black/10 dark:bg-transparent dark:shadow-none dark:ring-0">
+                                <x-team-logo :team="$team" size="size-6" />
+                            </span>
+                        @endif
+
+                        <div class="min-w-0">
+                            <p class="truncate font-bold leading-tight">{{ $week->city }}, {{ $week->state }}</p>
+
+                            @if ($game)
+                                <p class="truncate text-sm text-zinc-500 dark:text-zinc-400">
+                                    {{ $game->name }} · {{ $game->kickoffLabel('date') }}
+                                </p>
+                            @elseif ($week->site)
+                                <p class="truncate text-sm text-zinc-500 dark:text-zinc-400">{{ $week->site }}</p>
+                            @endif
+                        </div>
+                    </div>
+                @endif
+
+                <p class="pt-2 text-sm text-zinc-500 dark:text-zinc-400">{{ $line }}</p>
+            </div>
+        </div>
     </{{ $game ? 'a' : 'div' }}>
 @endif

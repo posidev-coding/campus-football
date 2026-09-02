@@ -436,6 +436,16 @@ in the glance-card header and the team-page hero:
   ESPN's dark-variant logos are drawn for dark surfaces.
 - **Text color on an accent is COMPUTED, never assumed.** See below.
 
+Two more marks came under the rule on 2026-09-02, each with one deliberate
+exception. A **conference shield** (`x-group-icon` on a conference-flavored
+room — the SEC Showdown wears the SEC) rides a WHITE puck in both modes: ESPN
+ships no dark variant for `conferences.logo`, and a navy B1G on zinc-900 is a
+hole. A **network mark** (`x-network-logo`, where a caption used to spell
+"ESPN") sits on no puck at all — it is a wordmark in a caption — and uses
+ESPN's `darkLogo` where one was sent, the light mark on both surfaces where
+ESPN's own answer was `""`. Neither invents a picture: a network or a
+conference without one prints its name or keeps the mode tile.
+
 The branding lives in the surface instead: the `team-accent` utility and a
 3px `alt_color` keyline along the header's bottom edge, jersey-piping style.
 

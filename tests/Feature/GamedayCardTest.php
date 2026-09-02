@@ -100,3 +100,26 @@ it('offers no link on a week with nowhere to go', function () {
     // the moment somebody taps it.
     $this->get('/')->assertOk()->assertDontSee('/games/', escape: false);
 });
+
+it('wears the College GameDay shield when one is pinned, and the tv glyph when none is', function () {
+    /*
+     * The show's own mark — read off the promo feed's schedule block once
+     * and pinned in config the way the feed path is, never fetched at
+     * render. Empty config is a real state and gets the glyph the card wore
+     * before, not a broken image.
+     */
+    config()->set('gameday.logo_url', 'https://a.espncdn.com/prod/styles/pagetype/otl/2025/college-gameday/img/static/index-logo.png');
+
+    $this->get('/')
+        ->assertOk()
+        ->assertSee('college-gameday/img/static/index-logo.png')
+        ->assertSee('data-gameday-mark', escape: false)
+        ->assertDontSee('data-gameday-glyph', escape: false);
+
+    config()->set('gameday.logo_url', '');
+
+    $this->get('/')
+        ->assertOk()
+        ->assertSee('data-gameday-glyph', escape: false)
+        ->assertDontSee('index-logo.png');
+});

@@ -37,6 +37,14 @@ zero on a lookup miss and overwrote 9-1 teams with 0-0. `EspnClient` returns
   obvious guess) — see the Recruiting section below, which is the one feed where
   the cost was self-inflicted.
 - There is no NIL endpoint. `NilNewsProvider` filters team news by keyword.
+- The scoreboard's `geoBroadcasts[].media` carries `logo`/`darkLogo` for the
+  Disney family only — ESPN, ESPN+, ESPNU, SEC Network, ACC Network, ABC, CW
+  (measured 2026-09-02). FOX, CBS, NBC, FS1, BTN and Peacock arrive as a bare
+  `shortName` in every ESPN feed, the `summary` and the core `media` catalog
+  included. `SyncGames` writes what it gets into `networks` off the same
+  request; a bare mention never nulls a mark already held, and `x-network-logo`
+  prints the name where there is none. A `darkLogo` of `""` means the light
+  mark serves both surfaces.
 
 ## Recruiting: 27,000 prospects for 31 requests
 
