@@ -401,7 +401,7 @@ it('wears the group switcher as its title, and lists the reader\'s other seats',
 
     $menu = (string) str($html)->after('<ui-menu')->before('</ui-menu>');
 
-    expect($menu)->toContain('All my picks')
+    expect($menu)->toContain('All my groups and rooms')
         ->toContain(route('pickem.home'))
         ->toContain('My Groups')
         ->toContain('The Back Porch')
@@ -425,7 +425,7 @@ it('wears the group switcher as its title, and lists the reader\'s other seats',
 it('keeps a previewed lobby\'s name on the trigger without a seat in it', function () {
     // A lobby is readable from outside. The reader holds no seat there,
     // so it is in none of the switcher's lists — and the trigger must
-    // still say where they are, never "All my picks".
+    // still say where they are, never "My groups and rooms".
     $outsider = pickemAdmin();
     $lobby = Group::factory()->lobby()->create(['name' => 'Walk-Ons Welcome']);
     Contest::factory()->create(['group_id' => $lobby->id]);
@@ -434,8 +434,8 @@ it('keeps a previewed lobby\'s name on the trigger without a seat in it', functi
     $trigger = (string) str($html)->after('data-group-switcher')->before('<ui-menu');
 
     expect($trigger)->toContain('Walk-Ons Welcome')
-        ->not->toContain('All my picks')
-        ->and($html)->toContain('All my picks')
+        ->not->toContain('My groups and rooms')
+        ->and($html)->toContain('All my groups and rooms')
         ->toContain('Browse the Lobby')
         ->not->toContain('My Groups');
 });
@@ -458,7 +458,7 @@ it('keeps a played room\'s own name on its clubhouse, outside the week it is not
     expect($trigger)->toContain('The 8/29 Room')
         // Spliced in as a bare row right after the overview, ahead of
         // any Contests heading — a played room is not this Saturday's.
-        ->and(strpos($menu, 'The 8/29 Room'))->toBeGreaterThan(strpos($menu, 'All my picks'))
+        ->and(strpos($menu, 'The 8/29 Room'))->toBeGreaterThan(strpos($menu, 'All my groups and rooms'))
         ->and(strpos($menu, 'The 8/29 Room'))->toBeLessThan(strpos($menu, 'Browse the Lobby'))
         ->and(substr_count($menu, 'wire:key="switch-g-'.$room->id.'"'))->toBe(1);
 

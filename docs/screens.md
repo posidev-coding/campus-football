@@ -603,10 +603,16 @@ at three heights, with the Saturday it was selling 1,400px above the rooms.
 This half keeps everything that is ABOUT THE READER, one column ordered by
 urgency:
 
-1. **The group switcher** (`x-group-switcher`, 2026-09-01) — centered above
-   the This week | Results fork, the one piece of chrome allowed above a
-   plate (`docs/ui-system.md` rule 8). It answers "which of my seats am I
-   looking at" before the plate asks "which half": "All my picks", then
+1. **The group switcher** (`x-group-switcher`, 2026-09-01) — above the
+   This week | Results fork at title weight (the `hero` variant,
+   start-aligned, clamped to two lines: the same first row the clubhouse
+   opens with, so the two screens read as one system), the one piece of
+   chrome allowed above a plate (`docs/ui-system.md` rule 8). It IS the
+   screen's name — the trigger reads "My groups and rooms" (both container
+   nouns, the possession, no third naming of "My Picks"), its menu row
+   "All my groups and rooms" because that row sits directly above the My
+   Groups heading; "All my picks" retired with pass 2. It answers "which
+   of my seats am I looking at" before the plate asks "which half", then
    **My Groups** (private, by name), then **Week N Contests** (the public
    rooms the reader is SEATED in this Saturday, the always-open tables, and
    "Browse the Lobby · N open" — the Lobby is where a room is joined, so

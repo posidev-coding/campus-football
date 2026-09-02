@@ -195,9 +195,13 @@ the components encode:
    content. The WHEN menu rides the plate's actions slot when one exists,
    else the filter bar's — or, on the team page, the hero. ONE exception,
    and it is the Picks area's: `x-group-switcher` (2026-09-01) sits
-   centered ABOVE the plate on `/picks`, because "which of my seats am I
-   looking at" comes before "which half of this seat"; on the clubhouse
-   the same control is the hero's title. Nothing else goes above a plate.
+   ABOVE the plate on `/picks` — at title weight, start-aligned, its
+   `hero` variant, the same first row the clubhouse opens with — because
+   "which of my seats am I looking at" comes before "which half of this
+   seat"; on the clubhouse the same control is the hero's title. It is
+   the screen's NAME on both, which is why it never rides the plate's
+   actions slot (that silences the name and makes the switcher test slice
+   vacuous). Nothing else goes above a plate.
 9. **Names**: `$year`, `$q`, `$scope`, `$sort`, `$view`, `$position`;
    `$perPage` never `#[Url]`; `wire:key` prefixes are per-screen (the team
    page and `/stats` once collided on `statsview-`).
@@ -242,8 +246,11 @@ keyed and bolded exactly like a setting row, with `note` riding as the menu
 item's suffix ("3 open"). It holds no Livewire state and reads one thing, the
 host screen's `App\Support\Seats` computed — the same read My Picks' cards()
 stands on — so the menu can never list a different set of groups than the
-page under it. Its rows are sectioned the way the product is: "All my picks",
-then **My Groups** (private, season-long), then **Week N Contests** (the
+page under it. Its rows are sectioned the way the product is: the overview
+(trigger "My groups and rooms", menu row "All my groups and rooms" — it sits
+directly above the My Groups heading and must read as everything; "All my
+picks" retired 2026-09-01), then **My Groups** (private, season-long), then
+**Week N Contests** (the
 public rooms the reader is SEATED in this Saturday, the always-open tables,
 and "Browse the Lobby · N open" — the Lobby is where a room is joined, so the
 menu lists what you hold, never what is for sale). The page the reader is ON

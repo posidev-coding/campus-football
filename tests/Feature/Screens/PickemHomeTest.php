@@ -64,10 +64,19 @@ function heroClockText(string $html): string
     return trim($matches[1] ?? '');
 }
 
-/** The switcher's own markup — everything above the fork. */
+/**
+ * The switcher's own markup — everything above the fork. Asserted
+ * non-empty here, because a helper that slices HTML by a marker must say
+ * so when the marker is gone: the switcher moving into the plate's actions
+ * slot would empty every slice and pass every `not->toContain` on it.
+ */
 function switcherOf(string $html): string
 {
-    return (string) str($html)->before('wire:key="picks-view-week"');
+    $switcher = (string) str($html)->before('wire:key="picks-view-week"');
+
+    expect($switcher)->not->toBeEmpty()->toContain('data-group-switcher');
+
+    return $switcher;
 }
 
 /** The overview under the fork, where the sections and their cards are. */
@@ -1373,6 +1382,33 @@ describe('the seats read', function () {
 });
 
 describe('the group switcher', function () {
+    it('is the screen\'s name: title weight, start-aligned, "My groups and rooms"', function () {
+        /*
+         * "All my picks" died at its one source (2026-09-01). The trigger is
+         * the screen's title — both container nouns, the possession, and no
+         * third naming of "My Picks" — and its menu row reads as everything
+         * because it sits directly above the "My Groups" section heading.
+         * Sentence case on purpose: the capital G in "My Groups" is what
+         * keeps the two strings apart in the ordered assertion below.
+         */
+        [$commissioner] = pickemContest();
+
+        $html = Livewire::actingAs($commissioner)->test('pickem-home')->html();
+        $switcher = switcherOf($html);
+        $trigger = (string) str($switcher)->after('data-group-switcher')->before('<ui-menu');
+
+        expect($trigger)->toContain('My groups and rooms')
+            ->toContain('text-xl')
+            ->toContain('line-clamp-2')
+            ->not->toContain('text-sm')
+            // Start-aligned: the root no longer wears the centering class.
+            ->and((string) str($switcher)->before('data-group-switcher'))->not->toContain('items-center')
+            ->and($switcher)->toContain('All my groups and rooms')
+            ->and($html)->not->toContain('All my picks');
+
+        expectInOrder($switcher, ['My groups and rooms', 'All my groups and rooms', 'My Groups']);
+    });
+
     beforeEach(function () {
         $this->travelTo('2026-09-02 12:00:00');
     });
@@ -1404,7 +1440,7 @@ describe('the group switcher', function () {
         // Order IS the taxonomy: the overview, the season-long groups by
         // name, this Saturday's rooms under the week they play, the store.
         expectInOrder($switcher, [
-            'All my picks',
+            'All my groups and rooms',
             'My Groups',
             'Rocky Top Rejects',
             'The Back Porch',

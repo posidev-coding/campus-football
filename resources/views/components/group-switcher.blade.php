@@ -6,6 +6,15 @@
     door to the Lobby, which is where a room is JOINED — this lists what
     you hold, never what is for sale).
 
+    THE OVERVIEW'S NAME (2026-09-01): the trigger reads "My groups and
+    rooms" — both container nouns, the possession, and no third naming of
+    "My Picks" (the chip above already says that). Its menu row reads
+    "All my groups and rooms", because the row sits directly above the
+    "My Groups" section heading and has to read as everything. Sentence
+    case on purpose: title-cased "My Groups" is the section heading below,
+    and the capital G is what keeps the two strings apart in an ordered
+    assertion. "All my picks" died at this one source.
+
     Pure navigation. Every row carries `href` and the menu holds no
     Livewire state at all: it is an x-filter-menu — the house's one
     dropdown idiom — whose items go somewhere instead of setting
@@ -19,17 +28,21 @@
     previewing without a seat, or a room whose Saturday is played, is in
     none of the lists — so it is spliced in as a bare row rather than
     letting the menu fall back to its first item and title a clubhouse
-    "All my picks".
+    "My groups and rooms".
 
-    Two variants: `default` sits centered above My Picks' fork; `hero`
-    is the clubhouse title, worn on the group hero's band.
+    One variant on both screens since pass 2: `hero` — title weight,
+    start-aligned, clamped to two lines — is the clubhouse title on the
+    group hero's band AND the overview's first row above the fork. The
+    switcher IS the screen's name on both, which is why it never sat in
+    the plate's actions slot (that silences the name and makes the
+    switcher test slice vacuous). `default` stays for any other caller.
 --}}
 @props([
     /** @var \App\Support\Seats every seat the viewer holds, read once by the host */
     'seats',
     /** @var \App\Models\Group|null the group the reader is standing in; null on /picks */
     'current' => null,
-    /** `default` above the fork on /picks; `hero` as the clubhouse title. */
+    /** `hero` on both screens — the title; `default` for any other caller. */
     'variant' => 'default',
 ])
 
@@ -53,7 +66,7 @@
     $open = $seats->openCount();
 
     $items = [
-        ['value' => 'all', 'label' => 'All my picks', 'href' => route('pickem.home')],
+        ['value' => 'all', 'label' => 'My groups and rooms', 'menuLabel' => 'All my groups and rooms', 'href' => route('pickem.home')],
         ...$seats->privateGroups()->map(fn ($group) => $row($group, 'My Groups'))->all(),
         ...$seats->rooms()->map(fn ($group) => $row($group, $contests))->all(),
         ...$seats->tables()->map(fn ($group) => $row($group, $contests, 'Always open'))->all(),

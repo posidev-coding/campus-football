@@ -816,16 +816,18 @@ new class extends Component
             <x-notice tone="success">{{ session('status') }}</x-notice>
         @endif
 
-        {{-- THE SWITCHER: which of your seats you are looking at, and one
-             tap to any other. Pure navigation off the one Seats read —
-             no Livewire state, no query of its own — and the one row
-             that sits ABOVE the fork, because "where am I" comes before
-             "which half". Centered; the same control is the clubhouse's
-             title. Guarded on SEATS rather than on the fork, so the first
-             run stays byte-identical. Not sticky: the z-ladder in
-             views.md, and the tour overlay under the page root. --}}
+        {{-- THE SWITCHER IS THE SCREEN'S NAME: which of your seats you are
+             looking at, and one tap to any other. Pure navigation off the
+             one Seats read — no Livewire state, no query of its own — and
+             the one row that sits ABOVE the fork, because "where am I"
+             comes before "which half". The hero variant since pass 2:
+             title weight, start-aligned, the same first row the clubhouse
+             opens with, so the two screens read as one system. Guarded on
+             SEATS rather than on the fork, so the first run stays
+             byte-identical. Not sticky: the z-ladder in views.md, and the
+             tour overlay under the page root. --}}
         @if ($this->seats->hasSeats())
-            <x-group-switcher :seats="$this->seats" class="items-center" />
+            <x-group-switcher :seats="$this->seats" variant="hero" />
         @endif
 
         {{-- THE FORK. Two areas, so a plate and not a gutter: what you can
