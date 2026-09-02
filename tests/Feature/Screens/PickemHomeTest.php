@@ -199,7 +199,7 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee('Needs your picks');
     });
 
-    it('carries the week\'s state onto each group card, under the week ribbon', function () {
+    it('carries the week\'s state onto each group card, under the week band', function () {
         [$commissioner, $group, $contest] = pickemContest(ContestMode::Tiered);
         $group->update(['name' => 'Rocky Top Rejects']);
         app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
@@ -1350,6 +1350,57 @@ it('lights My Picks, and lets the Lobby chip keep the store', function () {
         ->and($sections[0]['route'])->toBe('pickem.home');
 });
 
+describe('the week band', function () {
+    it('opens the week on one light card: the dateline on one row, you on the next', function () {
+        /*
+         * A dark ribbon and a blue tile used to stack here — three
+         * container treatments before any content at 390. One light band
+         * now, the clubhouse hero's own surface: row 1 the dateline and
+         * the clock, row 2 the you-strip in its bare variant. The rows are
+         * siblings carrying their own tour anchors; the strip keeps
+         * `data-you-strip` on ITSELF, which is what the fork pins read.
+         */
+        $this->travelTo('2026-09-02 12:00:00');
+
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        $commissioner->update(['handle' => 'marcus']);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        $html = Livewire::actingAs($commissioner->fresh())->test('pickem-home')
+            ->assertSee('Week 1')
+            ->assertSee('@marcus')
+            ->assertSeeInOrder(['Rank', 'XP', 'Tallboys', 'Wins'])
+            ->html();
+
+        $band = (string) str($html)->after('wire:key="picks-view-results"')->before('Needs your picks');
+
+        expect($band)->toContain('bg-white')
+            ->toContain('border-zinc-200')
+            ->not->toContain('bg-zinc-900 px-4 py-3 text-white')
+            ->not->toContain('bg-blue-50/60')
+            ->and(strpos($band, 'data-tour="week"'))->toBeLessThan(strpos($band, 'data-tour="balance"'))
+            // The strip's own element carries both its marks.
+            ->and($band)->toMatch('/<div[^>]*data-you-strip[^>]*data-tour="balance"/');
+
+        // No band on Results.
+        Livewire::actingAs($commissioner->fresh())->test('pickem-home')
+            ->set('view', 'results')
+            ->assertDontSeeHtml('data-tour="week"')
+            ->assertDontSeeHtml('data-you-strip');
+    });
+
+    it('keeps the dateline alone on a first run, with no strip under it', function () {
+        // No seat, no fork, no you-strip — but the week is still the week,
+        // and the tour's first stop still has its box.
+        pickemHomeWeek();
+
+        Livewire::actingAs(pickemAdmin())->test('pickem-home')
+            ->assertSeeHtml('data-tour="week"')
+            ->assertDontSeeHtml('data-you-strip')
+            ->assertDontSeeHtml('data-tour="balance"');
+    });
+});
+
 describe('the seats read', function () {
     it('reads every seat once for the whole screen', function () {
         /*
@@ -1368,7 +1419,12 @@ describe('the seats read', function () {
 
         DB::enableQueryLog();
 
-        Livewire::actingAs($reader->fresh())->test('pickem-home')->assertSee('Rocky Top Rejects');
+        // The band rendered too (this fixture has no calendar week, so it
+        // is the you-strip row alone) — its figures are projections of the
+        // same cards() read, never a second question.
+        Livewire::actingAs($reader->fresh())->test('pickem-home')
+            ->assertSee('Rocky Top Rejects')
+            ->assertSeeHtml('data-you-strip');
 
         $seats = collect(DB::getQueryLog())
             ->pluck('query')

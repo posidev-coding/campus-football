@@ -39,7 +39,9 @@ class Tours
      */
     public const WALKS = [
         self::HOME => ['glance', 'search', 'scores', 'picks', 'room', 'wallet', 'league', 'account', 'install'],
-        self::PICKS => ['week', 'seats', 'balance', 'room', 'how'],
+        // `balance` follows `week` since pass 2: the two are sibling rows
+        // of one band, so the walk runs monotonically down the page.
+        self::PICKS => ['week', 'balance', 'seats', 'room', 'how'],
     ];
 
     /**

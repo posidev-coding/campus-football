@@ -37,7 +37,7 @@ function picksTourCounts(): array
 }
 
 it('walks its own stops, not the app tour\'s', function () {
-    expect(Tours::stepsFor(Tours::PICKS))->toBe(['week', 'seats', 'balance', 'room', 'how'])
+    expect(Tours::stepsFor(Tours::PICKS))->toBe(['week', 'balance', 'seats', 'room', 'how'])
         // An unknown walk costs the reader the wrong tour, never the screen.
         ->and(Tours::stepsFor('nonsense'))->toBe(Tours::WALKS[Tours::HOME]);
 });
@@ -52,12 +52,17 @@ it('mounts on Picks and points at targets that are actually there', function () 
 
     expect($html)->toContain('data-guided-tour');
 
-    // Every stop's anchor. `room` and `how` are the doors at the foot; the
-    // rest are the screen's own zones. A stop with no target on the page
-    // steps over itself, so a missing one is a silently shorter walk.
-    foreach (['seats', 'balance', 'room', 'how'] as $key) {
-        expect($html)->toContain('data-tour="'.$key.'"');
+    // Every stop's anchor. `room` and `how` are the doors at the foot;
+    // `week` and `balance` are the two rows of the week band; `seats` is
+    // the My Groups block. A stop with no target on the page steps over
+    // itself, so a missing one is a silently shorter walk.
+    foreach (['week', 'balance', 'seats', 'room', 'how'] as $key) {
+        expect(substr_count($html, 'data-tour="'.$key.'"'))->toBe(1);
     }
+
+    // The two band rows are SIBLINGS, each with its own anchor, in walk
+    // order — one root attribute bag could not carry both.
+    expect(strpos($html, 'data-tour="week"'))->toBeLessThan(strpos($html, 'data-tour="balance"'));
 
     // The seats stop points at the My Groups section — the block under the
     // anchor, not the switcher menu that names the section higher up.

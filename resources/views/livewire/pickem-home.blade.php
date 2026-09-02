@@ -32,10 +32,10 @@ use Livewire\Component;
 
 /**
  * MY PICKS — the reader's own pick'em week, and nothing anybody else's.
- * One column ordered by urgency: the week's dateline, the slates still
- * waiting on picks, the groups they play in, last week's payoff, their
- * rung on the ladder, and the two doors out (an invite code, and the
- * Lobby). Outside the `pickem` flag it keeps the coming-soon promise the
+ * One column ordered by urgency: the week band (the dateline and the
+ * reader's own line), the slates still waiting on picks, the groups they
+ * play in, last week's payoff, their rung on the ladder, and the two
+ * doors out (an invite code, and the Lobby). Outside the `pickem` flag it keeps the coming-soon promise the
  * Picks tab shipped with, verbatim, at this address too.
  *
  * Split from the lobby 2026-08-20: one screen was doing two jobs — your
@@ -260,7 +260,7 @@ new class extends Component
          *
          * Read off the Seats read the switcher shares, and STILL gated on
          * the contests: with none there is no card to sell, and a week
-         * resolved anyway would hand ribbonClock() a deadline for a group
+         * resolved anyway would hand weekClock() a deadline for a group
          * that has no contest to build one for.
          */
         $week = $contests->isEmpty() ? null : $this->seats->week();
@@ -610,14 +610,14 @@ new class extends Component
     }
 
     /**
-     * The ribbon's one clock line, by urgency: games live now beats the
+     * The week band's one clock line, by urgency: games live now beats the
      * next kickoff beats a commissioner's slate deadline. Null when none
-     * of it applies — the ribbon then carries the dateline alone.
+     * of it applies — the band then carries the dateline alone.
      *
      * @return array{type: string, at: \Carbon\CarbonInterface|null}|null
      */
     #[Computed]
-    public function ribbonClock(): ?array
+    public function weekClock(): ?array
     {
         $cards = $this->cards;
 
@@ -851,22 +851,28 @@ new class extends Component
         {{-- MAIN COLUMN: the urgency spine, in one column and in order. --}}
         <div class="flex min-w-0 flex-col gap-6">
         @if ($this->activeView === 'week')
-        {{-- The week's dateline. No calendar entry, no ribbon — never a
-             substituted week. --}}
-        @if ($this->weekEntry !== null)
-            <x-week-ribbon data-tour="week" :entry="$this->weekEntry" :clock="$this->ribbonClock" />
-        @endif
+        {{-- THE WEEK BAND: the dateline and ONE clock line on its first
+             row, YOU on its second — one light card where a dark ribbon
+             and a blue tile used to stack (pass 2). No calendar entry,
+             no dateline — never a substituted week.
 
-        {{-- YOU, before anything on the screen asks you for something.
-             Below `sm` there is no app header, so this is the only place
-             a phone reader meets their own rung, XP and credits on the
-             screen the whole ladder is played on.
-
-             Guarded on the FORK, not on the wallet: a first run has no
-             seat and no settled week, and the pitch it gets instead is
-             byte-identical to the one it has always had. --}}
-        @if ($this->hasTabs && $this->youStrip !== null)
-            <x-you-strip data-you-strip data-tour="balance" :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
+             The strip is on the second row for the same reason it was
+             here before: below `sm` there is no app header, so this is
+             the only place a phone reader meets their own rung, XP and
+             credits on the screen the whole ladder is played on. It is
+             guarded on the FORK, not on the wallet: a first run has no
+             seat and no settled week, keeps the dateline alone, and the
+             pitch it gets instead is byte-identical to the one it has
+             always had. The two rows are siblings carrying their own
+             tour anchors; the band's root carries none. --}}
+        @php $bandName = $this->hasTabs && $this->youStrip !== null ? $this->youStrip['name'] : null; @endphp
+        @if ($this->weekEntry !== null || $bandName !== null)
+            <x-week-band
+                :entry="$this->weekEntry"
+                :clock="$this->weekClock"
+                :name="$bandName"
+                :stats="$bandName === null ? [] : $this->youStrip['stats']"
+            />
         @endif
 
         {{-- What needs you right now: slates still taking your picks,

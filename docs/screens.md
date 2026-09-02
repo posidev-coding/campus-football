@@ -625,10 +625,20 @@ urgency:
    title, so a reader inside one seat reaches any other in one tap. It came
    from the first onboarded readers, who held several groups and rooms at
    once and could not tell one card from the next.
-2. **The week ribbon** (`x-week-ribbon`, the group-hero band grammar) — the
-   dateline from `CfbCalendar::defaultWeekEntry()` plus ONE clock line by
-   urgency: games live now → the next kickoff → a commissioner's slate
-   deadline. No calendar entry, no ribbon — never a substituted week.
+2. **The week band** (`x-week-band`, since pass 2 on 2026-09-01; it replaced
+   the dark `x-week-ribbon` and the blue you-strip tile under it) — one
+   light card in the clubhouse hero's own grammar. Row 1: the dateline
+   from `CfbCalendar::defaultWeekEntry()` plus ONE clock line by urgency
+   (games live now → the next kickoff → a commissioner's slate deadline),
+   carrying `data-tour="week"` on its own element. Row 2: `x-you-strip` in
+   its `bare` variant (the four columns, no border or fill; the band
+   supplies the surface), carrying `data-you-strip` and
+   `data-tour="balance"` on the strip itself. The rows are siblings —
+   one root attribute bag cannot carry two anchors — and sit side by
+   side from `md`. No calendar entry, no dateline; no seat, no strip —
+   never a substituted week, never an invented line. Measured before: a
+   seated reader met switcher 24 · plate 33 · ribbon 49 · you-strip 59
+   before any content, in three container treatments.
 3. **Needs your picks** — renders only when a published slate is still
    taking picks the reader hasn't finished: ONE mode-tinted hero card (the
    slate closest to locking: live first, then soonest kickoff, a missing
@@ -690,8 +700,9 @@ urgency:
    switcher; `pastRooms` counts it and the sidecar's "Rooms you've played"
    door sends the reader to History.
 
-   **The you-strip** sits above all of it, at the top of This week
-   (`x-you-strip`, the standings component unchanged): rung, XP, Tallboys
+   **The you-strip** sits above all of it, the second row of the week
+   band at the top of This week (`x-you-strip` in its `bare` variant; the
+   clubhouse's Standings tab keeps the blue `panel`): rung, XP, Tallboys
    and wins. Below `sm` the app header does not render, so this is the
    only place a phone reader meets their own ladder on the screen the
    ladder is played on. Wins renders an em dash until a week has been won.
