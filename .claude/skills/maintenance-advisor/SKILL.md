@@ -39,7 +39,8 @@ identifiers anywhere:
 | `schedule` | Did each scheduled command run, and is it overdue |
 | `errors` | Recent failures, split into commands, jobs and browser |
 | `performance` | Pulse's heaviest entries, grouped by key with a hit count |
-| `funnel` | Seven days of the eight named UX signals |
+| `funnel` | Seven days of the nine named UX signals |
+| `funnel_since` | The first day each `funnel` total covers — a signal added this week reads zero for every day before it shipped |
 | `workbook` | **What is already on the board, and what a human answered** |
 
 ### 2. Read the repository
@@ -163,5 +164,10 @@ non-negotiables that most often make a proposal wrong here:
 - **`funnel`** carries no denominator of its own. `slate_entered` minus
   `first_pick_made` is the abandonment; `invite_opened` against registrations is
   acquisition. Do not read a rate off fewer than ~20 samples.
+- **`funnel_since` is the denominator in days.** A signal whose date is inside
+  the window has been counting only since then, so its total is NOT a seven-day
+  number and cannot be read against one that is. `onboarding_credentials_reached`
+  once read 0 beside a seven-day 163 opened two days after it shipped, and was
+  filed as the wizard losing everybody. Compare per day, or wait.
 - **`schedule[].overdue`** during the off-season is usually a season gate doing
   its job, not a failure. Check `season.phase` before proposing.

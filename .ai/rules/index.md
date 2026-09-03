@@ -27,6 +27,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/views/**, resources/css/** | .ai/rules/css.md |
 | public/brand/currency/** | .ai/rules/currency.md |
 | app/Models/**, database/migrations/**, database/factories/** | .ai/rules/data-model.md |
+| app/Actions/RecordUxEvent.php,app/Support/TelemetrySnapshot.php,app/Enums/UxSignal.php | .ai/rules/enums.md |
 | app/Services/Espn/**, app/Console/Commands/**, app/Jobs/**, routes/console.php, routes/** | .ai/rules/espn-sync.md |
 | app/Services/Espn/Sync/SyncGames.php,app/Services/Espn/** | .ai/rules/espn.md |
 | resources/views/filament/**,app/Filament/** | .ai/rules/filament.md |
@@ -53,6 +54,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Support/**, app/Actions/**, app/Services/CfbCalendar.php | .ai/rules/support.md |
 | app/Services/Espn/Sync/SyncGames.php,app/Console/Commands/SweepLiveSummariesCommand.php,routes/console.php | .ai/rules/sync-console-commands.md |
 | app/Models/Standing.php,app/Services/Espn/Sync/SyncStandings.php | .ai/rules/sync.md |
+| tests/**,resources/views/livewire/onboarding.blade.php | .ai/rules/tests-views-livewire.md |
 | tests/** | .ai/rules/tests.md |
 | app/Services/Espn/Sync/SyncGames.php,app/Support/Networks.php,resources/views/components/network-logo.blade.php,resources/views/components/group-icon.blade.php | .ai/rules/views-components.md |
 | app/Models/Slate.php,resources/views/livewire/group.blade.php,resources/views/livewire/pickem-home.blade.php,app/Support/** | .ai/rules/views-livewire-support.md |

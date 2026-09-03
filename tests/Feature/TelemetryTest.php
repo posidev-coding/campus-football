@@ -40,7 +40,7 @@ describe('the payload', function () {
     it('carries every section the advisor needs', function () {
         expect(array_keys(telemetry()))->toBe([
             'generated_at', 'window_hours', 'season', 'ops', 'coverage',
-            'pickem', 'schedule', 'errors', 'performance', 'funnel', 'workbook',
+            'pickem', 'schedule', 'errors', 'performance', 'funnel', 'funnel_since', 'workbook',
         ]);
     });
 
@@ -248,6 +248,44 @@ describe('what it reports', function () {
         // to a model. Every signal is always present.
         expect(array_keys(telemetry()['funnel']))
             ->toBe(array_map(fn (UxSignal $s) => $s->value, UxSignal::cases()));
+    });
+
+    it('says since when each total has been counting, and a zero row counts as a day', function () {
+        /*
+         * The seven-day total is a seven-day number only for a signal that
+         * has been counting for seven days. onboarding_credentials_reached
+         * read 0 beside 163 opened and was filed as the wizard losing
+         * everybody, when it had shipped two days into the window. The
+         * earliest row in the window — zero included, which the rollup now
+         * writes — is the day the deployed code started counting.
+         */
+        UxEvent::create(['day' => '2026-09-01', 'signal' => 'invite_opened', 'count' => 0]);
+        UxEvent::create(['day' => '2026-09-03', 'signal' => 'invite_opened', 'count' => 4]);
+        UxEvent::create(['day' => '2026-09-03', 'signal' => 'onboarding_credentials_reached', 'count' => 0]);
+
+        $since = telemetry()['funnel_since'];
+
+        expect($since['invite_opened'])->toBe('2026-09-01')
+            ->and($since['onboarding_credentials_reached'])->toBe('2026-09-03')
+            ->and(array_keys($since))->toBe(array_map(fn (UxSignal $s) => $s->value, UxSignal::cases()));
+    });
+
+    it('dates a signal with no persisted day to today, which is all its total covers', function () {
+        // Nothing rolled up yet, so the total is today's Redis count alone.
+        // Saying "since today" is exact; inventing an earlier date is the
+        // fabricated number docs/product.md rules out.
+        app(RecordUxEvent::class)->handle(UxSignal::OnboardingCredentialsReached);
+
+        expect(telemetry()['funnel']['onboarding_credentials_reached'])->toBe(1)
+            ->and(telemetry()['funnel_since']['onboarding_credentials_reached'])->toBe('2026-09-05');
+    });
+
+    it('prints the date beside each signal at the terminal', function () {
+        UxEvent::create(['day' => '2026-09-02', 'signal' => 'onboarding_opened', 'count' => 40]);
+
+        Artisan::call('cfb:telemetry');
+
+        expect(Artisan::output())->toMatch('/onboarding_opened\s+40\s+since 2026-09-02/');
     });
 });
 
