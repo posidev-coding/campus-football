@@ -340,6 +340,13 @@ place.
   still is not one). One case, not three: "left before we asked for anything"
   and "left at the email and password" are the two halves that call for
   different fixes, and a counter per pane would be a bar chart nobody reads.
+- **A new signal reads zero for every day before it shipped**, and its
+  first seven-day reading is not a seven-day number: this one read 0 beside
+  163 opened two days after it went live and was filed (CFB-48) as the wizard
+  losing everybody, when the wizard reaches the credentials pane on every path
+  a browser can drive. The rollup now writes a zero row for every signal on
+  every finished day, and the snapshot's `funnel_since` says the first day each
+  total covers — read the total against that date, never against the window.
 - **The device draft restores the step with a LIVE `$wire.set`, chained after
   `begin()` resolves.** The restored FIELDS are bound to elements, so a
   deferred set repaints them for free; `step` is bound to nothing — it selects

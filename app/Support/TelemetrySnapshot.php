@@ -74,6 +74,7 @@ class TelemetrySnapshot
             ],
             'performance' => $this->performance(),
             'funnel' => $this->funnel(),
+            'funnel_since' => $this->funnelSince(),
             'workbook' => $this->workbook(),
         ];
     }
@@ -299,6 +300,40 @@ class TelemetrySnapshot
         return collect(UxSignal::cases())
             ->mapWithKeys(fn (UxSignal $signal): array => [
                 $signal->value => (int) ($persisted[$signal->value] ?? 0) + $today->todayCount($signal),
+            ])
+            ->all();
+    }
+
+    /**
+     * The first day each signal's `funnel` total covers.
+     *
+     * The total above is a seven-day number only for a signal that has been
+     * counting for seven days. A signal added this week reads zero for every
+     * day before it shipped, and a table that held only its non-zero days
+     * could not say so: `onboarding_credentials_reached` read 0 beside a
+     * seven-day 163 opened, and was filed as the wizard losing everybody
+     * when it had been live for two of the seven. The rollup now writes a
+     * row for every signal it knows, zero included, so the earliest row in
+     * the window IS the day the deployed code started counting. With no row
+     * at all the total is today's Redis count alone, and the date says so.
+     *
+     * @return array<string, string> signal => Y-m-d
+     */
+    private function funnelSince(): array
+    {
+        $today = now()->timezone(config('cfb.timezone'));
+
+        $first = UxEvent::query()
+            ->where('day', '>=', $today->copy()->subDays(7)->toDateString())
+            ->groupBy('signal')
+            ->selectRaw('`signal`, min(`day`) as first_day')
+            ->pluck('first_day', 'signal');
+
+        return collect(UxSignal::cases())
+            ->mapWithKeys(fn (UxSignal $signal): array => [
+                $signal->value => isset($first[$signal->value])
+                    ? CarbonImmutable::parse($first[$signal->value])->toDateString()
+                    : $today->toDateString(),
             ])
             ->all();
     }

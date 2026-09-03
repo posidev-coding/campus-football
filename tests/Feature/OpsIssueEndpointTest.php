@@ -366,15 +366,16 @@ describe('the read', function () {
             ->not->toContain('"trail"');
     });
 
-    it('extends workbook.open without moving the eleven top-level keys', function () {
+    it('extends workbook.open without moving the twelve top-level keys', function () {
         // TelemetryTest and OpsEndpointTest both pin the top-level keys; the
         // item assertions use toHaveKey, so extending there is safe BY DESIGN
-        // rather than by luck. Saying so here makes it a decision.
+        // rather than by luck. Saying so here makes it a decision. (Twelve
+        // since `funnel_since` joined `funnel`, the date each total covers.)
         $item = opsReadyIssue(['labels' => ['performance']]);
 
         $response = $this->getJson(URL::signedRoute('ops.telemetry'), issueHeaders())->assertOk();
 
-        expect(array_keys($response->json()))->toHaveCount(11)
+        expect(array_keys($response->json()))->toHaveCount(12)
             ->and($response->json('workbook.open.0.reference'))->toBe($item->reference)
             ->and($response->json('workbook.open.0.labels'))->toBe(['performance'])
             ->and($response->json('workbook.open.0.effort'))->toBeNull();

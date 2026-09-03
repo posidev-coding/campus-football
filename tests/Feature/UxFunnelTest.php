@@ -125,7 +125,30 @@ describe('the nightly rollup', function () {
 
         $this->artisan('cfb:ux-rollup')->assertSuccessful();
 
-        expect(UxEvent::pluck('count', 'signal')->all())->toBe(['invite_opened' => 1]);
+        expect(UxEvent::where('signal', 'retired_signal')->exists())->toBeFalse()
+            ->and(UxEvent::where('signal', 'invite_opened')->sole()->count)->toBe(1)
+            ->and(UxEvent::count())->toBe(count(UxSignal::cases()));
+    });
+
+    it('writes a zero row for every signal it knows, so a new counter has a first day on record', function () {
+        /*
+         * A table that only held the non-zero days could not tell "counted
+         * zero" from "was not counting yet". onboarding_credentials_reached
+         * shipped on 2026-08-31 and read 0 beside a seven-day 163 opened —
+         * filed as the wizard losing everybody, when the counter had been
+         * live for two of the seven days. A zero on a day the code was
+         * counting is a true count, not a backfill; the snapshot reads the
+         * earliest row as the day the signal started counting.
+         */
+        app(RecordUxEvent::class)->handle(UxSignal::InviteOpened, now()->subDay());
+
+        $this->artisan('cfb:ux-rollup')->assertSuccessful();
+
+        $rows = UxEvent::where('day', '2026-09-04')->pluck('count', 'signal')->all();
+
+        expect(array_keys($rows))->toEqualCanonicalizing(array_map(fn (UxSignal $s) => $s->value, UxSignal::cases()))
+            ->and($rows['invite_opened'])->toBe(1)
+            ->and($rows['onboarding_credentials_reached'])->toBe(0);
     });
 
     it('writes a feed_runs row like every other scheduled command', function () {

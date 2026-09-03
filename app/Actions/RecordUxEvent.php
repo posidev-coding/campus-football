@@ -140,6 +140,16 @@ class RecordUxEvent
      * (day, signal) makes a re-run of an already-persisted day a correction
      * rather than a doubling.
      *
+     * EVERY signal the enum knows gets a row for the day, zero included. A
+     * signal nobody fired is absent from the Redis hash, and a table that
+     * only ever held the non-zero days could not tell "counted zero" from
+     * "was not counting yet": `onboarding_credentials_reached` shipped on
+     * 2026-08-31 and read 0 beside a seven-day 163 opened, which was filed as
+     * the wizard losing everybody when the counter had been live for two of
+     * those days. The zero rows are what let the snapshot say since when each
+     * signal's total has been counting — a true count on a day the code was
+     * counting, never a backfill, which docs/product.md rules out.
+     *
      * @return int the number of (day, signal) rows written
      */
     public function rollUp(): int
@@ -154,16 +164,14 @@ class RecordUxEvent
                 continue;
             }
 
-            foreach ((array) $redis->hgetall(self::dayKey($day)) as $signal => $count) {
-                // A signal retired from the enum is dropped rather than
-                // persisted: the vocabulary is the code's, not Redis's.
-                if (UxSignal::tryFrom((string) $signal) === null) {
-                    continue;
-                }
+            // A signal retired from the enum is dropped rather than
+            // persisted: the vocabulary is the code's, not Redis's.
+            $counts = (array) $redis->hgetall(self::dayKey($day));
 
+            foreach (UxSignal::cases() as $signal) {
                 UxEvent::updateOrCreate(
-                    ['day' => $day, 'signal' => $signal],
-                    ['count' => (int) $count],
+                    ['day' => $day, 'signal' => $signal->value],
+                    ['count' => (int) ($counts[$signal->value] ?? 0)],
                 );
 
                 $written++;

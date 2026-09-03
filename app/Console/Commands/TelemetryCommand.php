@@ -49,8 +49,10 @@ class TelemetryCommand extends Command
         $this->newLine();
         $this->line('  <fg=gray>Funnel · 7d</>');
 
+        // The date is the denominator: a signal counting since this morning
+        // has no seven-day number, whatever the column beside it says.
         foreach ($snapshot['funnel'] as $signal => $count) {
-            $this->line(sprintf('    %-26s %d', $signal, $count));
+            $this->line(sprintf('    %-30s %6d   since %s', $signal, $count, $snapshot['funnel_since'][$signal]));
         }
 
         $failing = collect($snapshot['ops'])->where('status', OpsReport::FAIL)->count();
