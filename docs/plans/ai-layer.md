@@ -1289,6 +1289,30 @@ expensive kind of error.
 
 ---
 
+## Phase 8 — Help answers ✅ **Landed 2026-09-04**
+
+The second half of workbook card CFB-51, split from the feedback sheet it
+rides on. A reader types "how do I…?" into an **Ask** tab on `help-sheet`,
+taps Ask, and `App\Ai\Agents\HelpQuestion` (Haiku, structured output) names
+ONE of the topics in `App\Support\HelpTopics` — the `StatCatalog` role: one
+list feeds the prompt's vocabulary AND the schema enum, so the two cannot
+drift. `App\Support\HelpAnswer` runs Phase 5's gates in Phase 5's order and
+answers from `help.{topic}` Voice copy in three registers, with the live
+numbers read from the code the screens read (`GrantWalletEntry`'s constants,
+`Cadence`'s labels), never restated. **The model never writes an answer.**
+A miss hands the question to the feedback form in one tap, with kind
+`confused` and the question prefilled — which is how the topic list learns
+what it is missing.
+
+Two deliberate deviations, both recorded in the Blade: the question box is
+DEFERRED (the ask is the tap, never a debounce, and there is no search to
+re-render), so the question printed over the answer is the staleness
+mechanism rather than a live `$q`; and the three example questions carry
+their topic, so a tapped example answers with zero model calls. Flag-closed
+behind `AI_HELP` / `ai-help`, mirroring config the way `ai-answers` does.
+
+---
+
 ## Future work — re-fitting the Game Quality Score
 
 Not a phase, and no longer urgent: the piece that expired is **Phase 1b**, which

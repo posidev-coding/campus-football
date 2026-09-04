@@ -187,7 +187,7 @@
                                     icon="chat-bubble-left-ellipsis"
                                     x-on:click="$dispatch('modal-show', { name: 'help' })"
                                 >
-                                    Send feedback
+                                    {{ App\Support\HelpAnswer::doorLabel(auth()->user()) }}
                                 </flux:menu.item>
                                 @if (auth()->user()->isAdmin())
                                     <flux:menu.item icon="wrench-screwdriver" href="/admin">Admin</flux:menu.item>

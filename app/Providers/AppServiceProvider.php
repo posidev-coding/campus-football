@@ -227,13 +227,13 @@ class AppServiceProvider extends ServiceProvider
             || (bool) $user?->isAdmin());
 
         /*
-         * The two AI surfaces, the same shape as `pickem`: a closure over
+         * The three AI surfaces, the same shape as `pickem`: a closure over
          * config, so each flip is an environment change with an instant
          * rollback — and `php artisan pennant:purge <flag>` afterwards, because
          * the database driver persists a resolved value and anybody who has
          * already loaded a page keeps their old answer until those rows go.
          *
-         * BOTH READ THE MASTER SWITCH, so `AI_ENABLED=false` closes everything
+         * ALL THREE READ THE MASTER SWITCH, so `AI_ENABLED=false` closes everything
          * at once without having to remember the list.
          *
          * They do NOT read the budget. That is a runtime question asked at the
@@ -246,5 +246,8 @@ class AppServiceProvider extends ServiceProvider
 
         Feature::define('ai-recaps', fn (): bool => config('cfb.ai_enabled') === true
             && config('cfb.ai_recaps') === true);
+
+        Feature::define('ai-help', fn (): bool => config('cfb.ai_enabled') === true
+            && config('cfb.ai_help') === true);
     }
 }

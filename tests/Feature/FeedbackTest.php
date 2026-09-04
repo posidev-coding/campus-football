@@ -286,6 +286,27 @@ describe('the doors', function () {
             ->assertSee('Still stuck? Send feedback');
     });
 
+    it('changes every door\'s word when the help flag is open, and only then', function () {
+        config()->set('cfb.ai_enabled', true);
+        config()->set('cfb.ai_help', true);
+        config()->set('cfb.pickem_open', true);
+        pickemSeasonWeek();
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->get(route('account'))
+            ->assertOk()
+            ->assertSee('Help & feedback')
+            ->assertDontSee('Send feedback');
+
+        $this->actingAs($user)->get(route('pickem.how'))
+            ->assertOk()
+            ->assertSee('Still stuck? Ask a question');
+
+        expect(Livewire::actingAs($user)->test('pickem-home')->html())
+            ->toContain('Help &amp; feedback')
+            ->toContain('A question, a bug, or an idea.');
+    });
+
     it('renders the door under the rules door at the foot of My Picks', function () {
         config()->set('cfb.pickem_open', true);
         pickemSeasonWeek();

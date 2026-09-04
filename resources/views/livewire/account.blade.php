@@ -1133,7 +1133,7 @@ new class extends Component
         <flux:modal.trigger name="help">
             <flux:button size="sm" variant="ghost" class="justify-start">
                 <flux:icon.chat-dots variant="micro" />
-                Send feedback
+                {{ App\Support\HelpAnswer::doorLabel(auth()->user()) }}
             </flux:button>
         </flux:modal.trigger>
 

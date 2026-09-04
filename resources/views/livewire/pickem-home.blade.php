@@ -1328,9 +1328,10 @@ new class extends Component
              the fold. A BUTTON in a door's clothes rather than an address:
              the sheet is mounted once by the layout, and this row only
              opens it. The subline is plain, because it is the instruction. --}}
+        @php($helpOpen = App\Support\HelpAnswer::available(auth()->user()))
         <flux:modal.trigger name="help">
-            <x-link-row title="Send feedback">
-                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">A bug, an idea, or something that made no sense.</span>
+            <x-link-row :title="App\Support\HelpAnswer::doorLabel(auth()->user())">
+                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">{{ $helpOpen ? 'A question, a bug, or an idea.' : 'A bug, an idea, or something that made no sense.' }}</span>
             </x-link-row>
         </flux:modal.trigger>
         </div>
