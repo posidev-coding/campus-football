@@ -20,9 +20,10 @@ use Carbon\CarbonInterface;
  * pickem_settings row overrides them from the admin panel, null meaning
  * "the shipped value" (the brand pattern).
  *
- *   slate deadline   Tuesday end-of-day ET before the Saturday — the moment
- *                    an unpublished slate gets the standard card instead
- *                    of hanging the group out with a blank week
+ *   slate deadline   Thursday noon ET before the Saturday — the moment an
+ *                    unpublished slate gets the standard card instead of
+ *                    hanging the group out with a blank week. Copy that
+ *                    names it reads deadlineLabel(), never a weekday
  *   official final   Sunday noon ET after the Saturday — the stat-settling
  *                    window: ESPN occasionally corrects a passing-yards
  *                    total hours after a game, and a tiebreaker must not

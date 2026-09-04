@@ -6,6 +6,7 @@ use App\Models\Group;
 use App\Models\PickemSetting;
 use App\Support\Cadence;
 use BackedEnum;
+use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
@@ -85,7 +86,7 @@ class PickemSettings extends Page
             ->components([
                 Form::make([
                     Section::make('Slate deadline')
-                        ->description('When an unpublished slate gets the standard card. Blank means the shipped default: Tuesday, end of day Eastern.')
+                        ->description('When an unpublished slate gets the standard card. Blank means the shipped default: '.self::shipped(self::WEEKDAYS[Cadence::DEADLINE_DOW], Cadence::DEADLINE_TIME).'.')
                         ->schema([
                             Select::make('slate_deadline_dow')
                                 ->label('Day')
@@ -99,7 +100,7 @@ class PickemSettings extends Page
                         ->columns(2),
 
                     Section::make('Official final')
-                        ->description("When a week's results stop being preliminary — after ESPN's late stat corrections have had time to land. Blank means the shipped default: Sunday, noon Eastern.")
+                        ->description("When a week's results stop being preliminary — after ESPN's late stat corrections have had time to land. Blank means the shipped default: ".self::shipped(self::RESULT_DAYS[Cadence::OFFICIAL_DOW], Cadence::OFFICIAL_TIME).'.')
                         ->schema([
                             Select::make('official_final_dow')
                                 ->label('Day')
@@ -145,6 +146,17 @@ class PickemSettings extends Page
                 ]),
             ])
             ->statePath('data');
+    }
+
+    /**
+     * The shipped clock as the helper text names it — "Thursday, 12:00pm
+     * Eastern" — read off Cadence's constants the way the placeholders
+     * beside it already are. The sentence said "Tuesday, end of day" for
+     * two weeks after the constant moved; a restated default drifts.
+     */
+    private static function shipped(string $day, string $time): string
+    {
+        return $day.', '.CarbonImmutable::createFromTimeString($time)->format('g:ia').' Eastern';
     }
 
     public function save(): void

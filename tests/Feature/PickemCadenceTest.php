@@ -259,6 +259,35 @@ it('lets the admin panel move the clock', function () {
         ->and(Cadence::officialFinal($week)->timezone($tz)->format('D Y-m-d H:i'))->toBe('Mon 2026-09-07 09:00');
 });
 
+it('renders the laws partial off Cadence, never a hardcoded weekday', function () {
+    /*
+     * The shared laws said "due Tuesday night" for two weeks after the
+     * deadline moved to Thursday noon (2026-08-20): a weekday written into
+     * copy is a second copy of the clock, and nothing asserted it. Read the
+     * partial under the shipped clock first so Cadence's memo is warm, then
+     * move the clock and read it again — the render has to follow, which
+     * also pins PickemSetting::saved()'s flush reaching a Blade partial.
+     */
+    $laws = fn (): string => view('partials.pickem-laws')->render();
+
+    expect($laws())
+        ->toContain('due '.Cadence::deadlineLabel())
+        ->toContain('official '.Cadence::officialLabel())
+        ->not->toContain('Tuesday');
+
+    PickemSetting::current()->update([
+        'slate_deadline_dow' => 3,
+        'slate_deadline_time' => '17:00:00',
+        'official_final_dow' => 1,
+        'official_final_time' => '09:00:00',
+    ]);
+
+    expect($laws())
+        ->toContain('due Wed 5:00pm ET')
+        ->toContain('official Mon 9:00am ET')
+        ->not->toContain('Thu 12:00pm');
+});
+
 it('keeps the clock in Eastern across the DST boundary', function () {
     [$season] = pickemSeasonWeek();
     // A November week: EST, not EDT — the ET wall time must not drift.
@@ -281,7 +310,13 @@ it('keeps the clock in Eastern across the DST boundary', function () {
 });
 
 it('serves the settings page to admins only', function () {
-    $this->actingAs(pickemAdmin())->get('/admin/pickem-settings')->assertOk();
+    $this->actingAs(pickemAdmin())->get('/admin/pickem-settings')
+        ->assertOk()
+        // The helper text names the shipped default off Cadence's own
+        // constants; it said "Tuesday, end of day" for two weeks after the
+        // constant moved, beside a placeholder that correctly said Thursday.
+        ->assertSee('shipped default: Thursday, 12:00pm Eastern')
+        ->assertSee('shipped default: Sunday, 12:00pm Eastern');
     $this->actingAs(User::factory()->create())->get('/admin/pickem-settings')->assertForbidden();
 });
 

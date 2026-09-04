@@ -104,9 +104,13 @@ for per-league overrides, deliberately not built yet.
   not a Pick row).
 - A missed pick is an ABSENT ROW worth zero — nothing ever picks on a
   user's behalf.
-- The weekly clock: commissioner slates due Tuesday 23:59 ET; results
-  preliminary at the last final, OFFICIAL Sunday noon ET (both
-  admin-configurable via Cadence + Pick'em Settings). Payouts only at
+- The weekly clock: commissioner slates are due at the SLATE DEADLINE, and
+  results are preliminary from the last final until the OFFICIAL FINAL. Both
+  moments live on `App\Support\Cadence` — its `DEADLINE_*` / `OFFICIAL_*`
+  constants are the shipped defaults, the Pick'em Settings page overrides
+  them, and `Cadence::deadlineLabel()` / `officialLabel()` render whatever
+  is current (the laws partial and the invite templates read those rather
+  than naming a day, so this document does not either). Payouts only at
   official.
 - Tied weeks: closest tiebreaker call wins; silence loses to any answer; an
   unresolvable actual shares the win — never an invented number.

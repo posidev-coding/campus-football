@@ -191,8 +191,9 @@ daily-login rewards, no timers, no FOMO.
 
 - **The weekly clock (settled 2026-08-13):** slates carry only games in the
   SATURDAY WINDOW — noon Eastern to midnight, no breakfast kickoffs. The
-  commissioner has until the SLATE DEADLINE (default Tuesday end-of-day ET;
-  admin-configurable on the Pick'em Settings panel page) to publish; past
+  commissioner has until the SLATE DEADLINE (the default lives on
+  `Cadence::DEADLINE_DOW` / `DEADLINE_TIME` — Thursday noon ET since
+  2026-08-20; admin-configurable on the Pick'em Settings panel page) to publish; past
   it, `pickem:publish-slates` publishes the STANDARD slate — best quality
   games, auto-designated combined-points tiebreaker — so a group is never
   hung out to dry by a commissioner who lost track of Tuesday. Results go
