@@ -90,20 +90,7 @@ class WorkbookResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            TextInput::make('title')->required()->maxLength(200)->columnSpanFull(),
-            Select::make('category')->options(WorkbookCategory::options())->required()->native(false),
-            Select::make('severity')->options(WorkbookSeverity::options())->required()->native(false),
-            Select::make('status')->options(WorkbookStatus::options())->required()->native(false)
-                ->helperText('Dismissed is permanent as far as the advisor is concerned — it will never re-open this item, only note that the finding recurred.'),
-            // No default. Null means NOT SIZED, which is a real answer — a cast
-            // to Medium fills the ready queue with work nobody estimated.
-            Select::make('effort')->label('Effort')->options(WorkbookEffort::options())->native(false)
-                ->placeholder('Not sized'),
-            // Produces an array, a direct fit for the JSON column. The
-            // normalizing is the model's mutator's job, not the form's, so
-            // every path lands on one vocabulary.
-            TagsInput::make('labels')->columnSpanFull()->placeholder('performance, frontend, …'),
-            Textarea::make('body')->rows(6)->columnSpanFull(),
+            ...self::fileSchema(),
             /*
              * Read by `using()` and never written to the row.
              *
@@ -121,6 +108,66 @@ class WorkbookResource extends Resource
 
         // Branch, PR and the claim never appear on a form. They are the action
         // layer's, and a mass-assignable claim is a claim anyone can forge.
+    }
+
+    /**
+     * Everything a human fills in when FILING one — shared with the board's
+     * own file modal, the way `detailSchema()` is shared with its card.
+     *
+     * Two create forms that drifted apart would be two vocabularies for one
+     * row, and the divergence would show up as a card the board can file but
+     * the table cannot edit. `move_note` is the only field that is not here,
+     * because it explains a MOVE and a card being filed has not moved.
+     *
+     * @return array<int, Component>
+     */
+    public static function fileSchema(): array
+    {
+        return [
+            TextInput::make('title')->required()->maxLength(200)->columnSpanFull(),
+            Select::make('category')->options(WorkbookCategory::options())->required()->native(false),
+            Select::make('severity')->options(WorkbookSeverity::options())->required()->native(false),
+            Select::make('status')->options(WorkbookStatus::options())->required()->native(false)
+                ->helperText('Dismissed is permanent as far as the advisor is concerned — it will never re-open this item, only note that the finding recurred.'),
+            // No default. Null means NOT SIZED, which is a real answer — a cast
+            // to Medium fills the ready queue with work nobody estimated.
+            Select::make('effort')->label('Effort')->options(WorkbookEffort::options())->native(false)
+                ->placeholder('Not sized'),
+            // Produces an array, a direct fit for the JSON column. The
+            // normalizing is the model's mutator's job, not the form's, so
+            // every path lands on one vocabulary.
+            TagsInput::make('labels')->columnSpanFull()->placeholder('performance, frontend, …'),
+            Textarea::make('body')->rows(6)->columnSpanFull(),
+        ];
+    }
+
+    /**
+     * A human filing an item — THE doorway, the way `propose()` is the
+     * advisor's, and for the same reason: three things have to be true of the
+     * row and a second caller would forget one of them.
+     *
+     *   1. `key` is unique and everything addresses the item by it, so a hand
+     *      -filed card mints its own rather than colliding with the advisor's.
+     *   2. `source` says who filed it. The advisor is the volume, not the
+     *      authority, and the card's badge reads this.
+     *   3. `position` is the END of its column. The attribute default is 0,
+     *      which on a table is invisible and on a board puts every new card
+     *      above work that has been sitting there for a week.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public static function fileAsHuman(array $data): WorkbookItem
+    {
+        $status = WorkbookStatus::tryFrom((string) ($data['status'] ?? '')) ?? WorkbookStatus::Inbox;
+
+        return WorkbookItem::create([
+            ...$data,
+            'key' => 'human-'.str()->slug(mb_substr((string) $data['title'], 0, 60)).'-'.now()->format('ymdHis'),
+            'source' => WorkbookItem::SOURCE_HUMAN,
+            'first_seen_at' => now(),
+            'last_seen_at' => now(),
+            'position' => WorkbookItem::nextPosition($status),
+        ]);
     }
 
     public static function infolist(Schema $schema): Schema

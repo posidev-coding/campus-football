@@ -1061,6 +1061,123 @@ describe('filing and editing by hand', function () {
         expect($item->fresh()->status)->toBe(WorkbookStatus::Dismissed)
             ->and($item->fresh()->severity)->toBe(WorkbookSeverity::Critical);
     });
+
+    it('files from the board through the same doorway as the table', function () {
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->callAction('file', [
+                'title' => 'The board needs a keyboard shortcut',
+                'category' => 'feature',
+                'severity' => 'low',
+                'status' => 'inbox',
+                'body' => 'Just like JIRA.',
+            ]);
+
+        $item = WorkbookItem::sole();
+
+        expect($item->source)->toBe(WorkbookItem::SOURCE_HUMAN)
+            ->and($item->key)->toStartWith('human-the-board-needs-a-keyboard-shortcut')
+            ->and($item->first_seen_at)->not->toBeNull()
+            ->and($item->status)->toBe(WorkbookStatus::Inbox);
+
+        // And it is on the board a moment later — the computed columns are
+        // stale otherwise and the card only appears on the next full render.
+        Livewire::actingAs($this->admin)->test(Workbook::class)
+            ->assertSee('The board needs a keyboard shortcut');
+    });
+
+    it('files a new card at the END of its column, not the top', function () {
+        /*
+         * The attribute default is `position => 0`, which on a table is
+         * invisible and on a board puts every hand-filed card above work that
+         * has been sitting there a week. `propose()` always knew this; the two
+         * human paths did not until they shared `fileAsHuman()`.
+         *
+         * Break `fileAsHuman()` back to the attribute default and this fails
+         * on the ordering, which is the only place the bug was ever visible.
+         */
+        column(WorkbookStatus::Inbox, 3);
+
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->callAction('file', [
+                'title' => 'Filed last',
+                'category' => 'feature',
+                'severity' => 'low',
+                'status' => 'inbox',
+            ]);
+
+        expect(WorkbookItem::query()->inColumn(WorkbookStatus::Inbox)->pluck('title')->last())
+            ->toBe('Filed last')
+            ->and(WorkbookItem::query()->where('title', 'Filed last')->sole()->position)->toBe(4);
+    });
+
+    it('puts a card filed into another column at the end of THAT column', function () {
+        // Positions only ever compare against siblings, so the end of the
+        // column is measured on the status the form chose, never the inbox.
+        column(WorkbookStatus::Inbox, 3);
+        column(WorkbookStatus::Planned, 1);
+
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->callAction('file', [
+                'title' => 'Straight to planned',
+                'category' => 'feature',
+                'severity' => 'low',
+                'status' => 'planned',
+            ]);
+
+        expect(WorkbookItem::query()->where('title', 'Straight to planned')->sole()->position)->toBe(2);
+    });
+
+    it('offers the file action from the board header, prefilled to the inbox', function () {
+        // A shortcut nobody can see is a shortcut nobody uses, so the key has
+        // a button beside it — and the button says which key.
+        Livewire::actingAs($this->admin)
+            ->test(Workbook::class)
+            ->assertActionVisible('file')
+            ->mountAction('file')
+            ->assertSchemaStateSet(['status' => WorkbookStatus::Inbox->value], 'mountedActionSchema0');
+    });
+
+    it('binds c to the file action, guarded on every way it could misfire', function () {
+        /*
+         * The only layer a test can hold — a keystroke needs a real browser,
+         * and the whole point of the guards is the keystrokes that must NOT
+         * reach here.
+         *
+         * Deliberately not Filament's `->keyBindings(['c'])`: that renders
+         * `x-mousetrap.global`, and `bindGlobal` fires inside inputs by
+         * design. Right for the cmd+k it was built for; wrong for a bare
+         * letter, which would file a card on the "c" of "coverage" typed into
+         * the panel's global search.
+         */
+        $html = Livewire::actingAs($this->admin)->test(Workbook::class)->html();
+
+        expect($html)->toContain('x-on:keydown.c.window')
+            ->toContain('$wire.mountAction(\'file\')')
+            // Cmd+C is a copy, not a filing.
+            ->toContain('event.metaKey')
+            ->toContain('event.ctrlKey')
+            // Typing lands in the field, not on the board.
+            ->toContain('isContentEditable')
+            ->toContain("'INPUT', 'SELECT', 'TEXTAREA'")
+            /*
+             * And a second modal must never open behind the first — asked of
+             * the DOM, the way Filament's own mousetrap directive asks it.
+             * `$wire.mountedActions` is the obvious guard and it is the
+             * wrong one: Escape closes the modal in Alpine and the property
+             * goes on naming the action it closed until the next round trip
+             * clears it, which is long enough to swallow the keystroke that
+             * follows. Only a browser shows that at all.
+             */
+            ->toContain('aria-modal=true')
+            ->toContain("getComputedStyle(modal).display !== 'none'")
+            ->not->toContain('$wire.mountedActions')
+            // Mousetrap's global binding is what this replaced. If it ever
+            // comes back, the guards above are dead code.
+            ->not->toContain('x-mousetrap.global.c');
+    });
 });
 
 describe('the activity trail', function () {
