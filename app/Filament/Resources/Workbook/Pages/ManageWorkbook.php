@@ -21,16 +21,13 @@ class ManageWorkbook extends ManageRecords
         return [
             // A human files here too. The advisor is the volume, not the
             // authority — `source` says which is which.
+            //
+            // `using()` rather than `mutateDataUsing()`, because the board can
+            // file as well and the key, the source and the end-of-column
+            // position are the resource's to decide once.
             CreateAction::make()
                 ->label('File an item')
-                ->mutateDataUsing(function (array $data): array {
-                    $data['key'] = 'human-'.str()->slug(mb_substr($data['title'], 0, 60)).'-'.now()->format('ymdHis');
-                    $data['source'] = WorkbookItem::SOURCE_HUMAN;
-                    $data['first_seen_at'] = now();
-                    $data['last_seen_at'] = now();
-
-                    return $data;
-                }),
+                ->using(fn (array $data): WorkbookItem => WorkbookResource::fileAsHuman($data)),
         ];
     }
 }

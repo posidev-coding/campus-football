@@ -13,6 +13,7 @@ use App\Models\WorkbookItem;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
+use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
@@ -424,9 +425,49 @@ class Workbook extends Page
             ->modalCancelActionLabel('Close');
     }
 
+    /**
+     * Filing one from the board — the same form the table's CreateAction
+     * opens, through the same `fileAsHuman()` doorway, because two create
+     * forms over one row is two vocabularies waiting to disagree.
+     *
+     * A METHOD rather than an inline header action, so `mountAction('file')`
+     * resolves it by name whether or not the header has been cached — which
+     * is what the "c" key in the blade calls, and what every other modal on
+     * this page is already shaped like.
+     *
+     * The status is prefilled rather than defaulted on the shared schema: a
+     * card filed with a keystroke is going to the inbox nine times in ten, and
+     * the table's create form should keep asking the question outright.
+     */
+    public function fileAction(): Action
+    {
+        return Action::make('file')
+            ->label('File an item')
+            ->icon(Heroicon::OutlinedPlus)
+            ->tooltip('Or press c')
+            ->modalHeading('File a workbook item')
+            ->modalDescription('Filed as a human item, at the end of whichever column you put it in — the advisor is the volume, not the authority, and `source` is what says which is which.')
+            ->modalWidth(Width::TwoExtraLarge)
+            ->schema(WorkbookResource::fileSchema())
+            ->fillForm(fn (): array => ['status' => WorkbookStatus::Inbox->value])
+            ->modalSubmitActionLabel('File it')
+            ->action(function (array $data): void {
+                $item = WorkbookResource::fileAsHuman($data);
+
+                Notification::make()
+                    ->success()
+                    ->title("{$item->reference} filed")
+                    ->body('Hand it to a session with `/work '.$item->reference.'` once it is ready.')
+                    ->send();
+
+                unset($this->columns, $this->labelOptions);
+            });
+    }
+
     protected function getHeaderActions(): array
     {
         return [
+            $this->fileAction(),
             /*
              * One tap from the board to a session. Client-side only — there is
              * no `->action()`, because the whole job is
