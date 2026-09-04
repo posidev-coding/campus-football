@@ -78,6 +78,67 @@ describe('pull to refresh', function () {
     });
 });
 
+describe('the bottom tab bar', function () {
+    /*
+     * `fixed` resolves against the LAYOUT viewport, and iOS standalone hands
+     * back a stale one after a resume — the bar then paints against a bottom
+     * edge that is off screen, which reads as it having floated up the page
+     * and started scrolling with it (CFB-53). A keyboard does the same for as
+     * long as it is up. None of this is reachable from a browser tab, where
+     * the two viewports agree and every env() is 0, so the agreement is
+     * pinned here in source the way the rest of the standalone chrome is.
+     */
+    it('anchors to the measured visual viewport rather than a bare bottom-0', function () {
+        $html = $this->get(route('home'))->assertOk()->content();
+
+        expect($html)->toContain('bottom-[var(--viewport-bottom,0px)]');
+    });
+
+    it('publishes the offset on the root, where a Livewire morph cannot strip it', function () {
+        // The bar outlives every morph under it, and a morph drops inline
+        // styles it did not itself render — so the measurement lands on
+        // documentElement, never on this node.
+        $nav = file_get_contents(resource_path('views/components/bottom-nav.blade.php'));
+
+        expect($nav)->toContain("document.documentElement.style.setProperty('--viewport-bottom'")
+            ->and($nav)->not->toContain('$el.style.setProperty');
+    });
+
+    it('engages on both standalone signals and nowhere else', function () {
+        /*
+         * In a TAB the visual viewport really does shrink and grow as the URL
+         * bar collapses; a bar tracking that would jitter down every scroll.
+         * Both signals, because an iOS web clip reports `browser` in the media
+         * query and only sets navigator.standalone.
+         */
+        $nav = file_get_contents(resource_path('views/components/bottom-nav.blade.php'));
+
+        expect($nav)->toContain("matchMedia('(display-mode: standalone)')")
+            ->and($nav)->toContain('window.navigator.standalone === true');
+    });
+
+    it('re-measures on the two ways the app comes back without a document load', function () {
+        $nav = file_get_contents(resource_path('views/components/bottom-nav.blade.php'));
+
+        expect($nav)->toContain('x-on:pageshow.window="publish()"')
+            ->and($nav)->toContain('x-on:visibilitychange.document="publish()"')
+            ->and($nav)->toContain("visualViewport?.addEventListener('resize'");
+    });
+
+    it('binds the viewport listeners once per document, not once per navigate hop', function () {
+        // visualViewport events cannot be delegated to window, so an
+        // unguarded x-init would stack another pair on every wire:navigate.
+        $nav = file_get_contents(resource_path('views/components/bottom-nav.blade.php'));
+
+        expect($nav)->toContain('window.cfbViewportBottomBound');
+    });
+
+    it('keeps a pre-JS fallback that reproduces the old behavior exactly', function () {
+        expect(file_get_contents(resource_path('css/app.css')))
+            ->toContain('--viewport-bottom: 0px');
+    });
+});
+
 describe('escape hatches', function () {
     /*
      * Standalone has no back button, no address bar and no reload control:

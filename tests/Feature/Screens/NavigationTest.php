@@ -416,7 +416,10 @@ describe('stacking order', function () {
     it('keeps the header and tab bar above any screen-level sticky', function () {
         $response = $this->get(route('scoreboard'))->assertOk();
 
+        // The bar's own bottom edge is `--viewport-bottom`, not 0 — it rides
+        // the visual viewport so an iOS resume cannot strand it (CFB-53, and
+        // pinned properly in PwaTest). What this test holds is the z-40.
         $response->assertSee('sticky top-0 z-40', escape: false)
-            ->assertSee('fixed inset-x-0 bottom-0 z-40', escape: false);
+            ->assertSee('fixed inset-x-0 bottom-[var(--viewport-bottom,0px)] z-40', escape: false);
     });
 });

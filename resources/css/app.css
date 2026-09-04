@@ -89,6 +89,17 @@
            behavior exactly, so a frame before Alpine boots is never worse
            than what shipped. */
         --chrome-offset: env(safe-area-inset-top);
+
+        /* How far the visual viewport's bottom edge sits ABOVE the layout
+           viewport's — what the bottom tab bar offsets by so it lands on the
+           edge the reader can actually see. Zero whenever the two agree, which
+           is always in a browser tab and almost always in the installed app;
+           it goes non-zero while an iOS keyboard is up, and after a resume
+           that handed the page back a layout viewport it had stopped using.
+           The BAR publishes the measurement (components/bottom-nav) because it
+           is the only thing that reads it; this declaration is the pre-JS
+           fallback and reproduces the old `bottom-0` behavior exactly. */
+        --viewport-bottom: 0px;
     }
 
     /* From `sm` the app bar exists; below it the header is the strip alone. */
