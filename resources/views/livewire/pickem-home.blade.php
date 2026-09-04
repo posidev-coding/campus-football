@@ -1321,6 +1321,18 @@ new class extends Component
         <x-link-row :href="route('pickem.how')" title="How this works" data-tour="how">
             <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">Scoring, ranks, and what a room costs.</span>
         </x-link-row>
+
+        {{-- The feedback door, under the rules door: the same dashed
+             treatment the foot already uses, one row, no line above it —
+             the pass-2 stack is measured, and this adds nothing to it above
+             the fold. A BUTTON in a door's clothes rather than an address:
+             the sheet is mounted once by the layout, and this row only
+             opens it. The subline is plain, because it is the instruction. --}}
+        <flux:modal.trigger name="help">
+            <x-link-row title="Send feedback">
+                <span class="block pt-0.5 text-sm text-zinc-500 dark:text-zinc-400">A bug, an idea, or something that made no sense.</span>
+            </x-link-row>
+        </flux:modal.trigger>
         </div>
     @else
         @include('partials.pickem-promise')

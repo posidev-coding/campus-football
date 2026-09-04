@@ -1127,6 +1127,16 @@ new class extends Component
             </flux:button>
         @endif
 
+        {{-- The feedback door. A trigger around a plain button: the sheet
+             itself is mounted once by the layout, so this row owns nothing
+             but the tap. --}}
+        <flux:modal.trigger name="help">
+            <flux:button size="sm" variant="ghost" class="justify-start">
+                <flux:icon.chat-dots variant="micro" />
+                Send feedback
+            </flux:button>
+        </flux:modal.trigger>
+
         @if (auth()->user()->isAdmin())
             <flux:button href="/admin" icon="wrench-screwdriver" size="sm" variant="ghost" class="justify-start">
                 Admin

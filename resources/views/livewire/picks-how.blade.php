@@ -288,4 +288,15 @@ new class extends Component
 
         @include('partials.pickem-laws')
     </div>
+
+    {{-- ============================================ STILL STUCK? ======= --}}
+    {{-- The rules page is where a confused reader lands, so the door out of
+         confusion sits at its foot — a plain button, because the label is
+         the instruction. --}}
+    <flux:modal.trigger name="help">
+        <flux:button size="sm" variant="ghost" class="self-start">
+            <flux:icon.chat-dots variant="micro" />
+            Still stuck? Send feedback
+        </flux:button>
+    </flux:modal.trigger>
 </div>
