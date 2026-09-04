@@ -317,6 +317,49 @@ describe('the live situation block', function () {
             ->and($game->away_timeouts)->toBe(3);
     });
 
+    /*
+     * ESPN sends -1 for "does not apply right now" rather than omitting the
+     * key — there is no down and distance during a kickoff or an extra point.
+     * `distance` is an unsigned tinyint, so the write threw and store()'s
+     * per-event try/catch skipped the WHOLE game: the score, the clock, the
+     * period and the status went down with the one column that was bad.
+     *
+     * Measured 2026-09-03. Akron at Wake Forest was 38-10 in the fourth on
+     * ESPN while our row sat at `pre` with 0-0 from its preseason sync, and
+     * every live pass for the entire second half logged the same skip.
+     */
+    it('stores a live game whose situation carries ESPN out-of-range numbers', function () {
+        fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 38, 10, completed: false, state: 'in', situation: [
+            'possession' => '61',
+            'down' => -1,
+            'distance' => -1,
+            'yardLine' => 65,
+            'lastPlay' => ['text' => '(A. Stire KICK)'],
+            'homeTimeouts' => 0,
+            'awayTimeouts' => 2,
+        ])]);
+
+        expect(app(SyncGames::class)->week($this->week))->toBe(1);
+
+        $game = Game::whereKey(401)->sole();
+
+        // The point of the test: the score survived the bad column.
+        expect($game->home_score)->toBe(38)
+            ->and($game->away_score)->toBe(10)
+            ->and($game->status)->toBe('in')
+            ->and($game->period)->toBe(4);
+
+        // Out of range is out of data. Never a zero — "1st & 0" is a lie the
+        // gamecast would render as real.
+        expect($game->down)->toBeNull()
+            ->and($game->distance)->toBeNull();
+
+        // A legitimate zero is still a zero, and 65 is a real yard line.
+        expect($game->yard_line)->toBe(65)
+            ->and($game->home_timeouts)->toBe(0)
+            ->and($game->away_timeouts)->toBe(2);
+    });
+
     it('keeps the last situation when a live payload omits the block', function () {
         // A transient gap mid-game is "the feed returned nothing", and nulling
         // real data over it is the default-writing mistake. Only a game that
