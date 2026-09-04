@@ -2127,6 +2127,38 @@ class Voice
             'pg13' => 'Top of the ladder. There is nothing above this.',
             'r' => 'Top of the ladder. Everyone else is still climbing.',
         ],
+
+        /*
+         * FEEDBACK — the sheet a reader opens from Account, the foot of My
+         * Picks, the rules page or the desktop menu. The chips, the buttons
+         * and the placeholder stay plain; these four lines are the only voice
+         * in the modal. `too_fast` takes `:wait`, already pluralized ("1
+         * minute", "12 minutes"), because the window is an hour and a count
+         * of seconds reads like a countdown to nothing.
+         */
+        'feedback.subheading' => [
+            'pg' => 'Found a bug, have an idea, or feeling lost? Tell us. A real person reads every note.',
+            'pg13' => 'Something broken, something missing, or something that made no sense? Say it here. A human reads every one of these.',
+            'r' => 'Something broke, something is dumb, or something made no sense? Let it rip. A human reads every note, the mean ones included.',
+        ],
+
+        'feedback.sent' => [
+            'pg' => 'Got it. Thanks for taking the time.',
+            'pg13' => 'Got it. Filed with the humans, who will read it before Saturday.',
+            'r' => 'Got it. Filed with the humans, who will read it and possibly wince.',
+        ],
+
+        'feedback.too_fast' => [
+            'pg' => 'That is a lot of notes for one hour. Try again in :wait.',
+            'pg13' => 'Five notes an hour is the limit. Back in :wait.',
+            'r' => 'Five an hour, and you have spent them. Back in :wait — put it all in one note this time.',
+        ],
+
+        'feedback.failed' => [
+            'pg' => "That didn't send. Try again in a minute — it's on our side, not yours.",
+            'pg13' => "That didn't send, and it's our fault, not yours. Try again in a minute.",
+            'r' => "That didn't send, which is exactly the kind of thing you'd want to send feedback about. Ours, not yours. Try again in a minute.",
+        ],
     ];
 
     /**

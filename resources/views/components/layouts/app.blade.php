@@ -175,6 +175,20 @@
                                     <x-appearance-switcher class="w-full" />
                                 </div>
                                 <flux:menu.separator />
+                                {{-- The desktop door to the feedback sheet.
+                                     Additive: below `sm` this menu does not
+                                     exist and Account carries the row. The
+                                     item IS a button already, so it opens
+                                     the modal the way the palette does —
+                                     a dispatched name, not a trigger wrapper
+                                     the menu walker would have to see
+                                     through. --}}
+                                <flux:menu.item
+                                    icon="chat-bubble-left-ellipsis"
+                                    x-on:click="$dispatch('modal-show', { name: 'help' })"
+                                >
+                                    Send feedback
+                                </flux:menu.item>
                                 @if (auth()->user()->isAdmin())
                                     <flux:menu.item icon="wrench-screwdriver" href="/admin">Admin</flux:menu.item>
                                 @endif
@@ -271,6 +285,17 @@
     {{-- App layout only, on purpose: a stray pull on an auth screen would
          reload a half-typed form into a blank one. --}}
     <x-pull-to-refresh />
+
+    {{-- The feedback sheet, ONCE, at body level. A Flux modal is a top-layer
+         dialog, so it lives beside the overlays rather than inside a screen,
+         and every door in the app — Account's row, the foot of My Picks, the
+         rules page, the menu above — only opens it. Signed-in only: reading
+         is never gated here, but a note is a WRITE that needs somebody to
+         have written it. Under wire:navigate every hop re-mounts it, the
+         way the search palette re-mounts. --}}
+    @auth
+        <livewire:help-sheet />
+    @endauth
 
     {{-- App layout suffices: every authenticated standalone session's FIRST
          load is an app-layout screen (start_url is /, and the register and
