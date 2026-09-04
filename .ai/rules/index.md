@@ -41,6 +41,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Actions/PostToConversation.php,app/Actions/DeleteConversationPost.php,resources/views/livewire/conversation.blade.php | .ai/rules/livewire.md |
 | app/Models/**, database/migrations/**, resources/views/** | .ai/rules/migrations-views.md |
 | app/Services/Contests/ModeEngine.php,app/Actions/CrushTallboy.php,app/Actions/LockPick.php,app/Models/Pick.php | .ai/rules/models.md |
+| app/Support/Cadence.php,app/Actions/PublishSlate.php,app/Filament/Pages/PickemSettings.php,app/Models/Slate.php | .ai/rules/pages-models.md |
 | resources/views/livewire/lobby.blade.php,resources/views/livewire/pickem-home.blade.php,resources/views/partials/pickem-promise.blade.php | .ai/rules/partials.md |
 | app/Providers/AppServiceProvider.php,app/Support/R2Writes.php,config/filesystems.php,app/Console/Commands/UploadsDoctorCommand.php | .ai/rules/providers-support-console-commands.md |
 | app/Providers/AppServiceProvider.php,app/Support/R2SignedUploadUrl.php,app/Support/R2Writes.php,config/filesystems.php,config/livewire.php | .ai/rules/providers-support-support.md |
