@@ -5,6 +5,7 @@ use App\Models\Season;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Cadence;
+use App\Support\SyncSchedule;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
@@ -404,4 +405,28 @@ it('resolves current and next against the calendar at run time', function () {
     $this->artisan('cfb:sync', ['--only' => 'compute'])
         ->expectsOutputToContain('Syncing '.config('cfb.season'))
         ->assertSuccessful();
+});
+
+it('resolves a ledger key for every pick\'em sweep, not just the reminder', function () {
+    /*
+     * `tracked` is what the schedule panel reads a run back through: null
+     * renders a permanently grey "untracked" row, and for three of these four
+     * that WAS the truth — they called no trackRun. They each carry one now,
+     * so a missing ledgerKey() arm would be the other half of the same bug,
+     * a command writing rows nothing can find.
+     *
+     * Asserted through tasks() rather than the private ledgerKey(), because
+     * the display name has to survive parsing before the key is ever looked
+     * up — and it is the name that comes off the scheduler.
+     */
+    $tracked = collect(app(SyncSchedule::class)->tasks())
+        ->filter(fn (array $task) => str_starts_with($task['name'], 'pickem:'))
+        ->mapWithKeys(fn (array $task) => [$task['name'] => $task['tracked']]);
+
+    expect($tracked->all())->toBe([
+        'pickem:publish-slates' => 'publish-slates',
+        'pickem:remind' => 'pick-reminders',
+        'pickem:settle' => 'settle-slates',
+        'pickem:open-lobbies' => 'open-lobbies',
+    ]);
 });

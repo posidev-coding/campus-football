@@ -6,6 +6,7 @@ use App\Actions\SpawnPublicContest;
 use App\Enums\ContestMode;
 use App\Enums\TiebreakerMetric;
 use App\Models\Contest;
+use App\Models\FeedRun;
 use App\Models\Game;
 use App\Models\Group;
 use App\Models\PickemSetting;
@@ -319,6 +320,48 @@ it('publishes the standard slate when the commissioner missed the deadline', fun
     // Idempotent: the next hour's run has nothing to do.
     $this->artisan('pickem:publish-slates')->assertSuccessful();
     expect(Slate::query()->count())->toBe(1);
+});
+
+it('records the hour it published, and the hours it had nothing to publish', function () {
+    /*
+     * The sweep runs HOURLY and only the hours after Thursday noon can
+     * publish anything, so "ran and found nothing" is the path nearly every
+     * run takes. Until it wrote a row, that pass and a dead queue worker
+     * rendered identically on the schedule panel — `last_status: null`,
+     * `last_run_at: null`, all regular season. Zero is a measured fact.
+     */
+    [, , $contest] = pickemContest();
+    [$season, $week] = pickemSeasonWeek();
+
+    foreach (range(1, 12) as $i) {
+        $game = pickemGame($season, $week);
+        pickemOdd($game, ['spread' => $i % 2 === 0 ? -7.0 : -6.5]);
+        $game->predictor()->create(['matchup_quality' => 90 - $i]);
+    }
+
+    // A Wednesday tick: the commissioner still has it, so nothing publishes.
+    $this->travelTo('2026-09-02 12:00:00');
+    $this->artisan('pickem:publish-slates')->assertSuccessful();
+
+    $quiet = FeedRun::latestFor('publish-slates');
+
+    expect($quiet)->not->toBeNull()
+        ->and($quiet->status)->toBe(FeedRun::COMPLETE)
+        ->and((int) $quiet->records)->toBe(0)
+        // DB-only. A fabricated request count would be the same lie in the
+        // other direction.
+        ->and((int) $quiet->requests)->toBe(0);
+
+    // An hour past the deadline: the same sweep, now with work to do.
+    $this->travelTo('2026-09-03 17:00:00');
+    $this->artisan('pickem:publish-slates')->assertSuccessful();
+
+    $worked = FeedRun::latestFor('publish-slates');
+
+    expect($worked->id)->not->toBe($quiet->id)
+        ->and($worked->status)->toBe(FeedRun::COMPLETE)
+        ->and((int) $worked->records)->toBe(1)
+        ->and(Slate::query()->where('contest_id', $contest->id)->count())->toBe(1);
 });
 
 it('never sweeps a slate into a house room — lobby slates are born at spawn', function () {

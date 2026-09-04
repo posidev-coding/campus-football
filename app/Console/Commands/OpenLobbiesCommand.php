@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Actions\SpawnPublicContest;
+use App\Console\Concerns\TracksFeedRun;
 use App\Enums\ContestMode;
 use App\Enums\LobbyFlavor;
 use App\Models\Group;
@@ -33,54 +34,90 @@ use Throwable;
  */
 class OpenLobbiesCommand extends Command
 {
+    use TracksFeedRun;
+
     protected $signature = 'pickem:open-lobbies';
 
     protected $description = 'Keep at least one open public room per catalog entry for the current Saturday';
 
     public function handle(CfbCalendar $calendar, SpawnPublicContest $spawn): int
     {
-        $weekId = $calendar->defaultWeekId($calendar->currentYear());
+        $year = $calendar->currentYear();
 
-        if ($weekId === null || ($week = Week::find($weekId)) === null) {
-            $this->info('No current week to stock.');
+        /*
+         * EVERY TICK IS RECORDED, and the FULL shelf is the common tick. The
+         * sweep runs hourly and the join hook usually restocks a room the
+         * instant one fills, so most passes walk the catalog, find every
+         * entry already open and spawn nothing. That pass and a dead worker
+         * used to render identically on the schedule panel. Zero is a
+         * measured fact, never a substituted default, so the guards below
+         * return from INSIDE the closure rather than bailing above it.
+         *
+         * No ESPN request is spent here, so the trait's counter reads 0 on
+         * every row it writes, correctly.
+         */
+        $this->trackRun('open-lobbies', $year, function () use ($calendar, $spawn, $year): int {
+            $weekId = $calendar->defaultWeekId($year);
 
-            return self::SUCCESS;
-        }
+            if ($weekId === null || ($week = Week::find($weekId)) === null) {
+                $this->info('No current week to stock.');
 
-        $saturday = Cadence::activeSaturday($week);
-
-        if ($saturday === null) {
-            $this->info('No Saturday to stock for.');
-
-            return self::SUCCESS;
-        }
-
-        $spawned = 0;
-
-        foreach (LobbyCatalog::entries() as $entry) {
-            if (! $entry['mode']->available()) {
-                continue;
+                return 0;
             }
 
-            try {
-                if ($this->hasOpenRoom($entry['mode'], $week, $saturday, $entry['flavor'])) {
+            $saturday = Cadence::activeSaturday($week);
+
+            if ($saturday === null) {
+                $this->info('No Saturday to stock for.');
+
+                return 0;
+            }
+
+            $spawned = 0;
+
+            foreach (LobbyCatalog::entries() as $entry) {
+                if (! $entry['mode']->available()) {
                     continue;
                 }
 
-                if ($spawn->handle($entry['mode'], $week, $saturday, $entry['flavor']) !== null) {
-                    $spawned++;
-                }
-            } catch (Throwable $e) {
-                Log::warning('pickem:open-lobbies failed for a catalog entry', [
-                    'mode' => $entry['mode']->value,
-                    'flavor' => $entry['flavor']?->value,
-                    'week_id' => $week->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
+                /*
+                 * A CAUGHT ENTRY STILL LEAVES THE PASS COMPLETE, deliberately.
+                 * The catch is the isolation this sweep is built on — Hail
+                 * Mary's empty shelf must not keep Wishbone's stocked — and the
+                 * command exits SUCCESS, so a `failed` row here would put the
+                 * ledger at odds with the scheduler's exit code and the Cloud
+                 * failure signal. TracksFeedRun rethrows precisely to keep
+                 * those three saying the same thing; `failed` means the
+                 * exception escaped, and one that was caught did not.
+                 *
+                 * The warning below is where a caught entry is reported, and
+                 * it carries the mode, so the shelf that did not get stocked
+                 * is named in the log rather than implied by a count.
+                 */
+                try {
+                    if ($this->hasOpenRoom($entry['mode'], $week, $saturday, $entry['flavor'])) {
+                        continue;
+                    }
 
-        $this->info("Spawned {$spawned} room(s) for {$saturday->format('Y-m-d')}.");
+                    if ($spawn->handle($entry['mode'], $week, $saturday, $entry['flavor']) !== null) {
+                        $spawned++;
+                    }
+                } catch (Throwable $e) {
+                    Log::warning('pickem:open-lobbies failed for a catalog entry', [
+                        'mode' => $entry['mode']->value,
+                        'flavor' => $entry['flavor']?->value,
+                        'week_id' => $week->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $this->info("Spawned {$spawned} room(s) for {$saturday->format('Y-m-d')}.");
+
+            // The rooms this pass actually opened. An entry the Saturday
+            // cannot support is the spawner declining, not a room.
+            return $spawned;
+        });
 
         return self::SUCCESS;
     }

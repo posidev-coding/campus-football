@@ -916,12 +916,11 @@ describe('the schedule report', function () {
          * genuinely untracked. A command that DOES write one and is missing a
          * ledgerKey() case renders the same grey and the row simply lies.
          *
-         * The three pick'em sweeps joined this list when `pickem:` became a
-         * reported prefix. They call no trackRun, so untracked is the honest
-         * state for them — a task reporting a run it never recorded would be
-         * worse than one reporting nothing. Giving them real rows means giving
-         * them trackRun first, and this pin is what will notice if one gains a
-         * key without a ledgerKey() line to read it.
+         * The three pick'em sweeps sat on this list for as long as they called
+         * no trackRun, which was honest and still blind: a quiet hour and a
+         * dead worker rendered the same grey through the whole regular season.
+         * They each carry one now, so the news fan-out is what is left — and
+         * that one really does write nothing.
          */
         $untracked = collect(app(SyncSchedule::class)->tasks())
             ->where('tracked', null)
@@ -933,9 +932,6 @@ describe('the schedule report', function () {
         expect($untracked)->toBe([
             'cfb:news:followed',
             'cfb:news:followed:offseason',
-            'pickem:open-lobbies',
-            'pickem:publish-slates',
-            'pickem:settle',
         ]);
     });
 
