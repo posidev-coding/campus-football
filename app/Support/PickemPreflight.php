@@ -308,7 +308,10 @@ class PickemPreflight
          * The practice window rides this row rather than earning its own:
          * it is a clock setting, and an unset one is a legitimate state.
          * It is said OUT LOUD either way, because a launch that meant to
-         * rehearse and forgot to set it looks identical to one that did.
+         * rehearse and forgot to set it looks identical to one that did —
+         * and WHO it covers is said with it, because a window scoped to
+         * the private groups and one covering the rooms as well are two
+         * different Saturdays wearing the same date.
          */
         $practice = Cadence::countsFromLabel();
 
@@ -319,7 +322,10 @@ class PickemPreflight
             'Deadline '.Cadence::deadlineLabel().', official '.Cadence::officialLabel().'.'
                 .($practice === null
                     ? ' No practice window: every slate counts.'
-                    : ' Counting starts '.$practice.'; earlier Saturdays publish as practice.'),
+                    : ' Counting starts '.$practice.'; earlier Saturdays publish as practice for '
+                        .(Cadence::practiceIncludesRooms()
+                            ? 'private groups and public rooms alike.'
+                            : 'private groups, while public rooms count.')),
         );
     }
 

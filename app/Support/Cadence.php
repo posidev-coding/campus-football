@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Game;
+use App\Models\Group;
 use App\Models\PickemSetting;
 use App\Models\Season;
 use App\Models\Week;
@@ -391,8 +392,29 @@ class Cadence
     }
 
     /**
-     * Whether a slate for this Saturday publishes as PRACTICE: real
-     * picks, real grading, real XP, no season credit.
+     * Whether the practice window reaches PUBLIC ROOMS as well as the
+     * private groups it is built for.
+     *
+     * The window is one date for the whole league, so switching it on for
+     * a rehearsal weekend also silenced the shop window: the rooms
+     * strangers meet the app in stopped counting on the same Saturday.
+     * False — the shipped answer, and the founder's call for the launch —
+     * scopes the window to private groups and leaves every room counting
+     * from the day it opens.
+     */
+    public static function practiceIncludesRooms(): bool
+    {
+        return (bool) self::settings()->practice_includes_rooms;
+    }
+
+    /**
+     * Whether a slate for this Saturday, played by this group, publishes
+     * as PRACTICE: real picks, real grading, real XP, no season credit.
+     *
+     * The group is REQUIRED because the answer depends on it — a public
+     * room is out of the window's scope unless an admin says otherwise —
+     * and a caller that could omit it would be answering for a kind it
+     * never looked at.
      *
      * Compared as plain Y-m-d strings on purpose. `slates.saturday` is a
      * date column and arrives at UTC midnight; shifting either side
@@ -403,11 +425,18 @@ class Cadence
      * no window both answer "this counts", because the practice flag has
      * to be a decision somebody made, not a fallback.
      */
-    public static function isPractice(Week|CarbonInterface|null $saturday): bool
+    public static function isPractice(Week|CarbonInterface|null $saturday, Group $for): bool
     {
         $from = self::countsFrom();
 
         if ($from === null || $saturday === null) {
+            return false;
+        }
+
+        // Every public contest — the weekly rooms and the evergreen
+        // tables alike — is out of scope by default. Kind, not week:
+        // a table is no more the founder's rehearsal than a room is.
+        if ($for->isLobby() && ! self::practiceIncludesRooms()) {
             return false;
         }
 
