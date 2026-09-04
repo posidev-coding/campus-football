@@ -3,14 +3,17 @@
 use App\Actions\JoinGroup;
 use App\Actions\LeaveGroup;
 use App\Actions\SpawnPublicContest;
+use App\Console\Concerns\TracksFeedRun;
 use App\Enums\ContestMode;
 use App\Exceptions\ContestFull;
 use App\Models\Contest;
+use App\Models\FeedRun;
 use App\Models\GameOdd;
 use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Slate;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 use Livewire\Livewire;
 
 /*
@@ -141,6 +144,72 @@ it('keeps at least one open room per catalog entry through the sweep, idempotent
     // The shelf is stocked; a second pass adds nothing.
     $this->artisan('pickem:open-lobbies')->assertSuccessful();
     expect(Group::query()->where('kind', Group::KIND_LOBBY)->count())->toBe(6);
+});
+
+it('records the pass that stocked the shelf, and the pass that found it full', function () {
+    /*
+     * The join hook usually restocks a room the instant one fills, so the
+     * hourly sweep normally walks the catalog, finds every entry open and
+     * spawns nothing. That is the COMMON pass, and until it wrote a row it
+     * looked exactly like a dead queue worker on the schedule panel.
+     */
+    publicContestWeek();
+
+    $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+    $stocked = FeedRun::latestFor('open-lobbies');
+
+    expect($stocked)->not->toBeNull()
+        ->and($stocked->status)->toBe(FeedRun::COMPLETE)
+        ->and((int) $stocked->records)->toBe(6)
+        // No ESPN request is spent stocking a shelf, and none is invented.
+        ->and((int) $stocked->requests)->toBe(0);
+
+    // The shelf is full. The pass still ran, and the row still says so.
+    $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+    $full = FeedRun::latestFor('open-lobbies');
+
+    expect($full->id)->not->toBe($stocked->id)
+        ->and($full->status)->toBe(FeedRun::COMPLETE)
+        ->and((int) $full->records)->toBe(0)
+        ->and(Group::query()->where('kind', Group::KIND_LOBBY)->count())->toBe(6);
+});
+
+it('completes a pass that caught a failing catalog entry, and names it in the log', function () {
+    /*
+     * THE DELIBERATE CALL. The per-entry catch is the isolation this sweep is
+     * built on — Hail Mary's empty shelf must not keep Wishbone's — and the
+     * command exits SUCCESS, so the ledger says complete too. A `failed` row
+     * over a caught exception would put the ledger at odds with the exit code
+     * and the Cloud failure signal, and {@see TracksFeedRun} rethrows
+     * precisely to keep those saying the same thing: failed means the
+     * exception escaped, and a caught one did not.
+     *
+     * What keeps that from hiding a broken shelf is the log line, which
+     * carries the mode — so the entry that did not stock is NAMED rather than
+     * implied by a count that would otherwise read like a quiet tick.
+     */
+    publicContestWeek();
+
+    Log::spy();
+
+    $this->mock(SpawnPublicContest::class)
+        ->shouldReceive('handle')
+        ->andThrow(new RuntimeException('the spawner fell over'));
+
+    $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+    $run = FeedRun::latestFor('open-lobbies');
+
+    expect($run)->not->toBeNull()
+        ->and($run->status)->toBe(FeedRun::COMPLETE)
+        ->and((int) $run->records)->toBe(0)
+        ->and(Group::query()->where('kind', Group::KIND_LOBBY)->count())->toBe(0);
+
+    Log::shouldHaveReceived('warning')
+        ->withArgs(fn (string $message, array $context) => $message === 'pickem:open-lobbies failed for a catalog entry'
+            && $context['error'] === 'the spawner fell over');
 });
 
 it('lists only OPEN rooms in the lobby', function () {

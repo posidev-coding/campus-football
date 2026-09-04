@@ -169,13 +169,18 @@ class SyncSchedule
             str_starts_with($command, 'cfb:ux-rollup') => 'ux:rollup',
             str_starts_with($command, 'cfb:gameday') => 'gameday',
             /*
-             * The one pick'em sweep that writes rows today. The other three —
-             * publish-slates, settle, open-lobbies — call no trackRun, so they
-             * fall through to null and render as untracked. That is the honest
-             * state: a task reporting a run it never recorded is worse than one
-             * reporting nothing at all, so none of them gets an invented key.
+             * ALL FOUR pick'em sweeps write rows now. Three of them did not,
+             * and being untracked was honest but blind: they are the weekly
+             * loop the product turns on, they spend no ESPN request so they
+             * cost nothing to record, and `pickem:preflight` could only ever
+             * say they were REGISTERED. A quiet hour and a dead worker
+             * rendered identically on this panel for the whole of the regular
+             * season until they each gained a trackRun().
              */
             str_starts_with($command, 'pickem:remind') => 'pick-reminders',
+            str_starts_with($command, 'pickem:publish-slates') => 'publish-slates',
+            str_starts_with($command, 'pickem:settle') => 'settle-slates',
+            str_starts_with($command, 'pickem:open-lobbies') => 'open-lobbies',
             default => null,
         };
     }

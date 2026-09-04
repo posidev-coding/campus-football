@@ -4,6 +4,7 @@ use App\Actions\EnterTiebreaker;
 use App\Actions\MakePick;
 use App\Actions\PublishSlate;
 use App\Jobs\GradeGamePicks;
+use App\Models\FeedRun;
 use App\Models\Game;
 use App\Models\GameTeamStat;
 use App\Models\Group;
@@ -172,6 +173,49 @@ it('holds settlement until the week turns official, then pays keyed, once', func
     // Run the sweep again: settled is settled, nobody is paid twice.
     $this->artisan('pickem:settle')->assertSuccessful();
     expect(WalletEntry::where('reason', 'pickem-win')->count())->toBe(1);
+});
+
+it('records the sweep that settled, and the sweep that had nothing to settle', function () {
+    /*
+     * The sweep runs hourly all season and a slate is only settleable in the
+     * hours after its week turns official, so the empty pass is the normal
+     * pass. Recording nothing made it indistinguishable from a dead worker on
+     * the schedule panel — the state this row exists to tell apart.
+     */
+    [$slate, $alice] = pickemContestants();
+    [$first] = $slate->games()->with('game')->orderBy('position')->take(1)->get();
+
+    app(MakePick::class)->handle($alice, $first, $first->game->home_team_id);
+
+    // A Thursday tick, before anything has kicked off: nothing final to
+    // rescue, nothing official to settle.
+    $this->travelTo('2026-09-03 17:00:00');
+    $this->artisan('pickem:settle')->assertSuccessful();
+
+    $quiet = FeedRun::latestFor('settle-slates');
+
+    expect($quiet)->not->toBeNull()
+        ->and($quiet->status)->toBe(FeedRun::COMPLETE)
+        ->and((int) $quiet->records)->toBe(0)
+        // DB-only: the trait's ESPN counter must read a real zero here.
+        ->and((int) $quiet->requests)->toBe(0);
+
+    $this->travelTo('2026-09-05 20:00:00');
+    foreach (range(1, 10) as $position) {
+        pickemScore($slate, $position, 28, 7, final: true);
+    }
+
+    // Sunday past official-final: ten games rescued, one slate settled.
+    $this->travelTo('2026-09-06 16:01:00');
+    $this->artisan('pickem:settle')->assertSuccessful();
+
+    $worked = FeedRun::latestFor('settle-slates');
+
+    expect($worked->id)->not->toBe($quiet->id)
+        ->and($worked->status)->toBe(FeedRun::COMPLETE)
+        // Both passes count: ten redispatched games plus the settled slate.
+        ->and((int) $worked->records)->toBe(11)
+        ->and($slate->fresh()->status)->toBe(Slate::SETTLED);
 });
 
 it('absorbs a stat-window score correction before paying', function () {
