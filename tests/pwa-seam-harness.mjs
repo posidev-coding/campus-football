@@ -98,6 +98,9 @@ switch (scenario) {
         break;
 
     case 'push-granted':
+    case 'asset-script':
+    case 'asset-stylesheet':
+    case 'asset-window-error':
         break;
 
     default:
@@ -115,8 +118,23 @@ await import(module);
 
 let result = null;
 
+/* A resource error reaches the window ONLY in the capture phase, on the
+ * element that failed, with no message and no position. The stub registers
+ * both of the reporter's error listeners under one name, so every shape is
+ * handed to both — which is also the browser's contract for the window's own
+ * error event, and what the third scenario checks is reported exactly once. */
+const assetEvents = {
+    'asset-script': { target: { tagName: 'SCRIPT', src: 'https://campusfootball.test/flux/flux.min.js?id=1ea4120f' } },
+    'asset-stylesheet': { target: { tagName: 'LINK', href: 'https://campusfootball.test/build/assets/app-abc.css' } },
+    'asset-window-error': { target: globalThis, message: 'boom', filename: 'https://campusfootball.test/build/assets/app-abc.js', lineno: 3, colno: 4 },
+};
+
 if (scenario.startsWith('push-')) {
     result = await window.cfbPush.enable('dGVzdA', '/push/subscriptions');
+} else if (scenario in assetEvents) {
+    for (const handler of listeners.error ?? []) {
+        handler(assetEvents[scenario]);
+    }
 } else {
     for (const handler of listeners.load ?? []) {
         handler();

@@ -248,6 +248,41 @@ window.addEventListener('error', (event) => {
     } catch { /* never let the reporter be the bug */ }
 });
 
+/*
+ * A script or stylesheet that FAILED TO LOAD. Resource errors fire on the
+ * element and never bubble, so the listener above cannot see them — and the
+ * symptom they leave is a page of ReferenceErrors that name the missing
+ * bundle's globals, never the bundle. Production read exactly that twice:
+ * "$flux is not defined" beside "fluxModal is not defined", which is what
+ * Alpine says when flux.min.js did not execute before it started, filed
+ * against the screen rather than the asset (CFB-46). Capture phase is the
+ * one place a load failure can be heard from the window; the handler skips
+ * the window's own error events, which the listener above already owns.
+ *
+ * Only scripts and stylesheets: a missing team logo is a data question with
+ * its own doctor, and images would spend the page's five reports on it.
+ */
+window.addEventListener('error', (event) => {
+    try {
+        const tag = event.target?.tagName;
+
+        if (tag !== 'SCRIPT' && tag !== 'LINK') return;
+
+        const url = event.target.src || event.target.href || null;
+
+        if (!url) return;
+
+        window.cfbErrors.report({
+            kind: 'error',
+            message: `Failed to load ${tag === 'SCRIPT' ? 'script' : 'stylesheet'} ${url}`,
+            source: url,
+            line: null,
+            col: null,
+            stack: null,
+        });
+    } catch { /* never let the reporter be the bug */ }
+}, true);
+
 window.addEventListener('unhandledrejection', (event) => {
     try {
         const reason = event.reason;

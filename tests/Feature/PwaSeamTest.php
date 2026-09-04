@@ -45,6 +45,45 @@ function pwaSeamReports(string $scenario): array
     ));
 }
 
+describe('a bundle that failed to load', function () {
+    /*
+     * Resource errors fire on the element and never bubble, so the window's
+     * bubbling listener is deaf to them, and the symptom they leave is a page
+     * of ReferenceErrors naming the bundle's globals — "$flux is not defined"
+     * beside "fluxModal is not defined", which production read twice and
+     * filed against the Lobby rather than against flux.min.js (CFB-46). The
+     * capture-phase listener is what turns that into a report that names the
+     * asset.
+     */
+    it('reports a script that failed to load, by URL', function () {
+        $reports = pwaSeamReports('asset-script');
+
+        expect($reports)->toHaveCount(1)
+            ->and($reports[0]['message'])->toBe('Failed to load script https://campusfootball.test/flux/flux.min.js?id=1ea4120f')
+            ->and($reports[0]['source'])->toBe('https://campusfootball.test/flux/flux.min.js?id=1ea4120f')
+            ->and($reports[0]['kind'])->toBe(ClientError::ERROR)
+            ->and($reports[0]['line'])->toBeNull();
+    });
+
+    it('reports a stylesheet the same way', function () {
+        $reports = pwaSeamReports('asset-stylesheet');
+
+        expect($reports)->toHaveCount(1)
+            ->and($reports[0]['message'])->toBe('Failed to load stylesheet https://campusfootball.test/build/assets/app-abc.css');
+    });
+
+    it('leaves the window\'s own errors to the listener that already owns them', function () {
+        // The capture listener hears every error event, the thrown ones
+        // included; reporting those twice would burn the page's five slots
+        // at double speed. One report, and it is the thrown one.
+        $reports = pwaSeamReports('asset-window-error');
+
+        expect($reports)->toHaveCount(1)
+            ->and($reports[0]['message'])->toBe('boom')
+            ->and($reports[0]['line'])->toBe(3);
+    });
+});
+
 describe('service worker registration', function () {
     it('names what failed and why instead of reporting the bare rejection', function () {
         // The bug: unguarded, this reached the unhandledrejection listener as
