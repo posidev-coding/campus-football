@@ -627,18 +627,47 @@ class SyncGames
 
         return [
             'possession_team_id' => $possession > 0 ? $possession : null,
-            'down' => isset($situation['down']) && (int) $situation['down'] > 0
-                ? (int) $situation['down'] : null,
-            'distance' => isset($situation['distance']) ? (int) $situation['distance'] : null,
-            'yard_line' => isset($situation['yardLine']) ? (int) $situation['yardLine'] : null,
+            'down' => $this->unsigned($situation['down'] ?? null, min: 1),
+            'distance' => $this->unsigned($situation['distance'] ?? null),
+            'yard_line' => $this->unsigned($situation['yardLine'] ?? null),
             'down_distance_text' => $situation['shortDownDistanceText']
                 ?? $situation['downDistanceText'] ?? null,
             'is_red_zone' => (bool) ($situation['isRedZone'] ?? false),
             'last_play_text' => isset($situation['lastPlay']['text'])
                 ? mb_substr($situation['lastPlay']['text'], 0, 255) : null,
-            'home_timeouts' => isset($situation['homeTimeouts']) ? (int) $situation['homeTimeouts'] : null,
-            'away_timeouts' => isset($situation['awayTimeouts']) ? (int) $situation['awayTimeouts'] : null,
+            'home_timeouts' => $this->unsigned($situation['homeTimeouts'] ?? null),
+            'away_timeouts' => $this->unsigned($situation['awayTimeouts'] ?? null),
         ];
+    }
+
+    /**
+     * A situation number that has to survive an UNSIGNED TINYINT column.
+     *
+     * ESPN uses -1 as "this does not apply right now": on a kickoff or an extra
+     * point there is no down and no distance, so it sends `distance: -1` rather
+     * than omitting the key. The column is unsigned, MySQL refuses the write in
+     * strict mode, and `store()`'s per-event try/catch then skips the ENTIRE
+     * game — score, clock, period and status with it. Measured 2026-09-03:
+     * Akron at Wake Forest sat frozen at `pre` from its preseason row while
+     * ESPN had it 38-10 in the fourth, because every live pass for the whole
+     * second half threw on `distance = -1` after a PAT.
+     *
+     * Out of range is out of data, never a zero — writing 0 would render a real
+     * "1st & 0" on the gamecast. Same rule as the ranks and the negative
+     * competitor ids: null, and the caller leaves it alone.
+     *
+     * `$min` is 1 for `down`, which has no meaningful zero; everything else
+     * legitimately reaches 0 (goal line, no timeouts left).
+     */
+    private function unsigned(mixed $value, int $min = 0): ?int
+    {
+        if ($value === null || ! is_numeric($value)) {
+            return null;
+        }
+
+        $value = (int) $value;
+
+        return $value >= $min && $value <= 255 ? $value : null;
     }
 
     /**
