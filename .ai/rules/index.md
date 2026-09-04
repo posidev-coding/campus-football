@@ -57,6 +57,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | tests/**,resources/views/livewire/onboarding.blade.php | .ai/rules/tests-views-livewire.md |
 | tests/** | .ai/rules/tests.md |
 | app/Services/Espn/Sync/SyncGames.php,app/Support/Networks.php,resources/views/components/network-logo.blade.php,resources/views/components/group-icon.blade.php | .ai/rules/views-components.md |
+| resources/views/components/layouts/**,resources/js/app.js,app/Providers/Filament/**,resources/views/filament/** | .ai/rules/views-filament.md |
 | app/Models/Slate.php,resources/views/livewire/group.blade.php,resources/views/livewire/pickem-home.blade.php,app/Support/** | .ai/rules/views-livewire-support.md |
 | app/Actions/PublishSlate.php,app/Support/Cadence.php,app/Models/Slate.php,resources/views/livewire/group.blade.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/views-livewire-views-livewire.md |
 | app/Enums/ContestMode.php,app/Enums/LobbyFlavor.php,resources/views/livewire/group.blade.php,resources/views/livewire/join.blade.php | .ai/rules/views-livewire.md |
