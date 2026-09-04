@@ -63,6 +63,30 @@ it('sets the practice window, and the very next publish honors it', function () 
     expect($slate->fresh()->exhibition)->toBeTrue();
 });
 
+it('scopes the practice window to the private groups, and widens it on request', function () {
+    /*
+     * The scope is the second half of the window and it is editable from
+     * the same page: the founder's launch call was "private groups
+     * rehearse, the rooms count", and a later launch may want both.
+     */
+    Livewire::actingAs($this->admin)
+        ->test(PickemSettings::class)
+        ->assertSchemaStateSet(['practice_includes_rooms' => false])
+        ->fillForm(['counts_from' => '2026-09-12', 'practice_includes_rooms' => true])
+        ->call('save')
+        ->assertHasNoErrors();
+
+    expect(Cadence::practiceIncludesRooms())->toBeTrue();
+
+    Livewire::actingAs($this->admin)
+        ->test(PickemSettings::class)
+        ->fillForm(['practice_includes_rooms' => false])
+        ->call('save');
+
+    expect(Cadence::practiceIncludesRooms())->toBeFalse()
+        ->and(Cadence::countsFrom()?->toDateString())->toBe('2026-09-12');
+});
+
 it('says the practice window out loud in the preflight, set or not', function () {
     /*
      * A launch that meant to rehearse and forgot to set this looks
@@ -77,5 +101,11 @@ it('says the practice window out loud in the preflight, set or not', function ()
     PickemSetting::current()->update(['counts_from' => '2026-09-12']);
 
     expect($clock()['detail'])->toContain('Counting starts Sep 12, 2026')
-        ->and($clock()['detail'])->toContain('earlier Saturdays publish as practice');
+        ->and($clock()['detail'])->toContain('earlier Saturdays publish as practice')
+        // WHO the window covers, because two scopes wear the same date.
+        ->and($clock()['detail'])->toContain('private groups, while public rooms count');
+
+    PickemSetting::current()->update(['practice_includes_rooms' => true]);
+
+    expect($clock()['detail'])->toContain('private groups and public rooms alike');
 });

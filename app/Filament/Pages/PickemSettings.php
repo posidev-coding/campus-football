@@ -11,6 +11,7 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\TimePicker;
+use Filament\Forms\Components\Toggle;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Schemas\Components\Actions;
@@ -32,11 +33,14 @@ use UnitEnum;
  * lets ESPN's occasional day-after corrections land before a tiebreaker
  * pays the wrong person.
  *
- * And one DATE: where the practice window ends. Slates for Saturdays
- * before it publish as exhibitions — graded, paid in XP, never counted —
- * which is what a launch's rehearsal weeks are for. It is the only field
- * on this page whose blank means "off" rather than "the shipped default",
- * because no practice window IS the normal state of a season.
+ * And the PRACTICE WINDOW: a date, where it ends, plus who it is for.
+ * Slates for Saturdays before that date publish as exhibitions — graded,
+ * paid in XP, never counted — which is what a launch's rehearsal weeks
+ * are for. The date is the only field on this page whose blank means
+ * "off" rather than "the shipped default", because no practice window IS
+ * the normal state of a season. Its scope defaults to the private groups
+ * alone: the public rooms are the shop window, and a stranger's first
+ * Saturday should count.
  *
  * @property-read Schema $form
  */
@@ -127,6 +131,9 @@ class PickemSettings extends Page
                                 ->label('Counting starts')
                                 ->helperText('Pick the first Saturday that counts. Set it before that Saturday: the flag is stamped when a slate publishes, so moving this later never rewrites a week people already played.')
                                 ->weekStartsOnSunday(),
+                            Toggle::make('practice_includes_rooms')
+                                ->label('Public rooms practice too')
+                                ->helperText('Off: the window covers private groups only, and every public room counts from the day it opens. On: the rooms rehearse alongside the groups.'),
                         ])
                         ->columns(2),
 

@@ -24,6 +24,9 @@ class PickemSetting extends Model
             // The first Saturday whose slates count. Null is NO practice
             // window, not a missing value — see the migration.
             'counts_from' => 'immutable_date',
+            // Whether the practice window reaches PUBLIC ROOMS as well as
+            // private groups. False is the shipped decision, not a blank.
+            'practice_includes_rooms' => 'boolean',
         ];
     }
 

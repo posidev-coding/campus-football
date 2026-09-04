@@ -60,7 +60,10 @@ class PublishSlate
         }
 
         return DB::transaction(function () use ($slate) {
-            $slate->loadMissing('contest');
+            // The group comes with the contest because the practice window
+            // is scoped by KIND: a private group rehearses where a public
+            // room keeps counting.
+            $slate->loadMissing('contest.group');
 
             $engine = $slate->contest->mode->engine($slate->contest->settings);
             $problems = $engine->validateForPublish($slate);
@@ -86,6 +89,11 @@ class PublishSlate
              * launch's practice weeks cannot be honored on one path and
              * forgotten on another.
              *
+             * The group is what makes the answer differ between two
+             * slates on the same Saturday: the window is the private
+             * groups' rehearsal, and a public room counts through it
+             * unless an admin says otherwise.
+             *
              * Stamped rather than derived on read: `exhibition` is a fact
              * about a published slate, and moving the window afterwards
              * must not retroactively rewrite what a settled week was
@@ -94,7 +102,7 @@ class PublishSlate
             $slate->update([
                 'status' => Slate::PUBLISHED,
                 'published_at' => now(),
-                'exhibition' => Cadence::isPractice($slate->saturday),
+                'exhibition' => Cadence::isPractice($slate->saturday, $slate->contest->group),
             ]);
 
             return [];

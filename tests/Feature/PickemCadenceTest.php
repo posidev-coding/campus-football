@@ -5,7 +5,9 @@ use App\Actions\PublishSlate;
 use App\Actions\SpawnPublicContest;
 use App\Enums\ContestMode;
 use App\Enums\TiebreakerMetric;
+use App\Models\Contest;
 use App\Models\Game;
+use App\Models\Group;
 use App\Models\PickemSetting;
 use App\Models\Season;
 use App\Models\Slate;
@@ -412,7 +414,7 @@ it('counts everything when no practice window is configured', function () {
      * honest state of every season after a launch one.
      */
     expect(Cadence::countsFrom())->toBeNull()
-        ->and(Cadence::isPractice(CarbonImmutable::parse('2026-09-05')))->toBeFalse();
+        ->and(Cadence::isPractice(CarbonImmutable::parse('2026-09-05'), Group::factory()->create()))->toBeFalse();
 
     [$commissioner, , $contest] = pickemContest();
     $slate = pickemDraftSlate($contest);
@@ -422,13 +424,16 @@ it('counts everything when no practice window is configured', function () {
     expect($slate->fresh()->exhibition)->toBeFalse();
 });
 
-it('stamps practice on every publish door, the house rooms included', function () {
+it('stamps the practice answer on every publish door, the house rooms included', function () {
     /*
      * The stamp lives in PublishSlate::force(), which is the ONE door
      * every publish comes through — the commissioner's button, the
-     * deadline fallback, and a room's own spawn. A room publishing real
-     * results through the rehearsal weekend is exactly the failure this
-     * pins.
+     * deadline fallback, and a room's own spawn. A door that forgot to
+     * ask would leave a whole week's slates unstamped and unnoticed.
+     *
+     * The two doors answer DIFFERENTLY here on purpose, which is the
+     * point of the scope: the private group the commissioner overslept
+     * on rehearses, and the house room keeps counting.
      */
     PickemSetting::current()->update(['counts_from' => '2026-09-12']);
 
@@ -444,14 +449,83 @@ it('stamps practice on every publish door, the house rooms included', function (
     $roomSlate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $room->id))->sole();
 
     expect($roomSlate->status)->toBe(Slate::PUBLISHED)
-        ->and($roomSlate->exhibition)->toBeTrue();
+        ->and($roomSlate->exhibition)->toBeFalse();
 
-    // And the commissioner who overslept gets the same answer.
+    // And the commissioner who overslept: a private group, so practice.
     [, , $contest] = pickemContest();
     $auto = app(AutoPublishStandardSlate::class)->handle($contest, $week);
 
     expect($auto)->not->toBeNull()
         ->and($auto->exhibition)->toBeTrue();
+});
+
+it('keeps the public rooms counting through a private rehearsal weekend', function () {
+    /*
+     * The founder's call, 2026-09-02: the private groups practice the
+     * Saturday before counting starts, the rooms do not. One global date
+     * had made both rehearse — so the lobby a stranger meets the app in
+     * would have opened on a weekend that was worth nothing, with
+     * nothing on the screen saying so.
+     *
+     * Same Saturday, same window, two answers: the kind is what decides.
+     */
+    PickemSetting::current()->update(['counts_from' => '2026-09-12']);
+
+    [$commissioner, , $private] = pickemContest();
+    $privateSlate = pickemDraftSlate($private);
+    app(PublishSlate::class)->handle($commissioner, $privateSlate);
+
+    [, $week] = pickemSeasonWeek();
+    $room = Group::factory()->room($week->id)->create();
+    $roomContest = Contest::factory()->create(['group_id' => $room->id]);
+    $roomSlate = pickemDraftSlate($roomContest);
+    app(PublishSlate::class)->force($roomSlate);
+
+    expect($privateSlate->fresh()->exhibition)->toBeTrue()
+        ->and($roomSlate->fresh()->exhibition)->toBeFalse();
+
+    // An evergreen table is public too — lobby KIND, no week of its own.
+    $table = Group::factory()->lobby()->create();
+    $tableSlate = pickemDraftSlate(Contest::factory()->create(['group_id' => $table->id]));
+    app(PublishSlate::class)->force($tableSlate);
+
+    expect($tableSlate->fresh()->exhibition)->toBeFalse();
+});
+
+it('widens the window to the rooms when an admin says so', function () {
+    /*
+     * The scope is a setting, not a law: a launch that wants the whole
+     * league rehearsing on one Saturday can have it without a deploy.
+     */
+    PickemSetting::current()->update([
+        'counts_from' => '2026-09-12',
+        'practice_includes_rooms' => true,
+    ]);
+
+    [, $week] = pickemSeasonWeek();
+    $room = Group::factory()->room($week->id)->create();
+    $roomSlate = pickemDraftSlate(Contest::factory()->create(['group_id' => $room->id]));
+
+    app(PublishSlate::class)->force($roomSlate);
+
+    expect($roomSlate->fresh()->exhibition)->toBeTrue();
+});
+
+it('leaves the rooms alone when there is no window at all', function () {
+    /*
+     * The scope switch is not a practice switch. With counts_from null
+     * there is no window to widen, and turning the scope on must not
+     * invent one — the null-is-no-window law, asked from the new side.
+     */
+    PickemSetting::current()->update(['practice_includes_rooms' => true]);
+
+    [, $week] = pickemSeasonWeek();
+    $room = Group::factory()->room($week->id)->create();
+    $roomSlate = pickemDraftSlate(Contest::factory()->create(['group_id' => $room->id]));
+
+    app(PublishSlate::class)->force($roomSlate);
+
+    expect($roomSlate->fresh()->exhibition)->toBeFalse();
 });
 
 // ------------------------------------------------ one slate, one Saturday
