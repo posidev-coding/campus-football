@@ -7,7 +7,7 @@
     row, 36px hero, 44px hero from sm) and scaled UP, never drawn large and
     shrunk: five fat rays, one lens, one lace, no line thinner than 2.8 units.
     width/height are declared beside the viewBox on purpose - an <img> gives a
-    viewBox-only SVG a square intrinsic size, and no clipPath, so any
+    viewBox-only SVG a square intrinsic size, and there is no clip path, so any
     rasterizer draws the same picture. Regenerate the-hopefuls-512.png from
     this file in the same commit as any redraw; the PNG is the upload cut.
   -->
