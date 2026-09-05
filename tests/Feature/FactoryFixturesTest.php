@@ -55,3 +55,35 @@ it('keeps a season\'s dates in the year the caller pinned', function () {
     expect($season->start_date->year)->toBe(2025)
         ->and($season->end_date->year)->toBe(2025);
 });
+
+/*
+ * ...and guarantees about the CLOCK those fixtures are read against, because
+ * pinning a fixture to an absolute instant only pins it while the wall clock
+ * is behind that instant. On 2026-09-05 the clock passed the shared pick'em
+ * kickoff of 19:30 and nineteen tests that had never travelled began reading
+ * their upcoming game as kicked — in isolation as well as in the full suite,
+ * and with no day on which it would have recovered by itself.
+ */
+
+it('pins the suite\'s now, so a test that never travels does not read the real clock', function () {
+    expect(now()->toDateTimeString())->toBe(SUITE_NOW);
+});
+
+it('keeps the shared fixture\'s kickoff in the FUTURE, which is the thing that broke', function () {
+    /*
+     * The assertion the nineteen were all making implicitly. It has to hold
+     * whatever the real date is — that is the whole difference between a
+     * defused bomb and a reset one.
+     */
+    [$season, $week] = pickemSeasonWeek();
+
+    expect(pickemGame($season, $week)->kickoff_at->isFuture())->toBeTrue();
+});
+
+it('lets an explicit travelTo win over the pinned default', function () {
+    // 215 calls across the suite depend on this; a beforeEach that could not
+    // be overridden would silently retune every one of them.
+    $this->travelTo('2026-09-06 16:01:00');
+
+    expect(now()->toDateTimeString())->toBe('2026-09-06 16:01:00');
+});
