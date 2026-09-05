@@ -2,6 +2,7 @@
 
 use App\Actions\ChangeGroupMode;
 use App\Actions\HandOffCommissioner;
+use App\Actions\InviteUserToGroup;
 use App\Actions\JoinGroup;
 use App\Actions\LeaveGroup;
 use App\Actions\RecordUxEvent;
@@ -9,10 +10,12 @@ use App\Actions\RemoveGroupMember;
 use App\Actions\SetGroupIcon;
 use App\Enums\ContestMode;
 use App\Enums\UxSignal;
+use App\Exceptions\CannotInvite;
 use App\Exceptions\ContestFull;
 use App\Exceptions\GroupNeedsCommissioner;
 use App\Exceptions\ModeChangeBlocked;
 use App\Exceptions\NotGroupCommissioner;
+use App\Exceptions\NotGroupMember;
 use App\Exceptions\PickemParticipationGated;
 use App\Exceptions\WalletTooLight;
 use App\Livewire\Concerns\MakesPicks;
@@ -29,6 +32,7 @@ use App\Services\CfbCalendar;
 use App\Services\Contests\SpreadGrader;
 use App\Support\ImageUpload;
 use App\Support\Cadence;
+use App\Support\Invitables;
 use App\Support\InviteTemplates;
 use App\Support\Seats;
 use App\Support\SlateFeasibility;
@@ -109,6 +113,13 @@ new class extends Component
      * nothing reads it as the group's current mark.
      */
     public $iconFile = null;
+
+    /**
+     * The invite picker's filter — the house's shared search name, and
+     * the only search on this screen. Not a #[Url]: an invite list is a
+     * thing you scroll for ten seconds, not an address anybody shares.
+     */
+    public string $q = '';
 
     public function mount(Group $group): void
     {
@@ -732,6 +743,56 @@ new class extends Component
             $this->joinUrl,
             $contest->mode->engine($contest->settings)->slateSize(),
         );
+    }
+
+    /**
+     * The people this member may ask in directly — handles only.
+     *
+     * The list is presentation and the Action is the gate; the two agree
+     * because both read App\Support\Invitables, which is where the
+     * co-membership rule and the handles-only boundary both live. Empty
+     * for a room, which is never invitable, and for an outsider previewing
+     * one — neither can reach the tab, and this is the belt to that brace.
+     *
+     * @return list<array{id: int, handle: string, shared: string|null, pending: bool}>
+     */
+    #[Computed]
+    public function invitables(): array
+    {
+        if ($this->group->isLobby() || ! $this->isMember) {
+            return [];
+        }
+
+        return Invitables::for(auth()->user(), $this->group, $this->q);
+    }
+
+    /**
+     * Ask one named person into this group.
+     *
+     * Every rule is InviteUserToGroup's; this only translates the refusals.
+     * Both are a 403 rather than user copy, because neither is reachable
+     * from the rendered screen — the picker only lists people who pass —
+     * and a refusal that spelled out WHY would tell a sender things about
+     * an account they are not entitled to know.
+     */
+    public function invite(int $userId, InviteUserToGroup $action): void
+    {
+        $invitee = User::findOrFail($userId);
+
+        try {
+            $action->handle(auth()->user(), $this->group, $invitee);
+        } catch (NotGroupMember|CannotInvite) {
+            abort(403);
+        }
+
+        // The handle is guaranteed by the Action, which refuses an account
+        // that never claimed one — so this names them the only way this
+        // screen is allowed to.
+        session()->flash('status', Voice::line('groups.invite.direct.sent', [
+            'name' => '@'.$invitee->handle,
+        ]));
+
+        unset($this->invitables);
     }
 
     #[Computed]
@@ -1544,6 +1605,89 @@ new class extends Component
                     :open="true"
                     :templates="$this->inviteTemplates"
                 />
+
+                {{-- THE DIRECT INVITE — the people you already play with,
+                     under the link that works on everybody else. The link
+                     above cannot reach somebody you only know from inside
+                     the product: you have no number for @dave44 and
+                     nowhere to paste it to him. This is that door.
+
+                     Handles only, never names, and never an avatar: the
+                     rows MIX acquaintances from private groups and public
+                     rooms, and a reader cannot tell which is which, so the
+                     stricter rule wins the whole column (App\Support\
+                     Invitables). The heading, the placeholder and the
+                     buttons stay plain — the voice is the hint line. --}}
+                <div class="flex flex-col gap-3">
+                    <div>
+                        <h2 class="text-sm font-semibold text-zinc-900 dark:text-white">
+                            Invite someone you play with
+                        </h2>
+                        <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                            {{ Voice::line('groups.invite.direct.hint') }}
+                        </p>
+                    </div>
+
+                    <flux:input
+                        wire:model.live.debounce.300ms="q"
+                        icon="magnifying-glass"
+                        placeholder="Search by handle"
+                        size="sm"
+                        clearable
+                    />
+
+                    @if ($this->invitables === [])
+                        <p class="text-xs text-zinc-500 dark:text-zinc-400">
+                            @if ($q === '')
+                                {{ Voice::line('groups.invite.direct.empty') }}
+                            @else
+                                {{-- A plain miss, not a joke: the reader is
+                                     mid-search and needs to know it was the
+                                     spelling, not the app. --}}
+                                No one you play with answers to "{{ $q }}".
+                            @endif
+                        </p>
+                    @else
+                        <ul class="divide-y divide-zinc-100 dark:divide-zinc-800">
+                            @foreach ($this->invitables as $person)
+                                <li
+                                    wire:key="invitable-{{ $person['id'] }}"
+                                    class="flex items-center justify-between gap-3 py-2"
+                                >
+                                    <div class="min-w-0">
+                                        <p class="truncate text-sm font-medium text-zinc-900 dark:text-white">
+                                            {{ '@'.$person['handle'] }}
+                                        </p>
+                                        @if ($person['shared'] !== null)
+                                            <p class="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                                                You both play in {{ $person['shared'] }}
+                                            </p>
+                                        @endif
+                                    </div>
+
+                                    @if ($person['pending'])
+                                        {{-- The row stays put wearing its
+                                             own answer: a control that
+                                             vanishes when you press it
+                                             reads as a failure. --}}
+                                        <flux:badge size="sm" color="zinc" class="shrink-0">Invited</flux:badge>
+                                    @else
+                                        <flux:button
+                                            wire:click="invite({{ $person['id'] }})"
+                                            wire:loading.attr="disabled"
+                                            wire:target="invite({{ $person['id'] }})"
+                                            size="sm"
+                                            variant="filled"
+                                            class="shrink-0"
+                                        >
+                                            Invite
+                                        </flux:button>
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                </div>
             @endif
         </div>
     @elseif ($view === 'talk')

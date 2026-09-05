@@ -1001,6 +1001,33 @@ class Voice
             'r' => 'Point a phone at it. No excuses left.',
         ],
 
+        /*
+         * THE DIRECT INVITE, from the sender's side — under the picker of
+         * people they already play with. The hint has to carry the fact
+         * that this one does NOT leave the app: nothing is mailed, nothing
+         * is texted, it arrives in a notification. Everything plainer than
+         * this line — the heading, the search placeholder, the button —
+         * stays plain, because a reader must be able to tell what the
+         * control does.
+         */
+        'groups.invite.direct.hint' => [
+            'pg' => 'Invite someone you already play with — it arrives in their notifications.',
+            'pg13' => 'People you already play with. One tap and it lands in their notifications, no link to chase.',
+            'r' => "People you've already beaten, or lost to. One tap, straight to their notifications, no excuses about a lost link.",
+        ],
+
+        'groups.invite.direct.empty' => [
+            'pg' => "You haven't played with anyone yet. Share the link above instead.",
+            'pg13' => 'Nobody to name yet — you have not played with anyone. The link above works on strangers.',
+            'r' => 'Nobody to name yet. Go take a public seat, make some enemies, then come back and draft them.',
+        ],
+
+        'groups.invite.direct.sent' => [
+            'pg' => 'Invite sent to :name.',
+            'pg13' => 'Sent. :name has been asked, and the excuses start now.',
+            'r' => ':name has been asked. Whatever they say next is on the record.',
+        ],
+
         // Under the ready-to-send messages. Says plainly that these go out
         // from the SENDER's own number and inbox — the app never mails a
         // stranger, and a commissioner should not think it did.
@@ -1903,6 +1930,35 @@ class Voice
             'pg' => 'Last call — :owed picks in :group.',
             'pg13' => 'Last call: :owed picks open in :group, kick at :when.',
             'r' => 'Last call. :owed unpicked in :group, :when.',
+        ],
+
+        /*
+         * THE DIRECT INVITE, landing in the inbox. Somebody who plays with
+         * the reader is asking them into a private group, so the roast is
+         * aimed at the picks waiting for them, never at the sender and
+         * never at whoever they are about to sit down against.
+         *
+         * Two bodies: one crediting a handle, one for a sender who never
+         * claimed one. The anonymous line names the GROUP rather than
+         * substituting a stand-in for a person — an unclaimed handle is
+         * missing data, not a blank to fill.
+         */
+        'notify.invite.subject' => [
+            'pg' => 'You have an invite — :group',
+            'pg13' => 'You have an invite — :group',
+            'r' => 'You have an invite — :group',
+        ],
+
+        'notify.invite.body' => [
+            'pg' => ':inviter invited you to join :group.',
+            'pg13' => ':inviter wants your picks in :group. Season-long, everyone on the record.',
+            'r' => ':inviter wants you in :group, where every pick you make is filed under your name until January.',
+        ],
+
+        'notify.invite.body.anon' => [
+            'pg' => 'You have been invited to join :group.',
+            'pg13' => "You're invited to :group — season-long, everyone on the record.",
+            'r' => "You're invited to :group, where every pick gets filed under your name until January.",
         ],
 
         'notify.results.subject' => [
