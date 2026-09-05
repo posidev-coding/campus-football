@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+  <!--
+    THE HOPEFULS - the group's clubhouse mark: a football coming up like the
+    sun over the turf, because for this group it is always dawn.
+
+    Designed for the sizes x-group-icon renders at (20px menu row, 32px card
+    row, 36px hero, 44px hero from sm) and scaled UP, never drawn large and
+    shrunk: five fat rays, one lens, one lace, no line thinner than 2.8 units.
+    width/height are declared beside the viewBox on purpose - an <img> gives a
+    viewBox-only SVG a square intrinsic size, and no clipPath, so any
+    rasterizer draws the same picture. Regenerate the-hopefuls-512.png from
+    this file in the same commit as any redraw; the PNG is the upload cut.
+  -->
+  <rect width="100" height="100" fill="#0F1A2E"/>
+  <rect y="70" width="100" height="30" fill="#1E4A36"/>
+  <g fill="#E8A33C">
+    <path d="M 8 70 C 22 32, 78 32, 92 70 Z"/>
+    <g transform="translate(50 70)">
+      <rect x="-3.75" y="-53" width="7.5" height="15" rx="3.75"/>
+      <rect x="-3.75" y="-53" width="7.5" height="15" rx="3.75" transform="rotate(-28)"/>
+      <rect x="-3.75" y="-53" width="7.5" height="15" rx="3.75" transform="rotate(28)"/>
+      <rect x="-3.75" y="-53" width="7.5" height="15" rx="3.75" transform="rotate(-56)"/>
+      <rect x="-3.75" y="-53" width="7.5" height="15" rx="3.75" transform="rotate(56)"/>
+    </g>
+  </g>
+  <g fill="#F5F2EA">
+    <rect x="36" y="47" width="28" height="3.2" rx="1.6"/>
+    <rect x="39.5" y="44" width="2.8" height="9.2" rx="1.4"/>
+    <rect x="45.1" y="44" width="2.8" height="9.2" rx="1.4"/>
+    <rect x="50.7" y="44" width="2.8" height="9.2" rx="1.4"/>
+    <rect x="56.3" y="44" width="2.8" height="9.2" rx="1.4"/>
+  </g>
+</svg>
