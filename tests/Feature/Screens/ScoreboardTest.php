@@ -960,6 +960,16 @@ describe('live games float above finals', function () {
 
         Cache::forget('scoreboard:has-live');
 
+        /*
+         * Stepped OUTSIDE the week to see both days at once. The current week
+         * shows one day at a time (see 'the date filter' below), so this
+         * guarantee — that a band never crosses a heading — can only be
+         * asserted where the whole week renders. The statuses stay as they
+         * were: a live game in a week we are not in is artificial, and it is
+         * exactly the artificial case that proves the band does not travel.
+         */
+        $this->travelTo('2025-10-15 12:00:00');
+
         Livewire::test('scoreboard')
             ->set('scope', Scope::FBS)
             ->set('week', $this->week->id)
@@ -990,5 +1000,291 @@ describe('live games float above finals', function () {
             ->set('scope', Scope::FBS)
             ->set('week', $this->week->id)
             ->assertSeeInOrder(['Visitorton', 'Afternoonlive', 'Earlyfinal']);
+    });
+});
+
+/**
+ * A team and its game inside the CURRENT week's fixture, in one pinned state.
+ * The 2026 sibling of `scoreboardGame()` — the filter only touches a week NOW
+ * is inside, and the shared fixture's 2025 week is four months behind us.
+ */
+function currentWeekGame(int $id, string $place, string $date, string $time, array $state = []): Game
+{
+    Team::factory()->create([
+        'id' => $id, 'location' => $place, 'display_name' => $place.' Club',
+        'short_display_name' => $place, 'abbreviation' => mb_strtoupper(mb_substr($place, 0, 3)),
+        'color' => '123456', 'alt_color' => '654321',
+    ]);
+
+    TeamSeason::create([
+        'team_id' => $id, 'season_year' => 2026,
+        'conference_id' => 8, 'classification' => 'FBS',
+    ]);
+
+    return Game::factory()->create([
+        'season_id' => test()->current->season_id,
+        'week_id' => test()->current->id,
+        'home_team_id' => $id,
+        'away_team_id' => null,
+        'kickoff_at' => CarbonImmutable::parse($date.' '.$time, config('cfb.timezone')),
+    ] + $state + ['status' => 'pre', 'completed' => false]);
+}
+
+describe('the date filter', function () {
+    /*
+     * The current week is the ONLY one the filter touches, so every fixture
+     * here is built around SUITE_NOW — Wednesday 2026-09-02, frozen for the
+     * whole suite in tests/Pest.php. The week runs Tuesday to Monday around
+     * it and holds games on three days.
+     *
+     * Every kickoff is pinned in Eastern, the timezone the day is decided in.
+     * `GameFactory` defaults `kickoff_at` to a random four-month window, and
+     * an unpinned fixture under a DATE assertion is a coin flip.
+     */
+    beforeEach(function () {
+        $season = Season::factory()->create([
+            'year' => 2026, 'type' => Season::REGULAR,
+            'start_date' => '2026-08-29', 'end_date' => '2026-12-12',
+        ]);
+
+        $this->current = Week::create([
+            'season_id' => $season->id,
+            'number' => 2,
+            'name' => 'Week 2',
+            'start_date' => '2026-09-01',
+            'end_date' => '2026-09-07',
+        ]);
+
+        $this->live = ['status' => 'in', 'completed' => false];
+        $this->final = ['status' => 'post', 'completed' => true, 'home_score' => 31, 'away_score' => 17];
+    });
+
+    it('offers one tab per day the week actually holds', function () {
+        currentWeekGame(801, 'Thursville', '2026-09-03', '19:00', $this->final);
+        currentWeekGame(802, 'Fridayton', '2026-09-04', '19:00', $this->final);
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30');
+
+        /*
+         * Asserted on the tabs' own keys, not on the labels. "Thu" also occurs
+         * in the day heading "Thursday, Sep 3", so a label assertion passes
+         * just as happily with no strip at all — which it did, until breaking
+         * the guard back caught it.
+         */
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertSeeInOrder([
+                'scoreboard-date-2026-09-03',
+                'scoreboard-date-2026-09-04',
+                'scoreboard-date-2026-09-05',
+            ], escape: false);
+    });
+
+    it('renders ONE day and never builds the others', function () {
+        /*
+         * The whole point, and the thing neither collapsing nor reordering
+         * would have achieved: Thursday's cards are not on the page at all.
+         * Asserted on `wire:key`, not on visual order — a card that is merely
+         * further down is exactly the behaviour being replaced.
+         */
+        currentWeekGame(801, 'Thursville', '2026-09-03', '19:00', $this->final);
+        $saturday = currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30', $this->live);
+
+        Cache::forget('scoreboard:has-live');
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertSee('wire:key="game-'.$saturday->id.'"', escape: false)
+            ->assertDontSee('Thursville');
+    });
+
+    it('opens on the day something is being played, not on today', function () {
+        // SUITE_NOW is Wednesday; the live game is Saturday. Urgency beats
+        // the calendar, which is the whole reason the card was filed.
+        currentWeekGame(801, 'Thursville', '2026-09-03', '19:00', $this->final);
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30', $this->live);
+
+        Cache::forget('scoreboard:has-live');
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertSee('Saturborough')
+            ->assertDontSee('Thursville');
+    });
+
+    it('opens on today when today has games and nothing is live', function () {
+        currentWeekGame(800, 'Wednesbury', '2026-09-02', '19:00');
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30');
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertSee('Wednesbury')
+            ->assertDontSee('Saturborough');
+    });
+
+    it('falls back to the most recent day played, not to the start of the week', function () {
+        /*
+         * Late Sunday: Thursday and Saturday are behind us, Monday is ahead,
+         * nothing is live and today holds no games. Saturday is what the
+         * reader wants; the week's first day is the one thing they do not.
+         */
+        currentWeekGame(801, 'Thursville', '2026-09-03', '19:00', $this->final);
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30', $this->final);
+        currentWeekGame(804, 'Mondaymere', '2026-09-07', '19:00');
+
+        $this->travelTo(CarbonImmutable::parse('2026-09-06 21:00', config('cfb.timezone')));
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertSee('Saturborough')
+            ->assertDontSee('Thursville')
+            ->assertDontSee('Mondaymere');
+    });
+
+    it('shows the day a link asks for', function () {
+        currentWeekGame(801, 'Thursville', '2026-09-03', '19:00', $this->final);
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30', $this->live);
+
+        Cache::forget('scoreboard:has-live');
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->set('date', '2026-09-03')
+            ->assertSee('Thursville')
+            ->assertDontSee('Saturborough');
+    });
+
+    it('falls back rather than emptying the screen for a day this week does not hold', function () {
+        currentWeekGame(801, 'Thursville', '2026-09-03', '19:00', $this->final);
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30');
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->set('date', '2026-12-25')
+            ->assertDontSee('Nothing on the slate')
+            ->assertSee('Thursville');
+    });
+
+    it('filters a followed team block to the same day', function () {
+        /*
+         * A pinned Thursday card left standing above a Saturday-only list
+         * would answer a question the reader did not ask, and the Thursday
+         * heading is no longer there to explain it.
+         */
+        currentWeekGame(801, 'Thursville', '2026-09-03', '19:00', $this->final);
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30', $this->live);
+
+        Queue::fake();
+        $user = User::factory()->create();
+        app(FollowTeam::class)->handle($user, Team::find(801));
+
+        Cache::forget('scoreboard:has-live');
+
+        Livewire::actingAs($user)->test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertDontSee('data-pinned')
+            ->assertSee('Saturborough');
+    });
+
+    it('clears the day when the scope changes, rather than stranding the reader', function () {
+        currentWeekGame(801, 'Thursville', '2026-09-03', '19:00', $this->final);
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30');
+
+        Livewire::test('scoreboard')
+            ->set('week', $this->current->id)
+            ->set('date', '2026-09-03')
+            ->set('scope', Scope::FBS)
+            ->assertSet('date', '');
+    });
+
+    it('leaves a single-day week exactly as it was, with no strip', function () {
+        // The regression net for the five sticky-chrome tests: one day is not
+        // a choice, so the classic subheading renders byte for byte.
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30');
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertSee('sticky z-20 -mx-4 flex min-w-0 items-center gap-1.5 bg-white', escape: false)
+            ->assertDontSee('scoreboard-date');
+    });
+
+    it('leaves a week we are not inside alone', function () {
+        // The 2025 fixture week is four months behind SUITE_NOW. Review, not
+        // triage — every day renders and no strip appears.
+        Team::factory()->create([
+            'id' => 900, 'location' => 'Visitorton', 'display_name' => 'Visitorton Guests',
+            'short_display_name' => 'Visitorton', 'abbreviation' => 'VIS',
+            'color' => '123456', 'alt_color' => '654321',
+        ]);
+        TeamSeason::create([
+            'team_id' => 900, 'season_year' => 2025,
+            'conference_id' => 8, 'classification' => 'FBS',
+        ]);
+
+        scoreboardGame(901, 'Thursfinal', '19:00', ['status' => 'post', 'completed' => true], '2025-09-25');
+        scoreboardGame(902, 'Satfinal', '11:00', ['status' => 'post', 'completed' => true]);
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->week->id)
+            ->assertSee('Thursfinal')
+            ->assertSee('Satfinal')
+            ->assertDontSee('scoreboard-date');
+    });
+
+    it('drops the strip for a week too long to hold one, which is bowl season', function () {
+        /*
+         * Twenty-one dates across one week row is the postseason's real shape.
+         * The guard is numeric on purpose: no branch anywhere names 'bowls',
+         * so the fallback cannot drift from what the postseason actually is.
+         */
+        $this->current->update(['start_date' => '2026-08-25', 'end_date' => '2026-09-20']);
+
+        foreach (range(0, 7) as $offset) {
+            currentWeekGame(
+                810 + $offset,
+                'Bowlton'.$offset,
+                CarbonImmutable::parse('2026-08-28')->addDays($offset)->format('Y-m-d'),
+                '19:00',
+            );
+        }
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertDontSee('scoreboard-date')
+            ->assertSee('Bowlton0')
+            ->assertSee('Bowlton7');
+    });
+
+    it('dates every tab when a week holds two of the same weekday', function () {
+        /*
+         * A bare "Sat" beside another "Sat" cannot be told apart, so the whole
+         * strip switches form together — a mixed strip reads as a fault.
+         */
+        $this->current->update(['start_date' => '2026-08-25', 'end_date' => '2026-09-12']);
+
+        currentWeekGame(821, 'Firstsat', '2026-08-29', '15:30', $this->final);
+        currentWeekGame(822, 'Secondsat', '2026-09-05', '15:30');
+
+        // Asserted on the rendered HTML, not through assertSee: a Livewire
+        // payload is JSON, where a forward slash is escaped as \/ and "8/29"
+        // could never match however the strip rendered.
+        $html = Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->html();
+
+        expect($html)->toContain('>8/29<')
+            ->and($html)->toContain('>9/5<')
+            ->and($html)->not->toContain('>Sat<');
     });
 });
