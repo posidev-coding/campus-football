@@ -166,10 +166,62 @@ class SyncNews
         if (array_key_exists('categories', $payload)) {
             $known ??= Team::pluck('id')->flip();
 
-            $article->teams()->sync($this->teamIds($payload, $known));
+            $this->syncTeamLinks($article, $this->teamIds($payload, $known));
         }
 
         return $article;
+    }
+
+    /**
+     * `sync()`'s effect on `article_team`, minus its race.
+     *
+     * `sync()` is read-then-write: it SELECTs the current pivot rows, diffs
+     * them, then INSERTs the difference. `article_team` carries
+     * `unique(article_id, team_id)`, and there are four concurrent writers
+     * into `store()` by design — the news feed, `SyncTeamNews`, and the
+     * summary path fanned out one `FetchGameSummary` per game. ESPN repeats
+     * the same national stories across many games' related lists, so on a
+     * live Saturday several jobs store ONE article at once, and whoever
+     * SELECTed first lost: a `UniqueConstraintViolationException` that cost a
+     * `FetchGameSummary` retry, and abandoned the rest of an `ingest()` batch
+     * of up to 50 articles outright.
+     *
+     * The workers stay parallel — the ESPN cost is limiter-bound, not
+     * worker-bound, so serializing them buys nothing and a per-article lock
+     * would cost a round trip per article. The WRITE becomes idempotent
+     * instead: `insertOrIgnore` makes the losing writer a no-op rather than a
+     * throw, and the delete keeps the detach semantics `sync()` was chosen
+     * for. Not `syncWithoutDetaching()`, which would quietly stop removing a
+     * link a fuller payload later drops.
+     *
+     * An empty `$wanted` still detaches everything, exactly as `sync([])`
+     * did. That is only reachable when the payload HAS a categories block
+     * naming no team we carry; an absent block never gets this far.
+     *
+     * @param  list<int>  $wanted
+     */
+    private function syncTeamLinks(Article $article, array $wanted): void
+    {
+        DB::table('article_team')
+            ->where('article_id', $article->id)
+            ->whereNotIn('team_id', $wanted)
+            ->delete();
+
+        if ($wanted === []) {
+            return;
+        }
+
+        $now = now();
+
+        // Every wanted row, not just the ones a SELECT said were missing:
+        // the rows that already exist are ignored, which is the same work the
+        // diff was doing and one fewer query in which to lose the race.
+        DB::table('article_team')->insertOrIgnore(array_map(fn (int $teamId): array => [
+            'article_id' => $article->id,
+            'team_id' => $teamId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ], $wanted));
     }
 
     /**

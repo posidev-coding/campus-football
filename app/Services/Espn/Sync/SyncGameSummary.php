@@ -214,10 +214,49 @@ class SyncGameSummary
         }
 
         if ($links !== []) {
-            // Without detaching: the live sweep re-runs this every two
-            // minutes, and a re-fetch must not drop links a previous pass
-            // made from a fuller payload.
-            $game->articles()->syncWithoutDetaching($links);
+            $this->storeArticleLinks($game, $links);
+        }
+    }
+
+    /**
+     * `syncWithoutDetaching()`'s effect on `article_game`, minus its race.
+     *
+     * Same shape and same exposure as the `article_team` write in
+     * `SyncNews::syncTeamLinks()`: read-then-write against a pivot carrying
+     * `unique(article_id, game_id)`, from jobs that are parallel on purpose.
+     * A national story sits in several games' related lists at once, so two
+     * `FetchGameSummary` workers insert the same pair and the loser throws.
+     *
+     * Never detaching stays: the live sweep re-runs this every two minutes
+     * and a mid-game payload carries no recap yet, so a re-fetch must not
+     * drop what a fuller pass linked. The role is still corrected when it
+     * genuinely changes, and only then — writes are not free on scale-to-zero
+     * MySQL, and the usual pass changes nothing.
+     *
+     * @param  array<int, array{role: string}>  $links
+     */
+    private function storeArticleLinks(Game $game, array $links): void
+    {
+        $now = now();
+
+        DB::table('article_game')->insertOrIgnore(array_map(fn (int $articleId): array => [
+            'article_id' => $articleId,
+            'game_id' => $game->id,
+            'role' => $links[$articleId]['role'],
+            'created_at' => $now,
+            'updated_at' => $now,
+        ], array_keys($links)));
+
+        // Grouped by role rather than one statement per link: there are only
+        // ever two roles, and `where role !=` means the common no-change pass
+        // writes nothing.
+        // preserveKeys, or the group loses the article ids it is grouping.
+        foreach (collect($links)->groupBy('role', preserveKeys: true) as $role => $group) {
+            DB::table('article_game')
+                ->where('game_id', $game->id)
+                ->whereIn('article_id', $group->keys()->all())
+                ->where('role', '!=', $role)
+                ->update(['role' => $role, 'updated_at' => $now]);
         }
     }
 
