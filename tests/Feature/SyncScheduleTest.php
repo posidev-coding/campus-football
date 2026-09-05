@@ -430,3 +430,67 @@ it('resolves a ledger key for every pick\'em sweep, not just the reminder', func
         'pickem:open-lobbies' => 'open-lobbies',
     ]);
 });
+
+describe('the followed-team news sweep reports like a command, not a closure', function () {
+    /*
+     * Both cadences were `Schedule::call()` closures. A closure cannot carry
+     * TracksFeedRun, cannot match SyncSchedule's `cfb:`/`pickem:` allowlist on
+     * an artisan invocation, and had no ledgerKey() arm to match — so the two
+     * rows read `last_status: null` forever, whether the sweep ran, failed, or
+     * silently synced nothing. The general feed's own freshness hid it: the
+     * coverage row is satisfied by the national feed and says nothing about
+     * the per-team feeds every follow is a promise about.
+     */
+    $followed = fn () => collect(app(Schedule::class)->events())
+        ->filter(fn (Event $event) => str_contains($event->command ?? '', 'cfb:news:followed'))
+        ->values();
+
+    it('registers both cadences as one real command', function () use ($followed) {
+        // Two entries, not one — two cadences of a single command, the same
+        // shape as `cfb:sync --only=news`.
+        expect($followed())->toHaveCount(2)
+            ->and($followed()->pluck('expression')->sort()->values()->all())
+            ->toBe(['0 7 * * *', '0 7,19 * * *'])
+            // The mutex expiry the daily-and-slower block carries, kept.
+            ->and($followed()->pluck('expiresAt')->unique()->values()->all())->toBe([60]);
+    });
+
+    it('resolves a ledger key under both the in-season and off-season gates', function () {
+        /*
+         * Read through tasks() rather than the private ledgerKey(), because
+         * the display name has to survive parsing off the scheduler before the
+         * key is ever looked up — and a null key is what rendered the two
+         * permanently grey "untracked" rows.
+         *
+         * Asserted in October and again in June: the in-season entry and the
+         * off-season one are separate events, and only one of them is ungated
+         * at a time.
+         */
+        foreach (['2026-10-15 14:00', '2026-06-15 14:00'] as $when) {
+            $this->travelTo(CarbonImmutable::parse($when, config('cfb.timezone')));
+
+            $tasks = collect(app(SyncSchedule::class)->tasks())
+                ->filter(fn (array $task) => str_starts_with($task['name'], 'cfb:news:followed'));
+
+            expect($tasks)->toHaveCount(2, "Both entries must be reported in {$when}.")
+                ->and($tasks->pluck('tracked')->unique()->values()->all())
+                ->toBe(['news:followed'], "The ledger key must resolve in {$when}.");
+
+            // Exactly one of the pair is live at a time — the gates are what
+            // stop the offseason entry reading as overdue in October.
+            expect($tasks->reject(fn (array $task) => $task['gated']))->toHaveCount(1);
+        }
+    });
+
+    it('does not let the newsletter arm answer for it', function () {
+        // `cfb:newsletter` and `cfb:news:followed` share a prefix to the eye
+        // but not to str_starts_with; the arm is ordered above it anyway, the
+        // way `cfb:summaries:live` sits above `cfb:summaries`.
+        $keys = collect(app(SyncSchedule::class)->tasks())
+            ->filter(fn (array $task) => str_starts_with($task['name'], 'cfb:news'))
+            ->mapWithKeys(fn (array $task) => [$task['name'] => $task['tracked']]);
+
+        expect($keys->get('cfb:newsletter'))->toBe('newsletter')
+            ->and($keys->get('cfb:news:followed'))->toBe('news:followed');
+    });
+});

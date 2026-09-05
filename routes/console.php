@@ -4,7 +4,6 @@ use App\Models\ClientError;
 use App\Models\FeedRun;
 use App\Models\StoredNotification;
 use App\Models\User;
-use App\Services\Espn\Sync\SyncNews;
 use Illuminate\Console\Scheduling\Schedule as ScheduleClass;
 use Illuminate\Support\Facades\Schedule;
 
@@ -306,14 +305,14 @@ Schedule::command('cfb:sync --only=news')
  * many to refresh blindly for content nobody has asked to see; everyone else's
  * team page fetches on demand and caches. Cost tracks interest.
  */
-Schedule::call(fn () => app(SyncNews::class)->followed())
+Schedule::command('cfb:news:followed')
     ->twiceDaily(7, 19)
     ->timezone($tz)
     ->name('cfb:news:followed')
     ->when($inSeason)
     ->withoutOverlapping(60);
 
-Schedule::call(fn () => app(SyncNews::class)->followed())
+Schedule::command('cfb:news:followed')
     ->dailyAt('07:00')
     ->timezone($tz)
     ->name('cfb:news:followed:offseason')
