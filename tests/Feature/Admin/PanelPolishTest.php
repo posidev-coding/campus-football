@@ -2,7 +2,9 @@
 
 use App\Enums\WorkbookStatus;
 use App\Filament\Resources\Athletes\AthleteResource;
+use App\Filament\Resources\Feedback\FeedbackResource;
 use App\Filament\Resources\Workbook\WorkbookResource;
+use App\Models\Feedback;
 use App\Models\User;
 use App\Models\WorkbookItem;
 use Filament\Facades\Filament;
@@ -65,16 +67,22 @@ it('puts every sidebar resource in a group the panel actually registered', funct
     expect($strays)->toBe([]);
 });
 
-it('badges only the Workbook, because badge noise is the enemy of a compact rail', function () {
+it('badges only the queues somebody is expected to empty', function () {
     /*
-     * Open work is the one count worth carrying on the sidebar: it is a queue
-     * somebody is expected to empty. A badge on every table is decoration, and
-     * decoration everywhere means nobody reads the one that matters.
+     * A sidebar badge is a count somebody is supposed to drive to zero, and
+     * only a queue has that shape: a stamp that finishes an item, an action
+     * that writes the stamp, and a table that opens on what is still waiting.
+     * Open workbook items and unread feedback are both that. A badge on any
+     * other table — teams, games, users — is decoration, and decoration
+     * everywhere means nobody reads the one that matters, so this list grows
+     * only when a genuine queue does. The size of a table nobody empties is
+     * never a badge.
      *
      * Asserted on which resources OVERRIDE the method rather than on what it
-     * returns right now — Workbook's own badge is correctly null when the
-     * inbox is empty, so a value check would pass for the wrong reason on a
-     * quiet database.
+     * returns right now — both badges are correctly null when their queue is
+     * empty, so a value check alone would pass for the wrong reason on a quiet
+     * database. That emptiness is then pinned as its own rule: a rail carrying
+     * "0" is a chore the panel invented for itself.
      */
     $badged = array_values(array_filter(
         navigableResources(),
@@ -82,12 +90,20 @@ it('badges only the Workbook, because badge noise is the enemy of a compact rail
             ->getDeclaringClass()->getName() === $resource,
     ));
 
-    expect($badged)->toBe([WorkbookResource::class]);
+    expect($badged)->toBe([FeedbackResource::class, WorkbookResource::class]);
 
-    // ...and it really does count, once there is something to count.
+    foreach ($badged as $resource) {
+        expect($resource::getNavigationBadge())->toBeNull("{$resource} badges an empty queue");
+    }
+
+    // ...and they really do count, once there is something to count — the
+    // waiting pile only, never the whole table.
     WorkbookItem::factory()->count(2)->create(['status' => WorkbookStatus::Inbox]);
+    Feedback::factory()->count(3)->create();
+    Feedback::factory()->handled()->create();
 
-    expect(WorkbookResource::getNavigationBadge())->toBe('2');
+    expect(WorkbookResource::getNavigationBadge())->toBe('2')
+        ->and(FeedbackResource::getNavigationBadge())->toBe('3');
 });
 
 it('gives every resource table an empty state heading', function () {

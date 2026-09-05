@@ -60,7 +60,16 @@ class FeedbackResource extends Resource
     /** How long a reader's first line may run before it stops being a title. */
     private const TITLE_PREFILL = 120;
 
-    /** The notes nobody has looked at, on the sidebar, so a pile is visible without a click. */
+    /**
+     * The notes nobody has looked at, on the sidebar, so a pile is visible
+     * without a click.
+     *
+     * The second badge on the rail, and the bar for a third is high: a badge
+     * is only for a queue somebody empties — a stamp, an action that writes
+     * it, and a table that opens on what is waiting. This has all three. Null
+     * at zero, because a rail carrying "0" is a chore nobody was given.
+     * PanelPolishTest holds the line.
+     */
     public static function getNavigationBadge(): ?string
     {
         $waiting = Feedback::query()->unhandled()->count();
