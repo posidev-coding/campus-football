@@ -17,6 +17,7 @@ use App\Models\Week;
 use App\Services\Contests\ContestLine;
 use App\Support\Cadence;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 /*
@@ -618,4 +619,130 @@ it('reads the slate for the card being played, and both screens agree on it', fu
     // pick, never the empty draft's 'waiting'.
     expect($card['state'])->toBe('upcoming')
         ->and($card['total'])->toBe(10);
+});
+
+// ------------------------------------------------- the per-request memo
+
+/**
+ * Every query against `games` run inside the callback.
+ *
+ * Counted by TABLE rather than in total on purpose: the questions under
+ * test drag a week's season and the pickem_settings row along with them,
+ * and a bare count would go red the next time one of those moves.
+ *
+ * @return list<string>
+ */
+function cadenceGameQueries(Closure $run): array
+{
+    $queries = [];
+
+    DB::listen(function ($query) use (&$queries): void {
+        if (str_contains($query->sql, '`games`')) {
+            $queries[] = $query->sql;
+        }
+    });
+
+    $run();
+
+    return $queries;
+}
+
+it('hydrates a week\'s games once, however many questions get asked of it', function () {
+    /*
+     * THE COST THIS MEMO EXISTS FOR. saturdaysIn() ran a fresh query and
+     * hydrated every row before filtering in PHP, and three of the four
+     * questions here went through it — so a screen asking the lobby's
+     * Saturday, the card's number and the week's primary paid for Week 1's
+     * sixty-eight games three times over to answer what day a Saturday is.
+     */
+    [, $week] = splitPickemWeek();
+
+    $queries = cadenceGameQueries(function () use ($week) {
+        expect(Cadence::activeSaturday($week)->toDateString())->toBe('2026-09-05')
+            ->and(Cadence::activeSaturday($week)->toDateString())->toBe('2026-09-05')
+            ->and(Cadence::saturdayOf($week)->toDateString())->toBe('2026-09-05')
+            ->and(Cadence::splitBoundary($week)->toDateString())->toBe('2026-09-01')
+            ->and(collect(Cadence::saturdaysIn($week))->map->toDateString()->all())
+            ->toBe(['2026-08-29', '2026-09-05']);
+    });
+
+    expect($queries)->toHaveCount(1);
+});
+
+it('gives each week its own answer, and its own query', function () {
+    /*
+     * Keyed on the WEEK, not held as one answer: a screen rendering a
+     * history list walks several weeks, and a memo that forgot which one it
+     * was built for would date every row with the first week's Saturday.
+     */
+    [$season, $first] = splitPickemWeek();
+
+    $second = Week::factory()->create([
+        'season_id' => $season->id,
+        'number' => 3,
+        'start_date' => '2026-09-08 04:00:00',
+        'end_date' => '2026-09-15 03:59:59',
+    ]);
+
+    pickemGame($season, $second, ['kickoff_at' => '2026-09-12 19:30:00']);
+
+    $queries = cadenceGameQueries(function () use ($first, $second) {
+        expect(Cadence::saturdayOf($first)->toDateString())->toBe('2026-09-05')
+            ->and(Cadence::saturdayOf($second)->toDateString())->toBe('2026-09-12')
+            // And again, from the memo, still telling them apart.
+            ->and(Cadence::saturdayOf($first)->toDateString())->toBe('2026-09-05')
+            ->and(Cadence::saturdayOf($second)->toDateString())->toBe('2026-09-12');
+    });
+
+    expect($queries)->toHaveCount(2);
+});
+
+it('memoizes an unplayed week AS empty, and never dates it from a default', function () {
+    /*
+     * A week scheduled but not yet synced is a real state, not a miss. An
+     * emptiness check in place of array_key_exists would re-run the query
+     * for that week forever — the expensive half of the bug, on the weeks
+     * that have the least to say — and the fallback must stay the calendar
+     * walk rather than anything the memo substitutes.
+     */
+    [$season] = pickemSeasonWeek();
+
+    $november = Week::factory()->create([
+        'season_id' => $season->id,
+        'number' => 11,
+        'start_date' => '2026-11-01 05:00:00',
+        'end_date' => '2026-11-08 04:59:59',
+    ]);
+
+    $queries = cadenceGameQueries(function () use ($november) {
+        expect(Cadence::saturdaysIn($november))->toBe([])
+            ->and(Cadence::saturdaysIn($november))->toBe([])
+            // Still the date-range walk, not a Saturday invented for it.
+            ->and(Cadence::activeSaturday($november)->toDateString())->toBe('2026-11-07')
+            ->and(Cadence::saturdayOf($november)->toDateString())->toBe('2026-11-07');
+    });
+
+    expect($queries)->toHaveCount(1);
+});
+
+it('does not hide a game synced after the question was already asked', function () {
+    /*
+     * The reason this is a static and not the cache store — and the reason
+     * Game::booted() drops it. A queue worker runs many jobs in one PHP
+     * process, so the scoring sweep that writes Saturday's games shares its
+     * statics with whatever asked before them.
+     */
+    [$season, $week] = pickemSeasonWeek();
+
+    expect(Cadence::saturdaysIn($week))->toBe([]);
+
+    pickemGame($season, $week);
+
+    expect(collect(Cadence::saturdaysIn($week))->map->toDateString()->all())
+        ->toBe(['2026-09-05']);
+
+    // A reschedule out of the window is seen the same way.
+    Game::query()->first()->update(['kickoff_at' => '2026-09-04 23:30:00']);
+
+    expect(Cadence::saturdaysIn($week))->toBe([]);
 });

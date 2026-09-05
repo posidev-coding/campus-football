@@ -28,8 +28,9 @@ use Illuminate\Support\Collection;
  * LAZY past the groups themselves. A zero-seat reader pays one query and
  * nothing else; the clubhouse pays the week only when it prints the
  * contests heading; the room Saturdays are read only when a room is
- * actually held. `Cadence::activeSaturday` is unmemoized, so it is asked
- * at most ONCE here and cards() no longer asks it at all.
+ * actually held. It is asked at most ONCE here and cards() no longer asks
+ * it at all — worth keeping even now that `Cadence` memoizes the week's
+ * games per request, because the answer still costs a collection walk.
  *
  * The partition is the product's own: a private GROUP runs all season; a
  * public ROOM plays one Saturday and is past once that Saturday is
