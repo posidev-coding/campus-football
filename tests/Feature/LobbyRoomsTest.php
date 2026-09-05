@@ -86,17 +86,21 @@ it('counts exactly the transient rooms it would sell', function () {
         ->and(Lobby::openRoomCount($viewer))->toBe($joinable->filter(fn (Group $g) => $g->isRoom())->count());
 });
 
-it('drops a room whose card has started from BOTH the list and the count', function () {
+it('flags a started room rather than dropping it, and stops counting it', function () {
     /*
-     * A room closes at the FIRST kickoff. This is its own case rather than an
-     * arm of the parity test above because rooms in one week draw from a
-     * shared pool of games — kicking a game to close one room closes every
-     * other room that happens to hold it too, which would prove nothing about
+     * A room closes at the FIRST kickoff, and CLOSED IS NOT GONE: openRooms()
+     * keeps it so the shelf can render it locked, exactly as it keeps a room
+     * the viewer is seated in. What changes is what it is for SALE — joinable()
+     * rejects it, and the teaser stops counting it.
+     *
+     * Its own case rather than an arm of the parity test above, because rooms
+     * in one week draw from a shared pool of games: kicking a game to close one
+     * room closes every other room holding it, which would prove nothing about
      * the room under test.
      *
-     * Both reads are asserted: openRooms() applies the condition in PHP and
+     * Both reads of the count are asserted — openRooms() filters in PHP and
      * openRoomCount() in SQL, and a teaser counting a room the list will not
-     * show is the exact drift this file exists to catch.
+     * sell is the exact drift this file exists to catch.
      */
     [, $week] = lobbyRoomsWeek();
     $viewer = pickemAdmin();
@@ -113,7 +117,11 @@ it('drops a room whose card has started from BOTH the list and the count', funct
 
     Game::query()->whereKey($opener->game_id)->update(['kickoff_at' => now()->subMinute()]);
 
-    expect(Lobby::joinable($viewer)->pluck('id')->all())->not->toContain($room->id)
+    $rooms = Lobby::openRooms($viewer);
+
+    expect($rooms->pluck('id')->all())->toContain($room->id)
+        ->and(Lobby::started($rooms->firstWhere('id', $room->id)))->toBeTrue()
+        ->and(Lobby::joinable($viewer)->pluck('id')->all())->not->toContain($room->id)
         ->and(Lobby::openRoomCount($viewer))->toBe(0);
 });
 
