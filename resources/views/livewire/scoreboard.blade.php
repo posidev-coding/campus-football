@@ -52,10 +52,11 @@ new class extends Component
     /**
      * A `Y-m-d` in the app's timezone, or '' for "work it out".
      *
-     * Only the CURRENT week is filtered by date, and only when its games span
-     * several days — see `dateTabs()`. A past week is review and a future week
-     * is planning; both want the whole week in one scroll, so neither is
-     * filtered and neither grows a strip.
+     * Only the CURRENT week is filtered by date, only once its first game has
+     * kicked, and only when its games span several days — see `dateTabs()`. A
+     * past week is review, a future week is planning, and a current week
+     * nobody has played yet is a schedule; all three want the whole week in
+     * one scroll, so none is filtered and none grows a strip.
      *
      * Deliberately NOT remembered in the session the way `scope` is. Scope is
      * a taste held across visits; a day is triage state whose right answer
@@ -296,6 +297,21 @@ new class extends Component
     private function dateTabs($games): array
     {
         if (! $this->isCurrentWeek()) {
+            return [];
+        }
+
+        /*
+         * Nothing has kicked yet, so there is nothing to triage. A week still
+         * entirely ahead of the reader is a SCHEDULE, and the useful view of a
+         * schedule is its whole shape — every day at once, the way it reads
+         * today. Filtering it to one day before the first kickoff would hide
+         * the week from somebody deciding what to watch.
+         *
+         * Read off the in-scope set, like the strip itself: a reader on Top 25
+         * whose ranked games are all still to come is planning, whatever an
+         * unranked Tuesday game already did.
+         */
+        if (! $games->contains(fn (Game $game) => $game->hasKickedOff())) {
             return [];
         }
 

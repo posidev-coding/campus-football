@@ -1115,6 +1115,9 @@ describe('the date filter', function () {
     });
 
     it('opens on today when today has games and nothing is live', function () {
+        // Tuesday is played, so the week has started and the strip is up;
+        // tonight's game has not kicked and neither has Saturday's.
+        currentWeekGame(799, 'Tuesbury', '2026-09-01', '19:00', $this->final);
         currentWeekGame(800, 'Wednesbury', '2026-09-02', '19:00');
         currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30');
 
@@ -1122,6 +1125,7 @@ describe('the date filter', function () {
             ->set('scope', Scope::FBS)
             ->set('week', $this->current->id)
             ->assertSee('Wednesbury')
+            ->assertDontSee('Tuesbury')
             ->assertDontSee('Saturborough');
     });
 
@@ -1202,6 +1206,74 @@ describe('the date filter', function () {
             ->set('date', '2026-09-03')
             ->set('scope', Scope::FBS)
             ->assertSet('date', '');
+    });
+
+    it('holds the strip back until the week has actually started', function () {
+        /*
+         * A week nobody has played yet is a SCHEDULE, and the useful view of a
+         * schedule is its whole shape. Filtering it to one day would hide the
+         * week from somebody deciding what to watch — so every day renders and
+         * there is no strip, exactly as it did before the tabs existed.
+         */
+        currentWeekGame(801, 'Thursville', '2026-09-03', '19:00');
+        currentWeekGame(802, 'Fridayton', '2026-09-04', '19:00');
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30');
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertDontSee('scoreboard-date')
+            ->assertSee('Thursville')
+            ->assertSee('Fridayton')
+            ->assertSee('Saturborough');
+    });
+
+    it('raises the strip the moment the first game kicks', function () {
+        // The other side of the same line, with one game moved behind us.
+        currentWeekGame(801, 'Thursville', '2026-09-03', '19:00');
+        currentWeekGame(802, 'Fridayton', '2026-09-04', '19:00');
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30');
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertDontSee('scoreboard-date');
+
+        Game::query()->where('home_team_id', 801)->update(['kickoff_at' => now()->subMinute()]);
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertSee('scoreboard-date-2026-09-05', escape: false)
+            // ...and the kicked day is the one it opens on, being the most
+            // recent thing played.
+            ->assertSee('Thursville')
+            ->assertDontSee('Saturborough');
+    });
+
+    it('counts a kickoff IN SCOPE, not any kickoff in the week', function () {
+        /*
+         * The strip lists in-scope dates, so the same set decides whether it
+         * appears at all. A reader on Top 25 whose ranked games are all still
+         * to come is planning, whatever an unranked Tuesday game already did.
+         */
+        currentWeekGame(801, 'Thursville', '2026-09-03', '19:00');
+        currentWeekGame(803, 'Saturborough', '2026-09-05', '15:30');
+
+        // A played game the FBS scope holds but the conference scope does not.
+        Conference::factory()->create(['id' => 999, 'name' => 'Elsewhere Conference', 'short_name' => 'ELS']);
+        currentWeekGame(805, 'Outsideton', '2026-09-01', '19:00', $this->final);
+        TeamSeason::query()->where('team_id', 805)->where('season_year', 2026)->update(['conference_id' => 999]);
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->current->id)
+            ->assertSee('scoreboard-date', escape: false);
+
+        Livewire::test('scoreboard')
+            ->set('week', $this->current->id)
+            ->set('scope', '8')
+            ->assertDontSee('scoreboard-date');
     });
 
     it('leaves a single-day week exactly as it was, with no strip', function () {

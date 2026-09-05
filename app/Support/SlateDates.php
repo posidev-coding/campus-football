@@ -19,10 +19,11 @@ use Illuminate\Support\Collection;
  * for. So the current week shows ONE day at a time, and the days it holds
  * become the tabs.
  *
- * Only the current week. A past week is review and a future week is planning,
- * and both want the whole week in one scroll — see the component's
+ * Only the current week, and only once it has started. A past week is review,
+ * a future week is planning, and a week whose first game has not kicked is a
+ * schedule — all three want the whole week in one scroll. See the component's
  * `isCurrentWeek()` for why "the week NOW is inside" is stricter, and truer,
- * than "the week the app would open on".
+ * than "the week the app would open on", and `dateTabs()` for the rest.
  *
  * Everything here compares `Y-m-d` STRINGS in the app's timezone, never
  * instants. A day is a wall-clock question — a 20:00 ET Saturday kickoff is
