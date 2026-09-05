@@ -9,6 +9,7 @@ use App\Models\Season;
 use App\Models\Week;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Collection;
 
 /**
  * The league's weekly clock: when a slate must be set, and when a week's
@@ -89,10 +90,60 @@ class Cadence
     /** @var array<int, CarbonImmutable|null> split boundaries, keyed by week id */
     private static array $boundaries = [];
 
+    /** @var array<int, Collection<int, Game>> slate-window games, keyed by week id */
+    private static array $windowGames = [];
+
     public static function flush(): void
     {
         self::$memo = null;
+        self::forgetWeeks();
+    }
+
+    /**
+     * Drop only the WEEK-keyed memos, leaving the settings row alone.
+     *
+     * The games behind them are written by the sync, so `Game::booted()`
+     * calls this on every save and delete: a queue worker runs many jobs in
+     * one PHP process and a static outlives the job that filled it, so
+     * without this a scoring sweep that adds Saturday's games would keep
+     * answering off the rows it held before them.
+     */
+    public static function forgetWeeks(): void
+    {
         self::$boundaries = [];
+        self::$windowGames = [];
+    }
+
+    /**
+     * The week's slate-window games, hydrated ONCE per request.
+     *
+     * This is the query the whole family is built on, and it was being run
+     * per question: `activeSaturday()` asks `saturdaysIn()`, `splitBoundary()`
+     * asks it again, `saturdayOf()` ran its own copy — so a screen asking
+     * two of them hydrated Week 1's sixty-eight games twice to answer what
+     * day a Saturday falls on.
+     *
+     * A REQUEST-scoped static, deliberately not the cache store: a game
+     * synced a minute ago has to be visible to the next request, and
+     * `App\Support\Remember` is a cache-store helper, not this shape. The
+     * empty answer is memoized AS empty (`array_key_exists`, never a
+     * truthiness check) — a week with games scheduled but none synced is a
+     * real state, not a miss to retry forever.
+     *
+     * @return Collection<int, Game>
+     */
+    private static function windowGames(Week $week): Collection
+    {
+        if (array_key_exists($week->id, self::$windowGames)) {
+            return self::$windowGames[$week->id];
+        }
+
+        return self::$windowGames[$week->id] = Game::query()
+            ->where('week_id', $week->id)
+            ->whereNotNull('kickoff_at')
+            ->get(['id', 'kickoff_at', 'kickoff_day'])
+            ->filter(fn (Game $game) => $game->inSlateWindow())
+            ->values();
     }
 
     /**
@@ -113,11 +164,7 @@ class Cadence
      */
     public static function saturdaysIn(Week $week): array
     {
-        return Game::query()
-            ->where('week_id', $week->id)
-            ->whereNotNull('kickoff_at')
-            ->get(['id', 'kickoff_at', 'kickoff_day'])
-            ->filter(fn (Game $game) => $game->inSlateWindow())
+        return self::windowGames($week)
             ->map(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->startOfDay())
             ->unique(fn (CarbonImmutable $day) => $day->toDateString())
             ->sort()
@@ -138,11 +185,7 @@ class Cadence
      */
     public static function saturdayOf(Week $week): ?CarbonImmutable
     {
-        $busiest = Game::query()
-            ->where('week_id', $week->id)
-            ->whereNotNull('kickoff_at')
-            ->get(['id', 'kickoff_at', 'kickoff_day'])
-            ->filter(fn (Game $game) => $game->inSlateWindow())
+        $busiest = self::windowGames($week)
             ->groupBy(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString())
             ->sortByDesc(fn ($games, string $date) => sprintf('%04d-%s', $games->count(), $date))
             ->keys()

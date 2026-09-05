@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Cadence;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -53,6 +54,16 @@ class Game extends Model
     public $incrementing = false;
 
     protected $keyType = 'int';
+
+    protected static function booted(): void
+    {
+        // Cadence hydrates a week's slate-window games ONCE and holds them in
+        // a static. A queue worker runs many jobs in one process, so the sync
+        // that adds Saturday's games has to drop that memo or the next job
+        // answers off the rows it held before them.
+        static::saved(fn () => Cadence::forgetWeeks());
+        static::deleted(fn () => Cadence::forgetWeeks());
+    }
 
     /**
      * Contains-LIKE, and that matters here: `name` is "Alabama at Georgia",
