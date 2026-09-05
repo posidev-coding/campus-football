@@ -36,9 +36,11 @@ it('is a square 512px raster of the mark, in the colors the source declares', fu
     /*
      * A rasterizer handed an SVG it could not parse writes a perfectly valid
      * PNG of nothing, and every other check here passes it. One pixel per
-     * color — sky, turf, ball, ray, lace — at the points the source puts
-     * them, and the set of colors found must be the set of fills the source
-     * declares, so a recolor that forgets to regenerate the PNG reds too.
+     * color — ground, a cream letter stroke, a lager foot — at the points
+     * the source puts them, plus the horizon gap, which is ground again and
+     * proves the split is there. The set of colors found must be the set of
+     * fills the source declares, so a recolor that forgets to regenerate the
+     * PNG reds too.
      */
     [$width, $height, $type] = getimagesize($png);
 
@@ -50,16 +52,17 @@ it('is a square 512px raster of the mark, in the colors the source declares', fu
 
     $at = fn (int $x, int $y): string => sprintf('#%06X', imagecolorat($image, $x, $y) & 0xFFFFFF);
 
-    expect($at(16, 16))->toBe('#0F1A2E', 'sky')
-        ->and($at(256, 460))->toBe('#1E4A36', 'turf')
-        ->and($at(256, 300))->toBe('#E8A33C', 'ball')
-        ->and($at(256, 120))->toBe('#E8A33C', 'top ray')
-        ->and($at(256, 248))->toBe('#F5F2EA', 'lace');
+    expect($at(16, 16))->toBe('#0F1A2E', 'ground')
+        ->and($at(151, 148))->toBe('#F5F2EA', 'the T bar')
+        ->and($at(353, 251))->toBe('#F5F2EA', 'the H crossbar')
+        ->and($at(151, 351))->toBe('#E8A33C', 'the T foot')
+        ->and($at(412, 351))->toBe('#E8A33C', 'the H foot')
+        ->and($at(151, 305))->toBe('#0F1A2E', 'the horizon gap');
 
     preg_match_all('/fill="(#[0-9A-F]{6})"/', File::get($svg), $fills);
 
     expect(collect($fills[1])->unique()->sort()->values()->all())
-        ->toBe(['#0F1A2E', '#1E4A36', '#E8A33C', '#F5F2EA']);
+        ->toBe(['#0F1A2E', '#E8A33C', '#F5F2EA']);
 });
 
 it('declares width and height on the source, not just a viewBox', function () use ($svg) {

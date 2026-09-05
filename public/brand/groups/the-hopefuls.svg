@@ -1,33 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
   <!--
-    THE HOPEFULS - the group's clubhouse mark: a football coming up like the
-    sun over the turf, because for this group it is always dawn.
+    THE HOPEFULS - the group's clubhouse mark: a geometric TH monogram
+    standing on the horizon, cream above the line and first light below it.
 
-    Designed for the sizes x-group-icon renders at (20px menu row, 32px card
+    Drawn for the sizes x-group-icon renders at (20px menu row, 32px card
     row, 36px hero, 44px hero from sm) and scaled UP, never drawn large and
-    shrunk: five fat rays, one lens, one lace, no line thinner than 2.8 units.
-    width/height are declared beside the viewBox on purpose - an <img> gives a
-    viewBox-only SVG a square intrinsic size, and there is no clip path, so any
-    rasterizer draws the same picture. Regenerate the-hopefuls-512.png from
-    this file in the same commit as any redraw; the PNG is the upload cut.
+    shrunk: every stroke is a rectangle at least 10 units wide, the horizon
+    is a 3-unit gap and the letters fill the tile edge to edge. Horizontals
+    are a unit thinner than verticals and the crossbar sits above center,
+    the way a cut typeface does it. width/height are declared beside the
+    viewBox on purpose - an <img> gives a viewBox-only SVG a square intrinsic
+    size - and there is no clip path, so any rasterizer draws the same
+    picture. Regenerate the-hopefuls-512.png from this file in the same
+    commit as any redraw; the PNG is the upload cut.
   -->
   <rect width="100" height="100" fill="#0F1A2E"/>
-  <rect y="70" width="100" height="30" fill="#1E4A36"/>
-  <g fill="#E8A33C">
-    <path d="M 8 70 C 22 32, 78 32, 92 70 Z"/>
-    <g transform="translate(50 70)">
-      <rect x="-3.75" y="-53" width="7.5" height="15" rx="3.75"/>
-      <rect x="-3.75" y="-53" width="7.5" height="15" rx="3.75" transform="rotate(-28)"/>
-      <rect x="-3.75" y="-53" width="7.5" height="15" rx="3.75" transform="rotate(28)"/>
-      <rect x="-3.75" y="-53" width="7.5" height="15" rx="3.75" transform="rotate(-56)"/>
-      <rect x="-3.75" y="-53" width="7.5" height="15" rx="3.75" transform="rotate(56)"/>
-    </g>
-  </g>
   <g fill="#F5F2EA">
-    <rect x="36" y="47" width="28" height="3.2" rx="1.6"/>
-    <rect x="39.5" y="44" width="2.8" height="9.2" rx="1.4"/>
-    <rect x="45.1" y="44" width="2.8" height="9.2" rx="1.4"/>
-    <rect x="50.7" y="44" width="2.8" height="9.2" rx="1.4"/>
-    <rect x="56.3" y="44" width="2.8" height="9.2" rx="1.4"/>
+    <rect x="13" y="24" width="33" height="10"/>
+    <rect x="24" y="24" width="11" height="34"/>
+    <rect x="52" y="24" width="11" height="34"/>
+    <rect x="75" y="24" width="11" height="34"/>
+    <rect x="52" y="44" width="34" height="10"/>
+  </g>
+  <g fill="#E8A33C">
+    <rect x="24" y="61" width="11" height="15"/>
+    <rect x="52" y="61" width="11" height="15"/>
+    <rect x="75" y="61" width="11" height="15"/>
   </g>
 </svg>
