@@ -664,10 +664,29 @@ class Voice
             'r' => 'That reads like a question. Say the word and we will go dig the number out.',
         ],
 
+        /*
+         * The DATA miss: we understood the question and our own tables hold
+         * no such number. That is a real answer and reads like one, which is
+         * why it can afford to say what would work better next time.
+         */
         'search.ask.none' => [
             'pg' => 'We could not answer that one. The results below might still help.',
             'pg13' => "Couldn't answer that one. Try naming the player and the stat.",
             'r' => "No idea. Name the player and the stat and we'll try again.",
+        ],
+
+        /*
+         * The OPERATIONAL miss, and it must never read like the one above.
+         * Telling somebody we hold no number when the truth is that our call
+         * fell over is a lie about our own data, and the reader spends the
+         * next minute rewording a question that was fine. Search is FACTUAL,
+         * so this owns the failure and stops — no roast, and nothing about
+         * the reader, whose question was not the problem.
+         */
+        'search.ask.unavailable' => [
+            'pg' => 'We could not look that up just now. That one is on us — try again in a minute.',
+            'pg13' => 'That one did not go through on our end. Nothing wrong with the question — try it again shortly.',
+            'r' => 'That one died on our end, not yours. The question was fine. Give it a minute and ask again.',
         ],
 
         'search.ask.capped' => [

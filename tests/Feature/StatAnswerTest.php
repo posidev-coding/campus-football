@@ -18,6 +18,8 @@ use App\Services\Stats\AggregateAthleteStats;
 use App\Support\AskExamples;
 use App\Support\StatAnswer;
 use App\Support\Stats\StatCatalog;
+use App\Support\Voice;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Livewire;
 
@@ -576,5 +578,282 @@ describe('the screen', function () {
             ->set('q', $question)
             ->assertDontSee('Look it up')
             ->assertSee('questions for today');
+    });
+});
+
+describe('why it went unanswered', function () {
+    /*
+     * The reason has always existed — every refusal branch writes one — and
+     * the surface used to destructure the answer alone and drop it. Twelve
+     * distinct causes arrived at one sentence on screen and at nothing at all
+     * in the log, so "the AI questions do not work" was un-diagnosable from
+     * either end. What follows holds both halves down: the KIND reaches the
+     * screen, the REASON reaches the log, and neither carries the other's job.
+     */
+    it('calls a spent cap the reader\'s, not a gap in our data', function () {
+        for ($i = 0; $i < StatAnswer::DAILY_CAP; $i++) {
+            RateLimiter::hit('ai-answer:'.$this->reader->id, 86400);
+        }
+
+        [$answer, $reason, $decline] = askIt();
+
+        expect($answer)->toBeNull()
+            ->and($reason)->toContain('daily cap')
+            ->and($decline)->toBe(StatAnswer::DECLINE_CAPPED);
+    });
+
+    it('calls a refused budget ours', function () {
+        config()->set('cfb.ai_monthly_budget', 1);
+        AiSpend::create([
+            'model' => AiModel::Haiku45->value,
+            'feature' => 'answer',
+            'input_tokens' => 1000,
+            'output_tokens' => 500,
+            'cost' => 1.5,
+        ]);
+
+        [$answer, $reason, $decline] = askIt();
+
+        expect($answer)->toBeNull()
+            ->and($reason)->toContain('monthly AI budget is spent')
+            ->and($decline)->toBe(StatAnswer::DECLINE_UNAVAILABLE);
+    });
+
+    it('calls a call that never came back ours', function () {
+        StatQuestion::fake(fn () => throw new RuntimeException('gateway exploded'));
+
+        [$answer, $reason, $decline] = askIt();
+
+        expect($answer)->toBeNull()
+            ->and($reason)->toBe('The classifier did not answer')
+            ->and($decline)->toBe(StatAnswer::DECLINE_UNAVAILABLE);
+    });
+
+    it('calls a number we do not hold a fact about the question', function () {
+        // The honest half of the split: nothing is broken here, and saying so
+        // is a real answer rather than an apology.
+        StatQuestion::fake([statIntent(['metric' => 'rushing.rushingYards'])]);
+
+        [$answer, $reason, $decline] = askIt('How many rushing yards did Brandon Faizon get this season?');
+
+        expect($answer)->toBeNull()
+            ->and($reason)->toContain('We hold no')
+            ->and($decline)->toBe(StatAnswer::DECLINE_DATA);
+    });
+
+    it('never pairs a resolved answer with a decline', function () {
+        // askState() matches on the kind with no default arm, which is only
+        // safe while this holds.
+        StatQuestion::fake([statIntent()]);
+
+        [$answer, , $decline] = askIt();
+
+        expect($answer)->not->toBeNull()->and($decline)->toBe(StatAnswer::RESOLVED);
+    });
+});
+
+describe('the log line nobody reads until it matters', function () {
+    $question = 'How many passing yards did Brandon Faizon throw this season?';
+
+    it('logs a call we could not make as a warning', function () use ($question) {
+        StatQuestion::fake(fn () => throw new RuntimeException('gateway exploded'));
+
+        Log::spy();
+
+        Livewire::actingAs($this->reader)->test('search-page')->set('q', $question)->call('ask');
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'Stat question not answered.'
+                && $context['failure'] === StatAnswer::DECLINE_UNAVAILABLE
+                && $context['detail'] === 'The classifier did not answer');
+    });
+
+    it('logs a refused budget as a warning, naming the wall', function () use ($question) {
+        config()->set('cfb.ai_monthly_budget', 1);
+        AiSpend::create([
+            'model' => AiModel::Haiku45->value,
+            'feature' => 'answer',
+            'input_tokens' => 1000,
+            'output_tokens' => 500,
+            'cost' => 1.5,
+        ]);
+
+        Log::spy();
+
+        Livewire::actingAs($this->reader)->test('search-page')->set('q', $question)->call('ask');
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'Stat question not answered.'
+                && $context['failure'] === StatAnswer::DECLINE_UNAVAILABLE
+                && str_contains($context['detail'], 'monthly AI budget is spent'));
+    });
+
+    it('logs a capped reader, but not as something broken', function () use ($question) {
+        for ($i = 0; $i < StatAnswer::DAILY_CAP; $i++) {
+            RateLimiter::hit('ai-answer:'.$this->reader->id, 86400);
+        }
+
+        Log::spy();
+
+        Livewire::actingAs($this->reader)->test('search-page')->set('q', $question)->call('ask');
+
+        Log::shouldHaveReceived('info')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'Stat question not answered.'
+                && $context['failure'] === StatAnswer::DECLINE_CAPPED
+                && str_contains($context['detail'], 'daily cap'));
+
+        Log::shouldNotHaveReceived('warning');
+    });
+
+    it('logs a number we do not hold, so silence means nobody asked', function () use ($question) {
+        StatQuestion::fake([statIntent(['metric' => 'rushing.rushingYards'])]);
+
+        Log::spy();
+
+        Livewire::actingAs($this->reader)->test('search-page')->set('q', $question)->call('ask');
+
+        Log::shouldHaveReceived('info')
+            ->withArgs(fn (string $message, array $context): bool => $message === 'Stat question not answered.'
+                && $context['failure'] === StatAnswer::DECLINE_DATA
+                && str_contains($context['detail'], 'We hold no'));
+    });
+
+    it('says nothing at all when the answer landed', function () use ($question) {
+        StatQuestion::fake([statIntent()]);
+
+        Log::spy();
+
+        Livewire::actingAs($this->reader)->test('search-page')->set('q', $question)->call('ask');
+
+        Log::shouldNotHaveReceived('warning');
+        Log::shouldNotHaveReceived('info');
+    });
+
+    it('keeps the reader out of it', function () use ($question) {
+        /*
+         * AGGREGATE, deliberately. This layer's telemetry carries no question
+         * text and no user id, and a log of what people typed into a search
+         * box is a log somebody then has to be trusted with. The two keys are
+         * the whole context, and they are the same two StatAnswer's own
+         * classifier line writes — one grep answers "why did asks stop".
+         */
+        StatQuestion::fake(fn () => throw new RuntimeException('gateway exploded'));
+
+        Log::spy();
+
+        Livewire::actingAs($this->reader)->test('search-page')->set('q', $question)->call('ask');
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(function (string $message, array $context) use ($question): bool {
+                $written = $message.' '.implode(' ', $context);
+
+                return array_keys($context) === ['failure', 'detail']
+                    && ! str_contains($written, $question)
+                    && ! str_contains($written, 'Faizon')
+                    && ! str_contains($written, (string) $this->reader->id)
+                    && ! str_contains($written, (string) $this->reader->email);
+            });
+    });
+});
+
+describe('what a failed call costs', function () {
+    it('does not spend a question on a call that never came back', function () {
+        /*
+         * The cap counts CALLS, and an outage is not one. A reader who asked
+         * during a provider failure used to be spent down toward "capped"
+         * without ever seeing an answer — and both states then rendered the
+         * same silence, so there was nothing on screen to tell them apart.
+         */
+        StatQuestion::fake(fn () => throw new RuntimeException('gateway exploded'));
+
+        askIt();
+
+        expect(RateLimiter::attempts('ai-answer:'.$this->reader->id))->toBe(0)
+            ->and(StatAnswer::capped($this->reader))->toBeFalse();
+    });
+
+    it('still charges a call that came back, and still charges it once', function () {
+        // The other half: moving the hit must not make asking free, and a
+        // re-ask served from the intent cache must stay free.
+        StatQuestion::fake([statIntent()]);
+
+        askIt();
+        askIt();
+
+        expect(RateLimiter::attempts('ai-answer:'.$this->reader->id))->toBe(1);
+    });
+});
+
+describe('the sentence the reader gets', function () {
+    $question = 'How many passing yards did Brandon Faizon throw this season?';
+
+    it('tells a number we do not hold apart from a call that fell over', function () use ($question) {
+        /*
+         * The whole complaint in one test. A data miss is a real answer and
+         * says so; an operational miss owns the failure and tells the reader
+         * their question was fine — rewording it would not have helped, and
+         * the old single line sent them off to try.
+         */
+        StatQuestion::fake([statIntent(['metric' => 'rushing.rushingYards'])]);
+
+        Livewire::actingAs($this->reader)->test('search-page')
+            ->set('q', $question)
+            ->call('ask')
+            ->assertSee(Voice::line('search.ask.none', for: $this->reader))
+            ->assertDontSee(Voice::line('search.ask.unavailable', for: $this->reader));
+
+        StatQuestion::fake(fn () => throw new RuntimeException('gateway exploded'));
+
+        Livewire::actingAs($this->reader)->test('search-page')
+            // A different question: the same one is answered from the intent
+            // cache and would never reach the provider at all.
+            ->set('q', 'How many rushing yards did Brandon Faizon get this season?')
+            ->call('ask')
+            ->assertSee(Voice::line('search.ask.unavailable', for: $this->reader))
+            ->assertDontSee(Voice::line('search.ask.none', for: $this->reader));
+    });
+
+    it('speaks the operational miss in every register', function () {
+        // Fall DOWN the ladder, never up: a line defined only in one register
+        // reaches nobody who did not ask for it.
+        $lines = (new ReflectionClass(Voice::class))->getConstant('LINES');
+
+        expect($lines['search.ask.unavailable'])->toHaveKeys(['pg', 'pg13', 'r']);
+
+        foreach ($lines['search.ask.unavailable'] as $register => $line) {
+            // Search is FACTUAL — the chrome may have a voice, but nothing
+            // here roasts the reader whose question was not the problem.
+            expect($line)->not->toBe('')
+                ->and($line)->not->toBe($lines['search.ask.none'][$register]);
+        }
+    });
+
+    it('sends a reader who ran out mid-ask to the cap, not to an apology', function () use ($question) {
+        for ($i = 0; $i < StatAnswer::DAILY_CAP; $i++) {
+            RateLimiter::hit('ai-answer:'.$this->reader->id, 86400);
+        }
+
+        Livewire::actingAs($this->reader)->test('search-page')
+            ->set('q', $question)
+            ->call('ask')
+            ->assertSee('questions for today')
+            ->assertDontSee(Voice::line('search.ask.none', for: $this->reader))
+            ->assertDontSee(Voice::line('search.ask.unavailable', for: $this->reader));
+    });
+
+    it('shows the ask is in flight on both surfaces', function () use ($question) {
+        /*
+         * The ask is a ~4s synchronous call inside the Livewire round trip —
+         * three of them in one day were the slowest requests the app served.
+         * Deliberately NOT moved to a queue: the answer is pinned to the
+         * question that produced it, and an async answer would have to
+         * re-establish that pin. So the screen has to say it is working.
+         */
+        foreach (['search-page', 'search-panel'] as $screen) {
+            $html = Livewire::actingAs($this->reader)->test($screen)->set('q', $question)->html();
+
+            expect($html)->toContain('wire:target="ask"')
+                ->and($html)->toContain('wire:loading.attr="disabled"');
+        }
     });
 });

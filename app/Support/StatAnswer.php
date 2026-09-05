@@ -45,6 +45,33 @@ class StatAnswer
     public const DAILY_CAP = 10;
 
     /**
+     * WHY a question came back without a number — the third slot of every
+     * return from {@see for()}, and the only part of the decline that is safe
+     * to carry to a screen.
+     *
+     * The reason beside it is a developer sentence for a log; this is the
+     * classification a reader is entitled to, because the two are not the same
+     * apology. "We hold no rushing yards for him in 2026" is a real answer and
+     * should read like one; "the classifier did not answer" is us being broken
+     * and must never be dressed up as a fact about our data. Rendering one
+     * sentence for both is what made the feature look dead — see CFB-24.
+     */
+    public const RESOLVED = 'resolved';
+
+    /**
+     * The decline is about the QUESTION: not one we take, not a metric we
+     * keep, not a name we can pin to one person, or a number our tables do
+     * not hold. Every one of those is a true thing to tell somebody.
+     */
+    public const DECLINE_DATA = 'data';
+
+    /** The decline is about US: spent, refused, or the call did not come back. */
+    public const DECLINE_UNAVAILABLE = 'unavailable';
+
+    /** This reader has used today's questions up. Tomorrow they have ten more. */
+    public const DECLINE_CAPPED = 'capped';
+
+    /**
      * The limiter window, spelled out rather than derived — `now()->addDay()
      * ->diffInSeconds()` is NEGATIVE 86400 in Carbon 3, which expires the key
      * the instant it is written and makes the cap permit everything.
@@ -176,30 +203,40 @@ class StatAnswer
     }
 
     /**
-     * The answer, or null and a developer reason for the log.
+     * The answer, or null with a developer reason and the KIND of decline.
      *
-     * @return array{0: array<string, mixed>|null, 1: string}
+     * Three slots, and the caller wants all of them. The reason is for a log
+     * and never for a screen — it names players, metrics and spend limits in
+     * developer prose. The kind is the half a reader may see, and it exists
+     * because "we hold nothing for that" and "our call fell over" are two
+     * different sentences that were being told as one.
+     *
+     * @return array{0: array<string, mixed>|null, 1: string, 2: string}
      */
     public function for(string $question, ?User $user): array
     {
+        /*
+         * Not-a-question lands here too, and it is a DATA decline rather than
+         * an operational one: nothing is broken, we simply do not take it.
+         */
         if ($user === null || ! self::askable($question, $user)) {
-            return [null, 'The question was not eligible to be asked'];
+            return [null, 'The question was not eligible to be asked', self::DECLINE_DATA];
         }
 
         if (self::capped($user)) {
-            return [null, 'The reader is over their daily cap of '.self::DAILY_CAP];
+            return [null, 'The reader is over their daily cap of '.self::DAILY_CAP, self::DECLINE_CAPPED];
         }
 
         $budget = app(AiBudget::class);
 
         if (! $budget->allows()) {
-            return [null, $budget->refusal() ?? 'The AI layer declined the call'];
+            return [null, $budget->refusal() ?? 'The AI layer declined the call', self::DECLINE_UNAVAILABLE];
         }
 
         $intent = $this->intent($question, $user);
 
         if ($intent === null) {
-            return [null, 'The classifier did not answer'];
+            return [null, 'The classifier did not answer', self::DECLINE_UNAVAILABLE];
         }
 
         return $this->resolve($intent);
@@ -219,11 +256,6 @@ class StatAnswer
          * fact about the question, not a fact about the weather.
          */
         return Remember::filled($key, self::INTENT_TTL, function () use ($question, $user): ?array {
-            // Hit HERE rather than at the door, so the cap counts CALLS. A
-            // reader re-asking something already resolved costs nothing and
-            // should be charged nothing.
-            RateLimiter::hit(self::limiterKey($user), self::WINDOW);
-
             try {
                 $response = (new StatQuestion)->prompt($question);
             } catch (Throwable $e) {
@@ -234,6 +266,16 @@ class StatAnswer
 
                 return null;
             }
+
+            /*
+             * Charged HERE: inside the cache-miss branch, so the cap counts
+             * CALLS rather than taps and a re-ask served from cache stays
+             * free — and AFTER the call came back, so a provider outage
+             * cannot spend somebody's ten questions without answering one.
+             * It used to be hit at the top of this closure, and a reader who
+             * arrived during an outage was left capped and told nothing.
+             */
+            RateLimiter::hit(self::limiterKey($user), self::WINDOW);
 
             $this->recordSpend($response);
 
@@ -251,12 +293,12 @@ class StatAnswer
 
     /**
      * @param  array<string, mixed>  $intent
-     * @return array{0: array<string, mixed>|null, 1: string}
+     * @return array{0: array<string, mixed>|null, 1: string, 2: string}
      */
     private function resolve(array $intent): array
     {
         if (($intent['answerable'] ?? false) !== true) {
-            return [null, $intent['note'] !== '' ? $intent['note'] : 'The question is not answerable from our data'];
+            return [null, $intent['note'] !== '' ? $intent['note'] : 'The question is not answerable from our data', self::DECLINE_DATA];
         }
 
         $subject = $intent['subject'];
@@ -274,7 +316,7 @@ class StatAnswer
         $board = $vocabulary[$intent['metric']] ?? null;
 
         if ($board === null) {
-            return [null, "\"{$intent['metric']}\" is not a metric we can look up for a {$subject}"];
+            return [null, "\"{$intent['metric']}\" is not a metric we can look up for a {$subject}", self::DECLINE_DATA];
         }
 
         $year = $this->year($intent['season_year']);
@@ -285,20 +327,20 @@ class StatAnswer
                 : $this->playerSeason($intent['name'], $board, $year),
             'team' => $this->teamSeason($intent['name'], $board, $year),
             'leaders' => $this->leaders($board, $year),
-            default => [null, "\"{$subject}\" is not a subject we answer for"],
+            default => [null, "\"{$subject}\" is not a subject we answer for", self::DECLINE_DATA],
         };
     }
 
     /**
      * @param  array<string, mixed>  $board
-     * @return array{0: array<string, mixed>|null, 1: string}
+     * @return array{0: array<string, mixed>|null, 1: string, 2: string}
      */
     private function playerSeason(string $name, array $board, int $year): array
     {
         $athlete = $this->athlete($name);
 
         if ($athlete === null) {
-            return [null, "No single player we hold answers to \"{$name}\""];
+            return [null, "No single player we hold answers to \"{$name}\"", self::DECLINE_DATA];
         }
 
         $stats = AthleteSeasonStat::query()
@@ -314,7 +356,7 @@ class StatAnswer
         $value = $stats[$board['stat']] ?? null;
 
         if (! is_numeric($value)) {
-            return [null, "We hold no {$board['label']} for {$athlete->display_name} in {$year}"];
+            return [null, "We hold no {$board['label']} for {$athlete->display_name} in {$year}", self::DECLINE_DATA];
         }
 
         return [[
@@ -324,7 +366,7 @@ class StatAnswer
             'name' => $athlete->display_name,
             'href' => route('player', $athlete),
             'context' => $year.' season',
-        ], 'resolved'];
+        ], 'resolved', self::RESOLVED];
     }
 
     /**
@@ -336,14 +378,14 @@ class StatAnswer
      * visible instead of silent — which a resolved week number never would.
      *
      * @param  array<string, mixed>  $board
-     * @return array{0: array<string, mixed>|null, 1: string}
+     * @return array{0: array<string, mixed>|null, 1: string, 2: string}
      */
     private function playerGame(string $name, array $board): array
     {
         $athlete = $this->athlete($name);
 
         if ($athlete === null) {
-            return [null, "No single player we hold answers to \"{$name}\""];
+            return [null, "No single player we hold answers to \"{$name}\"", self::DECLINE_DATA];
         }
 
         $columns = 'id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark';
@@ -365,7 +407,7 @@ class StatAnswer
         $value = ($row?->stats ?? [])[$board['stat']] ?? null;
 
         if ($row === null || ! is_numeric($value)) {
-            return [null, "We hold no recent {$board['label']} for {$athlete->display_name}"];
+            return [null, "We hold no recent {$board['label']} for {$athlete->display_name}", self::DECLINE_DATA];
         }
 
         return [[
@@ -375,19 +417,19 @@ class StatAnswer
             'name' => $athlete->display_name,
             'href' => route('player', $athlete),
             'context' => $this->gameContext($row),
-        ], 'resolved'];
+        ], 'resolved', self::RESOLVED];
     }
 
     /**
      * @param  array<string, mixed>  $board
-     * @return array{0: array<string, mixed>|null, 1: string}
+     * @return array{0: array<string, mixed>|null, 1: string, 2: string}
      */
     private function teamSeason(string $name, array $board, int $year): array
     {
         $team = $this->team($name);
 
         if ($team === null) {
-            return [null, "No single team we hold answers to \"{$name}\""];
+            return [null, "No single team we hold answers to \"{$name}\"", self::DECLINE_DATA];
         }
 
         $row = TeamSeasonStat::query()
@@ -402,7 +444,7 @@ class StatAnswer
         $stat = $row?->stat($board['stat']);
 
         if ($stat === null || $stat['display'] === null) {
-            return [null, "We hold no {$board['label']} for {$team->display_name} in {$year}"];
+            return [null, "We hold no {$board['label']} for {$team->display_name} in {$year}", self::DECLINE_DATA];
         }
 
         return [[
@@ -412,12 +454,12 @@ class StatAnswer
             'name' => $team->display_name,
             'href' => route('team', $team),
             'context' => $year.' season'.($stat['rank'] ? ' · '.Ordinal::of((int) $stat['rank']).' nationally' : ''),
-        ], 'resolved'];
+        ], 'resolved', self::RESOLVED];
     }
 
     /**
      * @param  array<string, mixed>  $board
-     * @return array{0: array<string, mixed>|null, 1: string}
+     * @return array{0: array<string, mixed>|null, 1: string, 2: string}
      */
     private function leaders(array $board, int $year): array
     {
@@ -427,7 +469,7 @@ class StatAnswer
         $rows = LeaderQuery::players($board, $year, Scope::FBS, limit: 5);
 
         if ($rows === []) {
-            return [null, "We hold no {$board['label']} leaders for {$year}"];
+            return [null, "We hold no {$board['label']} leaders for {$year}", self::DECLINE_DATA];
         }
 
         $athletes = Athlete::query()
@@ -460,7 +502,7 @@ class StatAnswer
             ->all();
 
         if ($leaders === []) {
-            return [null, "We hold no nameable {$board['label']} leaders for {$year}"];
+            return [null, "We hold no nameable {$board['label']} leaders for {$year}", self::DECLINE_DATA];
         }
 
         return [[
@@ -468,7 +510,7 @@ class StatAnswer
             'label' => $board['label'],
             'context' => $year.' season · FBS',
             'rows' => $leaders,
-        ], 'resolved'];
+        ], 'resolved', self::RESOLVED];
     }
 
     /**
