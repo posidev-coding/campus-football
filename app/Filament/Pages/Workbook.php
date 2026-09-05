@@ -251,8 +251,22 @@ class Workbook extends Page
      * whole list — and the third argument is this column's
      * `wire:sort:group-id`, which is how a cross-column drop says where it
      * landed. The id arrives as a STRING.
+     *
+     * EVERY argument is nullable, and that is the fix rather than an
+     * oversight. A stale DOM is exactly the case the first guard below was
+     * written for, and on that fire the arguments are the ones the blade
+     * withheld: `wire:sort:item` and `wire:sort:group-id` both live inside
+     * `@if ($sortable)`, so `$item` and `$status` arrive null, and Sortable's
+     * `newIndex` can be absent, which nulls `$position`. PHP validates
+     * argument types BEFORE entering the body, so a narrower signature threw a
+     * TypeError at this line and the guard never ran — unreachable for
+     * precisely the scenario it exists for.
+     *
+     * `$position` is passed STRAIGHT THROUGH, null included: `MoveWorkbookItem`
+     * reads null as APPEND, and 0 is the TOP of the column. Substituting one
+     * for the other silently reverses ordering.
      */
-    public function move(string $item, int $position, string $status): void
+    public function move(?string $item = null, ?int $position = null, ?string $status = null): void
     {
         /*
          * The server-side half of "the drag is off while narrowed". The blade
@@ -261,6 +275,14 @@ class Workbook extends Page
          * see, not the column.
          */
         if (! $this->sortable) {
+            return;
+        }
+
+        /*
+         * A drop that cannot say WHICH card or WHICH column is not a move.
+         * There is no safe substitute for either, so it is a no-op.
+         */
+        if ($item === null || $status === null) {
             return;
         }
 
