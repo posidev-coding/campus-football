@@ -31,6 +31,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Services/Espn/**, app/Console/Commands/**, app/Jobs/**, routes/console.php, routes/** | .ai/rules/espn-sync.md |
 | app/Services/Espn/Sync/SyncGames.php,app/Services/Espn/** | .ai/rules/espn.md |
 | resources/views/filament/**,app/Filament/** | .ai/rules/filament.md |
+| public/brand/groups/** | .ai/rules/groups.md |
 | routes/**,app/Http/** | .ai/rules/http.md |
 | app/Enums/UxSignal.php,app/Actions/RecordUxEvent.php,app/Listeners/**,resources/views/livewire/** | .ai/rules/listeners-views-livewire.md |
 | app/Livewire/**, resources/views/livewire/**, resources/views/components/** | .ai/rules/livewire-alpine.md |

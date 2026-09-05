@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 100 100">
+  <!--
+    GOALPOST SALVAGE CO. — the clubhouse mark for the pilot group.
+
+    Tennessee 52, Alabama 49, October 15, 2022: the Neyland goalposts came
+    down, went through campus and into the Tennessee River. This is the one
+    the company is named after, still in the water.
+
+    Designed at 32px, then scaled up. x-group-icon renders an upload at 20,
+    32, 36 and 44px behind object-cover with the container's own rounding,
+    so the mark is three cues and no more: Tennessee orange full bleed, a
+    white goalpost tilted sixteen degrees with the stem going under, and the
+    river as a Smokey band with a wavy edge. The school's three colors,
+    nothing off-palette. No lettering — "Salvage Co." is the group's name
+    beside the mark, and type is mud below 96px. A salvage cable was tried
+    and cut: a two-unit line reads as a scratch at 44px.
+
+    The corners are square on purpose; the component rounds them.
+
+    goalpost-salvage-co.png is this file rasterized at 512px by Chromium's
+    headless shell (the SVG alone in a zero-margin page, window 512x512,
+    screenshot). Regenerate it in the same commit as any redraw.
+  -->
+  <rect width="100" height="100" fill="#FF8200"/>
+  <g transform="translate(52 52) rotate(-16)" fill="#FFFFFF">
+    <rect x="-28" y="-30" width="7.5" height="33.5" rx="1.3"/>
+    <rect x="20.5" y="-30" width="7.5" height="33.5" rx="1.3"/>
+    <rect x="-28" y="-3.75" width="56" height="7.5" rx="1.3"/>
+    <rect x="-3.75" y="0" width="7.5" height="48" rx="1.3"/>
+  </g>
+  <path d="M0 71 Q 6.25 66.5 12.5 71 T 25 71 T 37.5 71 T 50 71 T 62.5 71 T 75 71 T 87.5 71 T 100 71 V100 H0 Z" fill="#58595B"/>
+  <path d="M-12.5 83 Q -6.25 79.4 0 83 T 12.5 83 T 25 83 T 37.5 83 T 50 83 T 62.5 83 T 75 83 T 87.5 83 T 100 83" fill="none" stroke="#FFFFFF" stroke-opacity="0.3" stroke-width="2.4" stroke-linecap="round"/>
+</svg>
