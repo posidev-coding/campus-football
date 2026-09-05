@@ -195,12 +195,17 @@ describe('the store (inside the flag)', function () {
             ->assertDontSeeHtml('data-kick-at');
     });
 
-    it('says nothing about a kickoff once the Saturday is under way', function () {
+    it('takes a room off the shelf once its Saturday is under way', function () {
         /*
-         * FUTURE-ONLY. The actionable clock is the next kickoff; a store
-         * whose games have all started is one where "some of it has
-         * begun", which the rows themselves say better than a clock
-         * counting up from zero would.
+         * A room closes at the FIRST kickoff, so a card that has started is
+         * no longer for sale — a seat you cannot fill is not a seat, and one
+         * you fill knowing half the results is worse.
+         *
+         * This case used to assert the opposite ("still open and still for
+         * sale") and pinned the room open until the LAST game kicked, which
+         * left a Saturday room buyable at 9pm. What it was really guarding is
+         * the clock: FUTURE-ONLY, never counting up from zero. Both halves
+         * are asserted now.
          */
         [, $week] = lobbyScreenWeek();
         $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
@@ -212,10 +217,32 @@ describe('the store (inside the flag)', function () {
             ->update(['kickoff_at' => '2026-09-01 19:30:00']);
 
         Livewire::actingAs(pickemAdmin())->test('lobby')
-            // The room is still open and still for sale...
-            ->assertSee($room->name)
-            // ...and the clock says nothing rather than something wrong.
+            ->assertDontSee($room->name)
+            ->assertSee('0 rooms open')
             ->assertDontSeeHtml('data-kick-at');
+    });
+
+    it('takes it off the shelf on the FIRST kickoff, not the last', function () {
+        /*
+         * The line the card turns on. One game started, the rest still to
+         * come: the old guard asked `every()` and kept the room for sale
+         * through the whole afternoon.
+         */
+        [, $week] = lobbyScreenWeek();
+        $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+        $gameIds = SlateGame::query()
+            ->whereIn('slate_id', Slate::query()->whereIn('contest_id', $room->contests()->pluck('id'))->pluck('id'))
+            ->orderBy('position')
+            ->pluck('game_id');
+
+        // Exactly one of them kicks; everything else stays ahead of us.
+        Game::query()->whereIn('id', $gameIds)->update(['kickoff_at' => '2026-09-12 19:30:00']);
+        Game::query()->where('id', $gameIds->first())->update(['kickoff_at' => '2026-09-01 19:30:00']);
+
+        Livewire::actingAs(pickemAdmin())->test('lobby')
+            ->assertDontSee($room->name)
+            ->assertSee('0 rooms open');
     });
 
     it('asks for the first kickoff exactly once, and not at all with nothing open', function () {

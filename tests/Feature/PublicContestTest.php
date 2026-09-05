@@ -123,6 +123,51 @@ it('refuses a seat in a week already being played', function () {
         ->toThrow(ContestFull::class);
 });
 
+it('refuses on the FIRST kickoff, with the rest of the card still to come', function () {
+    /*
+     * The line the guard turns on, and the one it used to get wrong: it
+     * asked `every()`, so a Saturday room stayed open from noon until the
+     * last night game kicked. A walk-on at 9pm buys in behind by everything
+     * already decided, and picks the remainder having watched the rest.
+     *
+     * The action is asserted directly rather than through the lobby: the
+     * lobby delisting is the courtesy, this is the boundary, and a seat must
+     * be refused even to somebody holding a stale link to the room.
+     */
+    [, $week] = publicContestWeek();
+
+    $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+    $slate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $room->id))->sole();
+
+    $games = $slate->games()->with('game')->orderBy('position')->get();
+
+    // Everything ahead of us but the opener, which has just started.
+    foreach ($games as $slateGame) {
+        $slateGame->game->update(['kickoff_at' => now()->addDays(3)]);
+    }
+
+    $games->first()->game->update(['kickoff_at' => now()->subMinute()]);
+
+    expect(fn () => app(JoinGroup::class)->handle(User::factory()->create(), $room))
+        ->toThrow(ContestFull::class);
+});
+
+it('still seats somebody while the whole card is ahead of them', function () {
+    // The other side of the line — the guard must not close a room early.
+    [, $week] = publicContestWeek();
+
+    $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+    $slate = Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $room->id))->sole();
+
+    foreach ($slate->games()->with('game')->get() as $slateGame) {
+        $slateGame->game->update(['kickoff_at' => now()->addDays(3), 'status' => 'pre', 'completed' => false]);
+    }
+
+    app(JoinGroup::class)->handle(User::factory()->create(), $room);
+
+    expect($room->memberships()->count())->toBe(1);
+});
+
 it('keeps at least one open room per catalog entry through the sweep, idempotently', function () {
     publicContestWeek();
 

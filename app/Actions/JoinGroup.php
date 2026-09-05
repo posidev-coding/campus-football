@@ -121,16 +121,24 @@ class JoinGroup
             throw new ContestFull;
         }
 
-        // A week already being played takes no walk-ons: every seat in a
-        // room exists to PICK, and the picks are locked.
+        /*
+         * A card already being played takes no walk-ons, and the line is the
+         * FIRST kickoff rather than the last.
+         *
+         * This used to ask `every()` — refuse only once the whole card had
+         * kicked — which left a Saturday room open from noon until the last
+         * night game started. Somebody could take a seat at 9pm having
+         * watched the results of everything but one game, and buy in behind
+         * by every point already decided. A seat you cannot fill is not a
+         * seat, and a seat you fill knowing the answers is worse.
+         */
         $slate = Slate::query()
             ->whereHas('contest', fn ($q) => $q->where('group_id', $room->id))
             ->where('week_id', $room->week_id)
             ->with('games.game:id,kickoff_at,status,completed')
             ->first();
 
-        if ($slate !== null && $slate->games->isNotEmpty()
-            && $slate->games->every(fn ($slateGame) => $slateGame->game->hasKickedOff())) {
+        if ($slate !== null && $slate->isUnderway()) {
             throw new ContestFull;
         }
     }
