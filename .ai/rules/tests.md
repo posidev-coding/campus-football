@@ -65,3 +65,21 @@ A `#[Lazy]` Livewire component (every Pulse dashboard card is one) renders only 
 `Livewire::withoutLazyLoading()` fixes it, but it applies to the NEXT component only. Called once in a `beforeEach`, the second render silently falls back to the `animate-pulse` placeholder — and for anything cached, the SECOND render is the one that matters, because the first returns the closure's own value and never round-trips the store. Call it before EVERY render, and render twice.
 
 This is how the Pulse dashboard shipped broken through a green suite: `assertOk()` on `/pulse` passed while all nine cards fataled on `__PHP_Incomplete_Class`.
+
+## Never git stash, and never share a test database, while worktrees are active
+Two collisions that look like bugs in your code and are not. Both cost real time on 2026-09-05 with parallel sessions running.
+
+THE STASH STACK IS GLOBAL TO THE REPOSITORY, not per-worktree. `git stash` → run something → `git stash pop` will apply ANOTHER worktree's entry into your tree if they pushed one meanwhile, and two sessions did exactly that to each other. To compare against a clean base, commit to your own branch first, or copy files aside — never stash.
+
+THE TEST DATABASE IS SHARED unless you override it. `phpunit.xml` points every run at `campusfootball_test`, and `RefreshDatabase` drops and re-migrates it, so a second run rebuilds the schema under the first. It surfaces as a flood of "Base table or view not found" and "Unknown column" errors — 85 of them in one run — which read as real failures and are not. Give each worktree its own: `DB_DATABASE=campusfootball_test_<name> php artisan test` (the env var beats phpunit.xml). A database name is an unquoted identifier, so normalize hyphens to underscores or CREATE DATABASE throws.
+
+Symptom to recognize in both: a failure set that changes between runs of identical code, or one that names tables and columns rather than behavior.
+
+## Pinning a fixture to an ABSOLUTE instant is not pinning it — freeze the clock instead
+Read with "Pin any date a shared fixture renders" above, which this completes. An absolute fixture date is only pinned while the wall clock is behind it.
+
+`PickemFixtures::pickemGame()` defaulted kickoff to `2026-09-05 19:30:00`. At 19:30 UTC that day the clock passed it and nineteen tests that had never travelled began reading their upcoming game as kicked — seven in GroupPageTest, three in PickemHomeTest, two each in HomeTest and PickemPulseTest, one each in ModeChangeTest and PickemPreflightTest, two erroring outright by indexing an empty collection. They failed in isolation as well as in the full suite, and no later day would have brought them back.
+
+The fixture dates themselves are correct and must stay: `splitPickemWeek()` reproduces ESPN's real 2026 opening week (one week row spanning 8/22 → 9/8, games on two Saturdays) and a relative kickoff cannot express that. What was missing was a defined NOW to read them against. `tests/Pest.php` now travels every Feature test to `SUITE_NOW` (2026-09-02 12:00) in `beforeEach`; an explicit `travelTo()` still wins because `beforeEach` runs first.
+
+So: a shared fixture may pin an absolute date only if the suite also pins the clock. If you add a fixture whose correctness depends on being before or after some instant, assert that relation in FactoryFixturesTest rather than trusting the calendar.
