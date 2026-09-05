@@ -134,6 +134,9 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     // on the icon's and the photo's own error lines instead of a 500.
     'groups.icon.failed',
     'account.photo.failed',
+    // And the upload that never landed at all — the browser's own refusal,
+    // which names no cause because it has none to name.
+    'uploads.refused',
     'join.pitch',
     'join.miss',
     'join.room.played',

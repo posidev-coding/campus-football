@@ -920,6 +920,21 @@ class Voice
             'r' => "The photo didn't make it to the shelf, and that's on the storage, not your face. Try again in a minute; if it keeps failing, somebody owes you an apology.",
         ],
 
+        /*
+         * THE UPLOAD THAT NEVER LANDED AT ALL. The one above is the server
+         * catching a refused write and knowing what refused it; this is the
+         * BROWSER, whose upload did not complete and which has no idea why.
+         * So it names no cause — inventing one ("check your connection")
+         * would be a default written where there is no data, and the reader
+         * cannot act on a guess anyway. What it can act on is the file
+         * picker, which is the whole instruction.
+         */
+        'uploads.refused' => [
+            'pg' => "That upload didn't save. Nothing changed — pick the file again to retry.",
+            'pg13' => "That upload didn't make it. Nothing saved, so pick the file again.",
+            'r' => 'That upload went nowhere and nothing saved. Pick the file again and see if it sticks.',
+        ],
+
         'groups.join.bad_code' => [
             'pg' => "That code doesn't match any group. Check it and try again.",
             'pg13' => 'No group answers to that code. Check it with whoever sent it.',
