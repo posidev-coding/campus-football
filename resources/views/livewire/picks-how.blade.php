@@ -296,7 +296,7 @@ new class extends Component
     <flux:modal.trigger name="help">
         <flux:button size="sm" variant="ghost" class="self-start">
             <flux:icon.chat-dots variant="micro" />
-            Still stuck? Send feedback
+            {{ App\Support\HelpAnswer::stuckLabel(auth()->user()) }}
         </flux:button>
     </flux:modal.trigger>
 </div>

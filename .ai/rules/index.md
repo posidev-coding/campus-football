@@ -7,7 +7,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Actions/GrantWalletEntry.php,app/Actions/EnterPicks.php,app/Actions/MakePick.php,app/Actions/SettleSlate.php | .ai/rules/actions-actions.md |
 | app/Support/R2Writes.php,app/Providers/AppServiceProvider.php,app/Actions/SetGroupIcon.php,resources/views/livewire/account.blade.php | .ai/rules/actions-views-livewire.md |
 | app/Support/Voice.php,resources/views/livewire/**,public/brand/currency/**,app/Actions/GrantWalletEntry.php | .ai/rules/actions.md |
-| app/Ai/**,app/Support/Recap*.php,app/Support/AiFailure.php,app/Support/GamedayFallback.php,app/Support/StatAnswer.php,app/Support/Stats/StatCatalog.php,app/Livewire/Concerns/AsksQuestions.php | .ai/rules/ai-layer.md |
+| app/Ai/**,app/Support/Recap*.php,app/Support/AiFailure.php,app/Support/GamedayFallback.php,app/Support/StatAnswer.php,app/Support/Stats/StatCatalog.php,app/Livewire/Concerns/AsksQuestions.php,app/Support/HelpAnswer.php,app/Support/HelpTopics.php | .ai/rules/ai-layer.md |
 | app/**,resources/views/**,tests/**,docs/** | .ai/rules/app-views.md |
 | app/Actions/JoinGroup.php,resources/views/livewire/join.blade.php,resources/views/livewire/auth/register.blade.php,resources/views/livewire/group.blade.php | .ai/rules/auth-views-livewire.md |
 | app/Http/**, routes/** | .ai/rules/boost/http-routes.md |

@@ -528,7 +528,7 @@ describe('personalization', function () {
         $violations = [];
 
         foreach ($lines as $key => $variants) {
-            if (! Str::startsWith($key, ['tour.', 'onboarding.', 'splash.', 'home.', 'picks.', 'lobby.'])) {
+            if (! Str::startsWith($key, ['tour.', 'onboarding.', 'splash.', 'home.', 'picks.', 'lobby.', 'help.'])) {
                 continue;
             }
 

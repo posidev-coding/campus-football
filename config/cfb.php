@@ -86,7 +86,8 @@ return [
      * THE AI LAYER'S MASTER SWITCH.
      *
      * OFF, and shipped that way. Every AI surface — the stat answers in
-     * Search, the written recaps, the College GameDay fallback — asks
+     * Search, the help answers in the sheet, the written recaps, the College
+     * GameDay fallback — asks
      * `App\Support\AiBudget::allows()` before spending anything, and this is
      * the first half of that answer. False means no call is made anywhere,
      * whatever the individual feature flags say.
@@ -115,7 +116,7 @@ return [
     'ai_monthly_budget' => (float) env('AI_MONTHLY_BUDGET', 25),
 
     /*
-     * The two user-facing AI surfaces, each behind its own Pennant flag whose
+     * The three user-facing AI surfaces, each behind its own Pennant flag whose
      * closure reads the value here — the `pickem` pattern, so flipping one is
      * an environment change and `pennant:purge <flag>` afterwards.
      *
@@ -128,6 +129,8 @@ return [
     'ai_answers' => (bool) env('AI_ANSWERS', false),
 
     'ai_recaps' => (bool) env('AI_RECAPS', false),
+
+    'ai_help' => (bool) env('AI_HELP', false),
 
     /*
      * THE OPS TOKEN — the shared secret behind /ops/telemetry and

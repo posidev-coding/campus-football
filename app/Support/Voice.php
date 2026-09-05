@@ -2159,6 +2159,177 @@ class Voice
             'pg13' => "That didn't send, and it's our fault, not yours. Try again in a minute.",
             'r' => "That didn't send, which is exactly the kind of thing you'd want to send feedback about. Ours, not yours. Try again in a minute.",
         ],
+
+        /*
+         * HELP — the Ask tab on the same sheet. Four chrome lines, then one
+         * body per topic in App\Support\HelpTopics, keyed `help.{topic}`.
+         * A body is the whole answer a reader sees, so the INSTRUCTION in it
+         * stays plain and the attitude sits around it; every body ends by
+         * pointing at the link under it. The numbers are :tokens filled from
+         * the code the screens read (HelpTopics::fills) — never a literal that
+         * a rebalance would strand. `capped` takes `:cap`.
+         */
+        'help.subheading' => [
+            'pg' => 'Stuck on something? Ask in a sentence and we will point you to the right place.',
+            'pg13' => 'Stuck? Ask it the way you would ask a friend who has read the rules. We point you at the right screen.',
+            'r' => "Stuck? Ask it plainly. We have read the rules so you don't have to, and we will point you at the right screen.",
+        ],
+
+        'help.idle' => [
+            'pg' => 'Ask a question about the app, or tap one of these to see how it works.',
+            'pg13' => 'Ask about the app in your own words, or tap one of these and see what comes back.',
+            'r' => 'Ask about the app in your own words. Or tap one of these and let somebody else do the typing.',
+        ],
+
+        'help.none' => [
+            'pg' => "We don't have an answer for that one yet. Send it as feedback and a person will read it.",
+            'pg13' => "That one isn't in the playbook yet. Send it as feedback and a human will pick it up.",
+            'r' => "That one isn't in the playbook yet, which is our problem, not yours. Send it as feedback and a human will pick it up.",
+        ],
+
+        'help.capped' => [
+            'pg' => 'That is all :cap questions for today. Anything else can go in as feedback.',
+            'pg13' => ':cap questions a day is the limit, and you have used them. Anything else goes in as feedback.',
+            'r' => ':cap a day, and you have burned through them. Impressive. Anything else goes in as feedback.',
+        ],
+
+        'help.picks.make' => [
+            'pg' => "Open a game card and tap the team you think wins. The card fills with that team's color, and that is your pick. Tap the other side to change it. This week's cards are on My Picks.",
+            'pg13' => "Tap a team on a game card. That's it — the card fills with their color and the pick is in. Second thoughts? Tap the other side. Your week's cards are on My Picks.",
+            'r' => 'Tap a team on the card. The card fills with their color and the pick is in — no confirm button, no ceremony. Second thoughts? Tap the other side and nobody has to know. Your week is on My Picks.',
+        ],
+
+        'help.picks.lock' => [
+            'pg' => 'Each pick locks when its own game kicks off, not all at once. Until kickoff you can change it as often as you like by tapping the other team. A game with no pick at kickoff scores zero. Your open cards are on My Picks.',
+            'pg13' => "Picks lock game by game, at kickoff. Until then, tap the other team as many times as your nerves need. A card you leave blank at kickoff is a zero, so don't. Your open cards are on My Picks.",
+            'r' => 'Every pick locks at its own kickoff, not on some deadline you have to memorize. Until then flip it as often as your nerves demand. Leave a card blank at kickoff and it scores zero, and the group will notice. Your open cards are on My Picks.',
+        ],
+
+        'help.picks.privacy' => [
+            'pg' => 'Your picks stay private until each game kicks off. After kickoff, everyone in the group can see them. The one exception is the Bear, whose picks are always public. Your week is on My Picks.',
+            'pg13' => 'Nobody sees a pick until that game kicks off — not your group, not your rival. After kickoff it is on the slate for all to see. The Bear is the exception; the Bear hides nothing. Your week is on My Picks.',
+            'r' => 'Your picks are sealed until kickoff. Nobody in the group can peek, so pick with your gut and not with theirs. Once the game starts it is public record, and so is the ribbing. The Bear is the exception; the Bear hides nothing. Your week is on My Picks.',
+        ],
+
+        'help.picks.lock_wager' => [
+            'pg' => 'The Lock is a Woodshed rule. Once a week you can lock the featured game: get it right and you earn :bonus extra points, get it wrong and you lose :penalty. It costs nothing to place. The full rules are on How this works.',
+            'pg13' => 'The Lock is Woodshed only. Once a week, lock the featured game: right is +:bonus, wrong is -:penalty, and it costs nothing but nerve. The full rules are on How this works.',
+            'r' => 'The Lock is Woodshed only. Once a week you lock the featured game: right is +:bonus, wrong is -:penalty, and it costs nothing but your dignity. The full rules are on How this works.',
+        ],
+
+        'help.picks.tallboy' => [
+            'pg' => 'Crushing a Tallboy puts one on a single game: :swing extra points if you are right, :swing off if you are wrong. It costs one Tallboy and you get one crush per slate. Move it to another game for free before kickoff. How this works has the details.',
+            'pg13' => 'Crush a Tallboy on one game and it swings :swing points either way — up if you are right, down if you are not. One Tallboy, one crush per slate, and you can move it to another game for free before kickoff. Details are on How this works.',
+            'r' => 'Crush a Tallboy on a game and it swings :swing points either way. Right, and you are a genius. Wrong, and it is :swing off the top and a long Sunday. One Tallboy, one crush per slate, movable for free before kickoff. Details are on How this works.',
+        ],
+
+        'help.picks.scoring' => [
+            'pg' => 'Every mode scores a little differently: Shotgun gives the same points for every game, Triple Option weights games by tier, and Woodshed adds the Lock. A perfect week is about 100 points in every mode. The exact rules are on How this works.',
+            'pg13' => 'Each mode keeps score its own way — Shotgun pays the same per game, Triple Option pays by tier, Woodshed adds the Lock — but a perfect week is about 100 points in all of them. The exact numbers are on How this works.',
+            'r' => 'Each mode keeps score its own way: Shotgun pays flat per game, Triple Option pays by tier, Woodshed adds the Lock. A perfect week is about 100 in all of them, which is the number to chase. The exact numbers are on How this works.',
+        ],
+
+        'help.picks.tiebreaker' => [
+            'pg' => 'Each slate has one tiebreaker question about one game, such as the combined points. Enter your best guess before that game kicks off. If two entries tie on points, the closer guess wins. The question is on your slate in My Picks.',
+            'pg13' => "Every slate has one tiebreaker question about one game — combined points, one team's points, or a yardage number. Answer it before that game kicks off; it decides a tie on points. Your slate on My Picks has the question.",
+            'r' => "Every slate has one tiebreaker question about one game — combined points, one team's points, or a yardage number. Answer it before that game kicks off. Skip it, tie on points, and you lose to somebody who guessed. Your slate on My Picks has the question.",
+        ],
+
+        'help.picks.settle' => [
+            'pg' => 'Once the games are final the week is scored right away and marked Preliminary. It becomes official at :official, when the winner is paid :win_xp XP and :prize. Past weeks are in History.',
+            'pg13' => 'When the games go final your week is scored on the spot and stamped Preliminary. At :official it becomes official and the winner collects :win_xp XP and :prize. Past weeks live in History.',
+            'r' => 'The week is scored the moment the games go final and stamped Preliminary — close enough to celebrate, not close enough to bank. At :official it goes official and the winner gets :win_xp XP and :prize. Past weeks live in History.',
+        ],
+
+        'help.groups.create' => [
+            'pg' => 'Start a group from the Picks tab: pick a mode, name it, and you get an invite code and a link to share. You need a verified email first. Tap through to start one.',
+            'pg13' => 'Start a group from Picks: choose a mode, name it, and you walk out with an invite code and a link. Verified email required — that is the one bit of paperwork. Tap through to start one.',
+            'r' => 'Start a group from Picks: choose a mode, name it, and you walk out with an invite code and a link, which makes you the commissioner and the person everyone blames. Verified email required. Tap through to start one.',
+        ],
+
+        'help.groups.join' => [
+            'pg' => 'Ask the commissioner for the invite link or the eight-character code, then open Join and enter it. You are in right away. Public rooms in the Lobby need a verified email and an open seat. Tap through to Join.',
+            'pg13' => 'Get the invite link or the eight-character code from whoever runs the group, open Join, and you are in. Public rooms in the Lobby are different: verified email and an open seat. Tap through to Join.',
+            'r' => 'Get the link or the eight-character code from whoever runs the group, open Join, enter it, done. Public rooms in the Lobby want a verified email and an open seat, because the house runs those and the house has rules. Tap through to Join.',
+        ],
+
+        'help.groups.invite' => [
+            'pg' => 'Open your group and go to the Invite tab. It has the code, the link, and ready-made messages for text, email or a group chat. Your groups are on My Picks.',
+            'pg13' => 'Open the group, tap Invite. The code, the link and a message you can paste into any chat are all there. Your groups are on My Picks.',
+            'r' => 'Open the group, tap Invite. Code, link, and a message you can paste into any chat so nobody can claim they were not asked. Your groups are on My Picks.',
+        ],
+
+        'help.groups.mode' => [
+            'pg' => "A group plays one mode all season. The commissioner can change it once, from the group's standings, and only while no slate is in play. Everyone in the group is told when it changes. Your groups are on My Picks.",
+            'pg13' => "One mode per group per season, and the commissioner gets one change — from the group's standings, never mid-slate. Everyone gets a notification when it happens. Your groups are on My Picks.",
+            'r' => 'One mode per season, one change, commissioner only, never mid-slate, and the whole group gets told — so it is a decision, not a mood. Your groups are on My Picks.',
+        ],
+
+        'help.groups.slate' => [
+            'pg' => "The commissioner builds the week's slate, with a suggested set of games to start from. It is due by :deadline. If it is not published by then, the standard slate is published automatically so the week goes ahead. Your groups are on My Picks.",
+            'pg13' => 'The commissioner builds the slate — the wizard suggests the games, they adjust. Deadline is :deadline; miss it and the standard slate publishes itself, because the week does not wait. Your groups are on My Picks.',
+            'r' => 'The commissioner builds the slate, or the wizard does most of it for them. Deadline is :deadline; sleep through it and the standard slate publishes itself, because the week does not wait for anyone. Your groups are on My Picks.',
+        ],
+
+        'help.lobby.rooms' => [
+            'pg' => 'A room is a public contest run by the house, open to anyone with a seat. Rooms fill up, and a new one opens when they do. Browse them in the Lobby and take a seat.',
+            'pg13' => 'Rooms are public contests the house runs — no commissioner, a fixed number of seats, and a new room opens when one fills. The Lobby is where you browse them and grab a seat.',
+            'r' => 'Rooms are public contests the house runs: no commissioner, a fixed number of seats, strangers who will absolutely talk about your picks. A new one opens when one fills. Browse them in the Lobby and grab a seat.',
+        ],
+
+        'help.lobby.cost' => [
+            'pg' => 'Most rooms are free to enter. The Spotlight rooms cost :spotlight to sit down. What every room costs, and which allow a Tallboy wager, is on How this works.',
+            'pg13' => "Most rooms are free. The Spotlight rooms charge :spotlight for the seat, and that is the whole price list. Every room's cost and wager rule is on How this works.",
+            'r' => "Most rooms are free. The Spotlight charges :spotlight for the seat, which is the whole price list, so nobody is getting rich. Every room's cost and wager rule is on How this works.",
+        ],
+
+        'help.wallet.tallboys' => [
+            'pg' => 'XP is your score for the season and it only goes up. Tallboys are the currency: they buy seats in Spotlight rooms and wagers on games. Your cooler holds :capacity and is topped off once a week when you open Picks; winning a week pays :win_xp XP and :prize, and every point you score is worth :points_xp XP. How this works has the full list.',
+            'pg13' => 'XP is the season score and never goes down. Tallboys are the currency — a seat in a Spotlight room, a wager on a game. The cooler holds :capacity, gets topped off once a week when you open Picks, and a won week pays :win_xp XP and :prize on top of :points_xp XP a point. The full ledger is on How this works.',
+            'r' => 'XP is the season score and it never goes down, so relax. Tallboys are the currency: a seat in a Spotlight room, a wager on a game you are too sure about. The cooler holds :capacity, tops off once a week when you open Picks, and a won week pays :win_xp XP and :prize on top of :points_xp XP a point. The full ledger is on How this works.',
+        ],
+
+        'help.wallet.ranks' => [
+            'pg' => 'The ranks are :rungs. Each one is a total XP milestone, and XP comes from picking, winning and taking part. Your rank and the points to the next one are on My Picks.',
+            'pg13' => 'The ladder runs :rungs. Each rung is an XP total; picking, winning and showing up all move you along. Your rung and the distance to the next one are on My Picks.',
+            'r' => 'The ladder runs :rungs. Each rung is an XP total, and picking, winning and simply showing up all move you along it, so there is no excuse. Your rung and the distance to the next one are on My Picks.',
+        ],
+
+        'help.wallet.verify' => [
+            'pg' => 'Verifying your email proves the account is yours and unlocks playing: picks, wagers, groups and the chat all need it. It also pays :xp XP and :reward the moment you do. Tap through to verify, or to check your status.',
+            'pg13' => 'A verified email is the ticket: picks, wagers, groups and Talk all need it. It pays :xp XP and :reward on the spot, which is the friendliest paperwork you will do this season. Tap through to sort it.',
+            'r' => 'A verified email is the ticket: picks, wagers, groups and Talk all need it, because nobody wants a room full of ghosts. It pays :xp XP and :reward on the spot. Tap through and get it done.',
+        ],
+
+        'help.account.rating' => [
+            'pg' => 'The content rating sets how much trash talk you see: :mild, :medium or :spicy. It changes the jokes, never the facts or the rules. Change it from your profile on Account.',
+            'pg13' => 'Your content rating is the heat dial — :mild, :medium or :spicy. It changes the attitude, not the rules. Turn it up or down from your profile on Account.',
+            'r' => 'Your content rating is the heat dial: :mild, :medium or :spicy. It changes the attitude, never the rules, so nobody can blame it for a loss. Turn it up or down from your profile on Account.',
+        ],
+
+        'help.account.handle' => [
+            'pg' => "Your handle is the name you go by in pick'em and in the chat: lowercase letters, numbers and underscores, 3 to 20 characters. Claim or change it from your profile on Account.",
+            'pg13' => 'Your handle is what the group sees on the slate and in Talk. Lowercase letters, numbers and underscores, 3 to 20 characters. Claim or change it from your profile on Account.',
+            'r' => 'Your handle is what the group sees on the slate and in Talk, so choose one you can defend. Lowercase letters, numbers and underscores, 3 to 20 characters. Claim or change it from your profile on Account.',
+        ],
+
+        'help.account.teams' => [
+            'pg' => "Follow up to :max teams, from Account or from a team's page. The order matters: your first team leads Home and Scores. Drag to reorder, or unfollow, on Account.",
+            'pg13' => 'Follow up to :max teams, from Account or any team page. First in the list leads Home and Scores, so put the one you actually care about on top. Reorder or unfollow on Account.',
+            'r' => 'Follow up to :max teams, from Account or any team page. First in the list leads Home and Scores, so put the one you actually care about on top and stop pretending about the others. Reorder or unfollow on Account.',
+        ],
+
+        'help.account.tours' => [
+            'pg' => 'The guided tour walks through the app screen by screen, and the Picks tour covers the week, the cooler and the rooms. Replay either any time from Account, or start the app tour now.',
+            'pg13' => 'Two tours: the app walk from Home and the Picks walk for the week, the cooler and the rooms. Replay either from Account whenever you like, or start the app tour now.',
+            'r' => 'Two tours: the app walk from Home and the Picks walk for the week, the cooler and the rooms. Replay either from Account as many times as it takes, no judgment. Or start the app tour now.',
+        ],
+
+        'help.league.where' => [
+            'pg' => 'Scores are on the Scores tab. Rankings, standings, team and player stats are under League. Tap through to Scores.',
+            'pg13' => 'Scores live on the Scores tab; rankings, standings and stats live under League. No jokes over there, just numbers. Tap through to Scores.',
+            'r' => 'Scores are on the Scores tab; rankings, standings and stats are under League, where the app keeps a straight face. Tap through to Scores.',
+        ],
     ];
 
     /**
