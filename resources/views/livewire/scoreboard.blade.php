@@ -5,6 +5,7 @@ use App\Models\Team;
 use App\Services\CfbCalendar;
 use App\Support\GameOrder;
 use App\Support\Scope;
+use App\Support\SlateDates;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
@@ -48,6 +49,29 @@ new class extends Component
     #[Url]
     public string $scope = '';
 
+    /**
+     * A `Y-m-d` in the app's timezone, or '' for "work it out".
+     *
+     * Only the CURRENT week is filtered by date, and only when its games span
+     * several days — see `dateTabs()`. A past week is review and a future week
+     * is planning; both want the whole week in one scroll, so neither is
+     * filtered and neither grows a strip.
+     *
+     * Deliberately NOT remembered in the session the way `scope` is. Scope is
+     * a taste held across visits; a day is triage state whose right answer
+     * changes hourly, and serving somebody Thursday on Saturday afternoon is
+     * the very bug this was built to fix, just moved into the session.
+     *
+     * `except: ''` keeps the parameter out of the querystring while it is
+     * resolving itself, so simply opening the page adds no URL noise; an
+     * explicit tap makes the day shareable. `SlateDates::focus()` is total —
+     * an unknown value falls back rather than reaching anything as a bare
+     * string, and it never touches SQL — so this needs no `updated` hook to
+     * sanitize it.
+     */
+    #[Url(except: '')]
+    public string $date = '';
+
     public function mount(CfbCalendar $calendar): void
     {
         if ($this->week === null) {
@@ -78,6 +102,11 @@ new class extends Component
     public function updatedScope(): void
     {
         Scope::remember($this->scope, 'scoreboard');
+
+        // A narrower scope can empty the day the reader was on — Top 25 over a
+        // week whose Thursday game was unranked leaves that tab with nothing
+        // behind it. Clearing re-resolves rather than stranding them.
+        $this->date = '';
     }
 
     /**
@@ -88,6 +117,10 @@ new class extends Component
     {
         $this->week = $weekId;
         $this->bracket = $bracket;
+
+        // Three dimensions now, and a date is the only one that belongs to a
+        // single week — Saturday the 27th is not a stop on any other one.
+        $this->date = '';
     }
 
     /**
@@ -129,7 +162,7 @@ new class extends Component
      * scope would be the same behaviour held together by a condition somebody
      * has to remember to keep in step with `Scope`.
      *
-     * @return array{pinned: list<array{team: Team, day: string, games: Illuminate\Support\Collection, lead: bool}>, days: Illuminate\Support\Collection}
+     * @return array{pinned: list<array{team: Team, day: string, games: Illuminate\Support\Collection, lead: bool}>, days: Illuminate\Support\Collection, dates: list<array{value: string, label: string}>, selected: string|null}
      */
     #[Computed]
     public function slate(): array
@@ -159,10 +192,27 @@ new class extends Component
             ->map(fn ($dayGames) => GameOrder::liveFirst($dayGames));
 
         $games = $this->scopedGames();
+
+        /*
+         * The date filter is applied to the WHOLE set, before the pinned split
+         * below, so both halves of the screen agree about which day is on. A
+         * pinned Thursday game left standing above a Saturday-filtered list
+         * would contradict the tab the reader just pressed.
+         *
+         * The tabs are built from the unfiltered set, because the strip has to
+         * name every day the week holds even though only one of them renders.
+         */
+        $dates = $this->dateTabs($games);
+        $selected = SlateDates::focus($dates, $games, $this->date);
+
+        if ($selected !== null) {
+            $games = $games->filter(fn (Game $game) => SlateDates::key($game) === $selected);
+        }
+
         $teams = $this->pinnedTeams();
 
         if ($teams->isEmpty()) {
-            return ['pinned' => [], 'days' => $byDay($games)];
+            return ['pinned' => [], 'days' => $byDay($games), 'dates' => $dates, 'selected' => $selected];
         }
 
         $pinned = [];
@@ -198,7 +248,62 @@ new class extends Component
         return [
             'pinned' => $pinned,
             'days' => $byDay($games->reject(fn (Game $game) => isset($claimed[$game->id]))),
+            'dates' => $dates,
+            'selected' => $selected,
         ];
+    }
+
+    /**
+     * Is NOW inside the week the reader is looking at?
+     *
+     * Deliberately stricter than "the week the app would have opened on".
+     * `defaultWeekEntry()` falls back to the NEAREST week when we are between
+     * weeks or out of season, so in August it answers with a week that is a
+     * fortnight away — and a week we are not in is one a reader is planning or
+     * reviewing, not triaging. Filtering it would hide days from somebody who
+     * came to see the whole shape of a week.
+     *
+     * `week()` takes no argument on purpose: that path is cached AND memoized
+     * per request, where `week($at)` is neither and would add a query to every
+     * render, including every 30-second poll on a live Saturday.
+     *
+     * The bracket still comes from `defaultWeekEntry()`, because both halves
+     * of the postseason share one week id and `week()` cannot tell them apart.
+     */
+    private function isCurrentWeek(): bool
+    {
+        $calendar = app(CfbCalendar::class);
+        $current = $calendar->week();
+
+        if ($current === null || $current->id !== $this->week) {
+            return false;
+        }
+
+        return ($calendar->defaultWeekEntry($this->year())['bracket'] ?? '') === $this->bracket;
+    }
+
+    /**
+     * The strip of days this week's games actually land on — or none at all,
+     * which is the signal to render the whole week the way we always have.
+     *
+     * Empty in three cases, each deliberate: a week that is not the current
+     * one, a week whose games all fall on one day (a strip of one is not a
+     * choice), and a week spanning more days than a strip can hold at 390px.
+     *
+     * @param  Illuminate\Support\Collection<int, Game>  $games
+     * @return list<array{value: string, label: string}>
+     */
+    private function dateTabs($games): array
+    {
+        if (! $this->isCurrentWeek()) {
+            return [];
+        }
+
+        $index = SlateDates::index($games);
+
+        // A strip of one is not a choice, and a strip of twenty-one is bowl
+        // season, which no row can hold — both fall back to the whole week.
+        return count($index) >= 2 && count($index) <= SlateDates::MAX_TABS ? $index : [];
     }
 
     /**
@@ -234,6 +339,24 @@ new class extends Component
     public function pinned(): array
     {
         return $this->slate()['pinned'];
+    }
+
+    /**
+     * The day strip, or [] where this week does not get one.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    #[Computed]
+    public function dates(): array
+    {
+        return $this->slate()['dates'];
+    }
+
+    /** The day being shown, or null where the whole week is. */
+    #[Computed]
+    public function selectedDate(): ?string
+    {
+        return $this->slate()['selected'];
     }
 
     /**
@@ -428,6 +551,28 @@ new class extends Component
         </div>
 
         <x-week-scroller :weeks="$this->weeks" :selected="$week" :bracket="$bracket" :bleed="false" />
+
+        {{-- The day strip lives INSIDE the chrome rather than over the content,
+             and that placement is load-bearing. `--scores-chrome` is measured
+             from this block's height by the ResizeObserver above, so the day
+             headings below go on sticking to the bottom of the chrome with no
+             constant to keep in step. A strip that stuck on its own would land
+             at the same offset as the first pinned heading and the two would
+             sit on top of each other.
+
+             Only the current week gets one, and only when its games span
+             several days — see `dateTabs()`. --}}
+        @if ($this->dates !== [])
+            <x-gutter-tabs
+                variant="fill"
+                :items="$this->dates"
+                :selected="$this->selectedDate"
+                model="date"
+                label="Day"
+                key-prefix="scoreboard-date"
+                class="mb-3"
+            />
+        @endif
     </div>
 
     {{-- Short-polls our own cache, never ESPN, and only while a game is
@@ -436,7 +581,7 @@ new class extends Component
     <div
         @if ($this->hasLiveGames) wire:poll.30s.visible @endif
         wire:loading.class="opacity-60 pointer-events-none"
-        wire:target="week, scope, bracket"
+        wire:target="week, scope, bracket, date"
         class="flex flex-col gap-5 motion-safe:transition-opacity"
     >
         {{-- The viewer's teams first, in the order they set on Account. These
