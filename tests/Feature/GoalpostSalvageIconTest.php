@@ -14,8 +14,9 @@ use Illuminate\Support\Facades\Validator;
  * format is refused there with a Voice line — so the file the repository
  * ships is checked against that exact rule here, not against a copy of it.
  */
-$png = public_path('brand/groups/goalpost-salvage-co.png');
-$svg = public_path('brand/groups/goalpost-salvage-co.svg');
+// Closures, not values: Pest loads this file before the application boots.
+$png = fn (): string => public_path('brand/groups/goalpost-salvage-co.png');
+$svg = fn (): string => public_path('brand/groups/goalpost-salvage-co.svg');
 
 it('passes the group icon upload rule as shipped', function () use ($png) {
     /*
@@ -23,7 +24,7 @@ it('passes the group icon upload rule as shipped', function () use ($png) {
      * servable formats, ImageUpload::MAX_KB and the 64px floor. Passing a
      * copy of the rule would pin the copy.
      */
-    $file = new UploadedFile($png, 'goalpost-salvage-co.png', 'image/png', null, true);
+    $file = new UploadedFile($png(), 'goalpost-salvage-co.png', 'image/png', null, true);
 
     $validator = Validator::make(['iconFile' => $file], ['iconFile' => ImageUpload::rules()]);
 
@@ -37,11 +38,11 @@ it('is a 512px square under the upload cap', function () use ($png) {
      * on a 3x screen. The cap is the one number the browser and the server
      * both measure against.
      */
-    [$width, $height] = getimagesize($png);
+    [$width, $height] = getimagesize($png());
 
     expect($width)->toBe(512)
         ->and($height)->toBe(512)
-        ->and(File::size($png))->toBeLessThanOrEqual(ImageUpload::MAX_KB * 1024);
+        ->and(File::size($png()))->toBeLessThanOrEqual(ImageUpload::MAX_KB * 1024);
 });
 
 it('was rasterized from the SVG beside it', function () use ($png) {
@@ -52,7 +53,7 @@ it('was rasterized from the SVG beside it', function () use ($png) {
      * edges, carry the school's three colors and nothing off-palette —
      * Tennessee orange sky, Smokey water, white goalpost.
      */
-    $image = imagecreatefrompng($png);
+    $image = imagecreatefrompng($png());
     $at = fn (int $x, int $y): string => sprintf('%06X', imagecolorat($image, $x, $y));
 
     expect($at(16, 16))->toBe('FF8200')
@@ -71,7 +72,7 @@ it('keeps the source square and on the same three colors', function () use ($svg
      * fills the PNG was sampled for, on a square canvas — object-cover
      * would crop anything else.
      */
-    $source = File::get($svg);
+    $source = File::get($svg());
 
     expect($source)
         ->toContain('viewBox="0 0 100 100"')
