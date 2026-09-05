@@ -55,7 +55,20 @@
                 return;
             }
 
-            $wire.upload(this.property, file);
+            {{-- The fourth argument is the one that must never be dropped.
+                 `$wire.upload(name, file, finish, error, progress)` called
+                 without an error callback fails INVISIBLY: the picker goes
+                 quiet, the property is never set, the `updated...` hook
+                 never runs, and Livewire's own rejection escapes to the
+                 window as a bare object the reporter can only file as
+                 "[object Object]" with no stack. Knock instead, on the
+                 same error line the size gate uses. --}}
+            $wire.upload(
+                this.property,
+                file,
+                () => {},
+                () => $wire.call('reportRefusedUpload', this.property),
+            );
         },
     }"
     x-on:change="pick($event)"
