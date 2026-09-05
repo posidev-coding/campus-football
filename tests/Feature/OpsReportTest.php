@@ -229,7 +229,7 @@ describe('the derived pick-through rate', function () {
         $row = collect((new OpsReport)->checks())->firstWhere('key', 'pick_through');
 
         expect($row['status'])->toBe(OpsReport::WARN)
-            ->and($row['detail'])->toContain('25% of slate opens');
+            ->and($row['detail'])->toContain('25% of first-time slate opens');
     });
 
     it('counts today, which the nightly rollup has not persisted yet', function () {

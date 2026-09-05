@@ -139,12 +139,35 @@ new class extends Component
     }
 
     /**
-     * The funnel's "a member opened a slate they could pick" — the
-     * denominator that makes the first pick a rate rather than a count.
+     * The funnel's "a member who could pick, and had not yet, opened this
+     * slate" — the denominator that makes the first pick a rate rather than
+     * a count.
+     *
+     * THE ENTRY GUARD IS WHAT MAKES IT A RATE. `first_pick_made` fires once
+     * per (user, slate) FOR ALL TIME, on the entry row being new
+     * (App\Actions\MakePick). Counting every open against that put a
+     * per-day denominator over a per-lifetime numerator: a member who picked
+     * on Tuesday and reopened their sheet on Wednesday and Thursday added
+     * two more opens that no pick could ever answer, so the reported
+     * pick-through FELL as engagement rose — 48% on the week this was
+     * caught, a floor rather than a measurement. Skipping the member who
+     * already has an entry puts both counters on one population, and the
+     * difference between them is genuinely abandonment.
+     *
+     * RESIDUAL, on purpose: somebody who opens the slate on three days and
+     * never picks still counts three times, so the rate remains a floor. The
+     * exact figure would need a durable per-user marker, and this pipeline
+     * is aggregate-only by rule — the once-a-day dedupe key is the only
+     * place a user id appears at all, it is TTL'd in Redis and never
+     * persisted. A truer number is not worth persisting who read what.
+     *
+     * The per-day `handleOnce` stays and keeps doing its original job: this
+     * fires on MOUNT, and a `wire:navigate` hop re-mounts.
      *
      * Free: `$this->slate` is a memoized computed the slate view is about to
-     * render anyway, and the guard skips it entirely on the other tabs. Once
-     * per member per slate per day, because a navigate hop re-mounts.
+     * render anyway, the guard skips it entirely on the other tabs, and the
+     * entry check is one `exists()` on a table this screen has already
+     * scoped.
      */
     private function countSlateEntry(): void
     {
@@ -153,6 +176,15 @@ new class extends Component
         }
 
         if ($this->slate?->isPublished() !== true) {
+            return;
+        }
+
+        $hasEntered = SlateEntry::query()
+            ->where('slate_id', $this->slate->id)
+            ->where('user_id', auth()->id())
+            ->exists();
+
+        if ($hasEntered) {
             return;
         }
 

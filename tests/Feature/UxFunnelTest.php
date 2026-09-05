@@ -366,6 +366,54 @@ describe('the flows that emit', function () {
         expect(funnelCounts()['invite_opened'] ?? 0)->toBe(1);
     });
 
+    it('counts a slate entry only for a member who has not entered yet', function () {
+        /*
+         * THE DENOMINATOR AND THE NUMERATOR MUST COUNT ONE POPULATION.
+         * `first_pick_made` fires once per (user, slate) for all time, but
+         * the entry dedupe is only per DAY, so before the guard a member who
+         * picked on Saturday and reopened their sheet on Sunday added a
+         * second open that no pick could ever answer — the reported
+         * pick-through FELL as engagement rose, and a real week read 48%.
+         *
+         * The clock is travelled rather than the Redis keys touched, so the
+         * day-scoped dedupe is exercised exactly as it is written.
+         */
+        [$slate, $alice] = pickemContestants();
+        $group = $slate->contest->group;
+
+        $open = fn () => Livewire::actingAs($alice)
+            ->withQueryParams(['view' => 'slate'])
+            ->test('group', ['group' => $group]);
+
+        $open();
+
+        app(MakePick::class)->handle(
+            $alice,
+            $slate->games()->with('game')->first(),
+            $slate->games()->with('game')->first()->game->home_team_id,
+        );
+
+        // Sunday in Knoxville: a new funnel day, the same pick'em Saturday.
+        $this->travelTo('2026-09-06 18:00:00');
+
+        $open();
+
+        expect(funnelCounts('2026-09-05'))->toBe(['slate_entered' => 1, 'first_pick_made' => 1])
+            ->and(funnelCounts('2026-09-06'))->toBe([]);
+    });
+
+    it('still counts the member who opens a slate and never picks', function () {
+        // The abandonment the rate exists to find. An over-tight guard would
+        // collapse the denominator onto the numerator and report 100%.
+        [$slate, , $bob] = pickemContestants();
+
+        Livewire::actingAs($bob)
+            ->withQueryParams(['view' => 'slate'])
+            ->test('group', ['group' => $slate->contest->group]);
+
+        expect(funnelCounts())->toBe(['slate_entered' => 1]);
+    });
+
     it('counts only the FIRST pick on a slate', function () {
         // Keyed on the entry being new — the same fact the entry XP rides, so
         // changing picks all week counts once.
