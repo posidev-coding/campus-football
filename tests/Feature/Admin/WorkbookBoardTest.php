@@ -234,6 +234,49 @@ describe('moving a card', function () {
 
         expect($a->fresh()->status)->toBe(WorkbookStatus::Done);
     });
+
+    it('survives the stale-DOM fire its own guard was written for', function () {
+        /*
+         * The blade withholds `wire:sort:item` and `wire:sort:group-id` while
+         * the board is narrowed, and Sortable's newIndex can be absent — so a
+         * drop from a DOM that predates the filter arrives with nulls. PHP
+         * checks argument types before the body runs, so a non-nullable
+         * signature threw a TypeError at the declaration and the guard inside
+         * never got a chance. Nothing may be written, and nothing may throw.
+         */
+        [$a, $b, $c] = column(WorkbookStatus::Inbox);
+
+        Livewire::actingAs($this->admin)->test(Workbook::class)
+            ->call('move', null, null, null)
+            ->call('move', (string) $a->id, null, null)
+            ->call('move', (string) $a->id, 0, null)
+            ->call('move', null, 0, 'planned')
+            ->assertOk();
+
+        expect(WorkbookItem::query()->inColumn(WorkbookStatus::Inbox)->pluck('id')->all())
+            ->toBe([$a->id, $b->id, $c->id])
+            ->and(WorkbookItem::query()->inColumn(WorkbookStatus::Planned)->count())->toBe(0)
+            ->and(WorkbookEvent::query()->where('kind', WorkbookEvent::MOVED)->count())->toBe(0);
+    });
+
+    it('appends on a null index rather than landing at the top', function () {
+        /*
+         * The assertion that catches a `= 0` default. `MoveWorkbookItem` reads
+         * a null index as APPEND; zero is the TOP of the column, which would
+         * silently reverse a bulk move's order. Defaulting here would pass
+         * every other test in this block.
+         */
+        [$a] = column(WorkbookStatus::Inbox, 1);
+        [$x, $y] = column(WorkbookStatus::Planned, 2);
+
+        Livewire::actingAs($this->admin)->test(Workbook::class)
+            ->call('move', (string) $a->id, null, 'planned')
+            ->assertOk();
+
+        expect(WorkbookItem::query()->inColumn(WorkbookStatus::Planned)->pluck('id')->all())
+            ->toBe([$x->id, $y->id, $a->id])
+            ->and($a->fresh()->position)->toBe(3);
+    });
 });
 
 describe('the table', function () {
