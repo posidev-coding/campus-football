@@ -954,16 +954,21 @@ describe('the advisor ledger', function () {
 describe('the schedule report', function () {
     it('leaves no command that writes a feed run marked untracked', function () {
         /*
-         * A grey "untracked" row means "this writes no ledger entry", which is
-         * a real and useful state — model:prune and the news fan-out are
-         * genuinely untracked. A command that DOES write one and is missing a
-         * ledgerKey() case renders the same grey and the row simply lies.
+         * A grey "untracked" row means "this writes no ledger entry", and a
+         * command that DOES write one but is missing a ledgerKey() case
+         * renders the same grey — the row simply lies.
          *
-         * The three pick'em sweeps sat on this list for as long as they called
-         * no trackRun, which was honest and still blind: a quiet hour and a
-         * dead worker rendered the same grey through the whole regular season.
-         * They each carry one now, so the news fan-out is what is left — and
-         * that one really does write nothing.
+         * The list is EMPTY now, which is the end of a two-step. The three
+         * pick'em sweeps sat here for as long as they called no trackRun,
+         * honest and still blind: a quiet hour and a dead worker rendered the
+         * same grey through a whole regular season. The followed-team news
+         * sweep was the last one left, and it was untracked for a structural
+         * reason rather than a forgotten call — it was two `Schedule::call()`
+         * closures, and a closure can carry no trait and match no artisan
+         * allowlist. It is `cfb:news:followed` now.
+         *
+         * `model:prune` is deliberately outside the report altogether rather
+         * than untracked inside it; see SyncSchedule::REPORTED.
          */
         $untracked = collect(app(SyncSchedule::class)->tasks())
             ->where('tracked', null)
@@ -972,10 +977,7 @@ describe('the schedule report', function () {
             ->values()
             ->all();
 
-        expect($untracked)->toBe([
-            'cfb:news:followed',
-            'cfb:news:followed:offseason',
-        ]);
+        expect($untracked)->toBe([]);
     });
 
     it('reports all four pickem sweeps, which the cfb prefix used to drop', function () {

@@ -159,6 +159,10 @@ class SyncSchedule
             str_starts_with($command, 'cfb:players') => 'players:'.($option('only') ?? 'all'),
             str_starts_with($command, 'cfb:coaches') => 'coaches',
             str_starts_with($command, 'cfb:aggregate') => 'aggregate',
+            // Above `cfb:newsletter` for the same reason `cfb:summaries:live`
+            // sits above `cfb:summaries`: the arms are prefix matches read in
+            // order, and a news key must never be answered by a mail one.
+            str_starts_with($command, 'cfb:news:followed') => 'news:followed',
             str_starts_with($command, 'cfb:newsletter') => 'newsletter',
             str_starts_with($command, 'cfb:verification-reminders') => 'verification-reminders',
             // Both of these DO write feed runs and were rendering as
