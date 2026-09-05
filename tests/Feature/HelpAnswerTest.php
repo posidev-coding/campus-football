@@ -48,12 +48,26 @@ function askHelp(string $question = 'When do my picks lock?', ?User $user = null
     return app(HelpAnswer::class)->for($question, $user ?? test()->reader);
 }
 
+/**
+ * Nobody signed in, which `askHelp()` cannot express: its `?? test()->reader`
+ * reads a null user as "you did not pass one" and hands over the signed-in
+ * reader, so a nullable parameter can mean the default or the guest but never
+ * both. The guest is the cheapest of the spend gates and needs its own door.
+ */
+function askHelpAsGuest(string $question = 'When do my picks lock?'): array
+{
+    return app(HelpAnswer::class)->for($question, null);
+}
+
 describe('the calls it never makes', function () {
     it('never prompts for a guest', function () {
+        // Both halves or neither: a guest has to come back with no answer AND
+        // no call behind it. Reading is never gated, but an answer is a bill
+        // an anonymous session cannot be capped against.
         HelpQuestion::fake([helpIntent()]);
 
         expect(HelpAnswer::available(null))->toBeFalse()
-            ->and(askHelp(user: null)[0])->toBeNull();
+            ->and(askHelpAsGuest()[0])->toBeNull();
 
         HelpQuestion::assertNeverPrompted();
     });
@@ -201,7 +215,13 @@ describe('what it refuses', function () {
         HelpQuestion::fake([helpIntent()]);
 
         expect(askHelp()[0])->not->toBeNull();
-        HelpQuestion::assertPromptedTimes(1);
+
+        // TWO, and the second prompt IS the assertion: the same question asked
+        // again had to reach the model, which it can only do if the failure
+        // was never written to the cache. One would mean a blip pinned "we
+        // cannot answer this" for a day. The fake's counter carries across the
+        // re-fake above, so this is the total of both asks.
+        HelpQuestion::assertPromptedTimes(2);
     });
 });
 
