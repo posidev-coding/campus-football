@@ -91,6 +91,24 @@ class Slate extends Model
     }
 
     /**
+     * Has this slate started being played?
+     *
+     * True from the FIRST kickoff, not the last. A public room closes on
+     * this: every seat in a room exists to pick, and once one game is
+     * locked a walk-on is buying into a card they can no longer fill —
+     * they start behind by whatever that game was worth, and they can see
+     * how it is going while choosing the rest.
+     *
+     * Reads off the loaded relation, like {@see firstKickoff()}, so it
+     * costs nothing where the games are already in hand. A slate with no
+     * games has not started: there is nothing to have kicked.
+     */
+    public function isUnderway(): bool
+    {
+        return $this->games->contains(fn (SlateGame $slateGame) => $slateGame->game?->hasKickedOff() ?? false);
+    }
+
+    /**
      * The next kickoff that has NOT happened yet — when the picks a reader
      * still owes begin to lock.
      *

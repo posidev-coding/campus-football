@@ -5,9 +5,11 @@ use App\Actions\SpawnPublicContest;
 use App\Enums\ContestMode;
 use App\Enums\LobbyFlavor;
 use App\Enums\LobbyShelf;
+use App\Models\Game;
 use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Slate;
+use App\Models\SlateGame;
 use App\Models\User;
 use App\Support\Lobby;
 use App\Support\LobbyCatalog;
@@ -82,6 +84,37 @@ it('counts exactly the transient rooms it would sell', function () {
         // The parity that matters: the teaser's number IS the transient
         // half of the list it opens.
         ->and(Lobby::openRoomCount($viewer))->toBe($joinable->filter(fn (Group $g) => $g->isRoom())->count());
+});
+
+it('drops a room whose card has started from BOTH the list and the count', function () {
+    /*
+     * A room closes at the FIRST kickoff. This is its own case rather than an
+     * arm of the parity test above because rooms in one week draw from a
+     * shared pool of games — kicking a game to close one room closes every
+     * other room that happens to hold it too, which would prove nothing about
+     * the room under test.
+     *
+     * Both reads are asserted: openRooms() applies the condition in PHP and
+     * openRoomCount() in SQL, and a teaser counting a room the list will not
+     * show is the exact drift this file exists to catch.
+     */
+    [, $week] = lobbyRoomsWeek();
+    $viewer = pickemAdmin();
+
+    $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+    expect(Lobby::joinable($viewer)->pluck('id')->all())->toContain($room->id)
+        ->and(Lobby::openRoomCount($viewer))->toBe(1);
+
+    $opener = SlateGame::query()
+        ->whereIn('slate_id', Slate::query()->whereHas('contest', fn ($q) => $q->where('group_id', $room->id))->pluck('id'))
+        ->orderBy('position')
+        ->first();
+
+    Game::query()->whereKey($opener->game_id)->update(['kickoff_at' => now()->subMinute()]);
+
+    expect(Lobby::joinable($viewer)->pluck('id')->all())->not->toContain($room->id)
+        ->and(Lobby::openRoomCount($viewer))->toBe(0);
 });
 
 it('lists a seated room, flagged, so a seat never reads as a closed shelf', function () {

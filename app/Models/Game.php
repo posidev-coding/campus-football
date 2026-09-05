@@ -284,6 +284,23 @@ class Game extends Model
     }
 
     /**
+     * {@see hasKickedOff()} as SQL — the same clock-or-feed lock, for the
+     * questions that have to be asked of a whole table rather than of a
+     * model already in hand.
+     *
+     * Kept beside the PHP form deliberately: the two must say the same
+     * thing, and a lock that disagrees with itself between a list and the
+     * action behind it is a room that offers a seat and then refuses it.
+     */
+    public function scopeKickedOff(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q
+            ->where('completed', true)
+            ->orWhere('kickoff_at', '<=', now())
+            ->orWhereIn('status', self::LIVE_STATUSES));
+    }
+
+    /**
      * Games the CLOCK says should be live, whatever the feed last told us.
      *
      * The live tier used to guard on {@see scopeInProgress()} alone, which can

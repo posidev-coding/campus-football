@@ -11,6 +11,7 @@ use App\Models\Slate;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Cadence;
+use App\Support\Lobby;
 use App\Support\LobbyCatalog;
 use Carbon\CarbonInterface;
 use Illuminate\Console\Command;
@@ -122,6 +123,19 @@ class OpenLobbiesCommand extends Command
         return self::SUCCESS;
     }
 
+    /**
+     * Is this catalog entry already STOCKED — deliberately a different
+     * question from {@see Lobby::openRooms()}, which asks
+     * whether a seat is still for SALE.
+     *
+     * The two parted company when rooms began closing at the first kickoff.
+     * A room whose card has started is no longer sellable, but it is still
+     * the room this Saturday provisioned, and it must keep answering true
+     * here. Teach this method the under-way condition and the sweep decides
+     * the shelf is bare every hour of every Saturday afternoon, clones the
+     * started slate through publishedSibling(), and opens a replacement room
+     * that is closed the moment it exists — once an hour, per catalog entry.
+     */
     private function hasOpenRoom(ContestMode $mode, Week $week, CarbonInterface $saturday, ?LobbyFlavor $flavor): bool
     {
         return Group::query()

@@ -57,7 +57,11 @@ class Lobby
             ->with(['memberships' => fn ($q) => $q->where('user_id', $viewer?->id ?? 0)])
             ->with(['contests.slates' => fn ($q) => $q
                 ->select('id', 'contest_id', 'week_id', 'status', 'saturday')
-                ->withCount('games')])
+                ->withCount('games')
+                // The kickoffs too, because "open" now means the card has not
+                // started — see the filter below. Bounded by the catalog, so
+                // this is a handful of rooms, not a table scan.
+                ->with('games.game:id,kickoff_at,status,completed')])
             ->get()
             ->filter(function (Group $group) use ($target) {
                 if (! $group->isRoom()) {
@@ -68,12 +72,15 @@ class Lobby
                     return false;
                 }
 
-                // Open means PICKABLE: this Saturday's slate is out and
-                // not yet settled away.
+                // Open means PICKABLE: this Saturday's slate is out, has not
+                // started, and is not yet settled away. Underway is part of
+                // the READ and not just of JoinGroup's guard, or the lobby
+                // offers a seat the action is bound to refuse.
                 return $group->contests->first()
                     ?->slates->contains(fn ($slate) => $slate->week_id === $group->week_id
                         && $slate->status === Slate::PUBLISHED
-                        && ($target === null || $slate->saturday?->toDateString() === $target)) ?? false;
+                        && ($target === null || $slate->saturday?->toDateString() === $target)
+                        && ! $slate->isUnderway()) ?? false;
             })
             // Catalog order, not alphabetical — the standard rooms lead,
             // the specialty shelf follows, and the viewer's own conference
@@ -137,7 +144,12 @@ class Lobby
             ->whereHas('contests.slates', fn ($q) => $q
                 ->where('slates.week_id', $weekId)
                 ->where('slates.status', Slate::PUBLISHED)
-                ->where('slates.saturday', $target))
+                ->where('slates.saturday', $target)
+                // The same "not started" condition openRooms() applies in PHP,
+                // as SQL — this method exists to be the LIST's count without
+                // paying for the graph, so a condition on one and not the
+                // other is a teaser that lies about the door it opens.
+                ->whereDoesntHave('games.game', fn ($game) => $game->kickedOff()))
             ->count();
     }
 
