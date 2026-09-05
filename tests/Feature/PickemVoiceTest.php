@@ -130,6 +130,9 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'leaderboard.empty',
     'notify.mode_changed.body',
     'groups.invite.share_text',
+    'groups.invite.direct.hint',
+    'groups.invite.direct.empty',
+    'groups.invite.direct.sent',
     // The upload that did not land — the storage side's refusal, said
     // on the icon's and the photo's own error lines instead of a 500.
     'groups.icon.failed',
@@ -170,6 +173,8 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'notify.results.won.shared',
     'notify.results.lost.body',
     'notify.results.missed.body',
+    'notify.invite.body',
+    'notify.invite.body.anon',
     'notify.results.exhibition',
     'notify.results.nemesis',
     'notify.results.nemesis.won',
@@ -192,6 +197,8 @@ it('leaves no stray token in the weekly loop\'s copy', function () {
         'when' => 'noon', 'week' => 'Week 1', 'points' => '14', 'xp' => '100',
         'place' => '3rd', 'field' => '9', 'winner' => 'dave', 'others' => 'dave',
         'rival' => 'dave', 'margin' => '4', 'mode' => 'Shotgun',
+        // The direct invite credits its sender by handle.
+        'inviter' => '@dave',
     ];
 
     foreach ($lines as $key => $variants) {
