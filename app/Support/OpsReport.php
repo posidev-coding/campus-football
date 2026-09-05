@@ -227,11 +227,21 @@ class OpsReport
     }
 
     /**
-     * How many people who opened a slate actually picked.
+     * How many people who opened a slate for the first time actually picked.
      *
      * "Abandoned with zero picks" is DERIVED here rather than counted as its
      * own signal — a third counter for a difference is a third counter that
      * can disagree with the other two.
+     *
+     * A DIVISION IS ONLY A RATE WHEN BOTH SIDES COUNT ONE POPULATION.
+     * `first_pick_made` fires once per (user, slate) for all time, so
+     * `slate_entered` skips a member who already has an entry — otherwise
+     * every reopen of a sheet somebody already filled in grew the
+     * denominator against a numerator that could never answer it, and the
+     * reported rate fell as engagement rose. Read the number as a FLOOR
+     * either way: a member who opens on three days and never picks still
+     * counts three times, which this pipeline cannot close without
+     * persisting who read what.
      */
     private function pickThrough(): array
     {
@@ -245,7 +255,7 @@ class OpsReport
                 self::OK,
                 $entered === 0
                     ? 'No slates opened yet'
-                    : "Only {$entered} slate opens — too few to read a rate from",
+                    : "Only {$entered} first-time slate opens — too few to read a rate from",
                 null,
             );
         }
@@ -257,9 +267,9 @@ class OpsReport
             'pick_through',
             'Pick-through · 7d',
             $abandoned > self::ABANDON_WARN ? self::WARN : self::OK,
-            "{$rate}% of slate opens became a pick ({$picked} of {$entered})",
+            "{$rate}% of first-time slate opens became a pick ({$picked} of {$entered})",
             $abandoned > self::ABANDON_WARN
-                ? 'More than half open a slate and leave. Walk the pick surface at 390px.'
+                ? 'More than half open a slate for the first time and leave without picking. Walk the pick surface at 390px.'
                 : null,
         );
     }

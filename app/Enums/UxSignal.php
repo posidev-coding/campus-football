@@ -78,7 +78,18 @@ enum UxSignal: string
     /** Somebody opened a /join/{CODE} link. The top of the acquisition funnel. */
     case InviteOpened = 'invite_opened';
 
-    /** A member loaded a published slate they were eligible to pick. */
+    /**
+     * A member loaded a published slate they were eligible to pick and had
+     * NOT yet entered. The "had not yet" is the contract: this is the
+     * denominator FirstPickMade is read against, and that one fires once per
+     * (user, slate) for all time, so counting every reopen put a per-day
+     * denominator over a per-lifetime numerator and made the reported rate
+     * fall as engagement rose. Both sides count the same population now.
+     *
+     * Still a floor rather than an exact rate: somebody who opens on three
+     * days and never picks counts three times, because closing that gap
+     * needs a durable per-user marker and this pipeline has none by rule.
+     */
     case SlateEntered = 'slate_entered';
 
     /** A member's FIRST pick on a slate — the moment they are really playing. */
