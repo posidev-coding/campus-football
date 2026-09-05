@@ -138,6 +138,7 @@ class LobbyCatalog
                     ?->games_count,
                 'seats' => (int) $room->memberships_count,
                 'seated' => Lobby::seated($room),
+                'locked' => Lobby::started($room),
             ];
         }
 

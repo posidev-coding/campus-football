@@ -112,7 +112,9 @@ new class extends Component
     #[Computed]
     public function publics()
     {
-        return $this->openRooms->reject(fn (Group $room) => Lobby::seated($room))->values();
+        return $this->openRooms
+            ->reject(fn (Group $room) => Lobby::seated($room) || Lobby::started($room))
+            ->values();
     }
 
     /**
@@ -257,8 +259,16 @@ new class extends Component
     #[Computed]
     public function firstKick(): ?CarbonInterface
     {
+        /*
+         * SELLABLE rooms only. `openRooms` now carries started rooms so the
+         * shelf can render them locked, but their later kickoffs are not a
+         * countdown to anything a reader can act on — and the clock says "to
+         * first kick", which a card already being scored has had. Left in, a
+         * Saturday afternoon read "1:25 to first kick" directly above eleven
+         * rows saying "Scoring started".
+         */
         $slateIds = $this->openRooms
-            ->filter(fn (Group $room) => $room->isRoom())
+            ->filter(fn (Group $room) => $room->isRoom() && ! Lobby::started($room))
             ->map(fn (Group $room) => $room->contests->first()?->slates
                 ->first(fn (Slate $slate) => $slate->week_id === $room->week_id
                     && $slate->status === Slate::PUBLISHED)
@@ -473,6 +483,7 @@ new class extends Component
                         :game-count="$entry['gameCount']"
                         :seats="$entry['seats']"
                         :seated="$entry['seated']"
+                        :locked="$entry['locked']"
                         :pitch="$entry['room']->flavorEnum()?->blurb($entry['gameCount']) ?? $entry['mode']->blurb($entry['gameCount'])"
                     />
                 @endforeach

@@ -72,15 +72,16 @@ class Lobby
                     return false;
                 }
 
-                // Open means PICKABLE: this Saturday's slate is out, has not
-                // started, and is not yet settled away. Underway is part of
-                // the READ and not just of JoinGroup's guard, or the lobby
-                // offers a seat the action is bound to refuse.
+                // Open means this Saturday's slate is out and not yet settled
+                // away. A room whose card has STARTED stays in this list —
+                // flagged by started() and rendered locked, the same way a
+                // seat the viewer already holds is flagged rather than
+                // dropped. The lobby has to be able to say "that one is
+                // playing", which it cannot do about a room it never sees.
                 return $group->contests->first()
                     ?->slates->contains(fn ($slate) => $slate->week_id === $group->week_id
                         && $slate->status === Slate::PUBLISHED
-                        && ($target === null || $slate->saturday?->toDateString() === $target)
-                        && ! $slate->isUnderway()) ?? false;
+                        && ($target === null || $slate->saturday?->toDateString() === $target)) ?? false;
             })
             // Catalog order, not alphabetical — the standard rooms lead,
             // the specialty shelf follows, and the viewer's own conference
@@ -99,7 +100,7 @@ class Lobby
     public static function joinable(?User $viewer): Collection
     {
         return self::openRooms($viewer)
-            ->reject(fn (Group $group) => self::seated($group))
+            ->reject(fn (Group $group) => self::seated($group) || self::started($group))
             ->values();
     }
 
@@ -107,6 +108,31 @@ class Lobby
     public static function seated(Group $room): bool
     {
         return $room->relationLoaded('memberships') && $room->memberships->isNotEmpty();
+    }
+
+    /**
+     * Whether this room's card has begun — LOCKED, not gone.
+     *
+     * The second of the two flags `openRooms()` carries rather than filters
+     * on. A started room is still merchandise the shelf must describe: the
+     * reader can open it, read the slate and see who is playing, and the row
+     * says why the door is shut instead of the room silently vanishing
+     * mid-afternoon.
+     *
+     * Reads the eager-loaded graph, so it costs nothing per row. A room with
+     * no published slate for the target Saturday has not started — it never
+     * had a card to start.
+     */
+    public static function started(Group $room): bool
+    {
+        if (! $room->isRoom() || ! $room->relationLoaded('contests')) {
+            return false;
+        }
+
+        return $room->contests->first()
+            ?->slates->contains(fn (Slate $slate) => $slate->week_id === $room->week_id
+                && $slate->status === Slate::PUBLISHED
+                && $slate->isUnderway()) ?? false;
     }
 
     /**

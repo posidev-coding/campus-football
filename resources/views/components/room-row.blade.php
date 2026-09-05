@@ -46,6 +46,13 @@
     'seats' => 0,
     /** Whether the VIEWER already holds a seat here — the row's door changes. */
     'seated' => false,
+    /**
+     * Whether this room's card has KICKED. The row still reads in full — the
+     * name, the pitch, the seats, and a tap through to the slate — because a
+     * reader deciding where to play is served by seeing what is already
+     * running. Only the door changes.
+     */
+    'locked' => false,
     /** The HOST's join method, so the row can ride any screen that seats people. */
     'action' => 'joinLobby',
     /**
@@ -70,10 +77,11 @@
      * How many seats are actually left. Null cap means an uncapped room —
      * no number to count down, so no urgency to claim. The signal is for
      * somebody who could still take one, so a reader already seated never
-     * sees it.
+     * sees it — and neither does one looking at a room whose card has
+     * kicked, where two seats left is not scarcity, it is furniture.
      */
     $left = $room->member_cap === null ? null : max(0, $room->member_cap - $seats);
-    $scarce = $left !== null && $left <= 2 && ! $seated;
+    $scarce = $left !== null && $left <= 2 && ! $seated && ! $locked;
 @endphp
 
 <div {{ $attributes->class(['relative flex items-center gap-3 rounded-xl border border-zinc-200 px-3 py-2.5 transition-colors hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600']) }}>
@@ -81,7 +89,7 @@
         href="{{ route('pickem.room', $room) }}"
         wire:navigate
         class="absolute inset-0 z-0 rounded-xl"
-        aria-label="{{ $room->name }} — {{ $mode->label() }}{{ $seated ? ' — view your picks' : '' }}"
+        aria-label="{{ $room->name }} — {{ $mode->label() }}{{ $seated ? ' — view your picks' : ($locked ? ' — kicked off' : '') }}"
     ></a>
 
     @if ($room->conferenceLogoUrl() !== null)
@@ -116,6 +124,24 @@
         <span class="pointer-events-none relative z-10 flex shrink-0 items-center gap-0.5 text-sm font-medium text-zinc-500 dark:text-zinc-400">
             View picks
             <flux:icon name="chevron-right" variant="micro" class="size-4" />
+        </span>
+    {{-- THE BALL IS IN THE AIR, so the seat is gone but the room is not.
+         The same flat cue the seated row uses, for the same reason: a
+         disabled Join is a control that looks like it might work, and a row
+         that simply vanished mid-afternoon reads as a bug rather than as a
+         contest under way. The stretched anchor still carries the tap
+         through to the slate.
+
+         "Kicked off" is the game's own word for the thing that shut this
+         door, and it is the word the code uses too — Game::hasKickedOff(),
+         Slate::firstKickoff(), and the clock above this shelf counting down
+         "to first kick". One vocabulary from the guard to the label. It says
+         the same words in every register, like the price: a door is an
+         affordance, and the shelf's Voice line above carries the slang. --}}
+    @elseif ($locked)
+        <span class="pointer-events-none relative z-10 flex shrink-0 items-center gap-1 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+            <flux:icon name="lock-closed" variant="micro" class="size-4" />
+            Kicked off
         </span>
     @else
         <flux:button
