@@ -1,5 +1,5 @@
 @props([
-    /** none | idle | offer | capped | answered | missed — AsksQuestions::askState(). */
+    /** none | idle | offer | capped | answered | missed | unavailable — AsksQuestions::askState(). */
     'state' => 'none',
     /** array{kind:string,...}|null — a resolved answer, never a model's prose. */
     'answer' => null,
@@ -71,8 +71,18 @@
         <flux:callout.text>{{ App\Support\Voice::line('search.ask.capped') }}</flux:callout.text>
     </flux:callout>
 @elseif ($state === 'missed')
+    {{-- A DATA miss: we understood it and hold no such number. An honest
+         answer, and the icon stays the feature's own. --}}
     <flux:callout icon="sparkles">
         <flux:callout.text>{{ App\Support\Voice::line('search.ask.none') }}</flux:callout.text>
+    </flux:callout>
+@elseif ($state === 'unavailable')
+    {{-- An OPERATIONAL miss, and deliberately a different sentence and a
+         different icon: the reader's question was fine and rewording it will
+         not help. Every cause used to arrive here as "couldn't answer that
+         one", which read as the feature not working — because it was not. --}}
+    <flux:callout icon="exclamation-triangle" variant="warning">
+        <flux:callout.text>{{ App\Support\Voice::line('search.ask.unavailable') }}</flux:callout.text>
     </flux:callout>
 @elseif ($state === 'idle' && $examples)
     {{-- THE DISCOVERY SURFACE. Everything else here waits for somebody to
