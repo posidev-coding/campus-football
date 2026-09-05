@@ -36,11 +36,11 @@ it('is a square 512px raster of the mark, in the colors the source declares', fu
     /*
      * A rasterizer handed an SVG it could not parse writes a perfectly valid
      * PNG of nothing, and every other check here passes it. One pixel per
-     * color — ground, a cream letter stroke, a lager foot — at the points
-     * the source puts them, plus the horizon gap, which is ground again and
-     * proves the split is there. The set of colors found must be the set of
-     * fills the source declares, so a recolor that forgets to regenerate the
-     * PNG reds too.
+     * region — the ground outside the shield, the chief, the cream field,
+     * two letter strokes and the gap between the letters — at the points
+     * the source puts them. The set of colors found must be the set of fills
+     * the source declares, so a recolor that forgets to regenerate the PNG
+     * reds too.
      */
     [$width, $height, $type] = getimagesize($png);
 
@@ -52,12 +52,12 @@ it('is a square 512px raster of the mark, in the colors the source declares', fu
 
     $at = fn (int $x, int $y): string => sprintf('#%06X', imagecolorat($image, $x, $y) & 0xFFFFFF);
 
-    expect($at(16, 16))->toBe('#0F1A2E', 'ground')
-        ->and($at(151, 148))->toBe('#F5F2EA', 'the T bar')
-        ->and($at(353, 251))->toBe('#F5F2EA', 'the H crossbar')
-        ->and($at(151, 351))->toBe('#E8A33C', 'the T foot')
-        ->and($at(412, 351))->toBe('#E8A33C', 'the H foot')
-        ->and($at(151, 305))->toBe('#0F1A2E', 'the horizon gap');
+    expect($at(16, 16))->toBe('#0F1A2E', 'ground outside the shield')
+        ->and($at(256, 112))->toBe('#E8A33C', 'the chief')
+        ->and($at(256, 400))->toBe('#F5F2EA', 'the field below the letters')
+        ->and($at(197, 300))->toBe('#0F1A2E', 'the T stem')
+        ->and($at(322, 270))->toBe('#0F1A2E', 'the H crossbar')
+        ->and($at(240, 300))->toBe('#F5F2EA', 'the gap between T and H');
 
     preg_match_all('/fill="(#[0-9A-F]{6})"/', File::get($svg), $fills);
 
