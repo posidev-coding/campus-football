@@ -87,3 +87,12 @@ MySQL's affected-row count is rows CHANGED, not rows matched. So the shape `upda
 Keep the atomicity in the WHERE clause — that is what serializes concurrent writers — but decide the outcome by re-reading the winner: `->value('claimed_by') === $by`. The winner and the renewing holder both see themselves; a loser whose WHERE no longer matched sees the holder.
 
 Pick'em settlement's `whereNull('settled_at')` claim is unaffected: it flips null to a timestamp, so a re-run always changes the row.
+
+## A null cannot be cached through Laravel's cache facade, so a null failure path is uncacheable by construction
+`Cache::remember` treats a cached null as a MISS and re-runs the callback, and `Cache::get` collapses a stored null into a miss at the repository layer before any sentinel you add can see it. So for a callback that returns null on failure, `Remember::filled` and `Cache::remember` are behaviorally identical, and "we never cache a failure" is free rather than earned.
+
+Two consequences. First, a test that proves that guarantee by swapping `Remember::filled` for `Cache::remember` CANNOT red — it passes for the wrong reason. Break it where the guarantee actually lives: make the failure path return a cacheable negative ANSWER instead of null, and confirm the second ask serves the stale refusal.
+
+Second, `Remember::filled` is still the right call, but for the neighbouring reason — it guards an EMPTY LIST, which caches perfectly well and once served a stats screen with no season options for an hour. Do not read `HelpAnswer.php`'s "never Cache::remember, a failed call returns null" comment as the whole story.
+
+Found 2026-09-05 on CFB-58, where two prescribed break-backs both passed green.
