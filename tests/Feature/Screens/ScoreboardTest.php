@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Support\Scope;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -832,5 +833,162 @@ describe('the split opening week', function () {
             ->call('selectWeek', $this->openingWeek->id, '')
             ->assertSee('Vanderbilt')
             ->assertDontSee('Georgia');
+    });
+});
+
+/** A pinned Eastern kickoff on the fixture's Saturday. */
+function scoreboardKick(string $time, string $date = '2025-09-27'): CarbonImmutable
+{
+    return CarbonImmutable::parse($date.' '.$time, config('cfb.timezone'));
+}
+
+/**
+ * A home team with a unique place name, its FBS membership, and its game in
+ * one pinned state. Every column an ORDER assertion reads is set here.
+ */
+function scoreboardGame(int $id, string $place, string $time, array $state, string $date = '2025-09-27'): Game
+{
+    Team::factory()->create([
+        'id' => $id, 'location' => $place, 'display_name' => $place.' Club',
+        'short_display_name' => $place, 'abbreviation' => mb_strtoupper(mb_substr($place, 0, 3)),
+        'color' => '123456', 'alt_color' => '654321',
+    ]);
+
+    TeamSeason::create([
+        'team_id' => $id, 'season_year' => 2025,
+        'conference_id' => 8, 'classification' => 'FBS',
+    ]);
+
+    return Game::factory()->create([
+        'season_id' => test()->season->id,
+        'week_id' => test()->week->id,
+        'home_team_id' => $id,
+        'away_team_id' => 900,
+        'kickoff_at' => scoreboardKick($time, $date),
+    ] + $state);
+}
+
+describe('live games float above finals', function () {
+    /*
+     * Every column these tests read is pinned. `GameFactory` defaults
+     * `kickoff_at` to a random four-month window and `TeamFactory` mints a
+     * random `alt_color` and an `abbreviation` derived from a faker city —
+     * an unpinned fixture on an ORDER assertion is a coin flip.
+     *
+     * Kickoffs are written in Eastern, which is the timezone the day heading
+     * is formatted in. The 20:00 game is 00:00 UTC Sunday on purpose: it is
+     * still Saturday night to everyone watching, and it proves the day
+     * grouping survived the stratification.
+     */
+    beforeEach(function () {
+        // 16:30 ET on that Saturday: the noon window is over, the afternoon
+        // window is running, the night games have not kicked. Every state in
+        // the fixtures below is the state it would really be in.
+        $this->travelTo(scoreboardKick('16:30'));
+
+        $this->opponent = Team::factory()->create([
+            'id' => 900, 'location' => 'Visitorton', 'display_name' => 'Visitorton Guests',
+            'short_display_name' => 'Visitorton', 'abbreviation' => 'VIS',
+            'color' => '123456', 'alt_color' => '654321',
+        ]);
+
+        TeamSeason::create([
+            'team_id' => 900, 'season_year' => 2025,
+            'conference_id' => 8, 'classification' => 'FBS',
+        ]);
+
+        $this->live = ['status' => 'in', 'completed' => false];
+        $this->halftime = ['status' => 'halftime', 'completed' => false];
+        $this->upcoming = ['status' => 'pre', 'completed' => false];
+        $this->final = ['status' => 'post', 'completed' => true, 'home_score' => 31, 'away_score' => 17];
+    });
+
+    it('orders one day live, then upcoming, then final', function () {
+        // Created in kickoff order, which is the order the old query gave and
+        // therefore the order this must NOT come back in.
+        scoreboardGame(901, 'Earlyfinal', '11:00', $this->final);
+        scoreboardGame(902, 'Noonfinal', '12:00', $this->final);
+        scoreboardGame(903, 'Afternoonlive', '15:30', $this->live);
+        scoreboardGame(904, 'Latelive', '16:00', $this->halftime);
+        scoreboardGame(905, 'Nightgame', '19:00', $this->upcoming);
+        scoreboardGame(906, 'Lategame', '20:00', $this->upcoming);
+
+        Cache::forget('scoreboard:has-live');
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->week->id)
+            // Live first, then what has not kicked, and the settled half
+            // last. Kickoff still decides inside each band — 15:30 before
+            // 16:00, 19:00 before 20:00, 11:00 before 12:00 — so this is the
+            // old ordering stratified, not replaced.
+            ->assertSeeInOrder([
+                'Afternoonlive',
+                'Latelive',
+                'Nightgame',
+                'Lategame',
+                'Earlyfinal',
+                'Noonfinal',
+            ]);
+    });
+
+    it('counts halftime and end of period as live, not as a kickoff still to come', function () {
+        scoreboardGame(901, 'Earlyfinal', '11:00', $this->final);
+        scoreboardGame(904, 'Latelive', '16:00', ['status' => 'end-period', 'completed' => false]);
+        scoreboardGame(905, 'Nightgame', '19:00', $this->upcoming);
+
+        Cache::forget('scoreboard:has-live');
+
+        // A game between quarters is a game somebody is watching. Ranking it
+        // with the kickoffs would drop it below the night games for the
+        // length of a commercial break.
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->week->id)
+            ->assertSeeInOrder(['Latelive', 'Nightgame', 'Earlyfinal']);
+    });
+
+    it('stratifies inside each day heading, never across the week', function () {
+        // The day headings are the screen's structure. Saturday's live game
+        // floats over Saturday's final and NOT over Thursday's heading —
+        // stratifying across the whole week would strand it under the wrong
+        // date, which is the same mistake as losing the date off a pinned
+        // followed-team group.
+        scoreboardGame(901, 'Thursfinal', '19:00', $this->final, '2025-09-25');
+        scoreboardGame(902, 'Earlyfinal', '11:00', $this->final);
+        scoreboardGame(903, 'Afternoonlive', '15:30', $this->live);
+
+        Cache::forget('scoreboard:has-live');
+
+        Livewire::test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->week->id)
+            ->assertSeeInOrder([
+                'Thursday, Sep 25',
+                'Thursfinal',
+                'Saturday, Sep 27',
+                'Afternoonlive',
+                'Earlyfinal',
+            ]);
+    });
+
+    it('stratifies a followed team block the same way', function () {
+        // The pinned block runs through the same closure, so a followed
+        // team's live game floats inside their own block for the same reason
+        // it does in the day groups. 900 is the away side of every game in
+        // this fixture, so following them pins both.
+        scoreboardGame(901, 'Earlyfinal', '11:00', $this->final);
+        scoreboardGame(903, 'Afternoonlive', '15:30', $this->live);
+
+        Queue::fake();
+        $user = User::factory()->create();
+        app(FollowTeam::class)->handle($user, $this->opponent);
+
+        Cache::forget('scoreboard:has-live');
+
+        Livewire::actingAs($user)->test('scoreboard')
+            ->set('scope', Scope::FBS)
+            ->set('week', $this->week->id)
+            ->assertSeeInOrder(['Visitorton', 'Afternoonlive', 'Earlyfinal']);
     });
 });

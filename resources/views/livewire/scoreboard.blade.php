@@ -3,6 +3,7 @@
 use App\Models\Game;
 use App\Models\Team;
 use App\Services\CfbCalendar;
+use App\Support\GameOrder;
 use App\Support\Scope;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
@@ -133,9 +134,29 @@ new class extends Component
     #[Computed]
     public function slate(): array
     {
-        $byDay = fn ($games) => $games->groupBy(
-            fn (Game $game) => $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('l, M j')
-        );
+        /*
+         * Grouped by day, then each day stratified live → upcoming → final.
+         *
+         * The query orders by `kickoff_at` alone, which is chronology rather
+         * than urgency — so a game in the fourth quarter sat underneath every
+         * noon final that had already been decided. `GameOrder::liveFirst()`
+         * lifts the bands and leaves the kickoff order untouched inside each
+         * one, so this is the existing ordering stratified, not replaced.
+         *
+         * Applied HERE rather than in `scopedGames()` so both halves of the
+         * screen inherit it: the pinned followed-team groups run through the
+         * same closure, and a followed team playing live should float inside
+         * its own block for exactly the reason it should in the day groups.
+         *
+         * It is also why this is not an `orderByRaw` in the query. The band
+         * has to be nested INSIDE the day, and the day is an Eastern-time
+         * format string — asking SQL for it means CONVERT_TZ, which returns
+         * NULL where the timezone tables were never loaded and would collapse
+         * the whole ordering without saying so.
+         */
+        $byDay = fn ($games) => $games
+            ->groupBy(fn (Game $game) => $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('l, M j'))
+            ->map(fn ($dayGames) => GameOrder::liveFirst($dayGames));
 
         $games = $this->scopedGames();
         $teams = $this->pinnedTeams();
