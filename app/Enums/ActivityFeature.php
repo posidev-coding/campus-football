@@ -63,6 +63,43 @@ enum ActivityFeature: int
     /** Read at least one screen from the installed app. */
     case Installed = 1024;
 
+    /**
+     * The snake key this feature is reported under — `read_talk` — which is
+     * what `AnalyticsCatalog::adoption()` keys its shares by and therefore
+     * what a chart reading that array has in hand.
+     */
+    public function key(): string
+    {
+        return strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $this->name));
+    }
+
+    /**
+     * Its name for somebody reading a panel.
+     *
+     * Derived from the case name rather than written out beside it, for the
+     * reason `ActivityArea::forRoute()` reads the nav instead of copying it: a
+     * twelfth bit added next month gets a label by existing, and a second
+     * hand-kept list would simply stop mentioning it.
+     */
+    public function label(): string
+    {
+        return ucfirst(str_replace('_', ' ', $this->key()));
+    }
+
+    /**
+     * Every feature, keyed the way the catalog keys them — one lookup, so a
+     * chart labeling the catalog's output and a panel labeling the enum
+     * cannot disagree about what a bit is called.
+     *
+     * @return array<string, string>
+     */
+    public static function labels(): array
+    {
+        return collect(self::cases())
+            ->mapWithKeys(fn (self $feature): array => [$feature->key() => $feature->label()])
+            ->all();
+    }
+
     /** Is this feature's bit set in a stored mask? */
     public function in(int $mask): bool
     {

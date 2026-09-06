@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets\Analytics;
 
+use App\Enums\ActivityFeature;
 use App\Support\AnalyticsCatalog;
 use App\Support\AnalyticsWindow;
 use App\Support\Brand;
@@ -52,10 +53,15 @@ class AdoptionRadial extends ApexChartWidget
         // zero-length bar; it is a bar there is no number for.
         $readable = collect($adoption['features'])->filter(fn (array $f): bool => $f['share'] !== null);
 
+        // Labeled off the enum rather than by re-spacing the catalog's keys
+        // here: two places deriving a name from the same case is two places
+        // that can start disagreeing about what a bit is called.
+        $labels = ActivityFeature::labels();
+
         return [
             'chart' => ['type' => 'radialBar', 'height' => 340],
             'series' => $readable->map(fn (array $f): float => round($f['share'] * 100, 1))->values()->all(),
-            'labels' => $readable->keys()->map(fn (string $k): string => ucfirst(str_replace('_', ' ', $k)))->all(),
+            'labels' => $readable->keys()->map(fn (string $k): string => $labels[$k] ?? $k)->all(),
             'colors' => [Brand::color('lager')],
             'plotOptions' => ['radialBar' => ['dataLabels' => ['total' => ['show' => false]]]],
             'legend' => ['show' => true, 'position' => 'bottom', 'fontFamily' => 'inherit'],
