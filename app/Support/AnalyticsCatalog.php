@@ -76,7 +76,139 @@ class AnalyticsCatalog
     /** Saturday pairs reported. */
     public const SATURDAY_PAIRS = 6;
 
+    /**
+     * THE CLOSED VOCABULARY — the named questions this class will answer, and
+     * the only thing a model is allowed to emit.
+     *
+     * `HelpTopics::TOPICS`, applied to analytics: ONE LIST FEEDS BOTH ENDS.
+     * {@see vocabulary()} is what the classifier is shown and {@see keys()} is
+     * the schema enum it must answer from, so the prompt and the resolver
+     * cannot drift — a question added here is one the model can name and the
+     * app can run, in the same commit, or neither.
+     *
+     * The summaries have to SEPARATE THE NEAR NEIGHBORS, because a
+     * twelve-way enum misroutes between siblings long before it misroutes to
+     * a stranger: traffic is how much was read, actives is how many people
+     * were here, and routes is which screens they read; cohorts is who
+     * signed up, retention is whether they came back at all, and
+     * `saturday_retention` is whether they played two Saturdays running.
+     *
+     * @var array<string, array{title: string, summary: string}>
+     */
+    public const QUESTIONS = [
+        'traffic' => [
+            'title' => 'Screens read',
+            'summary' => 'how much was read: page views and distinct visitors over the window, split guest, member and staff',
+        ],
+        'actives' => [
+            'title' => 'Actives and stickiness',
+            'summary' => 'how many PEOPLE were here: daily, weekly and monthly actives, and daily over monthly as stickiness',
+        ],
+        'adoption' => [
+            'title' => 'Feature adoption',
+            'summary' => 'what share of the people who were here this week picked, talked, followed, searched, opened the Lobby or read from an installed app',
+        ],
+        'cohorts' => [
+            'title' => 'Signups by week',
+            'summary' => 'who signed up, week by week, and what share of each week activated — registrations and onboarding, never whether they came back',
+        ],
+        'lifecycle' => [
+            'title' => 'The lifecycle funnel',
+            'summary' => 'the stages from registered to verified to onboarded to following a team to joining a group to making a pick, and where people stop',
+        ],
+        'retention' => [
+            'title' => 'Cohort retention',
+            'summary' => 'whether a signup week came BACK in later weeks — the grid of week-N return rates',
+        ],
+        'saturday_retention' => [
+            'title' => 'Saturday-to-Saturday retention',
+            'summary' => "whether the people who played one Saturday's pick'em played the next one",
+        ],
+        'routes' => [
+            'title' => 'Screens by attention',
+            'summary' => 'WHICH screens get opened: the most-read routes, and the quiet ones nobody opens',
+        ],
+        'devices' => [
+            'title' => 'Devices and installs',
+            'summary' => 'what people read on: screen-width buckets, and the share reading from an installed app rather than a browser tab',
+        ],
+        'time_of_week' => [
+            'title' => 'When people are here',
+            'summary' => 'WHEN in the week the app is read — the weekday and hour heat, not how much',
+        ],
+        'pickem_health' => [
+            'title' => "This Saturday's pick'em",
+            'summary' => 'the Saturday being played: slates, entries against members, late picks and whether the reminder moved anybody',
+        ],
+    ];
+
     public function __construct(private LiveState $live) {}
+
+    /**
+     * The keys a classifier may answer with.
+     *
+     * @return list<string>
+     */
+    public static function keys(): array
+    {
+        return array_keys(self::QUESTIONS);
+    }
+
+    /** One line per question, for the prompt — the same list the schema enumerates. */
+    public static function vocabulary(): string
+    {
+        return implode("\n", array_map(
+            fn (string $key, array $question): string => "- `{$key}` — {$question['summary']}",
+            array_keys(self::QUESTIONS),
+            array_values(self::QUESTIONS),
+        ));
+    }
+
+    /**
+     * Run ONE named question, or nothing.
+     *
+     * The other half of the rule the AI layer is built on: a model names the
+     * key and the APPLICATION runs the query. An unknown key is null rather
+     * than a nearest match — a question we do not answer must read as one we
+     * do not answer, not as a different question's numbers under the wrong
+     * heading.
+     *
+     * SOME QUESTIONS IGNORE THE RANGE, and they say so themselves by not
+     * returning a `window_days`: `actives` is a fixed 1/7/28 shape, `cohorts`
+     * and `retention` are counted in cohort weeks, `saturday_retention`
+     * counts Saturdays and `pickem_health` is one Saturday. A caller reads
+     * that off the payload rather than off a second list of which ones are
+     * windowed — a list like that drifts, and its drift is a range label over
+     * numbers that do not honor it.
+     *
+     * @return array{key: string, title: string, data: array<string, mixed>}|null
+     */
+    public function answer(string $key, ?AnalyticsWindow $window = null): ?array
+    {
+        $question = self::QUESTIONS[$key] ?? null;
+
+        if ($question === null) {
+            return null;
+        }
+
+        return [
+            'key' => $key,
+            'title' => $question['title'],
+            'data' => match ($key) {
+                'traffic' => $this->traffic($window),
+                'actives' => $this->actives(),
+                'adoption' => $this->adoption($window),
+                'cohorts' => $this->cohorts(),
+                'lifecycle' => $this->lifecycle($window),
+                'retention' => $this->retention(),
+                'saturday_retention' => $this->saturdayRetention(),
+                'routes' => $this->routes($window),
+                'devices' => $this->devices($window),
+                'time_of_week' => $this->timeOfWeek($window),
+                'pickem_health' => $this->pickemHealth(),
+            },
+        ];
+    }
 
     // ------------------------------------------------------- 11. traffic
 
