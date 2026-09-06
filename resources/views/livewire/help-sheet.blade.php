@@ -1,6 +1,8 @@
 <?php
 
+use App\Actions\RecordActivity;
 use App\Actions\SendFeedback;
+use App\Enums\ActivityKind;
 use App\Enums\FeedbackKind;
 use App\Exceptions\FeedbackTooFast;
 use App\Support\HelpAnswer;
@@ -131,6 +133,8 @@ new class extends Component
         [$this->answer] = $help->for($question, $user);
 
         $this->askState = $this->answer === null ? 'missed' : 'answered';
+
+        $this->countAsk();
     }
 
     /**
@@ -158,6 +162,26 @@ new class extends Component
         $this->asked = $example['question'];
         $this->answer = HelpTopics::answer($example['topic'], $user);
         $this->askState = $this->answer === null ? 'missed' : 'answered';
+
+        $this->countAsk();
+    }
+
+    /**
+     * The ask, counted — both doors through it, typed and tapped.
+     *
+     * The facet is whether it landed. A `help_asked` total on its own says
+     * people are confused; the split says whether the help sheet is any use
+     * to them, which is the only part anybody can act on. Not counted for a
+     * cap or an unavailable flag: neither is a question the reader got to
+     * ask.
+     */
+    private function countAsk(): void
+    {
+        app(RecordActivity::class)->action(
+            ActivityKind::HelpAsked,
+            request(),
+            $this->answer === null ? 'unanswered' : 'answered',
+        );
     }
 
     /** The miss, handed to the humans: the question becomes the note. */

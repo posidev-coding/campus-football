@@ -2,6 +2,8 @@
 
 namespace App\Livewire\Concerns;
 
+use App\Actions\RecordActivity;
+use App\Enums\ActivityKind;
 use App\Support\AskExamples;
 use App\Support\Search;
 use App\Support\StatAnswer;
@@ -74,6 +76,18 @@ trait AsksQuestions
         if ($this->answer === null) {
             $this->logDecline($reason);
         }
+
+        /*
+         * Counted AFTER the answer resolves, and the facet is WHY — a
+         * question that came back with a number and one that came back
+         * against a spend limit are different events, and a single
+         * `stat_asked` total that could not tell them apart would read as
+         * healthy demand on a week the feature was down.
+         *
+         * `$this->decline` is StatAnswer::RESOLVED on the answered path, so
+         * the facet is never invented and never null.
+         */
+        app(RecordActivity::class)->action(ActivityKind::StatAsked, request(), $this->decline);
     }
 
     /**

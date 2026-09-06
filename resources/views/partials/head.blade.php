@@ -47,6 +47,28 @@
      hide stylesheet-driven and flash-free on that signal too. --}}
 <script>if (navigator.standalone) document.documentElement.setAttribute('data-standalone', '')</script>
 
+{{-- How wide the screen is and whether this is the installed app, for the
+     attention sensor. A COOKIE and not a header, because a header cannot be
+     attached to Livewire's navigate fetch without hooking its internals — and
+     a hop is the majority of screens read. Pre-paint beside the stamp above so
+     the value is already on the NEXT request rather than one screen late.
+
+     It carries no identifier: a width and one flag, the same two things
+     `client_errors` already stores. Rewritten on every load so a rotation or a
+     resize is picked up, and listed in bootstrap/app.php's
+     `encryptCookies(except:)` — written in the clear by JavaScript, it would
+     otherwise arrive at the server as a swallowed DecryptException and a null.
+
+     The very first HTML response of a session goes out before this has run, so
+     that view records no width at all. That is the honest answer and
+     ViewportBucket reports it as "not reported"; guessing a phone there would
+     invent the exact number the bucket exists to measure. --}}
+<script>
+    document.cookie = 'cfb_client=w' + window.innerWidth
+        + '.s' + ((window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true) ? 1 : 0)
+        + ';path=/;max-age=2592000;samesite=lax' + (location.protocol === 'https:' ? ';secure' : '');
+</script>
+
 {{-- The boot splash's cold-start stamp, and it must sit ABOVE the depth
      counter: `cfbAppDepth === undefined` is what makes this a real-document-
      load detector — on a cold load the counter does not exist yet, and on

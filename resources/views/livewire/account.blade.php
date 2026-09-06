@@ -1,8 +1,10 @@
 <?php
 
 use App\Actions\FollowTeam;
+use App\Actions\RecordActivity;
 use App\Actions\ReorderFollowedTeams;
 use App\Actions\UnfollowTeam;
+use App\Enums\ActivityKind;
 use App\Enums\ContentRating;
 use App\Exceptions\FollowLimitReached;
 use App\Livewire\Concerns\UploadsImages;
@@ -272,6 +274,8 @@ new class extends Component
             'sms_opt_in' => $value,
             'sms_opted_in_at' => $value ? now() : $user->sms_opted_in_at,
         ])->save();
+
+        $this->countToggle('sms', $value);
     }
 
     /** Cache key for the outstanding code — per user, never per number. */
@@ -295,6 +299,8 @@ new class extends Component
             'pickem_notify_opt_in' => $value,
             'unsubscribed_at' => $value ? auth()->user()->unsubscribed_at : now(),
         ])->save();
+
+        $this->countToggle('pickem', $value);
     }
 
     public function updatedNewsletterOptIn(bool $value): void
@@ -303,6 +309,28 @@ new class extends Component
             'newsletter_opt_in' => $value,
             'unsubscribed_at' => $value ? auth()->user()->unsubscribed_at : now(),
         ])->save();
+
+        $this->countToggle('newsletter', $value);
+    }
+
+    /**
+     * One opt-in moved, counted — WHICH one and WHICH WAY, in the facet.
+     *
+     * Both halves matter and neither is recoverable from the columns beside
+     * them: `unsubscribed_at` records that somebody once said no and never
+     * says how many times anybody changed their mind, and a total with no
+     * direction in it reads the same whether a release won people over or
+     * drove them off. The push switch counts through
+     * PushSubscriptionController, because a device subscription is not this
+     * screen's row to write.
+     */
+    private function countToggle(string $list, bool $on): void
+    {
+        app(RecordActivity::class)->action(
+            ActivityKind::NotificationToggled,
+            request(),
+            $list.($on ? '_on' : '_off'),
+        );
     }
 
     public function saveProfile(): void

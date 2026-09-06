@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\RecordActivity;
+use App\Enums\ActivityKind;
 use App\Notifications\PushWelcomeNotification;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -36,8 +38,17 @@ class PushSubscriptionController
             $validated['content_encoding'] ?? null,
         );
 
+        /*
+         * Both ride `wasRecentlyCreated`. Re-registering the same endpoint is
+         * a Livewire hop, a key rotation replay or a second tab refreshing
+         * itself — which is why the welcome push is already gated this way,
+         * and a toggle count that moved on each of them would be measuring
+         * page loads.
+         */
         if ($subscription->wasRecentlyCreated) {
             $request->user()->notify(new PushWelcomeNotification);
+
+            app(RecordActivity::class)->action(ActivityKind::NotificationToggled, $request, 'push_on');
         }
 
         return response()->noContent();
@@ -50,6 +61,8 @@ class PushSubscriptionController
         ]);
 
         $request->user()->deletePushSubscription($validated['endpoint']);
+
+        app(RecordActivity::class)->action(ActivityKind::NotificationToggled, $request, 'push_off');
 
         return response()->noContent();
     }

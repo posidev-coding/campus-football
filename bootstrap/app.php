@@ -1,5 +1,7 @@
 <?php
 
+use App\Actions\RecordActivity;
+use App\Http\Middleware\RecordPageView;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -24,6 +26,29 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        /*
+         * The page-view sensor, on every web route by default. Appended
+         * rather than aliased because a route added next month that nobody
+         * remembers to tag would silently stop being counted, and a screen
+         * missing from the attention numbers still reads as a quiet screen
+         * rather than as a broken sensor. It records in terminate(), after
+         * the response has gone.
+         */
+        $middleware->web(append: [RecordPageView::class]);
+
+        /*
+         * The client cookie is written by JavaScript before first paint, so
+         * it arrives in plaintext. EncryptCookies swallows the
+         * DecryptException and hands the request a NULL — the sensor would
+         * see no viewport and no installed state on every request, forever,
+         * with nothing anywhere saying why. It carries no identifier: a
+         * width and a flag, which is exactly what `client_errors` already
+         * stores for the same reason.
+         */
+        $middleware->encryptCookies(except: [
+            RecordActivity::COOKIE,
+        ]);
+
         /*
          * One-click unsubscribe arrives as a POST from Gmail or Apple Mail
          * (RFC 8058 List-Unsubscribe-Post) with no session and therefore no

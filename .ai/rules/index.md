@@ -40,6 +40,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | config/livewire.php,resources/views/livewire/home.blade.php,resources/views/livewire/onboarding.blade.php,resources/views/livewire/tour.blade.php | .ai/rules/livewire-views-livewire-views-livewire.md |
 | app/Support/SlateFeasibility.php,resources/views/livewire/group.blade.php,resources/views/livewire/slate-builder.blade.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/livewire-views-livewire.md |
 | app/Actions/PostToConversation.php,app/Actions/DeleteConversationPost.php,resources/views/livewire/conversation.blade.php | .ai/rules/livewire.md |
+| app/Http/Middleware/**,bootstrap/app.php,app/Actions/RecordActivity.php | .ai/rules/middleware-actions.md |
 | app/Models/**, database/migrations/**, resources/views/** | .ai/rules/migrations-views.md |
 | app/Services/Contests/ModeEngine.php,app/Actions/CrushTallboy.php,app/Actions/LockPick.php,app/Models/Pick.php | .ai/rules/models.md |
 | app/Support/Cadence.php,app/Actions/PublishSlate.php,app/Filament/Pages/PickemSettings.php,app/Models/Slate.php | .ai/rules/pages-models.md |
