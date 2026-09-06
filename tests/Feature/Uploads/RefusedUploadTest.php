@@ -52,7 +52,7 @@ function uploadControlXData(): string
 /**
  * Run one scenario against the real rendered control.
  *
- * @return array{calls: list<list<mixed>>, uploads: list<list<mixed>>, errorCallback: ?string}
+ * @return array{calls: list<list<mixed>>, uploads: list<list<mixed>>, errorCallback: ?string, failures: list<array{label: string, error: mixed}>}
  */
 function uploadControl(string $scenario): array
 {
@@ -98,6 +98,33 @@ it('still refuses an oversized file without uploading it at all', function () {
 
     expect($run['calls'])->toBe([['rejectOversizedImage', 'iconFile']])
         ->and($run['uploads'])->toBe([]);
+});
+
+it('names the knock when the knock itself is what fails', function () {
+    /*
+     * The knock is a `$wire.call()` from an ALPINE handler, which is not the
+     * promise Livewire catches for `wire:click`. Livewire rejects an action
+     * with a plain { status, body, json, errors } — no name, no message, no
+     * stack — and on a phone that loses the network mid-refusal it escaped to
+     * the window, where the reporter could only file "[object Object]" off a
+     * screen it could not name (CFB-45). The label is the whole repair.
+     */
+    $run = uploadControl('knock-reported');
+
+    expect($run['failures'])->toHaveCount(1)
+        ->and($run['failures'][0]['label'])->toBe('iconFile upload knock failed (rejectOversizedImage)')
+        ->and($run['failures'][0]['error']['status'])->toBe(503);
+});
+
+it('stays quiet rather than throwing when the reporter itself never loaded', function () {
+    // A bundle that failed to load is exactly when a knock is most likely to
+    // fail, and it is the one moment window.cfbErrors does not exist. The
+    // harness deletes it; node would kill the process over a second, nested
+    // rejection, so a green run here IS the assertion.
+    $run = uploadControl('knock-unreported');
+
+    expect($run['failures'])->toBe([])
+        ->and($run['calls'])->toBe([['rejectOversizedImage', 'iconFile']]);
 });
 
 it('renders the refusal on the icon\'s own line, where the size gate speaks', function () {
