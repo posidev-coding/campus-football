@@ -5,6 +5,7 @@ namespace App\Providers\Filament;
 use App\Filament\Pages\AudienceDashboard;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\HealthDashboard;
+use App\Filament\Pages\PickemDashboard;
 use App\Support\Brand;
 use Filament\Actions\Action;
 use Filament\FontProviders\LocalFontProvider;
@@ -154,6 +155,7 @@ class AdminPanelProvider extends PanelProvider
             ->pages([
                 Dashboard::class,
                 AudienceDashboard::class,
+                PickemDashboard::class,
                 HealthDashboard::class,
             ])
             /*

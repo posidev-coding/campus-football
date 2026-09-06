@@ -128,8 +128,10 @@ class LiveState
         }
 
         $picks = $this->picksBySlate($slates->modelKeys());
+        $late = $this->lateBySlate($slates);
+        $lift = $this->liftBySlate($slates);
 
-        return $slates->map(function (Slate $slate) use ($names, $picks): array {
+        return $slates->map(function (Slate $slate) use ($names, $picks, $late, $lift): array {
             $contest = $slate->contest;
             $group = $contest?->group;
             $made = $picks[$slate->id] ?? [];
@@ -168,6 +170,16 @@ class LiveState
                 'last_call_sent_at' => $slate->last_call_sent_at?->toIso8601String(),
                 'settled_at' => $slate->settled_at?->toIso8601String(),
                 'results_announced_at' => $slate->results_announced_at?->toIso8601String(),
+                /*
+                 * The two rates phase 4 left null and read through `??`. They
+                 * are NULL WITHOUT A DENOMINATOR, never 0: "nobody picked
+                 * late" and "we could not tell" are different findings, and
+                 * one of them is the only analytics signal that can earn
+                 * `high`. The MIN_ENTRIES floor is applied one layer up, in
+                 * AnalyticsCatalog, so this stays the raw measurement.
+                 */
+                'late_share' => $late[$slate->id] ?? null,
+                'reminder_lift' => $lift[$slate->id] ?? null,
             ];
         })->all();
     }
@@ -200,6 +212,106 @@ class LiveState
         }
 
         return $made;
+    }
+
+    /**
+     * The share of each slate's picks made in the last-call window.
+     *
+     * `updated_at`, not `created_at`: changing your mind at 11:58 is a late
+     * pick, and the question this answers is whether people are deciding
+     * under the wire — which is what makes a reminder worth sending.
+     *
+     * NULL WITH NO PICKS. A slate nobody picked has no late share; reporting
+     * 0% would say people picked early.
+     *
+     * @param  Collection<int, Slate>  $slates
+     * @return array<int, float|null>
+     */
+    private function lateBySlate(Collection $slates): array
+    {
+        $out = [];
+
+        foreach ($slates as $slate) {
+            $kickoff = $slate->firstKickoff();
+
+            if ($kickoff === null) {
+                continue;
+            }
+
+            $counts = DB::table('picks')
+                ->join('slate_games', 'slate_games.id', '=', 'picks.slate_game_id')
+                ->where('slate_games.slate_id', $slate->id)
+                ->selectRaw('count(*) as total, sum(picks.updated_at >= ? and picks.updated_at <= ?) as late', [
+                    CarbonImmutable::parse($kickoff)->subMinutes(Cadence::LAST_CALL_MINUTES),
+                    CarbonImmutable::parse($kickoff),
+                ])
+                ->first();
+
+            $total = (int) ($counts->total ?? 0);
+
+            $out[$slate->id] = $total === 0 ? null : round((int) $counts->late / $total, 3);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Did the reminder wave move anybody?
+     *
+     * Entries created between `picks_reminded_at` and first kickoff, over the
+     * people who COULD have been moved: members at the moment of the wave who
+     * had no entry yet.
+     *
+     * THE DENOMINATOR ROOTS IN `group_members`, never in `slate_entries` —
+     * the standing rule from the weekly loop, and the whole point here. An
+     * entry row is created lazily on a member's FIRST pick, so somebody who
+     * has picked nothing has no entry at all and is invisible to a query
+     * rooted in entries. That person IS the reminder's audience; rooting in
+     * entries would measure the lift only on people who had already played.
+     *
+     * NULL with no wave sent, and null when nobody was left to move.
+     *
+     * @param  Collection<int, Slate>  $slates
+     * @return array<int, float|null>
+     */
+    private function liftBySlate(Collection $slates): array
+    {
+        $out = [];
+
+        foreach ($slates as $slate) {
+            $reminded = $slate->picks_reminded_at;
+            $kickoff = $slate->firstKickoff();
+            $groupId = $slate->contest?->group?->id;
+
+            if ($reminded === null || $kickoff === null || $groupId === null) {
+                continue;
+            }
+
+            $eligible = DB::table('group_members')
+                ->where('group_id', $groupId)
+                ->where('created_at', '<=', $reminded)
+                ->whereNotIn('user_id', DB::table('slate_entries')
+                    ->where('slate_id', $slate->id)
+                    ->where('created_at', '<=', $reminded)
+                    ->select('user_id'))
+                ->count();
+
+            if ($eligible === 0) {
+                $out[$slate->id] = null;
+
+                continue;
+            }
+
+            $moved = DB::table('slate_entries')
+                ->where('slate_id', $slate->id)
+                ->where('created_at', '>', $reminded)
+                ->where('created_at', '<=', $kickoff)
+                ->count();
+
+            $out[$slate->id] = round($moved / $eligible, 3);
+        }
+
+        return $out;
     }
 
     /**
