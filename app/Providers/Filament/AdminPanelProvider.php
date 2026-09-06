@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Pages\Dashboard;
+use App\Filament\Pages\HealthDashboard;
 use App\Support\Brand;
 use Filament\Actions\Action;
 use Filament\FontProviders\LocalFontProvider;
@@ -24,6 +25,7 @@ use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use Leandrocfe\FilamentApexCharts\FilamentApexChartsPlugin;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -114,6 +116,9 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make('College Football')->icon(Heroicon::OutlinedAcademicCap),
                 NavigationGroup::make('Content')->icon(Heroicon::OutlinedNewspaper)->collapsed(),
                 NavigationGroup::make('Work')->icon(Heroicon::OutlinedClipboardDocumentList),
+                // After Work, because it is read AFTER the board — what the
+                // week did, once you know what is on it.
+                NavigationGroup::make('Analytics')->icon(Heroicon::OutlinedPresentationChartLine),
                 NavigationGroup::make('Configuration')->icon(Heroicon::OutlinedCog6Tooth)->collapsed(),
                 NavigationGroup::make('Operations')->icon(Heroicon::OutlinedWrenchScrewdriver)->collapsed(),
             ])
@@ -147,6 +152,16 @@ class AdminPanelProvider extends PanelProvider
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 Dashboard::class,
+                HealthDashboard::class,
+            ])
+            /*
+             * ApexCharts, pinned at 5.1.4. Registered as a plugin rather than
+             * pulled in per widget, because it publishes its own assets
+             * through FilamentAsset and a half-registered chart renders as an
+             * empty div with no error anywhere.
+             */
+            ->plugins([
+                FilamentApexChartsPlugin::make(),
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             /*

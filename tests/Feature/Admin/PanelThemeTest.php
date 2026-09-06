@@ -32,6 +32,23 @@ it('scans both trees an admin view can live in', function () {
         ->toContain("@source '../../../../resources/views/filament/**/*'");
 });
 
+it('scans the ApexCharts plugin views, whose markup lives in neither tree', function () {
+    /*
+     * The plugin registers its JS and CSS through FilamentAsset, so it LOOKS
+     * self-contained — but its widget Blade reaches for a bare Tailwind
+     * utility, and Filament's shipped sheet carries only the utilities its own
+     * components use. Verified against the built theme at install: before this
+     * line `position:relative` appeared in the panel CSS only on `.fi-*`
+     * component selectors and never as `.relative`, so the chart's loading
+     * overlay positioned statically and sat under the chart.
+     *
+     * Pinned here because the symptom is a layout quirk that reads as a plugin
+     * bug, and the cause is one missing scan path.
+     */
+    expect(file_get_contents(resource_path('css/filament/admin/theme.css')))
+        ->toContain("@source '../../../../vendor/leandrocfe/filament-apex-charts/resources/views/**/*'");
+});
+
 it('is in the Vite input array, or it is never compiled', function () {
     // Registered on the panel but absent from the build is the worst of both:
     // the panel asks Vite for a file the manifest does not have, and every

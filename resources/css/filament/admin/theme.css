@@ -22,6 +22,18 @@
 
 @source '../../../../app/Filament/**/*';
 @source '../../../../resources/views/filament/**/*';
+/*
+ * The ApexCharts plugin's own widget Blade, which is NOT under either tree
+ * above. It registers its JS and CSS through FilamentAsset, but its markup
+ * still reaches for a bare Tailwind utility (`relative`) — and that class
+ * compiled to nothing here, because Filament's shipped sheet carries only the
+ * utilities its OWN components use. Verified against the built theme before
+ * adding this: `position:relative` appeared only on `.fi-*` component
+ * selectors, never as `.relative`. Without this line the chart's loading
+ * overlay is positioned statically and sits under the chart, which looks like
+ * a plugin bug and is a missing scan path.
+ */
+@source '../../../../vendor/leandrocfe/filament-apex-charts/resources/views/**/*';
 
 /*
  * Density: closer to a compact dashboard rail. Only overrides — never a fork
