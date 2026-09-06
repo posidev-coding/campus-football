@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Season;
+use App\Services\CfbCalendar;
 use Carbon\CarbonImmutable;
 
 /**
@@ -24,11 +26,25 @@ use Carbon\CarbonImmutable;
  */
 class AnalyticsWindow
 {
-    /** The three windows anything in this layer may ask for. */
+    /** The three rolling windows anything in this layer may ask for. */
     public const DAYS = [7, 28, 90];
 
     /** Four pick'em weeks — the one a dashboard opens on. */
     public const DEFAULT_DAYS = 28;
+
+    /**
+     * The fourth range, and the only one that is not a fixed width: the season
+     * being played, from `seasons.start_date` to today.
+     *
+     * It exists because "this season" is the question anybody actually asks
+     * about a college football product, and a 90-day window answers it wrong
+     * in both directions — it includes August in December and excludes
+     * September in January.
+     */
+    public const SEASON = 'season';
+
+    /** The filter's default, as the token a Select stores. */
+    public const DEFAULT_RANGE = '28d';
 
     /**
      * @param  int  $days  the window's width, in league days
@@ -63,36 +79,90 @@ class AnalyticsWindow
         // not eight.
         $from = $to->subDays($days - 1);
 
+        return self::between($from, $to, $days.'d');
+    }
+
+    /**
+     * The one constructor that reads `since` — every range resolves through
+     * here, so a rolling window and the season window cannot disagree about
+     * what "the sensor was not counting yet" means.
+     */
+    private static function between(CarbonImmutable $from, CarbonImmutable $to, string $label): self
+    {
         $first = app(ActivityRollup::class)->since();
         $start = $first === null ? null : CarbonImmutable::parse($first, config('cfb.timezone'))->startOfDay();
 
         return new self(
-            days: $days,
+            days: $from->diffInDays($to) + 1,
             from: $from,
             to: $to,
             // The LATER of the two: data cannot exist before the sensor did,
             // and a window cannot report days it does not cover.
             since: $start === null ? null : ($start->lt($from) ? $from : $start),
             covered: $start !== null && $start->lte($from),
-            label: $days.'d',
+            label: $label,
         );
+    }
+
+    /**
+     * The season being played, from its own start date to today.
+     *
+     * The year comes from {@see CfbCalendar} and never from "the latest row
+     * in seasons" — a season exists in the database months before it is
+     * played. With no season row at all this falls back to the default
+     * rolling window rather than inventing a start.
+     */
+    public static function season(): self
+    {
+        $year = app(CfbCalendar::class)->currentYear();
+        $start = Season::query()->where('year', $year)->value('start_date');
+
+        if ($start === null) {
+            return self::of(self::DEFAULT_DAYS);
+        }
+
+        $to = CarbonImmutable::now(config('cfb.timezone'))->startOfDay();
+        // A `date` cast arrives as midnight UTC, so the calendar date is
+        // RE-PINNED in league time rather than converted — converting lands at
+        // 20:00 the previous evening, the trap `Cadence` already draws.
+        $from = CarbonImmutable::parse(
+            CarbonImmutable::parse($start)->toDateString(),
+            config('cfb.timezone'),
+        )->startOfDay();
+
+        return self::between($from, $to, self::SEASON);
     }
 
     /**
      * The window a dashboard's filter names.
      *
+     * The filter stores a TOKEN ('28d', 'season'), not a number, because one
+     * of the four ranges has no fixed width. An unknown token falls back to
+     * the default rather than being honored: filters come off a URL, and a
+     * `?range=4000d` would quietly render a four-thousand-day chart labeled as
+     * one.
+     *
      * @param  array<string, mixed>  $filters
      */
     public static function from(array $filters): self
     {
-        return self::of((int) ($filters['window'] ?? self::DEFAULT_DAYS));
+        $range = (string) ($filters['range'] ?? self::DEFAULT_RANGE);
+
+        if ($range === self::SEASON) {
+            return self::season();
+        }
+
+        return self::of((int) rtrim($range, 'd'));
     }
 
     /** The filter's own options, so a select and this class cannot disagree. */
-    /** @return array<int, string> */
+    /** @return array<string, string> */
     public static function options(): array
     {
-        return collect(self::DAYS)->mapWithKeys(fn (int $days) => [$days => $days.' days'])->all();
+        return collect(self::DAYS)
+            ->mapWithKeys(fn (int $days): array => [$days.'d' => $days.' days'])
+            ->put(self::SEASON, 'This season')
+            ->all();
     }
 
     public function fromDate(): string
