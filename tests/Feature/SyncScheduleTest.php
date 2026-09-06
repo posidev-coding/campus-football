@@ -431,6 +431,124 @@ it('resolves a ledger key for every pick\'em sweep, not just the reminder', func
     ]);
 });
 
+describe('the clickstream drain and rollup', function () {
+    /*
+     * `between()` captures `now` when the event is DEFINED, not when the
+     * filters run, and the app's schedule was defined at boot — so
+     * `filtersPass()` on a windowed entry cannot answer for a travelled
+     * clock. The live-window block above hits the same wall and solves it the
+     * same way: the window is rebuilt here and asserted directly, while the
+     * season gate is read off the entry that carries no window.
+     */
+    $entries = fn (string $needle) => collect(app(Schedule::class)->events())
+        ->filter(fn (Event $event) => str_contains($event->command ?? '', $needle))
+        ->values();
+
+    it('registers the drain as an in-season pair and an off-season one', function () use ($entries) {
+        /*
+         * Five minutes in season, and it adds NO wake of its own: 08:00-03:00
+         * is the window the live tier, the kickoff alerts and the pick
+         * reminders already hold the cluster up for. Six-hourly off season
+         * rides the news sync's wake exactly, so June stays asleep — a drain
+         * is not worth a wake of its own, and MAXLEN covers six hours many
+         * times over.
+         */
+        $drains = $entries('cfb:activity-drain');
+
+        expect($drains)->toHaveCount(2)
+            ->and($drains->pluck('expression')->sort()->values()->all())
+            ->toBe(['*/5 * * * *', '0 */6 * * *'])
+            // A small multiple of the cadence, like everything else in the
+            // live window: a worker OOM'd mid-run must not leave a mutex that
+            // freezes the drain for the rest of the Saturday.
+            ->and($drains->pluck('expiresAt')->sort()->values()->all())->toBe([5, 30]);
+    });
+
+    it('drains through the window the cluster is already awake for', function () {
+        // Rebuilt rather than read off the schedule, for the reason above.
+        $window = fn () => app(Schedule::class)
+            ->exec('cfb:activity-drain')
+            ->timezone(config('cfb.timezone'))
+            ->between('08:00', '03:00');
+
+        $this->travelTo(CarbonImmutable::parse('2026-10-17 15:00', config('cfb.timezone')));
+        expect($window()->filtersPass(app()))->toBeTrue();
+
+        // Still open at 1am, when a West Coast night game is being read.
+        $this->travelTo(CarbonImmutable::parse('2026-10-18 01:00', config('cfb.timezone')));
+        expect($window()->filtersPass(app()))->toBeTrue();
+
+        // And shut at 5am, when nobody is.
+        $this->travelTo(CarbonImmutable::parse('2026-10-18 05:00', config('cfb.timezone')));
+        expect($window()->filtersPass(app()))->toBeFalse();
+    });
+
+    it('runs the off-season drain in June and not in October', function () use ($entries) {
+        // The one drain entry with no window, so its season gate is the only
+        // thing filtersPass is answering about.
+        $off = $entries('cfb:activity-drain')->first(fn (Event $event) => $event->expression === '0 */6 * * *');
+
+        $this->travelTo(CarbonImmutable::parse('2026-06-15 14:00', config('cfb.timezone')));
+        expect($off->filtersPass(app()))->toBeTrue();
+
+        $this->travelTo(CarbonImmutable::parse('2026-10-17 14:00', config('cfb.timezone')));
+        expect($off->filtersPass(app()))->toBeFalse();
+    });
+
+    it('rolls yesterday at 04:56, ungated, one minute behind the funnel', function () use ($entries) {
+        /*
+         * Ungated by season for the reason `cfb:ux-rollup` is: people read
+         * screens year-round, and a rollup that only ran in season would
+         * leave exactly the quiet months unmeasured — the months where a drop
+         * in attention is cheapest to notice. 04:56 rides the wake the prunes
+         * at 04:50 and the funnel at 04:55 already pay for.
+         */
+        $daily = $entries('cfb:activity-rollup')->first(fn (Event $event) => $event->expression === '56 4 * * *');
+
+        expect($daily)->not->toBeNull();
+
+        foreach (['2026-06-15 14:00', '2026-10-17 14:00'] as $when) {
+            $this->travelTo(CarbonImmutable::parse($when, config('cfb.timezone')));
+
+            expect($daily->filtersPass(app()))->toBeTrue("The daily roll must be ungated in {$when}.");
+        }
+    });
+
+    it('keeps today so far on the hour, as a separate entry', function () use ($entries) {
+        // Two entries for one command: the finished day and the partial one,
+        // the same shape `cfb:news:followed` carries for its two cadences.
+        $rollups = $entries('cfb:activity-rollup');
+
+        expect($rollups)->toHaveCount(2)
+            ->and($rollups->pluck('expression')->sort()->values()->all())
+            ->toBe(['0 * * * *', '56 4 * * *']);
+    });
+
+    it('resolves a ledger key for both commands, the --today entry included', function () {
+        /*
+         * A null key renders a permanently grey "untracked" row, which is the
+         * one state this panel exists to distinguish from "ran and found
+         * nothing" — and for the drain that distinction is the difference
+         * between a dead pipeline and a quiet week. The `--today` entry has
+         * to resolve to the SAME key as the daily one: it is the same command
+         * writing the same ledger.
+         */
+        $tracked = collect(app(SyncSchedule::class)->tasks())
+            ->filter(fn (array $task) => str_starts_with($task['name'], 'cfb:activity-'))
+            ->map(fn (array $task) => $task['name'].' => '.($task['tracked'] ?? 'untracked'))
+            ->sort()
+            ->values()
+            ->all();
+
+        expect($tracked)->toBe([
+            'cfb:activity-drain => activity:drain',
+            'cfb:activity-drain => activity:drain',
+            'cfb:activity-rollup --today => activity:rollup',
+            'cfb:activity-rollup => activity:rollup',
+        ]);
+    });
+});
+
 describe('the followed-team news sweep reports like a command, not a closure', function () {
     /*
      * Both cadences were `Schedule::call()` closures. A closure cannot carry

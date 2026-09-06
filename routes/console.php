@@ -486,6 +486,63 @@ Schedule::command('cfb:ux-rollup')
     ->withoutOverlapping(60);
 
 /*
+ * The clickstream, out of Redis and into `activity_events`.
+ *
+ * In season the cluster is ALREADY awake 08:00-03:00 for the live tier, the
+ * kickoff alerts and the pick reminders, so five minutes adds no wake of its
+ * own — and five minutes is the staleness a Saturday widget tolerates, since
+ * the number people look at during a slate is the one moving. The window ends
+ * at 03:00 for the same reason the live tier's does: a West Coast night game
+ * is still being read at 2am.
+ *
+ * Off season it rides the six-hourly news wake EXACTLY, so June stays asleep.
+ * A drain is not worth a wake: RecordActivity::MAXLEN is 200,000 entries, which
+ * covers six offseason hours many times over, and nothing reads the rollups
+ * hourly in June anyway.
+ */
+Schedule::command('cfb:activity-drain')
+    ->everyFiveMinutes()
+    ->timezone($tz)
+    ->between('08:00', '03:00')
+    ->when($inSeason)
+    ->withoutOverlapping(5);
+
+Schedule::command('cfb:activity-drain')
+    ->everySixHours()
+    ->timezone($tz)
+    ->when($offSeason)
+    ->withoutOverlapping(30);
+
+/*
+ * Yesterday, folded into the two tables that live on. 04:56 puts it one
+ * minute behind `cfb:ux-rollup` on the wake the prunes already pay for, and
+ * UNGATED by season for the same reason that one is: people read screens
+ * year-round, and a rollup that only ran in season would leave exactly the
+ * quiet months unmeasured — the months where a drop in attention is cheapest
+ * to notice.
+ *
+ * It drains before it rolls, so a day is complete before it is stated.
+ */
+Schedule::command('cfb:activity-rollup')
+    ->dailyAt('04:56')
+    ->timezone($tz)
+    ->withoutOverlapping(60);
+
+/*
+ * And today so far, hourly, inside the in-season window the drain already
+ * keeps. This is what stops a Saturday dashboard reading yesterday's league:
+ * `--today` is the same code path over a partial day, upserting the cells it
+ * already wrote, and the dashboards label it "so far" rather than pretending
+ * the last point is a finished day. Off season the daily pass is enough.
+ */
+Schedule::command('cfb:activity-rollup --today')
+    ->hourly()
+    ->timezone($tz)
+    ->between('08:00', '03:00')
+    ->when($inSeason)
+    ->withoutOverlapping(30);
+
+/*
  * The self-destruct warning, three days ahead of the prune above. Ungated
  * like the newsletter — signups are year-round, so the countdown has to be —
  * and at 07:00 it rides a wake the followed-news sync already pays for in
