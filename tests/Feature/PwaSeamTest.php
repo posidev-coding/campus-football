@@ -84,6 +84,93 @@ describe('a bundle that failed to load', function () {
     });
 });
 
+describe('an Alpine expression that threw', function () {
+    /*
+     * Alpine attaches a scope to a node only once its `x-data` has evaluated.
+     * When that throws, every descendant falls through to the empty parent
+     * scope and throws its own ReferenceError — and Alpine rethrows all of
+     * them asynchronously, so the window listener hears a handful of bare
+     * "Can't find variable: dismissed" sourced to `livewire.min.js` and cannot
+     * say which root died.
+     *
+     * Production read exactly that: five ReferenceErrors from one installed
+     * 393px session on `/`, one each from five separate roots — one boot
+     * failure wearing five anonymous names. This is the reporting that makes
+     * the next one name itself.
+     */
+    it('names the element the expression belongs to, and the expression', function () {
+        $report = pwaSeamReports('alpine-x-data-failed')[0];
+
+        expect($report['message'])->toContain('[data-push-banner]')
+            ->and($report['message'])->toContain('$persist is not defined')
+            ->and($report['stack'])->toContain('Expression: { dismissed: $persist(false)');
+    });
+
+    it('sources the report to the bundle, never to the evaluator that rethrew', function () {
+        // `livewire.min.js` is where the rethrow surfaces, and it names
+        // nothing anybody can edit. An Alpine expression has no file of its
+        // own, so the honest source is the bundle that registered the handler.
+        $report = pwaSeamReports('alpine-x-data-failed')[0];
+
+        expect($report['source'])->toContain('app.js')
+            ->and($report['line'])->toBeNull();
+    });
+
+    it('prefers a screen marker to the component library\'s own', function () {
+        /*
+         * `data-flux-*` names Flux, not the screen — and it can perfectly well
+         * be the FIRST attribute on a root, which is why this is a preference
+         * rather than an ordering. The element here carries the Flux one
+         * first, so only the preference can name the right thing.
+         */
+        $report = pwaSeamReports('alpine-flux-first')[0];
+
+        expect($report['message'])->toContain('[data-home-swiper]')
+            ->and($report['message'])->not->toContain('data-flux-field');
+    });
+
+    it('falls back to the library\'s attribute rather than to nothing', function () {
+        // Last resort, not no resort: a root with only a Flux attribute on it
+        // is still better named than `section`.
+        $report = pwaSeamReports('alpine-unmarked-root')[0];
+
+        expect($report['message'])->toContain('[data-flux-field]');
+    });
+
+    it('says an element is unknown rather than inventing a selector for it', function () {
+        // A made-up selector sends the next reader to a node that does not
+        // exist, which is worse than being told there was no element.
+        $report = pwaSeamReports('alpine-no-element')[0];
+
+        expect($report['message'])->toContain('an unknown element');
+    });
+
+    it('still rethrows the way Alpine does, so the stack is not lost with it', function () {
+        /*
+         * The console warning and the async rethrow are reproduced rather than
+         * skipped. The rethrow is what the window listener hears, and it is
+         * the only half carrying a real stack — swallowing it would trade five
+         * anonymous reports for one named report and no stack, which is a
+         * worse trade than it looks.
+         */
+        $rethrown = pwaSeam('alpine-x-data-failed')['rethrown'];
+
+        expect($rethrown)->toHaveCount(1)
+            ->and($rethrown[0]['message'])->toBe('$persist is not defined')
+            ->and($rethrown[0]['expression'])->toContain('cfb.push.dismissed');
+    });
+
+    it('sends a payload the ingest endpoint actually accepts', function () {
+        // The seam and the endpoint are separate deploys of the same contract,
+        // and a report the server rejects is a report nobody reads.
+        $body = pwaSeamReports('alpine-x-data-failed')[0];
+
+        $this->postJson(route('client-errors.store'), $body)->assertNoContent();
+
+        expect(ClientError::query()->count())->toBe(1);
+    });
+});
+
 describe('service worker registration', function () {
     it('names what failed and why instead of reporting the bare rejection', function () {
         // The bug: unguarded, this reached the unhandledrejection listener as

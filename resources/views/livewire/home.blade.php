@@ -599,6 +599,11 @@ new class extends Component
                 our own database — never ESPN.
             --}}
             <section
+                {{-- The one root on this screen with no stable marker, and the
+                     reporter needs one: an Alpine expression that throws is
+                     named by the nearest `data-*` on its root, and without
+                     this the swiper's failures read as `section`. --}}
+                data-home-swiper
                 @if ($this->hasLiveGame) wire:poll.30s.visible @endif
                 @touchstart.passive="beginSwipe($event)"
                 @touchend.passive="endSwipe($event)"
