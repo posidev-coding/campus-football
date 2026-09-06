@@ -17,6 +17,7 @@ use App\Services\CfbCalendar;
 use App\Services\Contests\SuggestSlate;
 use App\Support\Cadence;
 use App\Support\Lobby;
+use App\Support\Placing;
 use App\Support\SlateFeasibility;
 use App\Support\RankLadder;
 use App\Support\Seats;
@@ -297,22 +298,30 @@ new class extends Component
             ->get()
             ->keyBy('contest_id');
 
-        // My tallies, one aggregate each: picks made + live points per
-        // slate, my entry per slate, my weekly wins per contest.
-        $made = Pick::query()
+        /*
+         * The tallies, one aggregate each: picks made + live points per
+         * slate and entrant, every entry on the card, my weekly wins per
+         * contest.
+         *
+         * The first two used to carry `where user_id = me`, because the
+         * card only ever printed my own number. A PLACE needs the column
+         * they sit in, so both were widened to the whole slate rather than
+         * paired with a second query for everybody else — same query count,
+         * a few more rows, and the field is then read from exactly the rows
+         * the figure beside it came from.
+         */
+        $tallies = Pick::query()
             ->join('slate_games', 'slate_games.id', '=', 'picks.slate_game_id')
             ->whereIn('slate_games.slate_id', $slates->pluck('id'))
-            ->where('picks.user_id', auth()->id())
-            ->groupBy('slate_games.slate_id')
-            ->selectRaw('slate_games.slate_id, COUNT(*) AS made, COALESCE(SUM(picks.points), 0) AS pts')
+            ->groupBy('slate_games.slate_id', 'picks.user_id')
+            ->selectRaw('slate_games.slate_id, picks.user_id, COUNT(*) AS made, COALESCE(SUM(picks.points), 0) AS pts')
             ->get()
-            ->keyBy('slate_id');
+            ->groupBy('slate_id');
 
         $entries = SlateEntry::query()
             ->whereIn('slate_id', $slates->pluck('id'))
-            ->where('user_id', auth()->id())
             ->get()
-            ->keyBy('slate_id');
+            ->groupBy('slate_id');
 
         // Season wins, and a practice week never earned one — the same
         // ledger rule the clubhouse's season table reads.
@@ -348,11 +357,13 @@ new class extends Component
          */
         $viable = null;
 
-        return $groups->map(function (Group $group) use ($contests, $slates, $made, $entries, $wins, $fallbackDeadline, $week, $pending, &$viable) {
+        return $groups->map(function (Group $group) use ($contests, $slates, $tallies, $entries, $wins, $fallbackDeadline, $week, $pending, &$viable) {
             $contest = $contests->get($group->id);
             $slate = $contest === null ? null : $slates->get($contest->id);
-            $tally = $slate === null ? null : $made->get($slate->id);
-            $entry = $slate === null ? null : $entries->get($slate->id);
+            $slateTallies = $slate === null ? null : $tallies->get($slate->id);
+            $slateEntries = $slate === null ? null : $entries->get($slate->id);
+            $tally = $slateTallies?->firstWhere('user_id', auth()->id());
+            $entry = $slateEntries?->firstWhere('user_id', auth()->id());
 
             $state = match (true) {
                 $slate === null || $slate->status === Slate::DRAFT => 'waiting',
@@ -389,6 +400,10 @@ new class extends Component
                 'points' => $state === 'final'
                     ? (int) ($entry->final_points ?? 0)
                     : (int) ($tally->pts ?? 0),
+                // WHERE THEY STAND on this card — null before anything has
+                // kicked and for a reader with no entry, and the card skips
+                // rather than inventing a place nobody holds.
+                'place' => $this->placeOn($state, $slateEntries, $slateTallies, $entry),
                 // The ENTRY, not just the picks: every game called and the
                 // week's question answered. Derived here from operands
                 // already in scope, the same rule the pick surface states
@@ -414,6 +429,42 @@ new class extends Component
                     : Cadence::slateDeadline($slate->saturday),
             ];
         });
+    }
+
+    /**
+     * WHERE THE READER STANDS on one card — the same statement the
+     * clubhouse's band makes, read off the same shape of field, so two
+     * screens cannot name different places for one Saturday.
+     *
+     * NULL is no place, and the card skips rather than substituting one:
+     * before a game kicks nobody has scored (ten members on nothing are not
+     * tied for first, they are a week that has not started), and a reader
+     * with no entry is not in the field to be placed in it.
+     *
+     * The field is the slate's ENTRIES, scored exactly the way the
+     * clubhouse's weekStandings scores them — the stamped final_points once
+     * settled, the live picks total until then, and a zero for an entrant
+     * who has not scored, which is an honest aggregate over no rows rather
+     * than a substituted figure. The Bear is not in it: a place is where
+     * you came among the people who played (SlateResults::ranked()).
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\SlateEntry>|null  $slateEntries
+     * @param  \Illuminate\Support\Collection<int, object>|null  $slateTallies
+     * @return array{place: int, field: int, tied: bool}|null
+     */
+    private function placeOn(string $state, ?Collection $slateEntries, ?Collection $slateTallies, ?SlateEntry $entry): ?array
+    {
+        if ($entry === null || $slateEntries === null || ! in_array($state, ['live', 'prelim', 'final'], true)) {
+            return null;
+        }
+
+        $settled = $state === 'final';
+
+        $points = fn (SlateEntry $row): int => $settled
+            ? (int) ($row->final_points ?? 0)
+            : (int) ($slateTallies?->firstWhere('user_id', $row->user_id)?->pts ?? 0);
+
+        return Placing::of($points($entry), $slateEntries->map($points));
     }
 
     /**

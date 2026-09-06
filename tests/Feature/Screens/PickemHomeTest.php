@@ -1883,3 +1883,138 @@ describe('the two sections', function () {
             ->assertSee('{ open: true }', escape: false);
     });
 });
+
+describe('where you stand on a card being played', function () {
+    /*
+     * The flag is admin-or-config, and only ONE of the two members below is
+     * an admin. Flipping the config is the prescribed way (see the note on
+     * Feature::define('pickem') in AppServiceProvider) — a literal `true`
+     * answers for the null scope too and hides exactly this.
+     */
+    beforeEach(fn () => config()->set('cfb.pickem_open', true));
+
+    /**
+     * One group card's own markup, cut out of the overview.
+     *
+     * "2nd of 2" is a phrase the week band or a sibling card could print,
+     * and a needle matched against the whole document is satisfied by
+     * whichever one does. The card's wire:key is only ever its own, and the
+     * slice stops at the next card rather than running on into it.
+     */
+    $cardOf = function (string $html, Group $group): string {
+        $at = strpos($html, 'wire:key="play-'.$group->id.'"');
+
+        expect($at)->not->toBeFalse('the group card did not render');
+
+        $slice = substr($html, $at + 10);
+        $next = strpos($slice, 'wire:key="play-');
+
+        return $next === false ? $slice : substr($slice, 0, $next);
+    };
+
+    /**
+     * A card two members have played into and been scored on: Alice 20, Bob
+     * 10, and the commissioner a member of the group who never picked.
+     *
+     * @return array{0: Slate, 1: User, 2: User, 3: Group}
+     */
+    $scored = function (): array {
+        [$slate, $alice, $bob] = pickemContestants();
+        $games = $slate->games()->with('game')->orderBy('position')->get();
+
+        app(MakePick::class)->handle($alice, $games[0], $games[0]->game->home_team_id);
+        app(MakePick::class)->handle($alice, $games[1], $games[1]->game->home_team_id);
+        app(MakePick::class)->handle($bob, $games[0], $games[0]->game->home_team_id);
+
+        test()->travelTo('2026-09-05 20:00:00');
+
+        // Home lays 6.5 in the fixture, so 21-0 covers. Shotgun pays ten.
+        pickemScore($slate, 1, 21, 0);
+        pickemScore($slate, 2, 21, 0);
+
+        return [$slate->fresh(), $alice, $bob, $slate->contest->group];
+    };
+
+    it('says the place beside the points, and the same one the clubhouse says', function () use ($cardOf, $scored) {
+        [, $alice, $bob, $group] = $scored();
+
+        $card = fn (User $user) => $cardOf(
+            Livewire::actingAs($user)->test('pickem-home')->html(),
+            $group
+        );
+
+        // Two entries in the field: the commissioner is a member who never
+        // picked, and a person with no entry is not somebody to be placed.
+        expect($card($alice))->toContain('1st of 2')->toContain('20 pts')
+            ->and($card($bob))->toContain('2nd of 2')->toContain('10 pts');
+
+        /*
+         * ...and the clubhouse says the same, which is the whole reason the
+         * arithmetic is one class. Two screens naming different places for
+         * one Saturday is the defect this pass exists to prevent, and it is
+         * not observable from either screen on its own.
+         */
+        expect(
+            Livewire::actingAs($bob)->test('group', ['group' => $group])->html()
+        )->toContain('2nd of 2');
+    });
+
+    it('holds the place back until something has actually kicked', function () use ($cardOf) {
+        /*
+         * Two members on nothing are not tied for first. Null is no place
+         * and the card prints none — a substituted "1st of 2" over an
+         * unplayed board is the card lying on Thursday.
+         */
+        [$slate, $alice, $bob] = pickemContestants();
+        $games = $slate->games()->with('game')->orderBy('position')->get();
+        app(MakePick::class)->handle($alice, $games[0], $games[0]->game->home_team_id);
+        app(MakePick::class)->handle($bob, $games[0], $games[0]->game->home_team_id);
+
+        $screen = Livewire::actingAs($alice)->test('pickem-home');
+
+        $card = $cardOf($screen->html(), $slate->contest->group);
+
+        expect($card)->not->toContain(' of 2')
+            ->and($card)->not->toContain('1st');
+
+        /*
+         * ...and the CARD ARRAY carries no place either. The upcoming branch
+         * of the template does not render one whatever it is handed, so the
+         * assertion above stays green with placeOn()'s own gate deleted —
+         * green for the template rather than for the thing this test names.
+         * The shape is what the next renderer will reach for.
+         */
+        expect($screen->instance()->cards->firstWhere('group.id', $slate->contest->group->id)['place'])
+            ->toBeNull();
+    });
+
+    it('lets the Winner badge speak for first place on a settled week', function () use ($cardOf, $scored) {
+        // The tightest row on the screen, and the badge already says first.
+        [$slate, $alice, , $group] = $scored();
+        $slate->update(['status' => Slate::SETTLED, 'settled_at' => now()]);
+        $slate->entries()->where('user_id', $alice->id)->update(['final_points' => 20, 'won' => true]);
+
+        $card = $cardOf(
+            Livewire::actingAs($alice)->test('pickem-home')->html(),
+            $group
+        );
+
+        expect($card)->toContain('Winner')
+            ->and($card)->not->toContain('1st of 2');
+    });
+
+    it('places a reader with no entry nowhere at all', function () use ($cardOf, $scored) {
+        // The commissioner is a member of this group who never picked. He is
+        // not in the field, so there is no place of his to hold.
+        [$slate, , , $group] = $scored();
+        $commissioner = $slate->contest->group->memberships()
+            ->where('role', GroupMember::COMMISSIONER)->sole()->user;
+
+        $card = $cardOf(
+            Livewire::actingAs($commissioner)->test('pickem-home')->html(),
+            $group
+        );
+
+        expect($card)->not->toContain(' of 2');
+    });
+});
