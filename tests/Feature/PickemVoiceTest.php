@@ -78,6 +78,8 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'group.slate.build_prompt',
     'group.slate.thin',
     'group.room.no_card',
+    // The door on a room whose card has kicked — the pitch it replaces.
+    'groups.lobbies.kicked',
     'group.season.empty',
     'group.mode_changed',
     'create.subheading',

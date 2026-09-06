@@ -674,6 +674,73 @@ it('previews the surface read-only for a lobby outsider', function () {
         ->assertDontSeeHtml('wire:key="group-tab-talk"');
 });
 
+it('shuts the room door once its card has kicked, and says why', function () {
+    /*
+     * The screen behind the locked lobby row. `JoinGroup` refuses the seat
+     * either way, so this is about the ASK: the reader tapped through from a
+     * row reading "Kicked off" and was met with a working-looking "Join this
+     * lobby", which is the one place the two halves could disagree.
+     *
+     * The panel STAYS — an empty space where a door was does not tell anybody
+     * they are in the right place — and the pitch above it is replaced, since
+     * it sells a seat this room no longer has.
+     */
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+
+    // A ROOM, not a private group: lobby kind AND a week.
+    $group->update(['kind' => Group::KIND_LOBBY, 'week_id' => $slate->week_id]);
+
+    $outsider = pickemAdmin();
+
+    // Still for sale while the whole card is ahead of us.
+    Livewire::actingAs($outsider)->test('group', ['group' => $group->fresh()])
+        ->assertSee('Join this lobby');
+
+    $slate->games()->with('game')->orderBy('position')->first()
+        ->game->update(['kickoff_at' => now()->subMinute()]);
+
+    /*
+     * Asserted on the DOOR'S OWN LINE, not on the words "Kicked off". A pick
+     * card already says those (pick-card.blade.php:141, so that "Lock" on
+     * screen only ever means the Lock) — and this slate now holds a kicked
+     * game, so a bare assertSee here would pass whether or not the door
+     * changed at all.
+     */
+    Livewire::actingAs($outsider)->test('group', ['group' => $group->fresh()])
+        ->assertDontSee('Join this lobby')
+        ->assertSee(Voice::line('groups.lobbies.kicked', for: $outsider))
+        // The slate is still readable — that is the whole reason the row
+        // taps through rather than going nowhere.
+        ->assertDontSee('No pick');
+});
+
+it('leaves an evergreen table\'s door open when a game kicks', function () {
+    /*
+     * ROOMS only — isRoom() is lobby AND a week. An always-open house table
+     * has no week and no Saturday to have started, so its door is untouched
+     * by a kickoff. (A private group cannot make this point: an outsider is
+     * redirected off it before any door renders.)
+     */
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+
+    $group->update(['kind' => Group::KIND_LOBBY, 'week_id' => null]);
+
+    $slate->games()->with('game')->orderBy('position')->first()
+        ->game->update(['kickoff_at' => now()->subMinute()]);
+
+    // The door's own line, for the reason the sibling case above explains:
+    // the pick card says "Kicked off" on any kicked game, door or no door.
+    $outsider = pickemAdmin();
+
+    Livewire::actingAs($outsider)->test('group', ['group' => $group->fresh()])
+        ->assertSee('Join this lobby')
+        ->assertDontSee(Voice::line('groups.lobbies.kicked', for: $outsider));
+});
+
 it('301s the old nested URL to the clubhouse', function () {
     [$commissioner, $group] = pickemContest(ContestMode::Classic);
 

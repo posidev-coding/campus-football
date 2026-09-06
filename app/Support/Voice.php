@@ -922,6 +922,22 @@ class Voice
         ],
 
         /*
+         * THE DOOR ON A ROOM ALREADY BEING PLAYED. The pitch above cannot
+         * stand here — it sells a seat this room no longer has — and the
+         * reader arrived by tapping a row that already said "Kicked off", so
+         * this line owes them the REASON rather than the news.
+         *
+         * Every register names the lock and names what caused it. The joke,
+         * where there is one, is about the clock and never about the reader
+         * being slow.
+         */
+        'groups.lobbies.kicked' => [
+            'pg' => 'This one has kicked off. Picks locked at the first kickoff — the slate below is still yours to read.',
+            'pg13' => 'Too late for this one. Picks locked when the first game kicked, but the slate below is still open reading.',
+            'r' => 'This ship sailed at kickoff. No seats once the ball is in the air — read the slate and get in the next one.',
+        ],
+
+        /*
          * THE UPLOAD THAT DID NOT LAND. The storage side refused (R2
          * answering NotImplemented to an ACL was months of exactly this),
          * and the reader needs to know it was not their picture. Plain

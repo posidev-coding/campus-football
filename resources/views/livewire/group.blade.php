@@ -808,6 +808,24 @@ new class extends Component
     }
 
     /**
+     * Has this ROOM's card kicked, so its door is shut?
+     *
+     * The lobby stopped selling a started room and stopped counting it, but
+     * the room's own screen kept offering "Join this lobby" — and the locked
+     * row taps straight through to here, so that door was one tap from the
+     * cue saying it was closed. `JoinGroup` refused the seat either way; what
+     * was wrong was being asked for it.
+     *
+     * Rooms only. A private group has no kickoff door: its members are
+     * invited, and a late arrival is the commissioner's business.
+     */
+    #[Computed]
+    public function roomKickedOff(): bool
+    {
+        return $this->group->isRoom() && ($this->slate?->isUnderway() ?? false);
+    }
+
+    /**
      * The room's week — resolved by id, never off the model property:
      * Livewire re-hydrates `$group` without relations, so `$group->week`
      * in the template is a lazy-load 500 on the second request.
@@ -1312,8 +1330,25 @@ new class extends Component
         @endif
 
         <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
-            <flux:subheading class="min-w-0">{{ Voice::line('groups.lobbies.subheading') }}</flux:subheading>
-            <flux:button wire:click="join" wire:loading.attr="disabled" wire:target="join" variant="primary" class="shrink-0">Join this lobby</flux:button>
+            <flux:subheading class="min-w-0">
+                {{ Voice::line($this->roomKickedOff ? 'groups.lobbies.kicked' : 'groups.lobbies.subheading') }}
+            </flux:subheading>
+
+            {{-- A ROOM ALREADY BEING PLAYED KEEPS THE PANEL AND LOSES THE
+                 DOOR. The pitch is replaced rather than the panel hidden:
+                 the reader tapped through from a row that said "Kicked
+                 off", and an empty space where a door was does not tell
+                 them they are in the right place. JoinGroup refuses the
+                 seat regardless — this is the ASK going away, not the
+                 guard. --}}
+            @if ($this->roomKickedOff)
+                <span class="flex shrink-0 items-center gap-1 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+                    <flux:icon name="lock-closed" variant="micro" class="size-4" />
+                    Kicked off
+                </span>
+            @else
+                <flux:button wire:click="join" wire:loading.attr="disabled" wire:target="join" variant="primary" class="shrink-0">Join this lobby</flux:button>
+            @endif
         </div>
     @endif
 
