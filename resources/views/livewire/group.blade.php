@@ -26,17 +26,20 @@ use App\Models\GroupMember;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateEntry;
+use App\Models\Team;
 use App\Models\User;
 use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Services\Contests\SpreadGrader;
-use App\Support\ImageUpload;
 use App\Support\Cadence;
+use App\Support\ImageUpload;
 use App\Support\Invitables;
 use App\Support\InviteTemplates;
+use App\Support\Placing;
 use App\Support\Seats;
 use App\Support\SlateFeasibility;
 use App\Support\Voice;
+use Carbon\CarbonInterface;
 use Flux\Flux;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
@@ -289,7 +292,7 @@ new class extends Component
      * branch that renders it, because it runs the builder's own candidate
      * pass.
      *
-     * @return array{ok: bool, viable: int, needed: int, next: \Carbon\CarbonInterface}|null
+     * @return array{ok: bool, viable: int, needed: int, next: CarbonInterface}|null
      */
     #[Computed]
     public function slateWindow(): ?array
@@ -536,12 +539,12 @@ new class extends Component
      * query across every member; a member with no follows has no chip,
      * and nothing is substituted for it.
      *
-     * @return array<int, \App\Models\Team>
+     * @return array<int, Team>
      */
     #[Computed]
     public function memberTeams(): array
     {
-        return \App\Models\Team::query()
+        return Team::query()
             ->join('team_follows', 'team_follows.team_id', '=', 'teams.id')
             ->where('team_follows.position', 1)
             ->whereIn('team_follows.user_id', $this->members->pluck('user_id'))
@@ -602,7 +605,7 @@ new class extends Component
         $bear = $slate->bear_theme !== null && ($engine?->hasBear() ?? false);
 
         $rows = $this->weekStandings
-            ->map(function (array $standing) use ($games, $picks, $abbreviate, $grader, $bear, $slate) {
+            ->map(function (array $standing) use ($games, $picks, $abbreviate, $grader, $bear) {
                 $isBear = $standing['key'] === 'bear';
                 $mine = $standing['user'] === null
                     ? collect()
@@ -830,9 +833,9 @@ new class extends Component
      * in the template is a lazy-load 500 on the second request.
      */
     #[Computed]
-    public function roomWeek(): ?\App\Models\Week
+    public function roomWeek(): ?Week
     {
-        return $this->group->week_id === null ? null : \App\Models\Week::find($this->group->week_id);
+        return $this->group->week_id === null ? null : Week::find($this->group->week_id);
     }
 
     /**
@@ -895,6 +898,65 @@ new class extends Component
     }
 
     /**
+     * The viewer's own row in THIS week's standings, or null.
+     *
+     * Null until the card is actually being played, which is the one gate
+     * that keeps a place off a board where nothing has been scored: ten
+     * members on nothing are not tied for first, they are a week that has
+     * not started. Shared by the place line and the you-strip so the two
+     * cannot read different rows.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function weekRow(): ?array
+    {
+        $user = auth()->user();
+
+        if ($user === null || ! in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true)) {
+            return null;
+        }
+
+        return $this->weekStandings->first(fn (array $row) => $row['user']?->id === $user->id);
+    }
+
+    /**
+     * WHERE THE READER STANDS this week — said once, above the fork, so the
+     * slate and the standings walk in on the same number.
+     *
+     * Competition rank via {@see Placing}, so 14 points shared
+     * with somebody reads as a shared place rather than as whichever side of
+     * the sort the reader happened to land on. The field is the PEOPLE in
+     * weekStandings — see the note below on why the Bear is not one.
+     *
+     * Zero queries: weekStandings is already computed for the table below.
+     *
+     * @return array{place: int, field: int, tied: bool}|null
+     */
+    #[Computed]
+    public function placing(): ?array
+    {
+        $row = $this->weekRow();
+
+        if ($row === null) {
+            return null;
+        }
+
+        /*
+         * THE FIELD IS PEOPLE. The Bear is ranked in the table below
+         * because a Woodshed reader wants to see whether the house is ahead
+         * of them — but a PLACE is where you came among the others who
+         * played, which is the reading SlateResults::ranked() already takes
+         * for Sunday's recap. A live band and the recap of the same week
+         * counting different fields would tell one reader two things.
+         */
+        $field = $this->weekStandings
+            ->filter(fn (array $other) => $other['user'] !== null)
+            ->map(fn (array $other) => $other['cells'][0]);
+
+        return Placing::of($row['cells'][0], $field);
+    }
+
+    /**
      * The viewer's own line above the tables — rank and points where the
      * room has them, an em dash where it does not: null means no data,
      * and a seat with no entry has no rank worth inventing. Null when the
@@ -911,13 +973,17 @@ new class extends Component
             return null;
         }
 
-        $playing = in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true);
-        $weekRow = $playing
-            ? $this->weekStandings->first(fn (array $row) => $row['user']?->id === $user->id)
-            : null;
+        $weekRow = $this->weekRow();
 
         $stats = [
-            ['label' => 'Wk rank', 'value' => $weekRow === null ? '—' : '#'.$weekRow['rank']],
+            /*
+             * THE SAME PLACE THE LINE ABOVE THE TABS SAYS, short form: the
+             * band carries the field size, so this column spends its width
+             * on the place alone and the two never contradict each other.
+             * It replaced a bare row number ('#3'), which on a shared 14
+             * points named a place nobody actually held.
+             */
+            ['label' => 'Wk place', 'value' => $this->placing === null ? '—' : Placing::short($this->placing)],
             ['label' => 'Wk pts', 'value' => $weekRow === null ? '—' : (string) $weekRow['cells'][0]],
         ];
 
@@ -1034,7 +1100,7 @@ new class extends Component
         unset(
             $this->contest, $this->pivotChoices, $this->slate, $this->surfaceStatus,
             $this->weekStandings, $this->seasonStandings, $this->seasonHasHistory,
-            $this->youStrip, $this->picksGrid,
+            $this->placing, $this->youStrip, $this->picksGrid,
         );
     }
 
@@ -1059,7 +1125,7 @@ new class extends Component
             $action->handle(auth()->user(), $this->group, $this->iconFile);
         } catch (NotGroupCommissioner) {
             abort(403);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             // The disk refused (R2 answered NotImplemented for months, and
             // `throw => true` made that a 500 on this update). Report it,
             // say so in the icon's own error line, and leave the group on
@@ -1145,7 +1211,7 @@ new class extends Component
     protected function refreshPicks(): void
     {
         $this->refreshPickState();
-        unset($this->slate, $this->surfaceStatus, $this->weekStandings, $this->seasonStandings, $this->youStrip, $this->picksGrid);
+        unset($this->slate, $this->surfaceStatus, $this->weekStandings, $this->seasonStandings, $this->placing, $this->youStrip, $this->picksGrid);
     }
 
     private function normalizedView(string $view): string
@@ -1352,6 +1418,33 @@ new class extends Component
         <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
             <flux:subheading class="min-w-0">{{ Voice::line('groups.lobbies.subheading') }}</flux:subheading>
             <flux:button wire:click="join" wire:loading.attr="disabled" wire:target="join" variant="primary" class="shrink-0">Join this lobby</flux:button>
+        </div>
+    @endif
+
+    {{-- WHERE YOU STAND, above the fork so the slate AND the standings
+         both walk in on it — the card asked for it on both stops, and one
+         line above the strip is one line rather than the same fact printed
+         in two places. Only those two: Members, Invite and Talk are
+         errands, and a place over a chat thread is furniture.
+
+         Absent entirely until the week has been played into. `placing` is
+         null before a game kicks and in a field of one, and null here means
+         no line — never a substituted "1st".
+
+         Blue, because this is the app's colour for a thing about YOU: the
+         you-strip inside Standings wears the same tile, and the two are
+         separated by the tab strip rather than stacked. --}}
+    @if ($this->placing !== null && in_array($view, ['slate', 'standings'], true))
+        <div
+            data-week-place
+            class="flex items-center justify-between gap-3 rounded-xl border border-blue-200/70 bg-blue-50/60 px-4 py-3 dark:border-blue-900/40 dark:bg-blue-950/30"
+        >
+            <span class="min-w-0">
+                <span class="block text-micro font-medium uppercase tracking-wide text-blue-700/80 dark:text-blue-300/80">You this week</span>
+                <span class="tabular block truncate text-lg font-bold leading-tight">{{ Placing::label($this->placing) }}</span>
+            </span>
+
+            <x-slate-status :status="$this->surfaceStatus" class="shrink-0 text-micro" />
         </div>
     @endif
 

@@ -5,7 +5,8 @@
 
     `card` is the lobby's cards() array shape: group, contest,
     commissioner, past, state (waiting | upcoming | live | prelim |
-    final), made/total, entryIn, points, won, wins, firstKick, deadline.
+    final), made/total, entryIn, points, place, won, wins, firstKick,
+    deadline.
     The five-way state row moved here wholesale from pass 2's inline
     markup — same states, same words, now beside an identity a thumb can
     find in a stack.
@@ -33,6 +34,13 @@
     // its name in the chip on the right. No mark keeps the mode tile — the
     // identity seam every card wore before there were marks.
     $marked = $group->iconUrl() !== null || $group->conferenceLogoUrl() !== null;
+
+    /*
+     * WHERE THEY STAND, once the card is being played. Suppressed for a
+     * winner: the Winner badge already says first, and this is the
+     * tightest row on the screen to say it twice on.
+     */
+    $place = ($card['won'] ?? false) ? null : ($card['place'] ?? null);
 
     // Facts, plain in every register. Null means no data and is skipped,
     // never a zero standing in for it.
@@ -147,10 +155,10 @@
             @endif
         @elseif ($card['state'] === 'live')
             <x-slate-status status="live" />
-            <span class="tabular shrink-0 font-semibold">{{ $card['points'] }} pts</span>
+            <x-slate-tally :place="$place" :points="$card['points']" />
         @elseif ($card['state'] === 'prelim')
             <x-slate-status status="prelim" />
-            <span class="tabular shrink-0 font-semibold">{{ $card['points'] }} pts</span>
+            <x-slate-tally :place="$place" :points="$card['points']" />
         @else
             <span class="flex items-center gap-1.5">
                 <x-slate-status status="final" />
@@ -158,7 +166,7 @@
                     <flux:badge size="sm" color="green">Winner</flux:badge>
                 @endif
             </span>
-            <span class="tabular shrink-0 font-semibold">{{ $card['points'] }} pts</span>
+            <x-slate-tally :place="$place" :points="$card['points']" />
         @endif
     </div>
 </a>

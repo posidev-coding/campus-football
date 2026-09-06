@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\MakePick;
 use App\Actions\PublishSlate;
 use App\Enums\ContestMode;
 use App\Models\Contest;
@@ -361,7 +362,7 @@ it('navigates the clubhouse from ONE strip of five stops', function () {
         ->assertSee('Invite')
         // The viewer's own line, and the standings' own content: nothing
         // has been played, so every figure is a dash, never a zero.
-        ->assertSee('Wk rank')
+        ->assertSee('Wk place')
         ->assertSee('—')
         ->assertSee('Triple Option')
         ->assertSee('Talk')
@@ -541,13 +542,23 @@ it('gives a public room three stops, never an invite one', function () {
  * The strip and the standings table below it both print an identity, so an
  * assertion over the whole document cannot tell which one it read.
  */
-function youStripOf(string $html): string
+function youStripOf(string $html, int $chars = 400): string
 {
     $at = strpos($html, 'data-you-strip');
 
     expect($at)->not->toBeFalse('the you-strip did not render');
 
-    return substr($html, $at, 400);
+    $slice = substr($html, $at, $chars);
+
+    /*
+     * ...and never as far as the table under it, whatever the window. Both
+     * print an identity and both print a place, so a slice that reached the
+     * table would answer for the wrong one — which is the bug this helper
+     * exists to stop, not one it may reintroduce by growing.
+     */
+    $table = strpos($slice, '<table');
+
+    return $table === false ? $slice : substr($slice, 0, $table);
 }
 
 it('prints real names in a private group and handles in a public room', function () {
@@ -1029,4 +1040,189 @@ it('gives a commissioner one button on the band, and a member no wrapper at all'
     expect($memberHero)->not->toContain('aria-label="Change the group\'s game"')
         ->not->toContain('aria-label="Group talk"')
         ->not->toContain('flex shrink-0 items-center gap-2');
+});
+
+/**
+ * The place band's own element, cut out of the page.
+ *
+ * "2nd of 10" is a phrase the standings table could grow tomorrow, and a
+ * needle matched against the whole document is satisfied by whoever prints
+ * it. `data-week-place` is on the band and nothing else.
+ */
+function weekPlaceOf(string $html): string
+{
+    $at = strpos($html, 'data-week-place');
+
+    expect($at)->not->toBeFalse('the place band did not render');
+
+    return substr($html, $at, 900);
+}
+
+/**
+ * A published card two members have played into and been scored on, so the
+ * room has an order in it: Alice 20, Bob 10, and the commissioner not
+ * playing at all.
+ *
+ * @return array{0: Slate, 1: User, 2: User, 3: Group}
+ */
+function scoredWeek(): array
+{
+    [$slate, $alice, $bob] = pickemContestants();
+    $games = $slate->games()->with('game')->orderBy('position')->get();
+
+    // Home lays 6.5 in the fixture, so a 21-0 home win covers both.
+    app(MakePick::class)->handle($alice, $games[0], $games[0]->game->home_team_id);
+    app(MakePick::class)->handle($alice, $games[1], $games[1]->game->home_team_id);
+    app(MakePick::class)->handle($bob, $games[0], $games[0]->game->home_team_id);
+
+    test()->travelTo('2026-09-05 20:00:00');
+
+    pickemScore($slate, 1, 21, 0);
+    pickemScore($slate, 2, 21, 0);
+
+    return [$slate->fresh(), $alice, $bob, $slate->contest->group];
+}
+
+it('says where the reader stands, above the fork, on the slate and the standings both', function () {
+    /*
+     * The card asked for the place on BOTH stops. One line above the tab
+     * strip is one line — the alternative was printing the same fact twice,
+     * once per tab, which is how two renders of one number start to
+     * disagree.
+     */
+    [, $alice, $bob] = scoredWeek();
+    $group = Group::first();
+
+    $on = fn (User $user, string $view) => weekPlaceOf(
+        Livewire::actingAs($user)->test('group', ['group' => $group])
+            ->set('view', $view)
+            ->html()
+    );
+
+    // Alice took two of two; Bob one. Two entries in the field — the
+    // commissioner is a member who never picked, so he has no entry and is
+    // not in it.
+    expect($on($alice, 'slate'))->toContain('1st of 2')
+        ->and($on($alice, 'standings'))->toContain('1st of 2')
+        ->and($on($bob, 'slate'))->toContain('2nd of 2')
+        ->and($on($bob, 'standings'))->toContain('2nd of 2');
+});
+
+it('shares a place rather than ordering two people who are level', function () {
+    /*
+     * The table numbers its rows 1..N after a sort, so on a shared total one
+     * of these two would read as 2nd purely because the sort put them there.
+     * The band counts who is strictly ahead instead.
+     */
+    [$slate, $alice, $bob] = pickemContestants();
+    $game = $slate->games()->with('game')->orderBy('position')->first();
+
+    app(MakePick::class)->handle($alice, $game, $game->game->home_team_id);
+    app(MakePick::class)->handle($bob, $game, $game->game->home_team_id);
+
+    $this->travelTo('2026-09-05 20:00:00');
+    pickemScore($slate, 1, 21, 0);
+
+    $group = $slate->contest->group;
+
+    foreach ([$alice, $bob] as $level) {
+        expect(weekPlaceOf(
+            Livewire::actingAs($level)->test('group', ['group' => $group])->html()
+        ))->toContain('T-1st of 2');
+    }
+});
+
+it('invents no place over a board nobody has scored on', function () {
+    /*
+     * Ten members on nothing are not tied for first, they are a week that
+     * has not started. Null is no place and the band does not render — this
+     * is the missing-data rule, and a substituted "1st of 2" here would be
+     * the whole screen lying before kickoff.
+     */
+    [$slate, $alice, $bob] = pickemContestants();
+    $game = $slate->games()->with('game')->orderBy('position')->first();
+
+    /*
+     * BOTH of them, deliberately. With one entrant the field is too small to
+     * place at all, and this test would then pass with the kickoff gate
+     * deleted — green for the field rule rather than for the thing it names.
+     * Two entrants on nothing is the case only the gate can answer.
+     */
+    app(MakePick::class)->handle($alice, $game, $game->game->home_team_id);
+    app(MakePick::class)->handle($bob, $game, $game->game->home_team_id);
+
+    $html = Livewire::actingAs($alice)->test('group', ['group' => $slate->contest->group])
+        ->set('view', 'standings')
+        ->html();
+
+    expect($html)->not->toContain('data-week-place')
+        // ...and the strip's own column is a dash rather than a place.
+        ->and(youStripOf($html, 1200))->toContain('Wk place');
+});
+
+it('keeps the place off the errand stops', function () {
+    // Members, Invite and Talk are errands. A place over a chat thread is
+    // furniture, and the band costs height on the tab that has least of it.
+    [, $alice] = scoredWeek();
+    $group = Group::first();
+
+    $html = Livewire::actingAs($alice)->test('group', ['group' => $group])
+        ->set('view', 'members')
+        ->html();
+
+    expect($html)->not->toContain('data-week-place');
+});
+
+it('says the same place in the band and in the strip beside it', function () {
+    /*
+     * The two halves of the clubhouse's answer, held together the way PR
+     * #91's identity seam had to be: the band carries the field, the strip's
+     * column carries the place alone, and they read one computation.
+     */
+    [, , $bob] = scoredWeek();
+    $group = Group::first();
+
+    $html = Livewire::actingAs($bob)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->html();
+
+    expect(weekPlaceOf($html))->toContain('2nd of 2')
+        ->and(youStripOf($html, 1200))->toContain('2nd');
+});
+
+it('counts the PEOPLE in the field, and not the Bear beside them', function () {
+    /*
+     * The Bear is ranked in the standings table because a Woodshed reader
+     * wants to see whether the house is ahead of them. A PLACE is a
+     * different question: where you came among the others who played, which
+     * is the reading SlateResults::ranked() already takes for the recap that
+     * lands on Sunday. Counting him would make the live band and that recap
+     * disagree about the same week for the same reader.
+     */
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Woodshed);
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate = $slate->fresh();
+
+    $alice = User::factory()->create(['handle' => 'alice', 'admin' => true]);
+    $bob = User::factory()->create(['handle' => 'bob']);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $alice->id]);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $bob->id]);
+
+    $game = $slate->games()->with('game')->orderBy('position')->first();
+    app(MakePick::class)->handle($alice, $game, $game->game->home_team_id);
+    app(MakePick::class)->handle($bob, $game, $game->game->away_team_id);
+
+    $this->travelTo('2026-09-05 20:00:00');
+    pickemScore($slate, 1, 21, 0);
+
+    $html = Livewire::actingAs($alice)->test('group', ['group' => $group])
+        ->set('view', 'standings')
+        ->html();
+
+    // The Bear is on the table — without this the assertion below would be
+    // green on a slate that simply fielded no Bear at all.
+    expect($html)->toContain('The Bear')
+        ->and(weekPlaceOf($html))->toContain('1st of 2')
+        ->and(weekPlaceOf($html))->not->toContain('of 3');
 });
