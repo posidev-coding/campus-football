@@ -641,8 +641,25 @@ new class extends Component
                 })->values()->all();
 
                 return [
+                    /*
+                     * The THIRD identity on this screen, and it reads the same
+                     * seam as the other two. The strip and the standings table
+                     * both print names inside a private group; a grid still
+                     * saying "@taylor" underneath them is the same one
+                     * screen, one person, two identities the strip was fixed
+                     * for, moved one panel down.
+                     *
+                     * Safe at 390px because the name cell is `max-w-32
+                     * truncate`: a longer name eats itself rather than
+                     * widening the sticky column.
+                     *
+                     * A row with no user is the house's own creature — the
+                     * Woodshed's Bear — and keeps its label.
+                     */
                     'name' => $standing['user'] !== null
-                        ? ($standing['user']->handle !== null ? '@'.$standing['user']->handle : $standing['user']->name)
+                        ? ($this->showsRealNames
+                            ? ($standing['user']->name ?: ($standing['user']->handle !== null ? '@'.$standing['user']->handle : ''))
+                            : ($standing['user']->handle !== null ? '@'.$standing['user']->handle : $standing['user']->name))
                         : ($standing['label'] ?? '—'),
                     'viewer' => $standing['user']?->id === auth()->id(),
                     'icon' => $standing['icon'],
@@ -914,7 +931,28 @@ new class extends Component
         }
 
         return [
-            'name' => $user->handle !== null ? '@'.$user->handle : $user->name,
+            /*
+             * THE SAME ANSWER THE TABLE TWO ROWS BELOW GIVES.
+             *
+             * `x-standings-table` began printing real names inside a private
+             * group (PR #91) and this strip did not come with it, so the
+             * clubhouse read "@taylor" in the strip and "Taylor Cox" in the
+             * table — one screen, one person, two identities.
+             *
+             * Both halves now read `showsRealNames`, and the fallbacks are the
+             * table's own, character for character: with names, a member who
+             * has none falls back to their handle; without, a member who has
+             * no handle yet falls back to their name. Neither half of the
+             * identity seam blocks the other.
+             *
+             * A PUBLIC ROOM STAYS ON HANDLES — showsRealNames is false for a
+             * lobby, so a room full of strangers never publishes a legal name.
+             * The rule lives in that one predicate rather than here, which is
+             * what keeps this strip and that table from drifting again.
+             */
+            'name' => $this->showsRealNames
+                ? ($user->name ?: ($user->handle !== null ? '@'.$user->handle : ''))
+                : ($user->handle !== null ? '@'.$user->handle : $user->name),
             'stats' => $stats,
         ];
     }
@@ -1479,7 +1517,11 @@ new class extends Component
             class="flex flex-col gap-5"
         >
             @if ($this->youStrip !== null)
-                <x-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
+                {{-- `data-you-strip` the way the week band marks its own copy:
+                     the strip and the standings table below it both print an
+                     identity, so a test that cannot tell them apart passes on
+                     the table while the strip says something else. --}}
+                <x-you-strip data-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
             @endif
 
             @if (in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true) && $this->weekStandings->isNotEmpty())

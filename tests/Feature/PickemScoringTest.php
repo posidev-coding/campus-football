@@ -396,7 +396,8 @@ it('shows the room its standings: live, then final with the winner named', funct
         ->set('view', 'standings')
         ->assertSee('This week')
         ->assertSee('Live')
-        ->assertSee('@alice');
+        // A private group names its people on every surface, the grid too.
+        ->assertSee($alice->name);
 
     foreach (range(1, 10) as $position) {
         pickemScore($slate, $position, 28, 7, final: true);

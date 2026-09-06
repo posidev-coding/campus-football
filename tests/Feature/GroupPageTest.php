@@ -251,8 +251,10 @@ it('renders result marks and the week standings once games grade', function () {
         ->assertSeeInOrder(['Preliminary', 'hidden flex-col gap-4 lg:flex', 'This week'], escape: false)
         ->set('view', 'standings')
         ->assertSee('This week')
-        // The winner leads the loser in the room.
-        ->assertSeeInOrder(['@'.$commissioner->handle, '@'.$member->handle]);
+        // The winner leads the loser. NAMES, because this is a private group
+        // and all three of the clubhouse's identity surfaces print names
+        // there — the ordering is what this line is for, not the identity.
+        ->assertSeeInOrder([$commissioner->name, $member->name]);
 });
 
 it('opens no sidecar column on a slate that has not kicked off', function () {
@@ -533,6 +535,21 @@ it('gives a public room three stops, never an invite one', function () {
         ->assertDontSee('Or read them the code');
 });
 
+/**
+ * The you-strip's own element, cut out of the page.
+ *
+ * The strip and the standings table below it both print an identity, so an
+ * assertion over the whole document cannot tell which one it read.
+ */
+function youStripOf(string $html): string
+{
+    $at = strpos($html, 'data-you-strip');
+
+    expect($at)->not->toBeFalse('the you-strip did not render');
+
+    return substr($html, $at, 400);
+}
+
 it('prints real names in a private group and handles in a public room', function () {
     /*
      * The seam is the KIND of room, not a preference. A private group is
@@ -568,6 +585,129 @@ it('prints real names in a private group and handles in a public room', function
         ->set('view', 'standings')
         ->assertSee('@shedhand')
         ->assertDontSee('Dale Trickett');
+});
+
+it('says the same thing in the you-strip that the table two rows below says', function () {
+    /*
+     * PR #91 gave the standings table real names inside a private group and
+     * the strip above it did not come along, so the clubhouse read "@taylorc"
+     * in the strip and "Taylor Cox" in the table — one screen, one person,
+     * two identities.
+     *
+     * Scoped to the strip's own element, because the TABLE prints an identity
+     * too: a bare assertSee would pass on the table while the strip went on
+     * disagreeing with it, which is the failure this test exists to catch.
+     *
+     * Asserted both ways round on one fixture, the way #91 asserted its half.
+     */
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $commissioner->update(['first_name' => 'Taylor', 'last_name' => 'Cox', 'handle' => 'taylorc']);
+
+    [, $week] = pickemSeasonWeek();
+    $slate = Slate::factory()->create([
+        'contest_id' => $contest->id, 'week_id' => $week->id,
+        'status' => Slate::SETTLED, 'settled_at' => now(),
+    ]);
+    SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $commissioner->id, 'final_points' => 9]);
+
+    $strip = fn (Group $for) => youStripOf(
+        Livewire::actingAs($commissioner->fresh())->test('group', ['group' => $for])->set('view', 'standings')->html()
+    );
+
+    // Private: the name, matching the table.
+    expect($strip($group))->toContain('Taylor Cox')
+        ->and($strip($group))->not->toContain('@taylorc');
+
+    // The same person, in public: the handle, matching the table there.
+    $group->update(['kind' => Group::KIND_LOBBY]);
+
+    expect($strip($group->fresh()))->toContain('@taylorc')
+        ->and($strip($group->fresh()))->not->toContain('Taylor Cox');
+});
+
+it('says it in the picks grid too, which is the third identity on the screen', function () {
+    /*
+     * The clubhouse prints a person three times: the strip, the standings
+     * table and the picks grid. Two of them agreeing is still a screen
+     * disagreeing with itself — the grid went on saying "@taylorc" underneath
+     * a strip and a table both saying the name.
+     *
+     * Asserted on the GRID's own rows, because the other two print an
+     * identity on the same page. Fixture shape copied from 'reveals the picks
+     * grid per game': the grid needs two entrants and a kicked game.
+     */
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $commissioner->update(['first_name' => 'Taylor', 'last_name' => 'Cox', 'handle' => 'taylorc']);
+    $member = User::factory()->create(['admin' => true, 'handle' => 'gridwatcher']);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate = $slate->fresh();
+
+    $games = $slate->games()->with('game')->orderBy('position')->get();
+
+    foreach ([$commissioner, $member] as $player) {
+        foreach ($games->take(2) as $slateGame) {
+            Pick::factory()->create([
+                'slate_game_id' => $slateGame->id,
+                'user_id' => $player->id,
+                'picked_team_id' => $slateGame->game->home_team_id,
+            ]);
+        }
+
+        SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $player->id]);
+    }
+
+    $games[0]->game->update(['kickoff_at' => now()->subHour()]);
+
+    /*
+     * Read off the grid's own rows rather than the page. The strip and the
+     * standings table print an identity too, so a page-wide assertion could
+     * not say which one it read — and the grid sits behind a view gate the
+     * other two do not share.
+     */
+    $gridNames = fn (Group $for) => collect(
+        Livewire::actingAs($commissioner->fresh())->test('group', ['group' => $for])->instance()->picksGrid['rows']
+    )->pluck('name')->all();
+
+    expect($gridNames($group))->toContain('Taylor Cox')
+        ->and($gridNames($group))->not->toContain('@taylorc');
+
+    $group->update(['kind' => Group::KIND_LOBBY]);
+
+    expect($gridNames($group->fresh()))->toContain('@taylorc')
+        ->and($gridNames($group->fresh()))->not->toContain('Taylor Cox');
+});
+
+it('falls back the way the table does when half the identity is missing', function () {
+    /*
+     * Both directions of the seam, so neither half can block the other: a
+     * private group with no name to print falls back to the handle, and a
+     * public room with no handle yet falls back to the name. The table's own
+     * fallbacks, character for character.
+     */
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+
+    [, $week] = pickemSeasonWeek();
+    $slate = Slate::factory()->create([
+        'contest_id' => $contest->id, 'week_id' => $week->id,
+        'status' => Slate::SETTLED, 'settled_at' => now(),
+    ]);
+    SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $commissioner->id, 'final_points' => 9]);
+
+    $strip = fn (Group $for) => youStripOf(
+        Livewire::actingAs($commissioner->fresh())->test('group', ['group' => $for])->set('view', 'standings')->html()
+    );
+
+    // Private, no name: the handle rather than an empty line.
+    $commissioner->update(['first_name' => '', 'last_name' => '', 'handle' => 'nameless']);
+    expect($strip($group))->toContain('@nameless');
+
+    // Public, no handle: the name rather than an empty line.
+    $commissioner->update(['first_name' => 'Handle', 'last_name' => 'Less', 'handle' => null]);
+    $group->update(['kind' => Group::KIND_LOBBY]);
+    expect($strip($group->fresh()))->toContain('Handle Less');
 });
 
 it('keeps a public room\'s roster on handles too, not just its tables', function () {
@@ -765,7 +905,8 @@ it('reveals the picks grid per game, and never before kickoff', function () {
     Livewire::actingAs($commissioner)->test('group', ['group' => $group])
         ->set('view', 'standings')
         ->assertSee('Picks show at kickoff.')
-        ->assertSee('@gridwatcher')
+        // The member's row is present; a private group names them.
+        ->assertSee($member->name)
         ->assertSeeHtml('data-cell="hidden"')
         ->assertSeeHtml('data-cell="pick"');
 });
