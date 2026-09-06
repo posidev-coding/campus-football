@@ -203,6 +203,17 @@ Route::get('brand/splash/{spec}.png', function (string $spec) {
 Route::view('offline', 'offline')->name('offline');
 
 /*
+ * What the app records about a reader, in plain sentences — reached from
+ * Account and from the register form, and deliberately in NO nav area: it is
+ * a page somebody goes to once, from a link, not a place in the product.
+ *
+ * A guest route on purpose. Somebody deciding whether to sign up is exactly
+ * the person who should be able to read it, and putting it behind `auth`
+ * would mean the disclosure arrives after the decision.
+ */
+Route::view('privacy', 'privacy')->name('privacy');
+
+/*
  * Public sports data. These are read-only and served from cache, so a cold
  * visitor never pays a database wake on Laravel Cloud's scale-to-zero MySQL.
  *

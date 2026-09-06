@@ -2409,6 +2409,12 @@ class Voice
             'r' => 'Follow up to :max teams, from Account or any team page. First in the list leads Home and Scores, so put the one you actually care about on top and stop pretending about the others. Reorder or unfollow on Account.',
         ],
 
+        'help.account.data' => [
+            'pg' => 'The app records which screens get opened — by name, never the address — plus how wide your screen is and whether you added the app to your home screen. The detailed log is deleted after :days days; the day-by-day counts are kept, and all of it goes when your account does. Tap through for the whole of it.',
+            'pg13' => 'The app counts which screens get opened — the screen\'s name, never the address, so nothing about which group you were in rides along. It also notes your screen width and whether you installed the app. The detailed log dies after :days days, the daily counts stay, and everything goes when your account does. Tap through for the whole of it.',
+            'r' => 'The app counts which screens get opened — the name, never the address, so nothing about which room you were in comes with it. It clocks your screen width and whether you installed the app, and that is the lot: no ad networks, nobody buying it. The detailed log dies after :days days, the daily counts stay, and it all goes when your account does. Tap through and read it yourself.',
+        ],
+
         'help.account.tours' => [
             'pg' => 'The guided tour walks through the app screen by screen, and the Picks tour covers the week, the cooler and the rooms. Replay either any time from Account, or start the app tour now.',
             'pg13' => 'Two tours: the app walk from Home and the Picks walk for the week, the cooler and the rooms. Replay either from Account whenever you like, or start the app tour now.',

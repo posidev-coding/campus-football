@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Actions\GrantWalletEntry;
 use App\Enums\ContentRating;
 use App\Enums\LobbyShelf;
+use App\Models\ActivityEvent;
 use App\Models\User;
 use App\Services\Contests\ModeEngine;
 use App\Services\Contests\WoodshedMode;
@@ -169,6 +170,12 @@ final class HelpTopics
             'params' => [],
             'summary' => 'following a team, reordering or unfollowing teams, and how many you may follow',
         ],
+        'account.data' => [
+            'title' => 'What the app records',
+            'route' => 'privacy',
+            'params' => [],
+            'summary' => 'what the app records about you, what it keeps, how long, and what happens when you delete your account',
+        ],
         'account.tours' => [
             'title' => 'The tour',
             'route' => 'home',
@@ -306,6 +313,7 @@ final class HelpTopics
                 'spicy' => ContentRating::R->label(),
             ],
             'account.teams' => ['max' => User::MAX_FOLLOWED_TEAMS],
+            'account.data' => ['days' => ActivityEvent::KEEP_DAYS],
             default => [],
         };
     }
