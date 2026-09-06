@@ -6,6 +6,7 @@ use App\Models\Article;
 use App\Models\Team;
 use App\Services\Espn\EspnClient;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -37,6 +38,16 @@ class SyncNews
 {
     /** ESPN clamps to this regardless of what we ask for. Stated, not hoped. */
     private const MAX_LIMIT = 50;
+
+    /**
+     * Extra attempts after a deadlock, and only after a deadlock.
+     *
+     * Two, because the cycle needs another writer holding the same article's
+     * locks at the same instant and that window is milliseconds wide — a
+     * third attempt would be waiting on something other than contention, and
+     * the honest answer to that is to fail and leave a ledger row.
+     */
+    private const DEADLOCK_RETRIES = 2;
 
     public function __construct(private EspnClient $espn) {}
 
@@ -198,10 +209,89 @@ class SyncNews
      * did. That is only reachable when the payload HAS a categories block
      * naming no team we carry; an absent block never gets this far.
      *
+     * THE RACE CAME BACK AS A DEADLOCK. `insertOrIgnore` retired the unique
+     * violation and left the contention underneath it: `insert ignore` still
+     * takes next-key locks on `unique(article_id, team_id)`, the DELETE locks
+     * the same `article_id` range on the same index, and `teamIds()` preserves
+     * ESPN's payload order — so two writers of one national story took the
+     * same row locks in opposite orders and MySQL rolled one of them back.
+     * Seven `SQLSTATE[40001]` in a day, and the one that landed on the 06:00
+     * pass abandoned the rest of that ingest batch.
+     *
+     * Two things answer it, and a third makes both rarer:
+     *
+     * 1. `$wanted` IS SORTED, so every writer takes the insert's row locks in
+     *    the same order. That closes the insert-against-insert cycle outright,
+     *    for the cost of one sort.
+     * 2. The delete-against-insert cycle survives ordering, so the pair is
+     *    retried on a deadlock and only on a deadlock. MySQL has already
+     *    rolled the loser back and both statements are idempotent, so a retry
+     *    is safe — see {@see writeTeamLinks()}.
+     * 3. Most calls have nothing to do at all, because ESPN hands the same
+     *    national story to several jobs, and both statements are then pure
+     *    lock acquisition for no change.
+     *
+     * NOT a transaction around the pair: a longer transaction holds those same
+     * locks for longer and widens the window it was reached for. NOT a
+     * per-article lock either, for the reason above — a round trip per
+     * article, and it is still the wrong trade.
+     *
      * @param  list<int>  $wanted
      */
     private function syncTeamLinks(Article $article, array $wanted): void
     {
+        // One order for every writer. Ascending is arbitrary; AGREEING is the
+        // whole point, and it must happen before the retry loop so a second
+        // attempt cannot take the locks in a third order.
+        sort($wanted);
+
+        for ($attempt = 0; ; $attempt++) {
+            try {
+                $this->writeTeamLinks($article, $wanted);
+
+                return;
+            } catch (QueryException $e) {
+                if ($attempt >= self::DEADLOCK_RETRIES || ! self::isDeadlock($e)) {
+                    throw $e;
+                }
+
+                // Jittered, so two writers that just deadlocked with each
+                // other do not wake together and do it again.
+                usleep(random_int(20_000, 80_000));
+            }
+        }
+    }
+
+    /**
+     * The write itself: detach what the payload dropped, attach what it names.
+     *
+     * @param  list<int>  $wanted  ascending, so every writer agrees on lock order
+     */
+    private function writeTeamLinks(Article $article, array $wanted): void
+    {
+        /*
+         * The common case, and the cheap one: this article's links already
+         * say exactly what this payload says. ESPN repeats a national story
+         * across many games' related lists, so most of the writers reaching
+         * here have nothing to change, and running the pair anyway is two
+         * lock-taking statements for no row.
+         *
+         * A READ, NEVER THE AUTHORITY. It decides only whether to write at
+         * all; it never computes WHAT to write, which is what made the
+         * original diff a race. The write below stays correct on its own, so
+         * a stale read costs a redundant write and never a wrong row.
+         */
+        $stored = DB::table('article_team')
+            ->where('article_id', $article->id)
+            ->orderBy('team_id')
+            ->pluck('team_id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
+        if ($stored === $wanted) {
+            return;
+        }
+
         DB::table('article_team')
             ->where('article_id', $article->id)
             ->whereNotIn('team_id', $wanted)
@@ -222,6 +312,20 @@ class SyncNews
             'created_at' => $now,
             'updated_at' => $now,
         ], $wanted));
+    }
+
+    /**
+     * A deadlock and nothing else.
+     *
+     * SQLSTATE 40001 is "serialization failure", which for MySQL is error
+     * 1213 — the loser of a lock cycle, already rolled back and safe to try
+     * again. Every other QueryException is re-raised untouched: a retry loop
+     * that swallowed a missing column or a foreign key would turn a bug into
+     * three seconds of silence.
+     */
+    private static function isDeadlock(QueryException $e): bool
+    {
+        return (string) ($e->errorInfo[0] ?? $e->getCode()) === '40001';
     }
 
     /**
