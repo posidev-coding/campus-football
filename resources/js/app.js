@@ -406,6 +406,51 @@ function rejectionDetail(reason) {
  * bug can get a word in. Swallowing it would have traded a useless signal for
  * no signal; it is named instead.
  */
+/*
+ * THE UPLOAD FAILURE NOBODY WAS HOLDING.
+ *
+ * Livewire's UploadManager calls `$wire.call('_startUpload', ..)` and DISCARDS
+ * the promise it returns (dist/livewire.js:831). The error callback the
+ * control passes to `$wire.upload()` is only invoked from `_uploadErrored` —
+ * once bytes are already moving — so a 500 raised INSIDE `_startUpload`, before
+ * any transfer begins, rejects with a plain `{ status, body, json, errors }`
+ * that nothing is holding. The reader got a picker that went quiet; the window
+ * got an anonymous rejection. That was the whole of the feedback.
+ *
+ * Watched through the supported `commit` hook rather than by reaching into the
+ * upload manager: `fail` fires on the commit's own onError/onCancel, and the
+ * payload names its calls, so the failing upload is identifiable without
+ * patching or forking Livewire.
+ *
+ * Both upload surfaces (Account, the clubhouse icon) are backed by the
+ * UploadsImages concern, so `reportRefusedUpload` is always there to knock on.
+ */
+document.addEventListener('livewire:init', () => {
+    window.Livewire.hook('commit', ({ component, commit, fail }) => {
+        const start = commit.calls?.find((call) => call.method === '_startUpload');
+
+        if (!start) return;
+
+        fail(() => {
+            const property = start.params?.[0];
+
+            /* No property, no guess. Without it there is no <flux:error> to
+             * write to, and picking one would put the message on a control
+             * that did not fail. */
+            if (typeof property !== 'string') return;
+
+            /* The same door the transfer gate and the oversize gate already
+             * use, so one error surface serves all three. If even this knock
+             * fails, it is NAMED rather than rethrown — a handler that throws
+             * inside the failure it is reporting is how this bug looked in the
+             * first place. */
+            component.$wire
+                .call('reportRefusedUpload', property)
+                .catch((error) => reportFailure(`${property} upload refusal could not be shown`, error));
+        });
+    });
+});
+
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js').catch((error) => {

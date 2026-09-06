@@ -30,10 +30,27 @@ globalThis.location = { pathname: '/' };
 globalThis.matchMedia = () => ({ matches: false });
 globalThis.atob = (encoded) => Buffer.from(encoded, 'base64').toString('binary');
 
+const docListeners = {};
+
+/* The upload seam registers on `livewire:init` and talks to Livewire's hook
+ * bus, so the harness has to be able to BE Livewire for one commit. */
+const hooks = {};
+const knocks = [];
+let knockResult = () => Promise.resolve();
+
 globalThis.document = {
     querySelector: (selector) => ({
         content: selector.includes('cfb-error-endpoint') ? '/client-errors' : 'test-csrf-token',
     }),
+    addEventListener: (name, handler) => {
+        (docListeners[name] ??= []).push(handler);
+    },
+};
+
+globalThis.Livewire = {
+    hook: (name, callback) => {
+        (hooks[name] ??= []).push(callback);
+    },
 };
 
 /* Every POST is captured, error reports and push subscriptions alike; the
@@ -115,6 +132,15 @@ switch (scenario) {
         globalThis.location = { pathname: '/groups/51' };
         break;
 
+    /* A commit carrying _startUpload that FAILS — the 500 raised before any
+     * byte moves, which Livewire drops on the floor. */
+    case 'upload-start-fails':
+    case 'upload-start-fails-unnamed':
+    case 'upload-start-knock-fails':
+    case 'commit-unrelated-fails':
+        globalThis.location = { pathname: '/groups/51' };
+        break;
+
     default:
         throw new Error(`Unknown scenario: ${scenario}`);
 }
@@ -173,6 +199,39 @@ if (scenario.startsWith('push-')) {
     for (const handler of listeners.unhandledrejection ?? []) {
         handler({ reason: rejectionReasons[scenario] });
     }
+} else if (scenario.startsWith('upload-start-') || scenario === 'commit-unrelated-fails') {
+    for (const handler of docListeners['livewire:init'] ?? []) {
+        handler();
+    }
+
+    if (scenario === 'upload-start-knock-fails') {
+        knockResult = () => Promise.reject({ status: 500 });
+    }
+
+    /* The unrelated call carries a STRING first param on purpose. With an
+     * empty params list the property guard would reject it anyway, and the
+     * scenario would pass without the method filter existing at all. */
+    const calls = scenario === 'commit-unrelated-fails'
+        ? [{ method: 'save', params: ['iconFile'] }]
+        : [{ method: '_startUpload', params: scenario === 'upload-start-fails-unnamed' ? [] : ['iconFile'] }];
+
+    const component = {
+        $wire: {
+            call: (...args) => {
+                knocks.push(args);
+
+                return knockResult();
+            },
+        },
+    };
+
+    for (const hook of hooks.commit ?? []) {
+        const failCallbacks = [];
+
+        hook({ component, commit: { calls }, fail: (cb) => failCallbacks.push(cb) });
+
+        failCallbacks.forEach((cb) => cb());
+    }
 } else if (scenario === 'island-failure') {
     /* The door the Blade islands report through — an Alpine `.catch()` that
      * knows what it was doing, which is the one thing the listener cannot. */
@@ -188,4 +247,4 @@ for (let tick = 0; tick < 5; tick++) {
     await new Promise((resolve) => setImmediate(resolve));
 }
 
-console.log(JSON.stringify({ posts, result }));
+console.log(JSON.stringify({ posts, result, knocks }));
