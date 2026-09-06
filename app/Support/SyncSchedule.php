@@ -171,6 +171,15 @@ class SyncSchedule
             // gains a trackRun() key needs a line here or its row lies.
             str_starts_with($command, 'cfb:kickoff-alerts') => 'kickoff-alerts',
             str_starts_with($command, 'cfb:ux-rollup') => 'ux:rollup',
+            /*
+             * The clickstream pair. Both write feed runs, and the drain is
+             * the one row on this panel that catches a dead PIPELINE rather
+             * than a dead app: a stalled drain looks exactly like a quiet
+             * week, on every widget the rollups feed, with nothing throwing
+             * anywhere.
+             */
+            str_starts_with($command, 'cfb:activity-drain') => 'activity:drain',
+            str_starts_with($command, 'cfb:activity-rollup') => 'activity:rollup',
             str_starts_with($command, 'cfb:gameday') => 'gameday',
             /*
              * ALL FOUR pick'em sweeps write rows now. Three of them did not,

@@ -43,10 +43,30 @@ function recordedFacets(): array
     ));
 }
 
-/** Every file under app/ and resources/views/ naming this kind. */
+/**
+ * Every file under app/ and resources/views/ that WRITES this kind.
+ *
+ * The match is the emitting call — `action()` or the internal `push()` — and
+ * not the bare name, because a READER is not an emitter and phase 3 added
+ * two of them: `ActivityRollup` asks whether a row is a page view or a search
+ * to set the feature bits, and `OpsReport` counts yesterday's page views to
+ * see whether the rollup ran. Neither can make a number disagree with itself,
+ * which is the bug this sweep exists for. The kind may appear on the line
+ * after the call — the account screen and the help sheet both wrap — so the
+ * pattern crosses whitespace.
+ */
 function emittersOf(ActivityKind $kind): array
 {
-    return callersOf('ActivityKind::'.$kind->name);
+    $pattern = '/(?:->action|push)\(\s*ActivityKind::'.$kind->name.'\b/';
+
+    return collect(File::allFiles(base_path('app')))
+        ->merge(File::allFiles(resource_path('views')))
+        ->filter(fn ($file) => preg_match($pattern, $file->getContents()) === 1)
+        ->map(fn ($file) => str_replace(base_path().'/', '', $file->getPathname()))
+        ->values()
+        ->sort()
+        ->values()
+        ->all();
 }
 
 /** Every file under app/ and resources/views/ containing this needle. */
@@ -64,7 +84,7 @@ function callersOf(string $needle): array
 
 describe('one emitter per kind', function () {
     it('records a page view from the middleware and from nowhere else', function () {
-        // The kind itself is named only where it is written…
+        // The kind is WRITTEN in exactly one place…
         expect(emittersOf(ActivityKind::PageView))->toBe(['app/Actions/RecordActivity.php']);
 
         // …and the one door to it is the middleware. A Livewire mount hook

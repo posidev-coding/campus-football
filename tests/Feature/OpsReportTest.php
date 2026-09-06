@@ -1,15 +1,19 @@
 <?php
 
+use App\Actions\RecordActivity;
 use App\Actions\RecordUxEvent;
 use App\Enums\UxSignal;
 use App\Jobs\FetchGameSummary;
+use App\Models\ActivityEvent;
 use App\Models\ClientError;
 use App\Models\FeedRun;
+use App\Models\PageViewDaily;
 use App\Models\User;
 use App\Models\UxEvent;
 use App\Support\CoverageReport;
 use App\Support\OpsReport;
 use App\Support\PickemPreflight;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 
@@ -122,6 +126,97 @@ describe('the monitor watching itself', function () {
 
         expect($row['status'])->toBe(OpsReport::OK)
             ->and($row['detail'])->toContain('keeping up');
+    });
+});
+
+describe('the clickstream pipeline', function () {
+    it('catches a stalled activity drain, which reads as a quiet week', function () {
+        /*
+         * The `pulse_ingest` row one layer over, and it fails identically: a
+         * drain that is not running renders as no rows on every widget the
+         * rollups feed, nothing throws, and the only tell is the buffer.
+         */
+        foreach (range(1, OpsReport::ACTIVITY_WARN) as $i) {
+            Redis::connection('pulse')->xadd(RecordActivity::STREAM, '*', ['kind' => 'page_view']);
+        }
+
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'activity_ingest');
+
+        expect($row['status'])->toBe(OpsReport::WARN)
+            ->and($row['remedy'])->toContain('cfb:activity-drain');
+    })->skipOnWindows();
+
+    it('reads an empty activity buffer as the drain keeping up', function () {
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'activity_ingest');
+
+        expect($row['status'])->toBe(OpsReport::OK)
+            ->and($row['detail'])->toContain('keeping up');
+    });
+
+    it('says nothing about a rollup on a day nobody read a screen', function () {
+        // Absence is the datum here too: an offseason Tuesday with no traffic
+        // has nothing to roll, and a row that warned about it every morning
+        // would be the boy who cried wolf by Thursday.
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'activity_rollup');
+
+        expect($row['status'])->toBe(OpsReport::OK)
+            ->and($row['detail'])->toContain('nothing to roll');
+    });
+
+    it('warns when yesterday was read and never rolled', function () {
+        $yesterday = now(config('cfb.timezone'))->subDay()->toDateString();
+
+        ActivityEvent::factory()->count(3)->create([
+            'occurred_at' => $yesterday.' 18:00:00',
+        ]);
+
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'activity_rollup');
+
+        expect($row['status'])->toBe(OpsReport::WARN)
+            ->and($row['detail'])->toContain('0 of 3')
+            ->and($row['remedy'])->toBe("php artisan cfb:activity-rollup --day={$yesterday}");
+    });
+
+    it('catches a PARTIAL roll, which a bare row check would call healthy', function () {
+        // The rollup writes cells, not a marker, so "is there a row for
+        // yesterday" is satisfied by a run that died a third of the way in.
+        $yesterday = now(config('cfb.timezone'))->subDay()->toDateString();
+
+        ActivityEvent::factory()->count(3)->create(['occurred_at' => $yesterday.' 18:00:00']);
+        PageViewDaily::factory()->create(['day' => $yesterday, 'views' => 1]);
+
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'activity_rollup');
+
+        expect($row['status'])->toBe(OpsReport::WARN)
+            ->and($row['detail'])->toContain('1 of 3');
+    });
+
+    it('goes quiet once the day is rolled', function () {
+        $yesterday = now(config('cfb.timezone'))->subDay()->toDateString();
+
+        ActivityEvent::factory()->count(3)->create(['occurred_at' => $yesterday.' 18:00:00']);
+
+        $this->artisan('cfb:activity-rollup')->assertSuccessful();
+
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'activity_rollup');
+
+        expect($row['status'])->toBe(OpsReport::OK)
+            ->and($row['detail'])->toContain('3 views rolled');
+    });
+
+    it('does not warn about a roll that is not due yet', function () {
+        // The daily pass runs at 04:56 league time. Before the hour it is due
+        // by, "not yet" is the honest answer rather than a warning about work
+        // nobody has asked for.
+        $this->travelTo(CarbonImmutable::parse('2026-09-05 05:30', config('cfb.timezone')));
+
+        ActivityEvent::factory()->create(['occurred_at' => '2026-09-04 18:00:00']);
+
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'activity_rollup');
+
+        expect($row['status'])->toBe(OpsReport::OK)
+            ->and($row['detail'])->toContain('has not been rolled yet')
+            ->and($row['remedy'])->toBeNull();
     });
 });
 

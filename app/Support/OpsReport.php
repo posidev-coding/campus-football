@@ -2,10 +2,14 @@
 
 namespace App\Support;
 
+use App\Actions\RecordActivity;
 use App\Actions\RecordUxEvent;
+use App\Enums\ActivityKind;
 use App\Enums\UxSignal;
+use App\Models\ActivityEvent;
 use App\Models\ClientError;
 use App\Models\FeedRun;
+use App\Models\PageViewDaily;
 use App\Models\UxEvent;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
@@ -55,6 +59,27 @@ class OpsReport
     public const INGEST_FAIL = 5_000;
 
     /**
+     * The same question asked of the clickstream, at ten times the numbers.
+     *
+     * A page view is one stream entry per screen somebody read, where a Pulse
+     * entry is one per slow thing — so a busy Saturday buffers thousands
+     * between two five-minute drains and is perfectly healthy. Five thousand
+     * is roughly an hour of missed drains at pilot traffic; fifty thousand is
+     * a quarter of `RecordActivity::MAXLEN`, which is the point where the
+     * stream starts trimming the oldest entries and the day is lost rather
+     * than late.
+     */
+    public const ACTIVITY_WARN = 5_000;
+
+    public const ACTIVITY_FAIL = 50_000;
+
+    /**
+     * The hour by which yesterday must be rolled. The scheduled pass runs at
+     * 04:56 league time; an hour of slack keeps a slow night off the report.
+     */
+    public const ROLLUP_DUE_HOUR = 6;
+
+    /**
      * Where a pick-through rate stops being a slow week and starts being a
      * broken screen. A FIRST CALIBRATION, like the quality weights: it has
      * never been measured against a real Saturday, and it should be revisited
@@ -77,6 +102,8 @@ class OpsReport
             $this->slowQueries(),
             $this->failedJobs(),
             $this->clientErrors(),
+            $this->activityIngest(),
+            $this->activityRollup(),
             $this->pickThrough(),
         ];
     }
@@ -205,6 +232,99 @@ class OpsReport
             },
             $count === 0 ? 'None' : "{$count} died",
             $count === 0 ? null : 'Sync Health → Recent failures, then the Cloud dashboard for the payload.',
+        );
+    }
+
+    /**
+     * Is `cfb:activity-drain` actually draining?
+     *
+     * The `pulse_ingest` row one layer over, and it fails the same way: a
+     * stalled drain is indistinguishable from a quiet week on every widget
+     * the rollups feed, because both render as no rows. Nothing throws,
+     * nothing 500s, and the only tell is the buffer.
+     */
+    private function activityIngest(): array
+    {
+        $buffered = app(RecordActivity::class)->pending();
+
+        if ($buffered === null) {
+            return $this->row(
+                'activity_ingest',
+                'Activity ingest',
+                self::FAIL,
+                'Could not reach the telemetry Redis database.',
+                'Check REDIS_HOST and the `pulse` connection in config/database.php.',
+            );
+        }
+
+        $status = match (true) {
+            $buffered >= self::ACTIVITY_FAIL => self::FAIL,
+            $buffered >= self::ACTIVITY_WARN => self::WARN,
+            default => self::OK,
+        };
+
+        return $this->row(
+            'activity_ingest',
+            'Activity ingest',
+            $status,
+            $buffered === 0
+                ? 'Buffer empty — the drain is keeping up'
+                : "{$buffered} page views buffered and not yet written",
+            $status === self::OK ? null : 'php artisan cfb:activity-drain — above '.number_format(self::ACTIVITY_FAIL).' the stream starts trimming the oldest entries',
+        );
+    }
+
+    /**
+     * Did yesterday get folded into the tables that live on?
+     *
+     * Measured against the RAW rows rather than against the clock alone, so a
+     * genuinely quiet day reads OK instead of crying wolf every morning of the
+     * offseason — and so a PARTIAL roll is caught too, which a bare
+     * "is there a row" check would call healthy.
+     */
+    private function activityRollup(): array
+    {
+        $yesterday = now(config('cfb.timezone'))->subDay()->toDateString();
+
+        $raw = ActivityEvent::query()
+            ->where('day', $yesterday)
+            ->where('kind', ActivityKind::PageView->value)
+            ->count();
+
+        if ($raw === 0) {
+            return $this->row(
+                'activity_rollup',
+                'Activity rollup',
+                self::OK,
+                "No page views recorded on {$yesterday} — nothing to roll",
+                null,
+            );
+        }
+
+        $rolled = (int) PageViewDaily::query()->where('day', $yesterday)->sum('views');
+
+        if ($rolled >= $raw) {
+            return $this->row(
+                'activity_rollup',
+                'Activity rollup',
+                self::OK,
+                "{$rolled} views rolled for {$yesterday}",
+                null,
+            );
+        }
+
+        // Before the pass is due, "not yet" is the honest answer rather than
+        // a warning about work nobody has asked for.
+        $due = now(config('cfb.timezone'))->hour >= self::ROLLUP_DUE_HOUR;
+
+        return $this->row(
+            'activity_rollup',
+            'Activity rollup',
+            $due ? self::WARN : self::OK,
+            $due
+                ? "{$rolled} of {$raw} views rolled for {$yesterday}"
+                : "{$yesterday} has not been rolled yet — the daily pass runs at 04:56",
+            $due ? "php artisan cfb:activity-rollup --day={$yesterday}" : null,
         );
     }
 
