@@ -61,10 +61,10 @@ class Dashboard extends BaseDashboard
             Section::make()
                 ->columns(2)
                 ->schema([
-                    Select::make('window')
+                    Select::make('range')
                         ->label('Range')
                         ->options(AnalyticsWindow::options())
-                        ->default(AnalyticsWindow::DEFAULT_DAYS)
+                        ->default(AnalyticsWindow::DEFAULT_RANGE)
                         ->selectablePlaceholder(false),
 
                     /*

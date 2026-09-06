@@ -408,11 +408,27 @@ describe('the analytics windows', function () {
     });
 
     it('falls back to the default rather than honoring a made-up width', function () {
-        // Filters come off a URL, and `?window=4000` must not render four
-        // thousand days labeled as one.
-        expect(AnalyticsWindow::from(['window' => 4_000])->days)->toBe(AnalyticsWindow::DEFAULT_DAYS)
+        /*
+         * Filters come off a URL, and `?range=4000d` must not render four
+         * thousand days labeled as one.
+         *
+         * The filter stores a TOKEN ('28d', 'season') rather than a number,
+         * because one of the four ranges has no fixed width — so an unparsable
+         * token has to land on the default just as firmly as an absurd one.
+         */
+        expect(AnalyticsWindow::from(['range' => '4000d'])->days)->toBe(AnalyticsWindow::DEFAULT_DAYS)
+            ->and(AnalyticsWindow::from(['range' => 'nonsense'])->days)->toBe(AnalyticsWindow::DEFAULT_DAYS)
             ->and(AnalyticsWindow::from([])->days)->toBe(AnalyticsWindow::DEFAULT_DAYS)
-            ->and(AnalyticsWindow::from(['window' => 7])->days)->toBe(7);
+            ->and(AnalyticsWindow::from(['range' => '7d'])->days)->toBe(7)
+            ->and(AnalyticsWindow::from(['range' => '7d'])->label)->toBe('7d');
+    });
+
+    it('names its own options, so a select and this class cannot disagree', function () {
+        // The Select reads these keys, so a token the filter can store that
+        // this class cannot parse is impossible by construction.
+        expect(array_keys(AnalyticsWindow::options()))
+            ->toBe(['7d', '28d', '90d', 'season'])
+            ->and(AnalyticsWindow::DEFAULT_RANGE)->toBe('28d');
     });
 
     it('refuses to call a window covered when the sensor is younger than it', function () {

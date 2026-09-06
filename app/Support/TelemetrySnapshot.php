@@ -80,16 +80,16 @@ class TelemetrySnapshot
              * this file, applied to the one pipeline that DOES hold identity
              * upstream. `activity_events` knows who; nothing below says so.
              */
-            'traffic' => $this->analytics->traffic(7),
+            'traffic' => $this->analytics->traffic(AnalyticsWindow::of(7)),
             'audience' => [
                 'actives' => $this->analytics->actives(),
-                'adoption' => $this->analytics->adoption(7),
+                'adoption' => $this->analytics->adoption(AnalyticsWindow::of(7)),
                 'cohorts' => $this->analytics->cohorts(),
                 'retention' => $this->analytics->retention(),
                 'saturday_retention' => $this->analytics->saturdayRetention(),
             ],
-            'routes' => $this->analytics->routes(28),
-            'devices' => $this->analytics->devices(28),
+            'routes' => $this->analytics->routes(AnalyticsWindow::of(28)),
+            'devices' => $this->analytics->devices(AnalyticsWindow::of(28)),
             'pickem_health' => $this->analytics->pickemHealth(),
             'workbook' => $this->workbook(),
         ];

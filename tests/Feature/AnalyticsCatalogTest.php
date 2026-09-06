@@ -13,6 +13,7 @@ use App\Models\SlateGame;
 use App\Models\User;
 use App\Models\UserDay;
 use App\Support\AnalyticsCatalog;
+use App\Support\AnalyticsWindow;
 use App\Support\Cadence;
 use Carbon\CarbonImmutable;
 
@@ -51,7 +52,7 @@ describe('adoption', function () {
             ]);
         }
 
-        $adoption = catalog()->adoption(7);
+        $adoption = catalog()->adoption(AnalyticsWindow::of(7));
 
         expect($adoption['wau'])->toBe(10)
             ->and($adoption['features']['picked']['users'])->toBe(4)
@@ -69,7 +70,7 @@ describe('adoption', function () {
             ]);
         }
 
-        $adoption = catalog()->adoption(7);
+        $adoption = catalog()->adoption(AnalyticsWindow::of(7));
 
         expect($adoption['wau'])->toBe(9)
             // The COUNT stays. A null share with a visible 9 is readable; a
@@ -130,7 +131,7 @@ describe('devices', function () {
             'installed' => PageViewDaily::BROWSER,
         ]);
 
-        $devices = catalog()->devices(28);
+        $devices = catalog()->devices(AnalyticsWindow::of(28));
 
         expect($devices['by_bucket']['unknown'])->toBe(7)
             ->and($devices['by_bucket']['compact'])->toBe(3)
@@ -145,7 +146,7 @@ describe('devices', function () {
             'day' => '2026-09-04', 'views' => 9, 'installed' => PageViewDaily::UNKNOWN,
         ]);
 
-        expect(catalog()->devices(28)['installed_share'])->toBeNull();
+        expect(catalog()->devices(AnalyticsWindow::of(28))['installed_share'])->toBeNull();
     });
 });
 
@@ -161,7 +162,7 @@ describe('the time-of-week heat', function () {
         ActivityEvent::factory()->count(2)->create(['occurred_at' => '2026-09-06 01:00:00']);
         ActivityEvent::factory()->create(['occurred_at' => '2026-09-04 15:00:00']);
 
-        $heat = collect(catalog()->timeOfWeek(28));
+        $heat = collect(catalog()->timeOfWeek(AnalyticsWindow::of(28)));
 
         $saturday = $heat->firstWhere('hour', 21);
 

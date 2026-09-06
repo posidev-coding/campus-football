@@ -92,9 +92,9 @@ class AnalyticsCatalog
      *
      * @return array<string, mixed>
      */
-    public function traffic(int $days = 7): array
+    public function traffic(?AnalyticsWindow $window = null): array
     {
-        $window = AnalyticsWindow::of($days);
+        $window ??= AnalyticsWindow::of(7);
 
         $views = $this->keyed(
             PageViewDaily::query()
@@ -190,9 +190,9 @@ class AnalyticsCatalog
      *
      * @return array<string, mixed>
      */
-    public function adoption(int $days = 7): array
+    public function adoption(?AnalyticsWindow $window = null): array
     {
-        $window = AnalyticsWindow::of($days);
+        $window ??= AnalyticsWindow::of(7);
         $wau = $this->distinctPeople($window->fromDate(), $window->toDate());
 
         $features = [];
@@ -275,6 +275,130 @@ class AnalyticsCatalog
         }
 
         return $rows;
+    }
+
+    // ------------------------------------------------- the lifecycle funnel
+
+    /**
+     * Registered → verified → onboarded → reached Picks → entered → installed,
+     * over a window.
+     *
+     * THE FIRST BAR COMES FROM `ux_events`, NOT FROM `users`, and that is the
+     * whole correctness of this funnel. Unverified accounts are pruned at
+     * fourteen days, so counting `users` rows created in a window silently
+     * loses every person who registered and never came back — which is exactly
+     * the population a lifecycle funnel exists to measure. Counting the rows
+     * would make the drop-off disappear and the funnel report its best number
+     * on its worst week.
+     *
+     * Every later stage IS a `users` count, because each one is a durable
+     * stamp on a surviving account. The steps therefore do not share a
+     * denominator, and the widget prints counts rather than percentages
+     * between them.
+     *
+     * @return array{registered: int, verified: int, onboarded: int, reached_picks: int, entered: int, installed: int, since: ?string, window_days: int}
+     */
+    public function lifecycle(?AnalyticsWindow $window = null): array
+    {
+        $window ??= AnalyticsWindow::of(AnalyticsWindow::DEFAULT_DAYS);
+
+        $from = $window->from->utc();
+        $to = $window->to->addDay()->utc();
+
+        $users = DB::table('users')
+            ->leftJoinSub(
+                DB::table('slate_entries')->groupBy('user_id')->selectRaw('user_id, min(created_at) as first_entry_at'),
+                'entries',
+                'entries.user_id',
+                '=',
+                'users.id',
+            )
+            ->where('users.created_at', '>=', $from)
+            ->where('users.created_at', '<', $to)
+            ->selectRaw('
+                sum(users.email_verified_at is not null) as verified,
+                sum(users.onboarded_at is not null) as onboarded,
+                sum(users.picks_first_seen_at is not null) as reached_picks,
+                sum(entries.first_entry_at is not null) as entered,
+                sum(users.standalone_seen_at is not null) as installed
+            ')
+            ->first();
+
+        return [
+            'registered' => (int) UxEvent::query()
+                ->where('signal', UxSignal::OnboardingRegistered->value)
+                ->whereBetween('day', [$window->fromDate(), $window->toDate()])
+                ->sum('count'),
+            'verified' => (int) ($users->verified ?? 0),
+            'onboarded' => (int) ($users->onboarded ?? 0),
+            'reached_picks' => (int) ($users->reached_picks ?? 0),
+            'entered' => (int) ($users->entered ?? 0),
+            'installed' => (int) ($users->installed ?? 0),
+            'window_days' => $window->days,
+            'since' => $window->sinceDate(),
+        ];
+    }
+
+    // ------------------------------------------------ actives by cohort age
+
+    /**
+     * Weekly actives split by how long the person has been here — new, one to
+     * four weeks, older.
+     *
+     * The question underneath is the one a pilot cannot answer any other way:
+     * is the app holding people, or is every good week a different set of
+     * strangers? A flat total of actives looks identical in both cases.
+     *
+     * @return list<array{week: string, new: int, recent: int, older: int}>
+     */
+    public function activesByCohortAge(?AnalyticsWindow $window = null): array
+    {
+        $window ??= AnalyticsWindow::of(AnalyticsWindow::DEFAULT_DAYS);
+
+        if ($window->since === null) {
+            return [];
+        }
+
+        $joined = DB::table('users')->pluck('created_at', 'id');
+
+        $rows = UserDay::query()
+            ->whereBetween('day', [$window->sinceDate(), $window->toDate()])
+            ->distinct()
+            ->get(['user_id', 'day']);
+
+        $weeks = [];
+
+        foreach ($rows as $row) {
+            $day = CarbonImmutable::parse($row->day, config('cfb.timezone'))->startOfDay();
+            // Tuesday-start weeks, the only week this product has.
+            $offset = ($day->dayOfWeek - Cadence::TURNOVER_DOW + 7) % 7;
+            $week = $day->subDays($offset)->toDateString();
+
+            $created = $joined[$row->user_id] ?? null;
+
+            $age = $created === null
+                ? 'older'
+                : $this->cohortAge(CarbonImmutable::parse($created, 'UTC')->setTimezone(config('cfb.timezone')), $day);
+
+            $weeks[$week] ??= ['week' => $week, 'new' => 0, 'recent' => 0, 'older' => 0];
+            $weeks[$week][$age]++;
+        }
+
+        ksort($weeks);
+
+        return array_values($weeks);
+    }
+
+    /** Under a week is new, under five is recent, past that is older. */
+    private function cohortAge(CarbonImmutable $created, CarbonImmutable $day): string
+    {
+        $weeks = $created->diffInWeeks($day);
+
+        return match (true) {
+            $weeks < 1 => 'new',
+            $weeks < 5 => 'recent',
+            default => 'older',
+        };
     }
 
     // ------------------------------------------------------- 4. retention
@@ -419,9 +543,9 @@ class AnalyticsCatalog
      *
      * @return array<string, mixed>
      */
-    public function routes(int $days = 28): array
+    public function routes(?AnalyticsWindow $window = null): array
     {
-        $window = AnalyticsWindow::of($days);
+        $window ??= AnalyticsWindow::of(28);
 
         $views = $this->keyed(
             PageViewDaily::query()
@@ -478,9 +602,9 @@ class AnalyticsCatalog
      *
      * @return array<string, mixed>
      */
-    public function devices(int $days = 28): array
+    public function devices(?AnalyticsWindow $window = null): array
     {
-        $window = AnalyticsWindow::of($days);
+        $window ??= AnalyticsWindow::of(28);
 
         $rows = $this->keyed(
             PageViewDaily::query()
@@ -531,9 +655,9 @@ class AnalyticsCatalog
      *
      * @return list<array{weekday: int, hour: int, views: int}>
      */
-    public function timeOfWeek(int $days = 28): array
+    public function timeOfWeek(?AnalyticsWindow $window = null): array
     {
-        $window = AnalyticsWindow::of($days);
+        $window ??= AnalyticsWindow::of(28);
 
         return ActivityEvent::query()
             ->whereBetween('day', [$window->fromDate(), $window->toDate()])

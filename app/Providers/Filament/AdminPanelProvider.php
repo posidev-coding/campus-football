@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\AudienceDashboard;
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\HealthDashboard;
 use App\Support\Brand;
@@ -152,6 +153,7 @@ class AdminPanelProvider extends PanelProvider
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
             ->pages([
                 Dashboard::class,
+                AudienceDashboard::class,
                 HealthDashboard::class,
             ])
             /*

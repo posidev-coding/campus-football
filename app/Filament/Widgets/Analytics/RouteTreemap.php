@@ -50,7 +50,7 @@ class RouteTreemap extends ApexChartWidget
     protected function getOptions(): array
     {
         $window = AnalyticsWindow::from($this->pageFilters ?? []);
-        $routes = app(AnalyticsCatalog::class)->routes($window->days);
+        $routes = app(AnalyticsCatalog::class)->routes($window);
 
         return [
             'chart' => ['type' => 'treemap', 'height' => 300, 'toolbar' => ['show' => false]],
