@@ -88,6 +88,9 @@ class User extends Authenticatable implements FilamentUser, MustVerifyEmail
             'standalone_seen_at' => 'datetime',
             'picks_first_seen_at' => 'datetime',
             'picks_tour_completed_at' => 'datetime',
+            // Written by the activity drain and by nothing else — never on
+            // the request path. See App\Actions\RecordActivity::drain().
+            'last_seen_at' => 'datetime',
             'password' => 'hashed',
             'admin' => 'boolean',
             'content_rating' => ContentRating::class,

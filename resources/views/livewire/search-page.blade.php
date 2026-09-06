@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Concerns\AsksQuestions;
+use App\Livewire\Concerns\RecordsSearches;
 use App\Support\Search;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -17,6 +18,7 @@ use Livewire\Component;
 new class extends Component
 {
     use AsksQuestions;
+    use RecordsSearches;
 
     #[Url(as: 'q')]
     public string $q = '';
