@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ActivityEvent;
 use App\Models\ClientError;
 use App\Models\FeedRun;
 use App\Models\StoredNotification;
@@ -417,10 +418,16 @@ Schedule::command('cfb:aggregate --year=results')
     ->withoutOverlapping(60);
 
 /*
- * Four prunables ride the same wake. Read inbox rows retire at ninety
+ * Five prunables ride the same wake. Read inbox rows retire at ninety
  * days (StoredNotification — unread ones never age out). Reported JavaScript
  * errors keep a month, which is four passes of the weekly advisor that reads
- * them. The feed-run ledger keeps a fortnight —
+ * them. The raw clickstream keeps the same month, deliberately the same one:
+ * ActivityEvent::KEEP_DAYS is the ceiling on the only table in the app that
+ * pairs a person with the screens they read, and matching ClientError means
+ * an error can be read against the traffic that produced it for exactly as
+ * long as the error row survives. Its rollups — page_views_daily and
+ * user_days — are counts, are not prunable, and are what live on.
+ * The feed-run ledger keeps a fortnight —
  * the live tier writes a row a minute all Saturday, so in season this trims
  * daily; off season the writers are monthly and the trim rides an hour the
  * news sync is already keeping the cluster awake for.
@@ -431,13 +438,13 @@ Schedule::command('cfb:aggregate --year=results')
  * three-day-old `verification_reminded_at`, so the weekly off-season cadence
  * can only ever delay past the promise, never beat it.
  */
-Schedule::command('model:prune', ['--model' => [ClientError::class, FeedRun::class, User::class, StoredNotification::class]])
+Schedule::command('model:prune', ['--model' => [ActivityEvent::class, ClientError::class, FeedRun::class, User::class, StoredNotification::class]])
     ->dailyAt('04:50')
     ->timezone($tz)
     ->when($inSeason)
     ->withoutOverlapping(60);
 
-Schedule::command('model:prune', ['--model' => [ClientError::class, FeedRun::class, User::class, StoredNotification::class]])
+Schedule::command('model:prune', ['--model' => [ActivityEvent::class, ClientError::class, FeedRun::class, User::class, StoredNotification::class]])
     ->weeklyOn(ScheduleClass::SUNDAY, '07:10')
     ->timezone($tz)
     ->when($offSeason)
