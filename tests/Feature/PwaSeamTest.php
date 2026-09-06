@@ -242,3 +242,46 @@ describe('turning push on', function () {
         expect(pwaSeamReports('push-granted'))->toBe([]);
     });
 });
+
+describe('the upload that fails before a byte moves', function () {
+    /*
+     * Livewire's UploadManager calls $wire.call('_startUpload', ..) and
+     * discards the promise, and the control's own error callback only fires
+     * from _uploadErrored — once a transfer is already running. So a 500
+     * raised INSIDE _startUpload had nothing holding it: the picker went
+     * quiet and the window got an anonymous rejection.
+     *
+     * Driven through the real `commit` hook the seam registers, with the
+     * harness standing in for Livewire's hook bus, so what is asserted is the
+     * knock the seam actually makes.
+     */
+    it('knocks the control so the reader is told, naming the property that failed', function () {
+        expect(pwaSeam('upload-start-fails')['knocks'])
+            ->toBe([['reportRefusedUpload', 'iconFile']]);
+    });
+
+    it('says nothing when the commit does not name a property', function () {
+        // No property, no guess: there is no <flux:error> to write to, and
+        // choosing one would put the message on a control that did not fail.
+        expect(pwaSeam('upload-start-fails-unnamed')['knocks'])->toBe([]);
+    });
+
+    it('leaves every other failed commit alone', function () {
+        // A failed save is not a refused upload, and the hook sees every
+        // commit in the application.
+        expect(pwaSeam('commit-unrelated-fails')['knocks'])->toBe([]);
+    });
+
+    it('names its own failure rather than throwing inside one', function () {
+        /*
+         * The knock can fail too — it is another commit, and the server that
+         * just 500ed is the one being asked. Rethrowing there would produce
+         * exactly the anonymous rejection this seam exists to remove.
+         */
+        $reports = pwaSeamReports('upload-start-knock-fails');
+
+        expect($reports)->toHaveCount(1)
+            ->and($reports[0]['message'])->toBe('iconFile upload refusal could not be shown')
+            ->and($reports[0]['path'])->toBe('/groups/51');
+    });
+});
