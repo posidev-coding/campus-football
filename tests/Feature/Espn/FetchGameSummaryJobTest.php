@@ -1,5 +1,6 @@
 <?php
 
+use App\Events\GameWentFinal;
 use App\Jobs\FetchGameSummary;
 use App\Models\Article;
 use App\Models\Game;
@@ -10,6 +11,7 @@ use App\Models\Team;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGameSummary;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 
 /*
@@ -265,6 +267,146 @@ describe('articles riding the summary', function () {
         app(SyncGameSummary::class)->handle($this->live->fresh());
 
         expect($this->live->articles()->count())->toBe(2);
+    });
+});
+
+describe('a game the scoreboard left live', function () {
+    /*
+     * The stuck-game recovery. SyncGames is the only writer of `status` and
+     * `completed`, and it can only correct an event its scoreboard payload
+     * carries — so a game ESPN stops moving, or one whose event leaves the ET
+     * date bucket the live tier asks for, freezes mid-quarter. Every screen
+     * reads live before final, so it wears "5:00 - 4th" indefinitely, and the
+     * game/summary disagreement makes the two-minute sweep re-fetch 544 KB for
+     * the rest of the season. The summary is fetched by EVENT ID, so it is the
+     * one source that cannot lose the game — and it already carries the
+     * status header.
+     */
+    $header = fn (array $status, array $competitors = []) => [
+        'boxscore' => ['teams' => [], 'players' => []],
+        'header' => ['competitions' => [[
+            'status' => $status,
+            'competitors' => $competitors,
+        ]]],
+    ];
+
+    $finalHeader = fn () => [
+        'period' => 4,
+        'displayClock' => '0:00',
+        'type' => ['state' => 'post', 'completed' => true, 'shortDetail' => 'Final'],
+    ];
+
+    beforeEach(function () {
+        // Frozen where the bug is reported: fourth quarter, five minutes left,
+        // a full situation block the scoreboard never got to clear.
+        $this->live->update([
+            'status' => 'in', 'status_detail' => '5:00 - 4th',
+            'period' => 4, 'clock' => '5:00',
+            'home_score' => 28, 'away_score' => 24,
+            'possession_team_id' => 61, 'down' => 3, 'distance' => 7,
+            'yard_line' => 41, 'down_distance_text' => '3rd & 7',
+            'is_red_zone' => false, 'last_play_text' => 'Pass incomplete to Bowers.',
+            'home_timeouts' => 2, 'away_timeouts' => 1,
+        ]);
+    });
+
+    it('finishes it from the summary header, situation and all', function () use ($header, $finalHeader) {
+        Event::fake([GameWentFinal::class]);
+
+        Http::fake(['*' => Http::response($header($finalHeader(), [
+            ['homeAway' => 'home', 'score' => '31'],
+            ['homeAway' => 'away', 'score' => '24'],
+        ]))]);
+
+        app(SyncGameSummary::class)->handle($this->live);
+
+        $game = $this->live->fresh();
+
+        expect($game->completed)->toBeTrue()
+            ->and($game->status)->toBe('post')
+            ->and($game->status_detail)->toBe('Final')
+            ->and($game->clock)->toBe('0:00')
+            ->and($game->home_score)->toBe(31)
+            ->and($game->away_score)->toBe(24)
+            // A final must not wear a frozen "3rd & 7".
+            ->and($game->possession_team_id)->toBeNull()
+            ->and($game->down)->toBeNull()
+            ->and($game->down_distance_text)->toBeNull()
+            ->and($game->last_play_text)->toBeNull()
+            ->and($game->home_timeouts)->toBeNull();
+
+        // The grading path is the scoreboard's own, not a second one.
+        Event::assertDispatched(GameWentFinal::class, fn (GameWentFinal $e) => $e->gameId === $this->live->id);
+    });
+
+    it('stops the endless re-fetch the disagreement was causing', function () use ($header, $finalHeader) {
+        // The cost half of the bug: `isStale()` treats a game and its summary
+        // disagreeing as stale FOREVER, so the sweep spent one 544 KB request
+        // every two minutes on a game nothing could fix.
+        Http::fake(['*' => Http::response($header($finalHeader()))]);
+
+        $sync = app(SyncGameSummary::class);
+        $sync->handle($this->live);
+
+        expect($sync->isStale($this->live->fresh()))->toBeFalse();
+    });
+
+    it('leaves the score alone for a side the header does not name', function () use ($header, $finalHeader) {
+        // Never write a default when the feed returns nothing — a header
+        // without competitors must finish the game, not zero it.
+        Http::fake(['*' => Http::response($header($finalHeader()))]);
+
+        app(SyncGameSummary::class)->handle($this->live);
+
+        $game = $this->live->fresh();
+
+        expect($game->completed)->toBeTrue()
+            ->and($game->home_score)->toBe(28)
+            ->and($game->away_score)->toBe(24);
+    });
+
+    it('waits out the window rather than trusting a momentary final', function () use ($header, $finalHeader) {
+        /*
+         * ESPN briefly reports a game complete and then flips it back — the
+         * reason `is_final` is never a short-circuit. Finishing on that would
+         * grade picks and flip a slate to prelim mid-game, so the rescue only
+         * runs once the game is past the grace window the app already uses to
+         * stop presuming a game live. Two hours in, the scoreboard owns this.
+         */
+        Event::fake([GameWentFinal::class]);
+
+        $this->live->update(['kickoff_at' => now()->subHours(2)]);
+
+        Http::fake(['*' => Http::response($header($finalHeader()))]);
+
+        app(SyncGameSummary::class)->handle($this->live->fresh());
+
+        $game = $this->live->fresh();
+
+        expect($game->completed)->toBeFalse()
+            ->and($game->status)->toBe('in')
+            ->and($game->clock)->toBe('5:00');
+
+        Event::assertNotDispatched(GameWentFinal::class);
+    });
+
+    it('does not finish a game the header still calls live', function () use ($header) {
+        // The window passing is not evidence of a final. A game genuinely
+        // running long — weather delay, a marathon of overtimes — must keep
+        // its clock.
+        Event::fake([GameWentFinal::class]);
+
+        Http::fake(['*' => Http::response($header([
+            'period' => 4,
+            'displayClock' => '4:12',
+            'type' => ['state' => 'in', 'completed' => false, 'shortDetail' => '4:12 - 4th'],
+        ]))]);
+
+        app(SyncGameSummary::class)->handle($this->live);
+
+        expect($this->live->fresh()->completed)->toBeFalse();
+
+        Event::assertNotDispatched(GameWentFinal::class);
     });
 });
 

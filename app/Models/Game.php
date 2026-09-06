@@ -350,6 +350,31 @@ class Game extends Model
     }
 
     /**
+     * A game the FEED still calls live and the CLOCK says cannot be.
+     *
+     * The complement of {@see scopeExpectedLive()}, which presumes a game live
+     * for the same grace window: past it, "in progress" is no longer a fact
+     * about football, it is a row nothing has corrected. Only the scoreboard
+     * writes `status`, and it can only correct an event its payload actually
+     * carries — so a game whose scoreboard entry stops moving (ESPN leaving it
+     * mid-quarter, or the event dropping out of the ET date bucket we ask for)
+     * stays live forever, wearing a clock that stopped hours ago and holding
+     * open everything keyed on {@see scopeInProgress()}: the live tier's guard,
+     * the box-score sweep, the scoreboard's live flag and pick grading.
+     *
+     * This is the question that lets a SECOND source break that deadlock.
+     *
+     * A null kickoff is not a zero — an unscheduled fixture has no clock to be
+     * late against, the same reading `expectedLive()` takes.
+     */
+    public function isStuckLive(): bool
+    {
+        return $this->isInProgress()
+            && $this->kickoff_at !== null
+            && $this->kickoff_at->lt(now()->subHours(self::KICKOFF_GRACE_HOURS));
+    }
+
+    /**
      * "3rd", "OT", "2OT" — the period as a football screen names it.
      *
      * Regulation is four quarters and ESPN keeps counting past them, so period

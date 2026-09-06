@@ -2,6 +2,7 @@
 
 namespace App\Services\Espn\Sync;
 
+use App\Events\GameWentFinal;
 use App\Models\Article;
 use App\Models\Athlete;
 use App\Models\AthleteGameStat;
@@ -76,6 +77,11 @@ class SyncGameSummary
      *
      * So disagreement is always stale, and the cheap archive short-circuit
      * survives for the case it was written for: both sides final.
+     *
+     * The second case is deliberately unbounded HERE and bounded elsewhere:
+     * left to itself it re-fetches 544 KB every sweep for as long as the two
+     * disagree, which for a game the scoreboard has abandoned is the rest of
+     * the season. {@see reconcileFinal()} is what ends it.
      */
     public function isStale(Game $game): bool
     {
@@ -165,11 +171,105 @@ class SyncGameSummary
             );
         });
 
+        // Outside the transaction, and BEFORE the articles: a stuck game is
+        // the reason this payload keeps being fetched at all, and unsticking
+        // it must not ride on a recap article linking cleanly.
+        $this->reconcileFinal($game, $body);
+
         // Outside the transaction: articles are their own aggregate, and a
         // failure linking one must not roll back a stored box score.
         $this->storeArticles($game, $body);
 
         return true;
+    }
+
+    /**
+     * The one place a game stuck LIVE can be finished.
+     *
+     * `SyncGames` is the only writer of `status` and `completed`, and it can
+     * only correct an event its scoreboard payload actually carries. When that
+     * stops happening the row freezes mid-quarter: every screen reads live
+     * before final, so a finished game wears "5:00 - 4th" indefinitely, and
+     * `isStale()` — which treats a game and its summary disagreeing as
+     * permanently stale — then re-fetches this 544 KB payload every sweep for
+     * the rest of the season without anything ever changing.
+     *
+     * This closes both. The summary is fetched by EVENT ID rather than by
+     * date, so it is the one source that cannot lose the game to a bucket, and
+     * its header carries the same status block the scoreboard does — we
+     * already read `type.completed` out of it and then threw it away.
+     *
+     * DELIBERATELY LATE, never eager. ESPN briefly reports a game complete and
+     * flips it back (the reason `is_final` is not trusted as a short-circuit),
+     * and premature finality grades picks and flips a slate to prelim. So this
+     * waits out {@see Game::isStuckLive()} — the same grace window after which
+     * the app already stops presuming a game is live — by which point the
+     * scoreboard has had hundreds of passes to say so itself. In the ordinary
+     * case it never fires at all.
+     *
+     * No `FetchGameSummary` dispatch on the transition, unlike the scoreboard's
+     * own: the final summary is the payload in hand.
+     */
+    private function reconcileFinal(Game $game, array $body): void
+    {
+        $status = data_get($body, 'header.competitions.0.status', []);
+        $type = $status['type'] ?? [];
+
+        if (! ($type['completed'] ?? false) || ! $game->isStuckLive()) {
+            return;
+        }
+
+        $game->fill([
+            'status' => $type['state'] ?? 'post',
+            'status_detail' => $type['shortDetail'] ?? null,
+            'period' => (int) ($status['period'] ?? $game->period),
+            'clock' => $status['displayClock'] ?? null,
+            'completed' => true,
+            // A final must not wear a frozen "3rd & 7" — the same reading
+            // SyncGames::situation() takes when a game stops being live.
+            'possession_team_id' => null,
+            'down' => null,
+            'distance' => null,
+            'yard_line' => null,
+            'down_distance_text' => null,
+            'is_red_zone' => false,
+            'last_play_text' => null,
+            'home_timeouts' => null,
+            'away_timeouts' => null,
+            ...$this->finalScores($body),
+        ]);
+
+        $game->save();
+
+        // The same signal the scoreboard fires on its own transition, so a
+        // rescued final grades picks and settles slates by the one path.
+        GameWentFinal::dispatch($game->id);
+    }
+
+    /**
+     * The final score off the summary header.
+     *
+     * A game frozen mid-quarter is usually frozen on a stale score too, and a
+     * "Final" over the wrong number is worse than a stuck clock. A side ESPN
+     * does not name is LEFT ALONE rather than zeroed — the missing-data rule,
+     * which is exactly how v3 overwrote real scores with defaults.
+     *
+     * @return array<string, int>
+     */
+    private function finalScores(array $body): array
+    {
+        $scores = [];
+
+        foreach (data_get($body, 'header.competitions.0.competitors', []) as $competitor) {
+            $side = $competitor['homeAway'] ?? null;
+            $score = $competitor['score'] ?? null;
+
+            if (in_array($side, ['home', 'away'], true) && is_numeric($score)) {
+                $scores["{$side}_score"] = (int) $score;
+            }
+        }
+
+        return $scores;
     }
 
     /**
