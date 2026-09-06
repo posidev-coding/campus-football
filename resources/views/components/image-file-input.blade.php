@@ -50,7 +50,7 @@
             }
 
             if (file.size > this.max) {
-                $wire.call('rejectOversizedImage', this.property);
+                this.knock('rejectOversizedImage');
 
                 return;
             }
@@ -67,7 +67,23 @@
                 this.property,
                 file,
                 () => {},
-                () => $wire.call('reportRefusedUpload', this.property),
+                () => this.knock('reportRefusedUpload'),
+            );
+        },
+
+        {{-- The knock itself, which can fail like anything else on a phone.
+             A `$wire.call()` made from an Alpine handler is NOT the promise
+             Livewire catches for `wire:click`: Livewire rejects an action
+             with a plain `{ status, body, json, errors }` object, Alpine
+             hands the rejection to nobody, and it escapes to the window —
+             where the reporter can only file it as "[object Object]" with no
+             stack and no name for the screen it happened on. Named here
+             instead, through the one guarded machine in app.js, which is
+             optional-chained because a bundle that failed to load must not
+             turn a lost knock into a second lost rejection. --}}
+        knock(method) {
+            $wire.call(method, this.property).catch(
+                (error) => window.cfbErrors?.failure(this.property + ` upload knock failed (${method})`, error),
             );
         },
     }"

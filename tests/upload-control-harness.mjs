@@ -11,7 +11,7 @@
  *
  * Usage: node tests/upload-control-harness.mjs <scenario> <path-to-x-data>
  * The file holds the decoded `x-data` attribute value, nothing else.
- * Prints one JSON line: `{ calls, uploads, errorCallback }`.
+ * Prints one JSON line: `{ calls, uploads, errorCallback, failures }`.
  */
 
 import { readFileSync } from 'node:fs';
@@ -24,11 +24,26 @@ const calls = [];
 /** Every `$wire.upload(...)`, kept whole so argument POSITION is assertable. */
 const uploads = [];
 
+/** Every report the control made through window.cfbErrors.failure(). */
+const failures = [];
+
+/*
+ * The reporter's door, stubbed the way app.js opens it. Left undefined the
+ * control must still not throw — a bundle that failed to load is exactly when
+ * a knock is most likely to fail — so the `knock-unreported` scenario deletes
+ * it again below.
+ */
+globalThis.window = { cfbErrors: { failure: (label, error) => failures.push({ label, error }) } };
+
 const $wire = {
     call: (...args) => {
         calls.push(args);
 
-        return Promise.resolve();
+        /* Livewire rejects an action with a plain object: no name, no message
+         * and no stack, which is what makes an unnamed report useless. */
+        return scenario.startsWith('knock-')
+            ? Promise.reject({ status: 503, body: null, json: null, errors: null })
+            : Promise.resolve();
     },
     upload: (...args) => {
         uploads.push(args);
@@ -44,7 +59,11 @@ const data = new Function('$wire', `return (${readFileSync(source, 'utf8')})`)($
 /** A picker change event, stubbed down to what the control reads. */
 const change = (size) => ({ target: { files: [{ size }], value: 'C:\\fakepath\\mark.png' } });
 
-if (scenario === 'oversized') {
+if (scenario === 'oversized' || scenario.startsWith('knock-')) {
+    if (scenario === 'knock-unreported') {
+        delete globalThis.window.cfbErrors;
+    }
+
     data.pick(change(data.max + 1));
 }
 
@@ -61,8 +80,16 @@ if (scenario === 'refused' && typeof uploads[0]?.[3] === 'function') {
     uploads[0][3]();
 }
 
+/* A rejected knock is reported a microtask later; node kills the process over
+ * an unhandled one, so an unreported rejection ends this run rather than
+ * printing a quietly empty `failures`. */
+for (let tick = 0; tick < 5; tick++) {
+    await new Promise((resolve) => setImmediate(resolve));
+}
+
 process.stdout.write(JSON.stringify({
     calls,
     uploads: uploads.map((args) => args.map((arg) => typeof arg === 'function' ? 'function' : arg)),
     errorCallback: uploads.length > 0 ? typeof uploads[0][3] : null,
+    failures,
 }));

@@ -101,6 +101,18 @@ switch (scenario) {
     case 'asset-script':
     case 'asset-stylesheet':
     case 'asset-window-error':
+    case 'island-failure':
+        break;
+
+    /* The screen the unnamed report actually landed on, so the path a report
+     * carries is asserted rather than assumed. */
+    case 'rejection-fetch':
+    case 'rejection-name-only':
+    case 'rejection-anonymous':
+    case 'rejection-livewire':
+    case 'rejection-string':
+    case 'rejection-nothing':
+        globalThis.location = { pathname: '/groups/51' };
         break;
 
     default:
@@ -129,12 +141,42 @@ const assetEvents = {
     'asset-window-error': { target: globalThis, message: 'boom', filename: 'https://campusfootball.test/build/assets/app-abc.js', lineno: 3, colno: 4 },
 };
 
+/*
+ * Everything a promise can be rejected WITH. A rejection is not a catch block:
+ * nothing guarantees the reason is an Error, and the shapes below are the ones
+ * production actually produces — a fetch that failed, a DOMException with only
+ * a name, an anonymous object, Livewire's action rejection, and the two that
+ * carry nothing at all.
+ *
+ * The fetch stack is browser-shaped on purpose: node writes file:// frames,
+ * and the source the listener mines out of a stack is an https one.
+ */
+const failedFetch = new TypeError('Load failed');
+failedFetch.stack = 'commit@https://campusfootball.test/build/assets/app-abc.js:12:34\n@[native code]';
+
+const rejectionReasons = {
+    'rejection-fetch': failedFetch,
+    'rejection-name-only': { name: 'SecurityError' },
+    'rejection-anonymous': {},
+    'rejection-livewire': { status: 503, body: null, json: null, errors: null },
+    'rejection-string': 'nope',
+    'rejection-nothing': undefined,
+};
+
 if (scenario.startsWith('push-')) {
     result = await window.cfbPush.enable('dGVzdA', '/push/subscriptions');
 } else if (scenario in assetEvents) {
     for (const handler of listeners.error ?? []) {
         handler(assetEvents[scenario]);
     }
+} else if (scenario in rejectionReasons) {
+    for (const handler of listeners.unhandledrejection ?? []) {
+        handler({ reason: rejectionReasons[scenario] });
+    }
+} else if (scenario === 'island-failure') {
+    /* The door the Blade islands report through — an Alpine `.catch()` that
+     * knows what it was doing, which is the one thing the listener cannot. */
+    window.cfbErrors.failure('iconFile upload knock failed (reportRefusedUpload)', { status: 503 });
 } else {
     for (const handler of listeners.load ?? []) {
         handler();

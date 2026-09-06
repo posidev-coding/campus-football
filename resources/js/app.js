@@ -233,6 +233,19 @@ window.cfbErrors = {
             keepalive: true,
         }).catch(() => {});
     },
+
+    /*
+     * The named door onto the reporter, for the Blade islands.
+     *
+     * One guarded machine here rather than a `.catch()` in every `x-data`
+     * inventing its own wording — the trade window.cfbClipboard already makes
+     * for copy. An island that knows WHAT it was doing when a promise rejected
+     * knows the one thing the window-level listener below can never work out,
+     * and this is where it says so.
+     */
+    failure(label, error) {
+        reportFailure(label, error);
+    },
 };
 
 window.addEventListener('error', (event) => {
@@ -283,13 +296,28 @@ window.addEventListener('error', (event) => {
     } catch { /* never let the reporter be the bug */ }
 }, true);
 
+/*
+ * A rejection NOBODY CAUGHT — reported the way a caught one is.
+ *
+ * It used to be flattened to `String(reason?.message ?? reason)`, and what
+ * production read off /groups/51 in an installed app was the two bare words
+ * "Load failed": Safari's message for any failed fetch, with source null, line
+ * null and no name to say even that much. The message half alone identifies
+ * neither the request nor the code that made it, so the reason's NAME travels
+ * with it now, through the same failureMessage() the service-worker path uses
+ * — and under the same contract, which is that neither half is ever invented.
+ *
+ * The label is what the event IS, not a guess at what failed. A caller who
+ * knows better should be calling window.cfbErrors.failure() with a real one;
+ * this report is deliberately, unmistakably the anonymous one.
+ */
 window.addEventListener('unhandledrejection', (event) => {
     try {
         const reason = event.reason;
 
         window.cfbErrors.report({
             kind: 'unhandledrejection',
-            message: String(reason?.message ?? reason ?? 'Unhandled rejection'),
+            message: failureMessage('unhandled rejection', rejectionDetail(reason)),
             /* A rejection carries no filename of its own; the first stack
              * frame is the closest thing to one, and it is what makes two
              * rejections distinguishable at all. */
@@ -338,6 +366,30 @@ function failureMessage(label, error) {
     const detail = [error?.name, error?.message].filter(Boolean).join(': ');
 
     return detail ? `${label}: ${detail}` : label;
+}
+
+/*
+ * What a rejected reason may contribute to failureMessage, and no more.
+ *
+ * A rejection can be handed ANYTHING, where a catch block is usually handed an
+ * Error. An Error — or a DOMException, or anything else carrying a name and a
+ * message — contributes both. A primitive IS the message and travels as one,
+ * because `Promise.reject('nope')` knows exactly one thing and losing it would
+ * be the bug this replaces.
+ *
+ * Null, undefined and a bare object know NOTHING a reader can act on, and the
+ * last of those is the trap: `{}` and Livewire's own
+ * `{ status, body, json, errors }` both stringify to "[object Object]", a
+ * placeholder wearing data's clothes. They contribute nothing, and the label
+ * stands alone rather than being padded out — no data is no data here as
+ * everywhere else.
+ */
+function rejectionDetail(reason) {
+    if (reason === null || reason === undefined) return null;
+
+    if (typeof reason === 'object' || typeof reason === 'function') return reason;
+
+    return { message: String(reason) };
 }
 
 /*

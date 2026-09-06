@@ -132,6 +132,86 @@ describe('service worker registration', function () {
     });
 });
 
+describe('a rejection nobody caught', function () {
+    it('names the failure behind the two bare words, and the screen it happened on', function () {
+        /*
+         * The report this replaces, in full: message "Load failed", source
+         * null, line null, off /groups/51 in an installed app. Safari says
+         * exactly that for ANY failed fetch, so the message on its own named
+         * neither the request nor the code that asked for it — the reason's
+         * NAME is what says it was a fetch at all.
+         */
+        $reports = pwaSeamReports('rejection-fetch');
+
+        expect($reports)->toHaveCount(1)
+            ->and($reports[0]['message'])->toBe('unhandled rejection: TypeError: Load failed')
+            ->and($reports[0]['message'])->not->toBe('Load failed')
+            ->and($reports[0]['kind'])->toBe(ClientError::REJECTION)
+            ->and($reports[0]['path'])->toBe('/groups/51')
+            ->and($reports[0]['stack'])->toContain('app-abc.js')
+            // A rejection has no filename; the first https frame of its stack
+            // is the only thing that ever stood in for one.
+            ->and($reports[0]['source'])->toBe('https://campusfootball.test/build/assets/app-abc.js');
+    });
+
+    it('omits the half the browser did not give rather than inventing one', function () {
+        // The same contract failureMessage() already holds for a caught
+        // rejection, now held for an uncaught one: a reason with a name and
+        // no message contributes a name, and a reason with neither leaves the
+        // label standing alone. "Unhandled rejection" as a fabricated message
+        // was a default written where there was no data.
+        expect(pwaSeamReports('rejection-name-only')[0]['message'])
+            ->toBe('unhandled rejection: SecurityError');
+
+        expect(pwaSeamReports('rejection-anonymous')[0]['message'])
+            ->toBe('unhandled rejection');
+
+        expect(pwaSeamReports('rejection-nothing')[0]['message'])
+            ->toBe('unhandled rejection');
+    });
+
+    it('keeps a reason that is nothing but a string, which is all it knows', function () {
+        // `Promise.reject('nope')` carries one fact and it is the message.
+        expect(pwaSeamReports('rejection-string')[0]['message'])
+            ->toBe('unhandled rejection: nope');
+    });
+
+    it('never files Livewire\'s own rejection as "[object Object]"', function () {
+        // What an uncaught $wire.call() rejects with: a plain
+        // { status, body, json, errors }, which stringifies to a placeholder
+        // wearing data's clothes. Better to say nothing about the reason.
+        $report = pwaSeamReports('rejection-livewire')[0];
+
+        expect($report['message'])->toBe('unhandled rejection')
+            ->and($report['message'])->not->toContain('[object Object]');
+    });
+
+    it('sends a payload the ingest endpoint actually accepts', function () {
+        // The two halves are written apart and could drift apart; the path is
+        // the half that only matters once it has survived the validator.
+        $this->postJson(route('client-errors.store'), pwaSeamReports('rejection-fetch')[0])->assertNoContent();
+
+        $error = ClientError::sole();
+
+        expect($error->message)->toBe('unhandled rejection: TypeError: Load failed')
+            ->and($error->path)->toBe('/groups/51');
+    });
+});
+
+describe('a rejection an island caught', function () {
+    it('reports under the label the island knew and the listener could not', function () {
+        // window.cfbErrors.failure() is the door onto reportFailure for the
+        // Blade islands — the same machine, so that a component with a
+        // `.catch()` reports what it was DOING rather than what it was given.
+        $reports = pwaSeamReports('island-failure');
+
+        expect($reports)->toHaveCount(1)
+            ->and($reports[0]['message'])->toBe('iconFile upload knock failed (reportRefusedUpload)')
+            ->and($reports[0]['kind'])->toBe(ClientError::REJECTION)
+            ->and($reports[0]['source'])->toEndWith('js/app.js');
+    });
+});
+
 describe('turning push on', function () {
     it('resolves error rather than rejecting when the permission prompt refuses', function () {
         // enable() is awaited by push-banner's turnOn(), which has no catch:
