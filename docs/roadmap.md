@@ -71,6 +71,8 @@ flag is still admin-only: flipping it is a decision, not a slice — the flip
 is Tue Sep 1 with the first public Saturday Sep 5, and Aug 29 rehearsed
 behind the closed flag.
 Phase 6's notification loop landed 2026-08-22, ahead of it.
+Analytics — collection, rollups, Filament dashboards and advisor routing — is
+planned in [plans/analytics.md](plans/analytics.md) (2026-09-06, CFB-66).
 
 ### Phase 1 — Data foundation ✅
 
