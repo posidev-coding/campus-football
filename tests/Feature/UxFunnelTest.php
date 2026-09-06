@@ -246,7 +246,13 @@ describe('the flows that emit', function () {
          */
         $emitters = collect(File::allFiles(base_path('app')))
             ->merge(File::allFiles(resource_path('views')))
-            ->filter(fn ($file) => str_contains($file->getContents(), 'UxSignal::OnboardingRegistered'))
+            ->filter(fn ($file) => str_contains($file->getContents(), 'UxSignal::OnboardingRegistered')
+                // NAMING the signal is not emitting it. `AnalyticsCatalog`
+                // READS this counter to size a cohort week against, and it is
+                // supposed to — the funnel's own count is the denominator
+                // there. An emitter is a file that reaches for the RECORDER,
+                // which is the thing that can double a total.
+                && str_contains($file->getContents(), 'RecordUxEvent'))
             ->map(fn ($file) => str_replace(base_path().'/', '', $file->getPathname()))
             ->values()
             ->all();

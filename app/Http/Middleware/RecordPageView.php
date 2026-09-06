@@ -49,11 +49,51 @@ class RecordPageView
      * telemetry beacons, the offline shell the service worker serves when
      * there is no network, and the icon and manifest routes a browser fetches
      * without anybody asking it to.
+     *
+     * The last three answer a machine rather than a person, and they are here
+     * for the SECOND reader of this list. The sensor itself would drop them at
+     * the content-type check — nothing they return is HTML — but
+     * `AnalyticsCatalog::routes()` walks the route table to find screens with
+     * no views at all, and cannot check a response it never saw. Without them
+     * an SMS webhook is reported as a dead screen and somebody is invited to
+     * delete it.
      */
     private const SKIP_ROUTES = [
         'manifest', 'favicon', 'apple-touch-icon', 'offline',
         'client-errors.store', 'standalone.seen',
+        'sanctum.csrf-cookie', 'webhooks.sms.inbound', 'webhooks.sms.status',
     ];
+
+    /**
+     * Is this route name one of the app's screens?
+     *
+     * PUBLIC because it is also the answer to "which screens is nobody
+     * opening" — `AnalyticsCatalog::routes()` has to walk the route table to
+     * find a screen with NO rows, since a screen nobody opened has nothing in
+     * the rollup to find. Asking the sensor rather than restating its list is
+     * what stops the two from drifting: a second copy would report a screen
+     * dead that this class was never counting in the first place.
+     */
+    public static function isScreenRoute(?string $name): bool
+    {
+        if ($name === null || in_array($name, self::SKIP_ROUTES, true)) {
+            return false;
+        }
+
+        foreach (self::SKIP_PREFIXES as $prefix) {
+            if (str_starts_with($name, $prefix)) {
+                return false;
+            }
+        }
+
+        foreach (self::SKIP_CONTAINS as $needle) {
+            if (str_contains($name, $needle)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -91,22 +131,8 @@ class RecordPageView
             return false;
         }
 
-        $route = $request->route()?->getName();
-
-        if ($route === null || in_array($route, self::SKIP_ROUTES, true)) {
+        if (! self::isScreenRoute($request->route()?->getName())) {
             return false;
-        }
-
-        foreach (self::SKIP_PREFIXES as $prefix) {
-            if (str_starts_with($route, $prefix)) {
-                return false;
-            }
-        }
-
-        foreach (self::SKIP_CONTAINS as $needle) {
-            if (str_contains($route, $needle)) {
-                return false;
-            }
         }
 
         /*

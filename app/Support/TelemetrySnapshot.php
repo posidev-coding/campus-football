@@ -11,8 +11,6 @@ use App\Models\UxEvent;
 use App\Models\WorkbookItem;
 use App\Services\CfbCalendar;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Everything the app knows about how it is doing, as one array.
@@ -38,18 +36,14 @@ use Illuminate\Support\Facades\Schema;
  */
 class TelemetrySnapshot
 {
-    /**
-     * The one Pulse type whose `value` is not a duration. Named, because the
-     * whole of `pulseTop()`'s split personality hangs off this comparison.
-     */
-    private const EXCEPTION = 'exception';
-
     public function __construct(
         private OpsReport $ops,
         private CoverageReport $coverage,
         private PickemPreflight $preflight,
         private SyncSchedule $schedule,
         private CfbCalendar $calendar,
+        private PerformanceReport $performance,
+        private AnalyticsCatalog $analytics,
     ) {}
 
     /** @return array<string, mixed> */
@@ -72,9 +66,31 @@ class TelemetrySnapshot
                 'jobs' => $this->recentFailures('like'),
                 'client' => $this->clientErrors(),
             ],
-            'performance' => $this->performance(),
+            'performance' => $this->performance->checks(),
             'funnel' => $this->funnel(),
             'funnel_since' => $this->funnelSince(),
+            /*
+             * The attention sections, appended AFTER the funnel and before the
+             * board on purpose: the advisor reads this payload top to bottom,
+             * and everything above is "is the machine alright", which is the
+             * question that has to be answered first. A traffic dip is not
+             * readable until the drain is known to be running.
+             *
+             * Every one of them is aggregate — the same rule as the rest of
+             * this file, applied to the one pipeline that DOES hold identity
+             * upstream. `activity_events` knows who; nothing below says so.
+             */
+            'traffic' => $this->analytics->traffic(7),
+            'audience' => [
+                'actives' => $this->analytics->actives(),
+                'adoption' => $this->analytics->adoption(7),
+                'cohorts' => $this->analytics->cohorts(),
+                'retention' => $this->analytics->retention(),
+                'saturday_retention' => $this->analytics->saturdayRetention(),
+            ],
+            'routes' => $this->analytics->routes(28),
+            'devices' => $this->analytics->devices(28),
+            'pickem_health' => $this->analytics->pickemHealth(),
             'workbook' => $this->workbook(),
         ];
     }
@@ -200,75 +216,20 @@ class TelemetrySnapshot
                 'source' => $error->source,
                 'line' => $error->line,
                 'path' => $error->path,
+                /*
+                 * The path resolved to a route NAME, and the same route's
+                 * traffic in the same window — which is what turns eleven
+                 * errors into a rate. Null when the router matches nothing
+                 * (a path from an old deploy, or one that never existed) and
+                 * null when the raw table holds no views: "zero views, eleven
+                 * errors" is an impossible pair, and the honest report of a
+                 * denominator we do not have is no denominator.
+                 */
+                'route' => $route = $this->analytics->routeFor($error->path),
+                'views_24h' => $this->analytics->routeViews($route, OpsReport::HOURS),
                 'viewport' => $error->viewport,
                 'standalone' => $error->standalone,
                 'reports' => $error->reports,
-            ])
-            ->all();
-    }
-
-    /**
-     * Pulse's own tables, read straight — the decisive advantage of Pulse over
-     * a hosted APM for this app: the data is in our MySQL, so a snapshot is a
-     * query rather than an API call, a rate limit and a bill.
-     *
-     * @return array<string, list<array<string, mixed>>>
-     */
-    private function performance(): array
-    {
-        if (! Schema::hasTable('pulse_entries')) {
-            return [];
-        }
-
-        return collect(['slow_request', 'slow_query', 'slow_job', 'slow_outgoing_request', self::EXCEPTION])
-            ->mapWithKeys(fn (string $type): array => [$type => $this->pulseTop($type)])
-            ->all();
-    }
-
-    /**
-     * The heaviest entries of one type. Grouped by key, so a route that is
-     * slow two hundred times is one line with a count rather than two hundred.
-     *
-     * ONE QUERY, TWO MEANINGS — and it has to be said out loud, because the
-     * column does not say it. Pulse writes a DURATION IN MILLISECONDS into
-     * `value` for slow_request, slow_query, slow_job and slow_outgoing_request.
-     * For `exception` it writes the OCCURRENCE TIMESTAMP there instead
-     * (`Recorders/Exceptions.php`, `value: $timestamp`).
-     *
-     * So `max(value) desc` is "slowest first" for four types and "most recent
-     * first" for the fifth. Both orderings are right for their type; only the
-     * NAME was wrong. This used to emit `"worst": 1787646322` on an exception
-     * row — a unix timestamp sitting in a field every sibling row measures in
-     * milliseconds — to a consumer with no database access that is explicitly
-     * told never to invent a number.
-     *
-     * Exceptions therefore carry `last_seen_at` and NO `worst`. OMITTED rather
-     * than zeroed: a missing measurement is skipped, never substituted, and a
-     * `worst` of 0 on an exception row is precisely the invented value that
-     * rule exists to stop.
-     *
-     * @return list<array<string, mixed>>
-     */
-    private function pulseTop(string $type): array
-    {
-        return DB::table('pulse_entries')
-            ->where('type', $type)
-            ->where('timestamp', '>=', now()->subHours(OpsReport::HOURS)->getTimestamp())
-            ->groupBy('key')
-            ->orderByRaw('max(value) desc')
-            ->limit(10)
-            // `max_value`, not `worst`: the alias says what the column HOLDS,
-            // and what it MEANS is decided below, per type.
-            ->selectRaw('`key`, count(*) as hits, max(value) as max_value')
-            ->get()
-            ->map(fn ($row): array => [
-                'what' => OpsReport::readableKey((string) $row->key),
-                'hits' => (int) $row->hits,
-                ...$type === self::EXCEPTION
-                    // UTC spelled out rather than left to Carbon's default,
-                    // which changed between major versions.
-                    ? ['last_seen_at' => CarbonImmutable::createFromTimestamp((int) $row->max_value, 'UTC')->toIso8601String()]
-                    : ['worst' => (int) $row->max_value],
             ])
             ->all();
     }
