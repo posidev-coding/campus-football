@@ -14,6 +14,16 @@ use Filament\Widgets\ChartWidget;
  */
 class TopGroupsChart extends ChartWidget
 {
+    /*
+     * PARKED, not deleted. Overview lists its widgets explicitly now, so
+     * discovery no longer decides what lands on the front page — and this one
+     * comes back converted in phase 6 or 7 of docs/plans/analytics.md. Left
+     * registered and tested in the meantime, because deleting a widget to
+     * re-type it a fortnight later is how the reasoning in its docblock gets
+     * lost.
+     */
+    protected static bool $isDiscovered = false;
+
     protected ?string $pollingInterval = null;
 
     protected static ?int $sort = 4;

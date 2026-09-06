@@ -1,6 +1,10 @@
 <?php
 
 use App\Filament\Pages\Dashboard;
+use App\Filament\Widgets\Analytics\ActivesStats;
+use App\Filament\Widgets\Analytics\RouteTreemap;
+use App\Filament\Widgets\Analytics\TodayPickem;
+use App\Filament\Widgets\Analytics\TrafficArea;
 use App\Filament\Widgets\EngagementStats;
 use App\Filament\Widgets\PicksTrendChart;
 use App\Filament\Widgets\TopGroupsChart;
@@ -48,9 +52,32 @@ describe('the page itself', function () {
             ->assertDontSee('filamentphp.com', false);
     });
 
-    it('lays out in two columns', function () {
+    it('lays out in twelve columns', function () {
+        // Two was right while every widget was a full-width stat row or a
+        // ten-row horizontal bar. An area chart beside a stat block needs an
+        // eight-and-four, and twelve is the only grid that divides into
+        // halves, thirds and quarters without a widget having to round.
         expect(Livewire::actingAs($this->admin)->test(Dashboard::class)->instance()->getColumns())
-            ->toBe(2);
+            ->toBe(12);
+    });
+
+    it('lists its widgets rather than letting discovery decide', function () {
+        /*
+         * Discovery decided this page for as long as there was nothing to
+         * decide. Now a widget can belong to Overview, to Health, or to
+         * neither, so the page says which — and the five that used to land
+         * here are PARKED (`$isDiscovered = false`), not deleted. They come
+         * back converted in phases 6 and 7, and their tests below still hold
+         * them in the meantime.
+         */
+        $widgets = Livewire::actingAs($this->admin)->test(Dashboard::class)->instance()->getWidgets();
+
+        expect($widgets)->toBe([
+            ActivesStats::class,
+            TrafficArea::class,
+            TodayPickem::class,
+            RouteTreemap::class,
+        ]);
     });
 });
 

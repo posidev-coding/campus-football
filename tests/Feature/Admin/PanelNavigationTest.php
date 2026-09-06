@@ -51,6 +51,8 @@ it('registers the groups in taxonomy order', function () {
         'College Football',
         'Content',
         'Work',
+        // After Work: what the week did, read once you know what is on it.
+        'Analytics',
         'Configuration',
         'Operations',
     ]);
