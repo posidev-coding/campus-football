@@ -68,6 +68,16 @@ enum ActivityArea: int
         return null;
     }
 
+    /**
+     * Its name for somebody reading a panel. The case names ARE the tab
+     * labels — this exists so a caller has one seam to read rather than
+     * reaching for `->name` and inventing its own capitalization.
+     */
+    public function label(): string
+    {
+        return $this->name;
+    }
+
     /** Is this area's bit set in a stored mask? */
     public function in(int $mask): bool
     {

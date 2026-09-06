@@ -1,6 +1,8 @@
 <?php
 
 use App\Actions\DeleteUser;
+use App\Enums\ActivityArea;
+use App\Enums\ActivityFeature;
 use App\Filament\Resources\Users\Pages\EditUser;
 use App\Filament\Resources\Users\Pages\ListUsers;
 use App\Filament\Resources\Users\Pages\ViewUser;
@@ -10,14 +12,17 @@ use App\Filament\Resources\Users\RelationManagers\PicksRelationManager;
 use App\Filament\Resources\Users\RelationManagers\WalletEntriesRelationManager;
 use App\Filament\Resources\Users\UserResource;
 use App\Filament\Resources\Users\Widgets\UserStats;
+use App\Models\ActivityEvent;
 use App\Models\Group;
 use App\Models\GroupMember;
+use App\Models\PageViewDaily;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\SlateEntry;
 use App\Models\SlateGame;
 use App\Models\Team;
 use App\Models\User;
+use App\Models\UserDay;
 use App\Models\WalletEntry;
 use Filament\Actions\Testing\TestAction;
 use Illuminate\Auth\Events\Verified;
@@ -112,7 +117,7 @@ describe('the record view', function () {
             // ...and every tab's content, which is the half a page-load
             // assertion would otherwise never reach.
             ->assertSee('Profile')
-            ->assertSee('Wallet & activity')
+            ->assertSee('Wallet & play')
             ->assertSee('Notifications')
             ->assertSee('Lifecycle');
     });
@@ -487,5 +492,156 @@ describe('the edit form', function () {
             ->assertHasNoFormErrors();
 
         expect($user->fresh()->first_name)->toBe('Peyton W.');
+    });
+});
+
+describe('last seen', function () {
+    it('sorts on the column the drain writes', function () {
+        $seen = User::factory()->create(['last_name' => 'Seen']);
+        $seen->forceFill(['last_seen_at' => now()->subHour()])->save();
+
+        $older = User::factory()->create(['last_name' => 'Older']);
+        $older->forceFill(['last_seen_at' => now()->subWeek()])->save();
+
+        Livewire::actingAs($this->admin)
+            ->test(ListUsers::class)
+            ->sortTable('last_seen_at', 'desc')
+            ->assertCanSeeTableRecords([$seen, $older], inOrder: true);
+    });
+
+    it('says Never rather than a dash for somebody the drain has not seen', function () {
+        /*
+         * The column is NULL for everybody who has not opened the app since
+         * the sensor shipped, which at the moment is most of the table. A dash
+         * in that cell reads as a column that failed to load; "Never" is the
+         * fact.
+         *
+         * It is never backfilled, either — `now()` at migration time would
+         * have marked the whole table as seen on the day analytics shipped.
+         */
+        User::factory()->create();
+
+        Livewire::actingAs($this->admin)
+            ->test(ListUsers::class)
+            ->assertSee('Never');
+    });
+});
+
+describe('the activity tab', function () {
+    beforeEach(function () {
+        $this->travelTo('2026-09-05 18:00:00');
+
+        $this->reader = User::factory()->create();
+    });
+
+    /** The sensor counting since the start of the strip, so no day is dashed. */
+    function countingAllFortnight(): void
+    {
+        PageViewDaily::factory()->create(['day' => '2026-08-23']);
+    }
+
+    it('draws the fortnight out of user_days and names no route', function () {
+        /*
+         * THE GUARANTEE OF THIS WHOLE TAB. `activity_events` holds route-level
+         * rows for thirty days so an error can be read against its own
+         * traffic — not so an admin can watch one person move through the app.
+         * The tab reads `user_days`, which is a day, an area mask and a
+         * feature mask, and it joins nothing to get more.
+         */
+        countingAllFortnight();
+
+        UserDay::factory()->create([
+            'user_id' => $this->reader->id,
+            'day' => '2026-09-05',
+            'views' => 4,
+            'areas' => ActivityArea::Picks->value | ActivityArea::Scores->value,
+            'features' => ActivityFeature::Picked->value | ActivityFeature::ReadTalk->value,
+        ]);
+
+        // The route-level row exists for this same person on the same day, and
+        // must not reach the panel.
+        ActivityEvent::factory()->create([
+            'user_id' => $this->reader->id,
+            'route' => 'scoreboard',
+            'occurred_at' => '2026-09-05 16:00:00',
+        ]);
+
+        Livewire::actingAs($this->admin)
+            ->test(ViewUser::class, ['record' => $this->reader->getKey()])
+            ->assertOk()
+            ->assertSee('Activity')
+            ->assertSee('Picked')
+            ->assertSee('Read talk')
+            ->assertSee('1 of 14 days')
+            ->assertDontSee('scoreboard');
+    });
+
+    it('unions the features across the fortnight rather than showing the last day', function () {
+        // Adoption is "did they ever", and a mask read off the most recent row
+        // would lose everything they did the Saturday before.
+        countingAllFortnight();
+
+        UserDay::factory()->create([
+            'user_id' => $this->reader->id, 'day' => '2026-08-29',
+            'features' => ActivityFeature::Joined->value,
+        ]);
+        UserDay::factory()->create([
+            'user_id' => $this->reader->id, 'day' => '2026-09-05',
+            'features' => ActivityFeature::Picked->value,
+        ]);
+
+        expect(UserResource::featuresSeen($this->reader))->toBe(['Picked', 'Joined']);
+    });
+
+    it('marks a day before the sensor started as uncounted, never as a quiet day', function () {
+        /*
+         * THE `funnel_since` RULE, APPLIED TO ONE PERSON. Before the sensor
+         * shipped there is no answer for a day, and drawing it the same as a
+         * day somebody skipped would render every account older than analytics
+         * as having ignored the app for a fortnight.
+         *
+         * So the denominator is the days that were COUNTED — here exactly one,
+         * because this is the only day either rollup table has.
+         */
+        UserDay::factory()->create(['user_id' => $this->reader->id, 'day' => '2026-09-05']);
+
+        $strip = UserResource::activityStrip($this->reader);
+
+        expect($strip['since'])->toBe('2026-09-05')
+            ->and($strip['counted'])->toBe(1)
+            ->and($strip['days'][0]['counted'])->toBeFalse()
+            ->and($strip['days'][0]['views'])->toBeNull()
+            ->and(UserResource::daysPresent($this->reader))->toBe('1 of 1 day');
+
+        Livewire::actingAs($this->admin)
+            ->test(ViewUser::class, ['record' => $this->reader->getKey()])
+            ->assertOk()
+            ->assertSee('Counting since 2026-09-05')
+            ->assertDontSee('1 of 14 days');
+    });
+
+    it('carries no views at all for a counted day with no row', function () {
+        // There is no zero row in `user_days` for a quiet day and there must
+        // never be one, so the cell carries no number rather than a 0 the
+        // panel made up.
+        countingAllFortnight();
+
+        $strip = UserResource::activityStrip($this->reader);
+
+        expect(collect($strip['days'])->pluck('views')->unique()->all())->toBe([null])
+            ->and($strip['present'])->toBe(0)
+            ->and($strip['counted'])->toBe(14);
+    });
+
+    it('says nothing has been counted when neither rollup has a day', function () {
+        // A fresh install, or the fortnight before the sensor shipped. "0 of
+        // 14" would be a participation number about a stretch nothing watched.
+        expect(UserResource::daysPresent($this->reader))->toBe('Nothing counted yet');
+
+        Livewire::actingAs($this->admin)
+            ->test(ViewUser::class, ['record' => $this->reader->getKey()])
+            ->assertOk()
+            ->assertSee('Nothing counted yet')
+            ->assertSee('Nothing in the last 14 days');
     });
 });

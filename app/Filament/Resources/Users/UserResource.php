@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\Users;
 
+use App\Enums\ActivityArea;
+use App\Enums\ActivityFeature;
 use App\Enums\ContentRating;
 use App\Filament\Resources\Users\Pages\EditUser;
 use App\Filament\Resources\Users\Pages\ListUsers;
@@ -11,7 +13,10 @@ use App\Filament\Resources\Users\RelationManagers\GroupsRelationManager;
 use App\Filament\Resources\Users\RelationManagers\PicksRelationManager;
 use App\Filament\Resources\Users\RelationManagers\WalletEntriesRelationManager;
 use App\Models\User;
+use App\Models\UserDay;
+use App\Support\ActivityRollup;
 use BackedEnum;
+use Carbon\CarbonImmutable;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms\Components\FileUpload;
@@ -19,6 +24,7 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\ViewEntry;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
@@ -32,6 +38,7 @@ use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use UnitEnum;
 
 /**
@@ -60,6 +67,13 @@ class UserResource extends Resource
     protected static ?int $navigationSort = 1;
 
     protected static ?string $recordTitleAttribute = 'handle';
+
+    /**
+     * How far back the Activity tab looks — two pick'em weeks, so a strip
+     * holds last Saturday and the one before it rather than a fortnight that
+     * happens to cut one of them in half.
+     */
+    public const ACTIVITY_DAYS = 14;
 
     /** Real columns only — `name` does not exist to search. */
     public static function getGloballySearchableAttributes(): array
@@ -132,7 +146,7 @@ class UserResource extends Resource
                     TextEntry::make('created_at')->label('Joined')->dateTime(),
                 ]),
 
-                Tab::make('Wallet & activity')->icon(Heroicon::OutlinedBolt)->columns(2)->schema([
+                Tab::make('Wallet & play')->icon(Heroicon::OutlinedBolt)->columns(2)->schema([
                     TextEntry::make('xp')->label('XP')
                         ->state(fn (User $record): string => number_format($record->walletTotals()['xp'])),
                     TextEntry::make('credits')->label('Tallboys')
@@ -145,6 +159,37 @@ class UserResource extends Resource
                     TextEntry::make('beat_bear')->label('Beat the Bear')
                         ->state(fn (User $record): int => $record->slateEntries()->where('beat_bear', true)->count())
                         ->helperText('Woodshed only — the Bear does not run in the other modes.'),
+                ]),
+
+                /*
+                 * ATTENTION, and only ever at the resolution `user_days` holds
+                 * it: a day, an area bitmask and a feature bitmask. No route
+                 * name reaches this tab, and none is joined in to make it — the
+                 * sensor keeps route-level rows for thirty days precisely so an
+                 * error can be read against its own traffic, not so an admin
+                 * can watch one person move through the app.
+                 */
+                Tab::make('Activity')->icon(Heroicon::OutlinedChartBar)->columns(2)->schema([
+                    TextEntry::make('last_seen_at')->label('Last seen')
+                        ->dateTime()->placeholder('Never')
+                        ->helperText('The activity drain is this column\'s only writer, so it lags by at most one drain.'),
+                    TextEntry::make('days_present')->label('Days present')
+                        ->state(fn (User $record): string => self::daysPresent($record))
+                        ->helperText('Out of the days the sensor was actually counting, which is not always '.self::ACTIVITY_DAYS.'.'),
+                    ViewEntry::make('activity_strip')
+                        ->label('The last '.self::ACTIVITY_DAYS.' days')
+                        ->columnSpanFull()
+                        ->view('filament.partials.activity-strip')
+                        ->state(fn (User $record): array => self::activityStrip($record)),
+                    TextEntry::make('features_seen')->label('Features used')
+                        ->badge()
+                        ->columnSpanFull()
+                        ->state(fn (User $record): array => self::featuresSeen($record))
+                        // An empty array is blank(), so this is what shows for
+                        // somebody who read screens and did nothing else — which
+                        // is a real and quite common shape of fortnight.
+                        ->placeholder('Nothing in the last '.self::ACTIVITY_DAYS.' days')
+                        ->helperText('Most of these are read from the truth tables at rollup, not from the clickstream.'),
                 ]),
 
                 Tab::make('Notifications')->icon(Heroicon::OutlinedBellAlert)->columns(2)->schema([
@@ -231,6 +276,17 @@ class UserResource extends Resource
                 TextColumn::make('content_rating')->label('Rating')->badge()
                     ->formatStateUsing(fn (ContentRating $state): string => $state->label())
                     ->toggleable(),
+                /*
+                 * Written by the activity drain and by nothing else, so it
+                 * lags by at most one drain cadence — and it is NULL for
+                 * everybody who has not been seen since the sensor shipped.
+                 * "Never" rather than a dash, because the dash reads as a
+                 * column that failed to load.
+                 */
+                TextColumn::make('last_seen_at')->label('Last seen')->since()->color('gray')
+                    ->placeholder('Never')
+                    ->tooltip(fn (User $record): ?string => $record->last_seen_at?->format('M j, Y g:ia'))
+                    ->sortable(),
                 TextColumn::make('created_at')->label('Joined')->since()->color('gray')->sortable(),
             ])
             ->defaultSort('created_at', 'desc')
@@ -287,6 +343,131 @@ class UserResource extends Resource
         // No 'create'. An account is made by REGISTERING — a hand-made row
         // would skip password hashing rules, the welcome mail and the whole
         // onboarding moment.
+    }
+
+    /**
+     * The last {@see ACTIVITY_DAYS} league days, one cell each.
+     *
+     * TWO KINDS OF EMPTY, AND THEY ARE NOT THE SAME CELL. A day the sensor
+     * was counting and this person did nothing is a fact about them. A day
+     * BEFORE the sensor was counting is a fact about us, and rendering it as
+     * a quiet day would draw everybody who joined before analytics shipped as
+     * having ignored the app — the `funnel_since` rule, applied to one person
+     * instead of to a funnel.
+     *
+     * There is no zero row in `user_days` for a quiet day and there must
+     * never be one, so an absent day here carries no `views` at all rather
+     * than a 0 this method made up.
+     *
+     * @return array{days: array<int, array<string, mixed>>, since: ?string, counted: int, present: int}
+     */
+    public static function activityStrip(User $record): array
+    {
+        $today = CarbonImmutable::now(config('cfb.timezone'))->startOfDay();
+        $from = $today->subDays(self::ACTIVITY_DAYS - 1);
+
+        $since = app(ActivityRollup::class)->since();
+
+        $rows = UserDay::query()
+            ->where('user_id', $record->getKey())
+            ->whereBetween('day', [$from->toDateString(), $today->toDateString()])
+            ->get()
+            ->keyBy(fn (UserDay $day): string => $day->day->toDateString());
+
+        $days = [];
+        $counted = 0;
+
+        for ($offset = 0; $offset < self::ACTIVITY_DAYS; $offset++) {
+            $date = $from->addDays($offset);
+            $key = $date->toDateString();
+            $row = $rows->get($key);
+
+            $isCounted = $since !== null && $key >= $since;
+            $counted += $isCounted ? 1 : 0;
+
+            $days[] = [
+                'date' => $key,
+                'weekday' => $date->format('D'),
+                'number' => $date->format('j'),
+                'counted' => $isCounted,
+                'views' => $row?->views,
+                'actions' => $row?->actions,
+                'areas' => $row === null ? [] : self::areaLabels($row->areas),
+                'features' => $row === null ? [] : self::featureLabels($row->features),
+            ];
+        }
+
+        return [
+            'days' => $days,
+            'since' => $since,
+            'counted' => $counted,
+            'present' => $rows->count(),
+        ];
+    }
+
+    /**
+     * "4 of 14 days" — over the days that were COUNTED, never over the
+     * nominal fortnight.
+     *
+     * A denominator of 14 on a sensor that shipped on Tuesday reads as
+     * somebody who ignored the app for a week and a half, which is a claim
+     * about a stretch of time nothing was watching.
+     */
+    public static function daysPresent(User $record): string
+    {
+        $strip = self::activityStrip($record);
+
+        if ($strip['counted'] === 0) {
+            return 'Nothing counted yet';
+        }
+
+        return $strip['present'].' of '.$strip['counted'].' '.str('day')->plural($strip['counted']);
+    }
+
+    /**
+     * Every feature bit this person lit in the window, as labels.
+     *
+     * @return array<int, string>
+     */
+    public static function featuresSeen(User $record): array
+    {
+        $today = CarbonImmutable::now(config('cfb.timezone'))->startOfDay();
+
+        // BIT_OR over the fortnight: the union of what they did, not the last
+        // day's mask. Read off the query builder rather than through `value()`,
+        // which re-selects the column list and cannot carry an aggregate.
+        $row = DB::table('user_days')
+            ->where('user_id', $record->getKey())
+            ->whereBetween('day', [
+                $today->subDays(self::ACTIVITY_DAYS - 1)->toDateString(),
+                $today->toDateString(),
+            ])
+            ->selectRaw('coalesce(bit_or(features), 0) as mask')
+            ->first();
+
+        return self::featureLabels((int) ($row->mask ?? 0));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function areaLabels(int $mask): array
+    {
+        return collect(ActivityArea::cases())
+            ->filter(fn (ActivityArea $area): bool => $area->in($mask))
+            ->map(fn (ActivityArea $area): string => $area->label())
+            ->values()->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function featureLabels(int $mask): array
+    {
+        return collect(ActivityFeature::cases())
+            ->filter(fn (ActivityFeature $feature): bool => $feature->in($mask))
+            ->map(fn (ActivityFeature $feature): string => $feature->label())
+            ->values()->all();
     }
 
     /** "12-4-1", or a plain statement when nothing has been graded. */
