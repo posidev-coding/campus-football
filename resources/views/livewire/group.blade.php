@@ -594,9 +594,15 @@ new class extends Component
             'home' => $slateGame->game->homeTeam->abbreviation,
         ])->values()->all();
 
-        $abbreviate = fn ($slateGame, ?int $teamId): ?string => match ($teamId) {
-            $slateGame->game->home_team_id => $slateGame->game->homeTeam->abbreviation,
-            $slateGame->game->away_team_id => $slateGame->game->awayTeam->abbreviation,
+        /*
+         * The picked SIDE as a model, not a string: the grid prints the
+         * school's logo now and keeps the abbreviation underneath it for
+         * anyone reading by ear. Both teams already ride the slate's
+         * eager load, so this is the same read either way.
+         */
+        $side = fn ($slateGame, ?int $teamId): ?Team => match ($teamId) {
+            $slateGame->game->home_team_id => $slateGame->game->homeTeam,
+            $slateGame->game->away_team_id => $slateGame->game->awayTeam,
             default => null,
         };
 
@@ -605,40 +611,45 @@ new class extends Component
         $bear = $slate->bear_theme !== null && ($engine?->hasBear() ?? false);
 
         $rows = $this->weekStandings
-            ->map(function (array $standing) use ($games, $picks, $abbreviate, $grader, $bear) {
+            ->map(function (array $standing) use ($games, $picks, $side, $grader, $bear) {
                 $isBear = $standing['key'] === 'bear';
                 $mine = $standing['user'] === null
                     ? collect()
                     : ($picks->get($standing['user']->id) ?? collect())->keyBy('slate_game_id');
 
-                $cells = $games->map(function ($slateGame) use ($mine, $abbreviate, $grader, $isBear, $bear) {
+                $cells = $games->map(function ($slateGame) use ($mine, $side, $grader, $isBear, $bear) {
                     // The reveal rule: THIS game's kickoff, nothing else's.
                     if (! $slateGame->game->hasKickedOff()) {
-                        return ['state' => 'hidden', 'abbr' => null, 'tone' => 'neutral'];
+                        return ['state' => 'hidden', 'team' => null, 'abbr' => null, 'tone' => 'neutral'];
                     }
 
                     if ($isBear) {
                         if (! $bear || $slateGame->bear_team_id === null) {
-                            return ['state' => 'none', 'abbr' => null, 'tone' => 'neutral'];
+                            return ['state' => 'none', 'team' => null, 'abbr' => null, 'tone' => 'neutral'];
                         }
 
                         $tone = $slateGame->game->completed
                             ? ($grader->resultFor($slateGame, $slateGame->game, $slateGame->bear_team_id) === Pick::WIN ? 'win' : 'loss')
                             : 'neutral';
 
-                        return ['state' => 'pick', 'abbr' => $abbreviate($slateGame, $slateGame->bear_team_id), 'tone' => $tone];
+                        $team = $side($slateGame, $slateGame->bear_team_id);
+
+                        return ['state' => 'pick', 'team' => $team, 'abbr' => $team?->abbreviation, 'tone' => $tone];
                     }
 
                     $pick = $mine->get($slateGame->id);
 
                     if ($pick === null) {
                         // An absent pick on a kicked game is an honest zero.
-                        return ['state' => 'none', 'abbr' => null, 'tone' => 'neutral'];
+                        return ['state' => 'none', 'team' => null, 'abbr' => null, 'tone' => 'neutral'];
                     }
+
+                    $team = $side($slateGame, $pick->picked_team_id);
 
                     return [
                         'state' => 'pick',
-                        'abbr' => $abbreviate($slateGame, $pick->picked_team_id),
+                        'team' => $team,
+                        'abbr' => $team?->abbreviation,
                         'tone' => $pick->result === null ? 'neutral' : ($pick->result === Pick::WIN ? 'win' : 'loss'),
                     ];
                 })->values()->all();

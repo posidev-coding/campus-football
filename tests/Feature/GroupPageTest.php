@@ -922,6 +922,93 @@ it('reveals the picks grid per game, and never before kickoff', function () {
         ->assertSeeHtml('data-cell="pick"');
 });
 
+it('prints the picked school as a mark, dulls a missed call, and keeps the abbreviations on the header', function () {
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate = $slate->fresh();
+
+    $games = $slate->games()->with('game')->orderBy('position')->get();
+    [$landed, $missed] = [$games[0], $games[1]];
+
+    /*
+     * TeamFactory mints no logo and a random abbreviation off a faker
+     * city, so both are pinned here: an unpinned mark renders the
+     * placeholder puck instead of the thing under test, and an unpinned
+     * abbreviation is one draw away from colliding with the page.
+     */
+    foreach ([[$landed, 'landed'], [$missed, 'missed']] as [$slateGame, $tag]) {
+        $slateGame->game->update(['kickoff_at' => now()->subHour()]);
+
+        Team::whereKey($slateGame->game->home_team_id)->update([
+            'logo' => "https://cdn.example.com/{$tag}-mark.png",
+            'logo_dark' => null,
+            'abbreviation' => strtoupper($tag),
+        ]);
+    }
+
+    Pick::factory()->won()->create([
+        'slate_game_id' => $landed->id,
+        'user_id' => $commissioner->id,
+        'picked_team_id' => $landed->game->home_team_id,
+    ]);
+
+    Pick::factory()->lost()->create([
+        'slate_game_id' => $missed->id,
+        'user_id' => $commissioner->id,
+        'picked_team_id' => $missed->game->home_team_id,
+    ]);
+
+    SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $commissioner->id]);
+
+    $page = Livewire::actingAs($commissioner)->test('group', ['group' => $group])->set('view', 'standings');
+    $grid = $page->instance()->picksGrid;
+    $html = $page->html();
+
+    /*
+     * Scoped to the ONE cell by its wire:key — a logo URL or a utility
+     * class matched against the whole document is satisfied by the pick
+     * cards on the slate tab, and the assertion would survive the grid
+     * being reverted to text.
+     */
+    $cell = function (int $column) use ($html): string {
+        $start = strpos($html, 'wire:key="grid-cell-0-'.$column.'"');
+
+        expect($start)->not->toBeFalse();
+
+        return substr($html, $start, strpos($html, '</td>', $start) - $start);
+    };
+
+    expect($grid['rows'][0]['viewer'])->toBeTrue();
+
+    $landedCell = $cell(array_search($landed->id, array_column($grid['columns'], 'key'), true));
+    $missedCell = $cell(array_search($missed->id, array_column($grid['columns'], 'key'), true));
+
+    // The call that landed wears its school at full strength, and says so.
+    expect($landedCell)
+        ->toContain('data-tone="win"')
+        ->toContain('https://cdn.example.com/landed-mark.png')
+        ->toContain('LANDED, correct')
+        ->not->toContain('grayscale');
+
+    // The one that missed is desaturated and faded — disabled, not red.
+    expect($missedCell)
+        ->toContain('data-tone="loss"')
+        ->toContain('https://cdn.example.com/missed-mark.png')
+        ->toContain('grayscale')
+        ->toContain('opacity-40')
+        ->toContain('MISSED, wrong');
+
+    // The matchup header still identifies the fixture in words, no marks.
+    $headStart = strpos($html, 'wire:key="grid-col-'.$landed->id.'"');
+    $header = substr($html, $headStart, strpos($html, '</th>', $headStart) - $headStart);
+
+    expect($header)
+        ->toContain('LANDED')
+        ->not->toContain('<img');
+});
+
 it('shows the movement and the member colors once two weeks have settled', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
     $member = User::factory()->create(['admin' => true, 'handle' => 'mover']);
