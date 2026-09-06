@@ -218,8 +218,15 @@ new class extends Component
         $wins = $this->cards->sum('wins');
 
         return [
-            // The clubhouse strip's own rule: the handle when it is
-            // claimed, the name until then.
+            /*
+             * HANDLES HERE, always — deliberately no longer the clubhouse's
+             * rule, which flips to real names inside a private group.
+             *
+             * My Picks spans every group and room the reader sits in at once,
+             * so there is no single room whose privacy could license a name.
+             * The clubhouse can only print one because its `showsRealNames`
+             * knows it is looking at a private group; this screen never is.
+             */
             'name' => $user->handle !== null ? '@'.$user->handle : $user->name,
             'stats' => [
                 ['label' => 'Rank', 'value' => $this->rank['name'] ?? '—'],
