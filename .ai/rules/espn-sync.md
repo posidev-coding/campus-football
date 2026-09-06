@@ -61,3 +61,12 @@ in the database months before it is played. `currentYear()`, `resultsYear()` and
 
 ## verified middleware is reserved for participation surfaces
 Email verification gates Pick'em actions and XP earning ONLY — never reading your own data. /account sits behind auth alone; never re-add `verified` to it. Unverified accounts are nudged (Home/Account/Picks callouts), rewarded on verify (100 XP + 1 Tallboy), and pruned after User::VERIFICATION_GRACE_DAYS instead of being walled out. The v3 lesson in the route comment is "middleware actually applied", not "verify early".
+
+## A game stuck live has exactly one escape, and it is the summary
+`SyncGames::store()` is the ROUTINE writer of `games.status` and `games.completed`, and it can only correct an event its scoreboard payload actually carries. When ESPN leaves an entry mid-quarter, or the event falls outside the ET date bucket `liveScoreboardDays()` derives from our own stored `kickoff_at`, nothing in the scoreboard path un-sticks the row. Every screen reads live before final — game card, game page, pick card, league sheet, search — so a finished game wears "5:00 - 4th" indefinitely and stays `inProgress()` forever, holding open the live tier's guard, `cfb:summaries:live`, the scoreboard's live flag and pick grading with it. Measured 2026-09-06 on game 401856636.
+
+It also costs. `SyncGameSummary::isStale()` treats a game and its summary disagreeing as permanently stale, so the two-minute sweep re-fetched that 544 KB payload for the rest of the season, learning nothing each pass.
+
+The summary is fetched by EVENT ID, not by date, so it is the one source that cannot lose a game to a bucket — and its header already carried `type.completed`, which we read and discarded. `SyncGameSummary::reconcileFinal()` (PR #151, 535405e) writes it back: status, detail, period, clock, the final score where the header names both sides, the situation columns cleared, and `GameWentFinal` so a rescued final grades by the scoreboard's own path. A side the header does not name is left alone, never zeroed.
+
+So the scoreboard is no longer the only writer — it is the only UNGATED one. `reconcileFinal()` is the sanctioned second, and it fires only when `Game::isStuckLive()` holds: in progress AND past `KICKOFF_GRACE_HOURS` (6). Never eagerly. ESPN briefly reports a game complete and flips it back, and premature finality grades picks and flips a slate to prelim. Any future source that can contradict the scoreboard needs the same shape: late, gated on the clock, and riding a request already paid for.
