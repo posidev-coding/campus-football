@@ -3,8 +3,10 @@
 namespace App\Actions;
 
 use App\Enums\ActivityKind;
+use App\Jobs\ShipActivityBatch;
 use App\Models\ActivityEvent;
 use App\Models\User;
+use App\Support\PipelinesLogHandler;
 use App\Support\Release;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
@@ -172,7 +174,59 @@ class RecordActivity
 
         self::touchLastSeen($seen);
 
+        /*
+         * The cold tier, after MySQL and never instead of it. Dispatched only
+         * once `insertOrIgnore` has returned, so the archive can never be
+         * ahead of the table it is an archive OF — and queued rather than
+         * called, so a slow endpoint cannot stretch this five-minute cadence.
+         *
+         * `$rows` and not `$written`: `insertOrIgnore` returns how many were
+         * NEW, and a re-read of an already-written entry is the drain working
+         * rather than nothing to archive. Pipelines is append-only, so a
+         * duplicate is a duplicate row in an archive nothing joins on — which
+         * is cheaper than the alternative of shipping nothing after a crash.
+         *
+         * Unset endpoint means off, and `ship()` is where that is decided.
+         */
+        ShipActivityBatch::ship($rows, config('services.cloudflare.pipelines.events_url'));
+
         return $written;
+    }
+
+    /**
+     * The log stream's own drain, the same three steps.
+     *
+     * READ AND DELETE EVEN WHEN THERE IS NOWHERE TO SHIP. The handler is only
+     * in `LOG_STACK` if a human put it there, but if they put it there without
+     * setting the endpoint the stream would sit at its `MAXLEN` forever,
+     * looking from the outside exactly like a drain that has stopped. Nothing
+     * unique is lost by dropping it: this channel is additive and the same
+     * records are already on `single`.
+     *
+     * No MySQL table behind it, so there is no `insertOrIgnore` to be ahead
+     * of — the ship is dispatched from what was read, and a crash between the
+     * read and the dispatch costs an archive copy of some log lines.
+     */
+    public function drainLogs(int $max = 20_000): int
+    {
+        $redis = Redis::connection('pulse');
+
+        $entries = (array) $redis->xRange(PipelinesLogHandler::STREAM, '-', '+', $max);
+
+        if ($entries === []) {
+            return 0;
+        }
+
+        $rows = array_values(array_map(
+            fn ($fields): array => array_map('strval', (array) $fields),
+            $entries,
+        ));
+
+        $redis->xDel(PipelinesLogHandler::STREAM, array_map('strval', array_keys($entries)));
+
+        ShipActivityBatch::ship($rows, config('services.cloudflare.pipelines.logs_url'));
+
+        return count($rows);
     }
 
     /**

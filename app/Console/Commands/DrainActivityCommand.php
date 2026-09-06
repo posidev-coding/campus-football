@@ -40,9 +40,33 @@ class DrainActivityCommand extends Command
         // ledger row is marked failed. Bookkeeping, never a rescue: a drain
         // that could not reach Redis must not exit zero, or the schedule
         // panel reads a dead pipeline as a quiet one.
-        $written = $this->trackRun('activity:drain', null, fn (): int => $activity->drain());
+        /*
+         * The log stream rides the same wake and the SAME ledger row. Not a
+         * second `trackRun` and not its own scheduled command: it is one
+         * XRANGE against a stream that is empty in every deployment where
+         * nobody added `pipelines` to LOG_STACK, and a second `feed_runs`
+         * series for that would write a row every five minutes to say nothing
+         * happened — with a `written` count that means log records rather than
+         * events, in a series read as events.
+         */
+        $logs = 0;
+
+        $written = $this->trackRun('activity:drain', null, function () use ($activity, &$logs): int {
+            $events = $activity->drain();
+            $logs = $activity->drainLogs();
+
+            return $events;
+        });
 
         $this->info("Wrote {$written} activity events.");
+
+        // Only when there is something to say. The log stream is empty in
+        // every deployment where nobody added `pipelines` to LOG_STACK, and a
+        // "drained 0 log records" line every five minutes is noise in the one
+        // place somebody reads to find out whether the pipeline is alive.
+        if ($logs > 0) {
+            $this->info("Drained {$logs} log records.");
+        }
 
         return self::SUCCESS;
     }

@@ -24,6 +24,28 @@ return [
     'cloudflare' => [
         'account_id' => env('CLOUDFLARE_ACCOUNT_ID'),
         'key' => env('CLOUDFLARE_KEY'),
+
+        /*
+         * The cold tier: Cloudflare Pipelines, which accepts events on an HTTP
+         * endpoint with no Worker in front of it and writes them as Iceberg
+         * tables into R2 Data Catalog — the same account that already holds
+         * the app's uploads.
+         *
+         * UNSET MEANS OFF, the OPS_TOKEN convention, and it is unset
+         * everywhere until a human sets it in Laravel Cloud. Nothing above
+         * this reads R2: no dashboard, no snapshot section, no OpsReport row.
+         * Deleting the whole tier changes nothing, and the 30-day MySQL prune
+         * stands whether the archive exists or not.
+         *
+         * A URL with no token is a misconfiguration rather than a
+         * half-measure — the endpoint requires the bearer — so the shipper
+         * treats it as off. See App\Jobs\ShipActivityBatch.
+         */
+        'pipelines' => [
+            'events_url' => env('CLOUDFLARE_PIPELINES_EVENTS_URL'),
+            'logs_url' => env('CLOUDFLARE_PIPELINES_LOGS_URL'),
+            'token' => env('CLOUDFLARE_PIPELINES_TOKEN'),
+        ],
     ],
 
     /*

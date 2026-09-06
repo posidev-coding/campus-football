@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\PipelinesLogHandler;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -116,6 +117,23 @@ return [
             'driver' => 'errorlog',
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+        ],
+
+        /*
+         * The cold tier's log channel: one XADD onto a Redis stream that the
+         * activity drain ships to Cloudflare Pipelines.
+         *
+         * NOT IN THE STACK. A human adds `pipelines` to LOG_STACK once the
+         * endpoint is set, and it is additive when they do — `single` stays in
+         * the stack and the file on disk remains the log of record. The
+         * handler swallows everything and says nothing about it, because a log
+         * handler that logs its own failures recurses.
+         */
+        'pipelines' => [
+            'driver' => 'monolog',
+            'level' => env('LOG_LEVEL', 'debug'),
+            'handler' => PipelinesLogHandler::class,
+            'processors' => [PsrLogMessageProcessor::class],
         ],
 
         'null' => [
