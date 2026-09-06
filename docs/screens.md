@@ -1040,6 +1040,15 @@ words, sharing the spare width — because five equal fifths clip
   places. The accordion stays outside the sidecar grid wrapper.
 - **Standings** — `x-you-strip`, the week and season tables, and the
   picks grid. The scoring panel left for the Slate tab's accordion.
+  The grid's cells print the picked school's LOGO (2026-09-06): a row of
+  marks is read at a glance where a row of four-letter codes is spelled
+  out. The abbreviations stay on the matchup HEADER, where they identify
+  the fixture, and ride along in every cell as `sr-only` text. The grade
+  is worn as light rather than color — a missed call is desaturated and
+  faded until it reads disabled, because emerald and red had nothing to
+  grade once the cell held a mark that is already colored, and half the
+  marks in the sport are already red. An ungraded pick on a game still
+  playing sits between the two, dimmed but never grayed.
 - **Members** — the roster, the commissioner badge, the handoff, Remove
   and Leave. It was a collapsed disclosure at the foot of the standings,
   which put the one control that transfers a league behind a chevron.
