@@ -41,6 +41,11 @@ identifiers anywhere:
 | `performance` | Pulse's heaviest entries, grouped by key with a hit count |
 | `funnel` | Seven days of the nine named UX signals |
 | `funnel_since` | The first day each `funnel` total covers — a signal added this week reads zero for every day before it shipped |
+| `traffic` | Views and visitors over 7 days, split guest / member / staff |
+| `audience` | `actives` (daily, weekly, monthly, stickiness), `adoption` (share of weekly actives per feature), `cohorts` (eight registration weeks), `retention` (weekly grid), `saturday_retention` (six pairs) |
+| `routes` | 28 days of route popularity — `top` by views and visitors, `quiet` for the screens nobody opens |
+| `devices` | Viewport bucket mix and installed share, 28 days. "Not reported" is its own bucket |
+| `pickem_health` | One row per slate for this Saturday and last — ids and counts, never a group name |
 | `workbook` | **What is already on the board, and what a human answered** |
 
 ### 2. Read the repository
@@ -171,3 +176,49 @@ non-negotiables that most often make a proposal wrong here:
   filed as the wizard losing everybody. Compare per day, or wait.
 - **`schedule[].overdue`** during the off-season is usually a season gate doing
   its job, not a failure. Check `season.phase` before proposing.
+
+## Reading the analytics sections
+
+These five are new instruments, and every one of them is easier to misread than
+the machine sections above. A wrong finding here does not just waste a pass — it
+proposes deleting a screen people use.
+
+- **Every analytics section carries `since`, and the `funnel_since` rule
+  generalizes to all of them.** A window whose `since` falls inside it is not
+  that window's number. Do not file "traffic fell" or "nobody opens this
+  screen" until `since` predates the window. A 28-day route count off a
+  fortnight-old rollup is a fortnight's count wearing a month's label.
+- **`null` in a rate is "too few to read", and it is never zero.** A retention
+  cell of null (cohort under 10), an `activated_7d` of null (a cohort under
+  seven days old, which has not had its chance yet), a `quiet` of null (the
+  window is not covered), a `stickiness_28d` of null — **none of these is a
+  finding.** The counts sit beside every null, so read those instead.
+- **Compare Saturday to Saturday and week to week** (Tuesday to Monday, which
+  is what `Cadence::TURNOVER_DOW` makes a week here), never day to day. Check
+  `season.phase` before reading any drop — a bye week and a dead app look
+  identical in a daily number.
+- **`routes.quiet` is a UX question, not a bug**, and only for a screen that is
+  linked from somewhere. Quote the route name and the 28-day count; propose
+  removing or moving the door, and name the Blade that renders it. A screen
+  reachable only by deep link is supposed to be quiet.
+- **`pickem_health.late_share` high with `reminder_lift` low** is the one
+  analytics finding that can earn `high`: the reminder wave is not moving
+  people. Quote the slate id, `members`, `entries` and both stamps
+  (`picks_reminded_at`, `last_call_sent_at`). Never a group name — the payload
+  does not carry one. Both rates are null until the phase that computes them
+  ships; null is not zero and not a finding.
+- **`errors.client[].route` with `views_24h` turns a count into a rate.** Do
+  not read a rate under 50 views. A bug on a screen ten people opened is still
+  a bug, but its evidence is the `reports` count, not a percentage. A
+  `views_24h` of null means there is no denominator at all.
+- **Evidence, every time**: the section path, the window, both sides of any
+  rate, and the date —
+  `{"section": "audience.adoption", "window_days": 7, "numerator": 3, "denominator": 11, "since": "2026-09-12"}`.
+- **What NOT to file**: device mix (it is informational), stickiness under 30
+  people, cohort comparisons across the launch date, and anything whose remedy
+  is "get more users".
+- **Severity**: a participation collapse on a live Saturday — entries near zero
+  with kicked games on the slate — is the only analytics finding that may reach
+  `critical`, because that is losing a Saturday. Everything else caps at
+  `high`. A dead activity drain is `ops` / `high`: it loses telemetry, not
+  product data.

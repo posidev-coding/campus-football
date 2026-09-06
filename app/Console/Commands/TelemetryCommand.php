@@ -55,6 +55,24 @@ class TelemetryCommand extends Command
             $this->line(sprintf('    %-30s %6d   since %s', $signal, $count, $snapshot['funnel_since'][$signal]));
         }
 
+        $actives = $snapshot['audience']['actives'];
+
+        $this->newLine();
+        // The date, again, and for the same reason the funnel carries one: a
+        // stickiness of 0.2 off four covered days is not a month's number.
+        $this->line(sprintf('  <fg=gray>Actives · since %s</>', $actives['since'] ?? 'no data'));
+
+        $this->line(sprintf(
+            '    %-30s %6d   wau %d   mau %d   stickiness %s',
+            'daily actives',
+            $actives['dau'],
+            $actives['wau'],
+            $actives['mau'],
+            // "no data" and never 0.0 — below the floor there is no rate, and
+            // printing one is the substitution the whole layer refuses.
+            $actives['stickiness_28d'] === null ? 'no data' : $actives['stickiness_28d'],
+        ));
+
         $failing = collect($snapshot['ops'])->where('status', OpsReport::FAIL)->count();
 
         $this->newLine();

@@ -6,6 +6,7 @@ use App\Http\Middleware\EnsureOpsToken;
 use App\Models\FeedRun;
 use App\Models\WorkbookEvent;
 use App\Models\WorkbookItem;
+use App\Support\TelemetrySnapshot;
 use Illuminate\Support\Facades\URL;
 
 /*
@@ -366,16 +367,20 @@ describe('the read', function () {
             ->not->toContain('"trail"');
     });
 
-    it('extends workbook.open without moving the twelve top-level keys', function () {
+    it('extends workbook.open without moving the top-level keys', function () {
         // TelemetryTest and OpsEndpointTest both pin the top-level keys; the
         // item assertions use toHaveKey, so extending there is safe BY DESIGN
-        // rather than by luck. Saying so here makes it a decision. (Twelve
-        // since `funnel_since` joined `funnel`, the date each total covers.)
+        // rather than by luck. Saying so here makes it a decision. The COUNT
+        // is read off the snapshot rather than typed, because the number has
+        // moved twice now — `funnel_since` joined `funnel`, and then the five
+        // attention sections landed — and a hand-written total turns every
+        // one of those into a second failing test that teaches nobody
+        // anything.
         $item = opsReadyIssue(['labels' => ['performance']]);
 
         $response = $this->getJson(URL::signedRoute('ops.telemetry'), issueHeaders())->assertOk();
 
-        expect(array_keys($response->json()))->toHaveCount(12)
+        expect(array_keys($response->json()))->toBe(array_keys(app(TelemetrySnapshot::class)->build()))
             ->and($response->json('workbook.open.0.reference'))->toBe($item->reference)
             ->and($response->json('workbook.open.0.labels'))->toBe(['performance'])
             ->and($response->json('workbook.open.0.effort'))->toBeNull();

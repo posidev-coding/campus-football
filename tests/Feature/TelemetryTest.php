@@ -1,12 +1,19 @@
 <?php
 
 use App\Actions\RecordUxEvent;
+use App\Enums\ActivityFeature;
 use App\Enums\UxSignal;
+use App\Enums\ViewportBucket;
 use App\Enums\WorkbookStatus;
 use App\Jobs\FetchGameSummary;
+use App\Models\ActivityEvent;
 use App\Models\ClientError;
 use App\Models\FeedRun;
+use App\Models\Group;
+use App\Models\GroupInvite;
+use App\Models\PageViewDaily;
 use App\Models\User;
+use App\Models\UserDay;
 use App\Models\UxEvent;
 use App\Models\WorkbookItem;
 use App\Support\OpsReport;
@@ -40,7 +47,12 @@ describe('the payload', function () {
     it('carries every section the advisor needs', function () {
         expect(array_keys(telemetry()))->toBe([
             'generated_at', 'window_hours', 'season', 'ops', 'coverage',
-            'pickem', 'schedule', 'errors', 'performance', 'funnel', 'funnel_since', 'workbook',
+            'pickem', 'schedule', 'errors', 'performance', 'funnel', 'funnel_since',
+            // The attention sections, after the funnel and before the board:
+            // "is the machine alright" is the question that has to be
+            // answered before a traffic dip means anything.
+            'traffic', 'audience', 'routes', 'devices', 'pickem_health',
+            'workbook',
         ]);
     });
 
@@ -80,6 +92,25 @@ describe('no user ever reaches the payload', function () {
         FeedRun::jobFailed(FetchGameSummary::class, 'ESPN returned 403');
         app(RecordUxEvent::class)->handle(UxSignal::FirstPickMade);
 
+        /*
+         * The clickstream is the one pipeline that DOES hold identity
+         * upstream: `activity_events` carries a user id, `user_days` is a row
+         * per person per day, and `group_invites` names an inviter and an
+         * invitee. Every number below them is a count — and this is where that
+         * is proven rather than trusted, because the aggregation is the only
+         * thing standing between a user id and a payload that leaves the
+         * machine.
+         */
+        ActivityEvent::factory()->create(['user_id' => $user->id, 'route' => 'pickem.group']);
+        UserDay::factory()->create(['user_id' => $user->id, 'features' => ActivityFeature::Picked->value]);
+
+        $group = Group::factory()->create(['name' => 'Rocky Top Regulars']);
+        GroupInvite::factory()->create([
+            'group_id' => $group->id,
+            'inviter_id' => $user->id,
+            'invitee_id' => User::factory()->create(['handle' => 'peyton'])->id,
+        ]);
+
         $payload = json_encode(telemetry());
 
         expect($payload)
@@ -87,7 +118,12 @@ describe('no user ever reaches the payload', function () {
             ->not->toContain('jolene')
             ->not->toContain('987654')
             ->not->toContain('user_id')
-            ->not->toContain('"email"');
+            ->not->toContain('"email"')
+            // Group names are user-written content, and the one field
+            // LiveState's machine skin drops. `pickem_health` carries ids.
+            ->not->toContain('Rocky Top Regulars')
+            ->not->toContain('peyton')
+            ->not->toContain('inviter');
     });
 
     it('drops the Eloquent models the schedule report hands back', function () {
@@ -286,6 +322,207 @@ describe('what it reports', function () {
         Artisan::call('cfb:telemetry');
 
         expect(Artisan::output())->toMatch('/onboarding_opened\s+40\s+since 2026-09-02/');
+    });
+});
+
+describe('the attention sections', function () {
+    it('reports null and never 0 for a rate over too few people', function () {
+        /*
+         * THE WHOLE POINT OF THIS LAYER. A retention share over three people
+         * is not a small share — it is not a share, and one person leaving
+         * moves it thirty-three points. A grid of honest-looking zeros is the
+         * most persuasive wrong chart an early product can draw itself, and
+         * the advisor is explicitly told a null here is "too few to read".
+         *
+         * The counts stay beside it, so a reader can see there were three.
+         */
+        $cohort = User::factory()->count(3)->create(['created_at' => '2026-08-25 09:00:00']);
+
+        foreach ($cohort as $user) {
+            UserDay::factory()->create(['user_id' => $user->id, 'day' => '2026-08-26']);
+        }
+
+        $row = collect(telemetry()['audience']['retention'])->firstWhere('cohort', '2026-08-25');
+
+        expect($row['size'])->toBe(3)
+            ->and($row['weeks'][0])->toBeNull();
+    });
+
+    it('withholds activation until the cohort has had its seven days', function () {
+        /*
+         * Activation is "entered within seven days of registering", so a
+         * cohort three days old has not had the chance yet. Dividing anyway
+         * prints a collapse every single week, on a number that is simply not
+         * due — the same shape as reading a seven-day funnel total off a
+         * signal that shipped on Thursday.
+         *
+         * Ten people, so the floor is NOT what is doing the work here.
+         */
+        User::factory()->count(10)->create(['created_at' => '2026-09-02 09:00:00']);
+
+        $row = collect(telemetry()['audience']['cohorts'])->firstWhere('week', '2026-09-01');
+
+        expect($row['cohort'])->toBe(10)
+            ->and($row['activated_7d'])->toBeNull();
+    });
+
+    it('withholds the quiet screens until the window is covered', function () {
+        // A screen looks dead for exactly the reason a new funnel signal
+        // reads zero: nothing was counting yet. "Nobody opens this, delete
+        // it" filed off a two-day-old rollup is that bug with a bigger blast
+        // radius, so the list is null rather than every screen in the app.
+        PageViewDaily::factory()->create(['day' => '2026-09-04', 'route' => 'home']);
+
+        expect(telemetry()['routes']['quiet'])->toBeNull();
+    });
+
+    it('names the quiet screens once it has 28 days to say it with', function () {
+        // Same fixture a month earlier: now the window IS covered, and a
+        // screen with no row at all is found by walking the route table,
+        // because absence cannot be read out of a table of what happened.
+        PageViewDaily::factory()->create(['day' => '2026-08-01', 'route' => 'home']);
+
+        $quiet = collect(telemetry()['routes']['quiet']);
+
+        $routes = $quiet->pluck('route');
+
+        expect($quiet)->not->toBeNull()
+            ->and($routes)->toContain('scoreboard')
+            // The sensor's own skip list decides what a screen is, and this
+            // asserts the catalog asked it rather than restating it.
+            ->and($routes)->not->toContain('manifest')
+            ->and($routes->filter(fn (string $r) => str_starts_with($r, 'filament.')))->toBeEmpty();
+    });
+
+    it('never calls a screen quiet when the sensor does not run on it', function () {
+        /*
+         * The finding this list invites is "nobody opens this, delete the
+         * door" — so a route the sensor was never on would be reported dead
+         * with a perfectly honest count of zero. `/ops/telemetry` lives
+         * outside the `web` group by design, `storage.local` streams a file,
+         * and the SMS webhooks answer a machine. None of them can be counted,
+         * so none of them can be quiet.
+         */
+        PageViewDaily::factory()->create(['day' => '2026-08-01', 'route' => 'home']);
+
+        $routes = collect(telemetry()['routes']['quiet'])->pluck('route');
+
+        expect($routes)->not->toContain('ops.telemetry')
+            ->and($routes)->not->toContain('storage.local')
+            ->and($routes)->not->toContain('sanctum.csrf-cookie')
+            ->and($routes)->not->toContain('webhooks.sms.inbound')
+            // ...and the real screens are still all there, so the filter
+            // above cannot be passing by emptying the list.
+            ->and($routes)->toContain('rankings')
+            ->and($routes)->toContain('pickem.lobby');
+    });
+
+    it('counts a route only for the audience it names', function () {
+        // Members only, staff excluded: at pilot scale the founder's own
+        // browsing is most of the traffic, and "does anybody open Rankings"
+        // is a question about readers.
+        PageViewDaily::factory()->create([
+            'day' => '2026-09-04', 'route' => 'rankings',
+            'audience' => ActivityEvent::MEMBER, 'views' => 6,
+        ]);
+        PageViewDaily::factory()->create([
+            'day' => '2026-09-04', 'route' => 'rankings', 'viewport_bucket' => ViewportBucket::Desktop,
+            'audience' => ActivityEvent::STAFF, 'views' => 400,
+        ]);
+
+        expect(collect(telemetry()['routes']['top'])->firstWhere('route', 'rankings')['views'])->toBe(6);
+    });
+
+    it('keeps staff traffic visible and out of the visitor counts', function () {
+        PageViewDaily::factory()->create([
+            'day' => '2026-09-04', 'route' => 'home',
+            'audience' => ActivityEvent::STAFF, 'views' => 40,
+        ]);
+
+        $traffic = telemetry()['traffic'];
+
+        expect($traffic['views']['staff'])->toBe(40)
+            ->and($traffic['views']['member'])->toBe(0)
+            ->and($traffic['window_days'])->toBe(7)
+            ->and($traffic)->toHaveKey('since');
+    });
+
+    it('says since on every windowed section, which is the denominator in days', function () {
+        // The funnel_since rule generalized: a window that starts before the
+        // sensor did is not that window's number, and a reader cannot know
+        // that without the date.
+        $telemetry = telemetry();
+
+        expect($telemetry['traffic'])->toHaveKey('since')
+            ->and($telemetry['audience']['actives'])->toHaveKey('since')
+            ->and($telemetry['audience']['adoption'])->toHaveKey('since')
+            ->and($telemetry['routes'])->toHaveKey('since')
+            ->and($telemetry['devices'])->toHaveKey('since');
+    });
+
+    it('carries a slate row per Saturday with the members who could have entered', function () {
+        // `members` is counted at first kickoff, not now: somebody who joined
+        // on Sunday could not have entered on Saturday, and counting them
+        // turns growth into a participation problem.
+        expect(telemetry()['pickem_health'])->toBeArray();
+    });
+});
+
+describe('a browser error against the traffic that produced it', function () {
+    it('resolves the path to a route name, so a count can become a rate', function () {
+        // The router is asked rather than a regex, and the NAME is what is
+        // reported — a path carries ids, and an invite code riding into the
+        // payload is the one thing the sensor design refuses.
+        $group = Group::factory()->create();
+
+        ClientError::create([
+            'fingerprint' => str_repeat('c', 40), 'kind' => 'error',
+            'message' => 'boom', 'reports' => 3,
+            'path' => "/groups/{$group->id}",
+        ]);
+
+        expect(telemetry()['errors']['client'][0]['route'])->toBe('pickem.group');
+    });
+
+    it('reports no views rather than zero views when nothing was counted', function () {
+        /*
+         * "Zero views but eleven errors" is an impossible pair that reads as a
+         * catastrophe. A route the raw table holds nothing for is one we
+         * cannot size the error against — possibly pruned, possibly missed —
+         * and the honest report of a denominator we do not have is null.
+         */
+        ClientError::create([
+            'fingerprint' => str_repeat('d', 40), 'kind' => 'error',
+            'message' => 'boom', 'reports' => 11, 'path' => '/scoreboard',
+        ]);
+
+        expect(telemetry()['errors']['client'][0]['views_24h'])->toBeNull();
+    });
+
+    it('counts the route traffic that IS there', function () {
+        ActivityEvent::factory()->count(3)->create([
+            'route' => 'scoreboard',
+            'occurred_at' => now()->subHour(),
+        ]);
+
+        ClientError::create([
+            'fingerprint' => str_repeat('e', 40), 'kind' => 'error',
+            'message' => 'boom', 'reports' => 11, 'path' => '/scoreboard',
+        ]);
+
+        expect(telemetry()['errors']['client'][0]['views_24h'])->toBe(3);
+    });
+
+    it('leaves the route null when the router matches nothing', function () {
+        ClientError::create([
+            'fingerprint' => str_repeat('f', 40), 'kind' => 'error',
+            'message' => 'boom', 'reports' => 2, 'path' => '/a-screen-that-shipped-and-left',
+        ]);
+
+        $row = telemetry()['errors']['client'][0];
+
+        expect($row['route'])->toBeNull()
+            ->and($row['views_24h'])->toBeNull();
     });
 });
 
