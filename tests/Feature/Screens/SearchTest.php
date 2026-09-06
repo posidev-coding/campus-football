@@ -71,8 +71,18 @@ describe('teams', function () {
         expect($html)->toContain('11-2 (7-1)')
             ->toContain('1st in SEC');
 
-        $rankPos = strpos($html, '>3</span>');
-        $namePos = strpos($html, 'Georgia Bulldogs</span>');
+        /*
+         * Scoped to Georgia's own ROW. '>3</span>' on its own is satisfied by
+         * any span whose whole content is "3" — a count, a seat, a stat — so
+         * across the document it is a needle the subject does not own. Nothing
+         * else prints a bare 3 on this page today, which is what makes it a
+         * landmine rather than a failure: the next thing that does would break
+         * a test about rank ordering for reasons unrelated to rank.
+         */
+        $row = substr($html, (int) strpos($html, 'wire:key="sr-team-61"'));
+
+        $rankPos = strpos($row, '>3</span>');
+        $namePos = strpos($row, 'Georgia Bulldogs</span>');
 
         expect($rankPos)->not->toBeFalse()
             ->and($namePos)->not->toBeFalse()
@@ -146,12 +156,28 @@ describe('coaches', function () {
 
     it('renders a coach page with tenures newest first', function () {
         $coach = Coach::create(['id' => 3, 'display_name' => 'Kirby Smart', 'last_name' => 'Smart']);
-        CoachTeamSeason::create(['coach_id' => 3, 'team_id' => 61, 'season_year' => 2024]);
-        CoachTeamSeason::create(['coach_id' => 3, 'team_id' => 61, 'season_year' => 2025]);
+        $older = CoachTeamSeason::create(['coach_id' => 3, 'team_id' => 61, 'season_year' => 2024]);
+        $newer = CoachTeamSeason::create(['coach_id' => 3, 'team_id' => 61, 'season_year' => 2025]);
 
         $html = $this->get(route('coach', $coach))->assertOk()->content();
 
-        expect(strpos($html, '2025'))->toBeLessThan(strpos($html, '2024'));
+        /*
+         * Asserted on the ROWS' own keys, not on the years.
+         *
+         * This compared strpos('2025') against strpos('2024') across the whole
+         * document, which asks where those four characters first appear
+         * ANYWHERE on the page — and TeamFactory mints `color` and `alt_color`
+         * as six random hex digits, so `202412` is an ordinary draw that
+         * renders into the palette. Two full-suite runs on one commit
+         * disagreed: 2025 at offset 29981 against a 2024 at 14194, some 15KB
+         * above the tenure list.
+         *
+         * It also never guarded what it is named for. With a stray '2025' high
+         * in the document it passed with the rows in either order, so the
+         * ordering had no holder at all.
+         */
+        expect(strpos($html, 'wire:key="tenure-'.$newer->id.'"'))
+            ->toBeLessThan(strpos($html, 'wire:key="tenure-'.$older->id.'"'));
     });
 });
 

@@ -83,3 +83,14 @@ Read with "Pin any date a shared fixture renders" above, which this completes. A
 The fixture dates themselves are correct and must stay: `splitPickemWeek()` reproduces ESPN's real 2026 opening week (one week row spanning 8/22 → 9/8, games on two Saturdays) and a relative kickoff cannot express that. What was missing was a defined NOW to read them against. `tests/Pest.php` now travels every Feature test to `SUITE_NOW` (2026-09-02 12:00) in `beforeEach`; an explicit `travelTo()` still wins because `beforeEach` runs first.
 
 So: a shared fixture may pin an absolute date only if the suite also pins the clock. If you add a fixture whose correctness depends on being before or after some instant, assert that relation in FactoryFixturesTest rather than trusting the calendar.
+
+## An assertion must name something only its subject can render
+A needle matched against a whole rendered document is satisfied by ANY component that prints it, not just the one under test — so the test can pass with its subject broken. Two instances on 2026-09-05, one numeric and one plain English:
+
+`SearchTest`'s coach page compared `strpos($html,'2025')` against `strpos($html,'2024')` for tenure order. `TeamFactory` mints `color`/`alt_color` as six random hex digits, so `202412` is an ordinary draw that renders into the palette — two full-suite runs on one commit disagreed (2025 at 29981 against a 2024 at 14194, 15KB above the tenure list). It had also never guarded ordering: with a stray '2025' high in the page it passed with the rows either way round.
+
+`GroupPageTest` asserted `assertSee('Kicked off')` to prove a room's join door had closed, and passed because `pick-card` prints that phrase on any kicked game. It would have kept passing with the fix reverted.
+
+So: assert on something only the subject renders — a `wire:key`, a `data-` attribute, a container's inner HTML, or a Voice line no other surface uses. Scope the search to the row (`substr($html, strpos($html, 'wire:key="sr-team-61"'))`) rather than lengthening the needle. Safe needles are structural or genuinely unique; `Final`, `Live`, `Kicked off`, a year, a bare number are not. A needle that IS the subject — the dates in a date-ordering test — is fine.
+
+No static sweep can catch this, because whether a string is unique to its subject is a judgment. The check that does: BREAK the behaviour the test names and confirm it reds. One that stays green is passing for the wrong reason, which is how both of these were found.
