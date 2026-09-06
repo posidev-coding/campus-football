@@ -1187,6 +1187,13 @@ new class extends Component
         </form>
     </flux:card>
 
+    {{-- What the app records, one link, above the release stamp. Account is
+         where somebody goes looking for it, and a policy nobody can find from
+         inside the app is a policy that was written for somebody else. --}}
+    <p class="text-center text-sm lg:col-span-2">
+        <flux:link :href="route('privacy')" wire:navigate variant="subtle">What we record</flux:link>
+    </p>
+
     {{-- The release stamp, last and quiet, spanning both columns like the
          card above it. Below `sm` this is the ONLY place it shows: the desktop
          avatar menu carries the same line, and does not exist on a phone.

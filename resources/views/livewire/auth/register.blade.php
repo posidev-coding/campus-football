@@ -199,6 +199,14 @@ new #[Layout('components.layouts.auth')] class extends Component
         </flux:button>
     </form>
 
+    {{-- Before the "already have an account" row, because it belongs to the
+         decision above it: somebody weighing whether to sign up is exactly the
+         reader the page was written for, which is also why it is not behind
+         `auth`. --}}
+    <p class="text-center text-sm text-zinc-600 dark:text-zinc-400">
+        <flux:link :href="route('privacy')" wire:navigate variant="subtle">What we record about you</flux:link>
+    </p>
+
     <div class="text-center text-sm text-zinc-600 dark:text-zinc-400">
         Already have an account?
         <flux:link :href="route('login')" wire:navigate>Log in</flux:link>
