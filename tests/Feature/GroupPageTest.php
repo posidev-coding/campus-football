@@ -922,6 +922,93 @@ it('reveals the picks grid per game, and never before kickoff', function () {
         ->assertSeeHtml('data-cell="pick"');
 });
 
+it('grades a push as neither hit nor missed, on the grid and on the card', function () {
+    /*
+     * A PUSH IS NOT A WRONG CALL. `SpreadGrader` returns `Pick::PUSH` when
+     * the favorite's margin lands exactly on the number, and both surfaces
+     * folded it into a loss with a `=== WIN ? … : …` — so the grid gave it
+     * `opacity-40 grayscale`, the disabled treatment, and the pick card gave
+     * it the red cross. The points were already right (a push scores 0, same
+     * as a loss); this was only ever the telling, which is exactly the kind
+     * of small dishonesty this surface is otherwise careful about.
+     */
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate = $slate->fresh();
+
+    $pushed = $slate->games()->with('game')->orderBy('position')->first();
+    $pushed->game->update(['kickoff_at' => now()->subHour()]);
+
+    Team::whereKey($pushed->game->home_team_id)->update([
+        'logo' => 'https://cdn.example.com/pushed-mark.png',
+        'logo_dark' => null,
+        'abbreviation' => 'PUSHED',
+    ]);
+
+    Pick::factory()->pushed()->create([
+        'slate_game_id' => $pushed->id,
+        'user_id' => $commissioner->id,
+        'picked_team_id' => $pushed->game->home_team_id,
+    ]);
+
+    SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $commissioner->id]);
+
+    $page = Livewire::actingAs($commissioner)->test('group', ['group' => $group])->set('view', 'standings');
+    $grid = $page->instance()->picksGrid;
+    $html = $page->html();
+
+    // Scoped to the ONE cell by its wire:key, for the reason the test above
+    // gives: a utility class matched against the whole document is satisfied
+    // by the pick cards on the slate tab.
+    $start = strpos($html, 'wire:key="grid-cell-0-'.array_search($pushed->id, array_column($grid['columns'], 'key'), true).'"');
+
+    expect($start)->not->toBeFalse();
+
+    $cell = substr($html, $start, strpos($html, '</td>', $start) - $start);
+
+    expect($cell)
+        ->toContain('data-tone="push"')
+        ->toContain('https://cdn.example.com/pushed-mark.png')
+        // Full color at reduced strength. `grayscale` is what makes a cell
+        // read disabled, and it is the whole complaint.
+        ->not->toContain('grayscale')
+        ->not->toContain('opacity-40')
+        // Light cannot carry three graded states at logo size, so the word
+        // does the work the tone deliberately does not.
+        ->toContain('PUSHED, pushed');
+
+    /*
+     * And the card, which is the other half of the same bug: the graded
+     * branch was a two-way WIN / else, so a push wore the red cross and the
+     * loss color beside its 0.
+     */
+    $card = Livewire::actingAs($commissioner)
+        ->test('group', ['group' => $group])
+        ->set('view', 'slate')
+        ->html();
+
+    expect($card)
+        // The word, and the mark's own path — the icon component inlines its
+        // SVG, so there is no component name left in the HTML to match on.
+        ->toContain('Push · 0')
+        ->toContain('M4.5 7.5a.5.5 0 0 0 0 1h7');
+
+    /*
+     * ...and not the loss color it used to wear. SCOPED to the graded span,
+     * for the same reason the cell assertions above are scoped by wire:key:
+     * `text-red-600` matched against the whole document is satisfied by some
+     * other row entirely, and the assertion would survive a revert.
+     */
+    $verdictStart = strpos($card, 'Push · 0');
+    $verdictSpan = substr($card, max(0, $verdictStart - 400), 420);
+
+    expect($verdictSpan)
+        ->toContain('text-zinc-500')
+        ->not->toContain('text-red-600');
+});
+
 it('prints the picked school as a mark, dulls a missed call, and keeps the abbreviations on the header', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
 

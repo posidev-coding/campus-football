@@ -40,6 +40,17 @@
     $grading = [
         'win' => '',
         'neutral' => 'opacity-70',
+        /*
+         * A PUSH IS NOT A MISS. The number came out even, the reader was not
+         * wrong, and `grayscale` is the treatment that says they were — it is
+         * what makes a cell read disabled. So a push keeps its full color and
+         * only its strength comes down: nearer a live pick than a wrong one,
+         * which is what it is.
+         *
+         * Its own entry rather than an alias of `neutral`, so the two can be
+         * told apart later without unpicking which callers meant which.
+         */
+        'push' => 'opacity-70',
         'loss' => 'opacity-40 grayscale',
     ];
 
@@ -49,6 +60,9 @@
     $verdict = [
         'win' => ', correct',
         'neutral' => '',
+        /* Light alone cannot carry three graded states at logo size, so the
+           word does the work a push's tone deliberately does not. */
+        'push' => ', pushed',
         'loss' => ', wrong',
     ];
 @endphp
