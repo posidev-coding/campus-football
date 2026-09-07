@@ -10,6 +10,7 @@ use App\Models\Week;
 use App\Services\CfbCalendar;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use JsonException;
 
 /**
  * Is Pick'em ready to be shown to people who are not admins?
@@ -410,6 +411,22 @@ class PickemPreflight
      * row exists to say so BEFORE the flip rather than during the confused
      * hour after it.
      *
+     * WHAT IT MEASURES IS DISAGREEMENT, NOT PRESENCE. It used to warn on any
+     * row at all, which was right for about an hour: after the flip the rows
+     * are SUPPOSED to exist and are supposed to be true, so the row warned
+     * permanently at a moment when nothing was wrong — and the one state it
+     * was built to catch, a stored `false` sitting under an OPEN flag, read
+     * exactly the same as the all-clear. A check that cannot tell the
+     * landmine from the healthy case is not a check.
+     *
+     * So every stored value is decoded and compared against the config the
+     * flag itself is read from, and only a contradiction warns.
+     *
+     * A VALUE THAT CANNOT BE DECODED IS NO DATA, never a false. It is counted
+     * and named separately rather than being read as agreement, because
+     * "we could not tell" and "it agrees" are the two answers this row exists
+     * to keep apart.
+     *
      * @return array{key: string, label: string, status: string, detail: string, remedy: string|null}
      */
     private function storedValuesCheck(): array
@@ -420,18 +437,74 @@ class PickemPreflight
             return $this->row('stored', 'Stored flag values', self::OK, 'Nothing persisted.');
         }
 
-        $stored = DB::table($table)->where('name', 'pickem')->count();
+        $values = DB::table($table)->where('name', 'pickem')->pluck('value');
 
-        if ($stored === 0) {
+        if ($values->isEmpty()) {
             return $this->row('stored', 'Stored flag values', self::OK, 'None — a flip takes effect immediately.');
+        }
+
+        $open = config('cfb.pickem_open') === true;
+        $total = $values->count();
+        $against = 0;
+        $unreadable = 0;
+
+        foreach ($values as $value) {
+            /*
+             * Pennant's database driver stores `json_encode($value)`, so a
+             * boolean is the literal string `true` or `false`. Decoded with
+             * JSON_THROW_ON_ERROR deliberately: a bare `json_decode` answers
+             * `false` for BOTH a stored false and a value it could not read,
+             * which is exactly the substitution this check exists to refuse.
+             */
+            try {
+                $decoded = json_decode((string) $value, flags: JSON_OBJECT_AS_ARRAY | JSON_THROW_ON_ERROR);
+            } catch (JsonException) {
+                $unreadable++;
+
+                continue;
+            }
+
+            // The flag answers true or false and nothing else, so anything
+            // else stored under it is a value this row cannot judge either.
+            if (! is_bool($decoded)) {
+                $unreadable++;
+
+                continue;
+            }
+
+            if ($decoded !== $open) {
+                $against++;
+            }
+        }
+
+        $state = $open ? 'OPEN' : 'closed';
+
+        if ($against > 0) {
+            return $this->row(
+                'stored',
+                'Stored flag values',
+                self::WARN,
+                "{$against} of {$total} disagree with the flag ({$state}); they keep their old answer until purged."
+                    .($unreadable > 0 ? " {$unreadable} could not be read." : ''),
+                'pennant:purge pickem',
+            );
+        }
+
+        if ($unreadable > 0) {
+            return $this->row(
+                'stored',
+                'Stored flag values',
+                self::WARN,
+                "{$unreadable} of {$total} could not be read, so this cannot say whether they agree with the flag ({$state}).",
+                'pennant:purge pickem',
+            );
         }
 
         return $this->row(
             'stored',
             'Stored flag values',
-            self::WARN,
-            "{$stored} resolved and persisted; they keep their old answer until purged.",
-            'pennant:purge pickem',
+            self::OK,
+            "{$total} persisted, all agreeing with the flag ({$state}).",
         );
     }
 

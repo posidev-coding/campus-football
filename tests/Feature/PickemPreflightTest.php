@@ -265,6 +265,105 @@ it('does NOT reach somebody whose value was already persisted — the flip landm
     expect(Feature::for($ordinary)->active('pickem'))->toBeTrue();
 });
 
+/**
+ * Persist a `pickem` value the way Pennant's database driver does — the value
+ * `json_encode`d, which is what makes `false` and "could not be read"
+ * distinguishable at all.
+ */
+function storeFlagValue(mixed $value, string $scope): void
+{
+    DB::table(config('pennant.stores.database.table', 'features'))->insert([
+        'name' => 'pickem',
+        'scope' => $scope,
+        'value' => is_string($value) ? $value : json_encode($value),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+}
+
+describe('the stored-values row', function () {
+    /*
+     * IT MEASURES DISAGREEMENT, NOT PRESENCE. Warning on any row at all was
+     * right for about an hour: after the flip the rows are SUPPOSED to exist
+     * and supposed to be true, so the row warned permanently while nothing was
+     * wrong — and a stored `false` under an OPEN flag, the one state it was
+     * built to catch, read exactly the same as the all-clear.
+     */
+    it('reads OK when every stored value agrees with the flag', function () {
+        config(['cfb.pickem_open' => true]);
+
+        storeFlagValue(true, 'App\\Models\\User|1');
+        storeFlagValue(true, 'App\\Models\\User|2');
+
+        $stored = preflight()['stored'];
+
+        expect($stored['status'])->toBe(PickemPreflight::OK)
+            ->and($stored['detail'])->toContain('2 persisted')
+            ->and($stored['remedy'])->toBeNull();
+    });
+
+    it('warns and counts when one stored value contradicts an OPEN flag', function () {
+        // The landmine: a user silently locked out of the whole product while
+        // every screen says the flag is open.
+        config(['cfb.pickem_open' => true]);
+
+        storeFlagValue(true, 'App\\Models\\User|1');
+        storeFlagValue(false, 'App\\Models\\User|2');
+        storeFlagValue(true, 'App\\Models\\User|3');
+
+        $stored = preflight()['stored'];
+
+        expect($stored['status'])->toBe(PickemPreflight::WARN)
+            ->and($stored['detail'])->toContain('1 of 3')
+            ->and($stored['detail'])->toContain('OPEN')
+            ->and($stored['remedy'])->toBe('pennant:purge pickem');
+    });
+
+    it('warns the same way when the flag is closed and a true is stored', function () {
+        // Symmetrical on purpose: the row compares against the config, not
+        // against `true`, so it is a check rather than a launch checklist item.
+        config(['cfb.pickem_open' => false]);
+
+        storeFlagValue(true, 'App\\Models\\User|1');
+
+        $stored = preflight()['stored'];
+
+        expect($stored['status'])->toBe(PickemPreflight::WARN)
+            ->and($stored['detail'])->toContain('closed');
+    });
+
+    it('calls an undecodable value no data, never a false', function () {
+        /*
+         * THE NON-NEGOTIABLE, in the one place it is easiest to break: a bare
+         * `json_decode` answers `false` for both a stored false and a value it
+         * could not read. Reading the second as the first would invent a
+         * lockout; reading it as agreement would hide one. It is counted and
+         * named as neither.
+         */
+        config(['cfb.pickem_open' => true]);
+
+        storeFlagValue(true, 'App\\Models\\User|1');
+        storeFlagValue('{not json', 'App\\Models\\User|2');
+
+        $stored = preflight()['stored'];
+
+        expect($stored['status'])->toBe(PickemPreflight::WARN)
+            ->and($stored['detail'])->toContain('1 of 2 could not be read')
+            ->and($stored['remedy'])->toBe('pennant:purge pickem');
+    });
+
+    it('still reads OK with nothing persisted at all', function () {
+        // The early return that says a flip takes effect immediately, which
+        // is the state before anybody has loaded a page.
+        config(['cfb.pickem_open' => true]);
+
+        $stored = preflight()['stored'];
+
+        expect($stored['status'])->toBe(PickemPreflight::OK)
+            ->and($stored['detail'])->toContain('None');
+    });
+});
+
 it('holds the three sweeps that keep a live league honest', function () {
     // A flag flipped without these looks fine for a day and then quietly
     // stops publishing slates on the Tuesday nobody was watching.
