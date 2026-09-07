@@ -15,6 +15,29 @@
 
 const [scenario, module] = process.argv.slice(2);
 
+/*
+ * Alpine surfaces an expression error by rethrowing it from a setTimeout,
+ * which in a browser reaches `window.onerror` and in node is fatal — it would
+ * kill this process before the captured reports are printed. So the harness
+ * plays the browser's part and keeps going.
+ *
+ * SCOPED TO ALPINE'S OWN SHAPE. Its handler assigns `el` and `expression`
+ * onto the error before rethrowing; anything else is a real failure in here
+ * and still takes the run down, because a harness that swallows its own bugs
+ * is a harness that passes for the wrong reason.
+ */
+const rethrown = [];
+
+process.on('uncaughtException', (error) => {
+    if (error && typeof error === 'object' && 'expression' in error) {
+        rethrown.push({ message: String(error.message), expression: String(error.expression) });
+
+        return;
+    }
+
+    throw error;
+});
+
 const listeners = {};
 const posts = [];
 
@@ -52,6 +75,27 @@ globalThis.Livewire = {
         (hooks[name] ??= []).push(callback);
     },
 };
+
+/* Alpine's own seam, and the only part of Alpine this reaches: the module
+ * registers a handler through it at `alpine:init` and the scenario below
+ * calls that handler with the shape Alpine calls it with. */
+let alpineErrorHandler = null;
+
+globalThis.Alpine = {
+    setErrorHandler: (handler) => {
+        alpineErrorHandler = handler;
+    },
+};
+
+/* An element as the reporter reads one: attributes in source order, a tag
+ * name, and nothing else it could mistake for an identity. */
+function fakeElement(attributes, tagName = 'DIV') {
+    return {
+        tagName,
+        id: '',
+        attributes: attributes.map((name) => ({ name })),
+    };
+}
 
 /* Every POST is captured, error reports and push subscriptions alike; the
  * test tells them apart by endpoint. */
@@ -114,6 +158,15 @@ switch (scenario) {
             Promise.reject(new DOMException('Push service unreachable', 'AbortError'));
         break;
 
+    case 'alpine-x-data-failed':
+    case 'alpine-flux-first':
+    case 'alpine-unmarked-root':
+    case 'alpine-no-element':
+    case 'sw-install-storage-refused':
+    case 'sw-install-ok':
+    case 'sw-activate-storage-refused':
+    case 'sw-activate-keys-refused':
+    case 'sw-activate-ok':
     case 'push-granted':
     case 'asset-script':
     case 'asset-stylesheet':
@@ -143,6 +196,44 @@ switch (scenario) {
 
     default:
         throw new Error(`Unknown scenario: ${scenario}`);
+}
+
+/*
+ * THE SERVICE WORKER'S OWN GLOBALS, for the `sw-*` scenarios only.
+ *
+ * `public/sw.js` is not bundled and has no component around it either, so it
+ * gets the same treatment app.js does: imported for real against a stubbed
+ * worker scope, so what is asserted is what the handler DOES rather than the
+ * source that describes it.
+ */
+const sw = { skipWaiting: 0, claim: 0, settled: null };
+
+globalThis.self = globalThis;
+globalThis.skipWaiting = () => { sw.skipWaiting++; };
+globalThis.clients = { claim: () => { sw.claim++; return Promise.resolve(); } };
+
+if (scenario.startsWith('sw-install') || scenario.startsWith('sw-activate')) {
+    /* Storage refused, which is the failure production reported twice in a
+     * day: site data blocked, a private window partitioning it, or quota
+     * under pressure. `caches.open()` is the call that rejects, and it sat
+     * outside the catch. */
+    const refuse = () => Promise.reject(new DOMException('The operation is insecure.', 'SecurityError'));
+
+    const workingCache = {
+        addAll: () => Promise.resolve(),
+        keys: () => Promise.resolve([]),
+        delete: () => Promise.resolve(true),
+    };
+
+    globalThis.caches = {
+        open: scenario.endsWith('-storage-refused') ? refuse : () => Promise.resolve(workingCache),
+        keys: scenario === 'sw-activate-keys-refused' ? refuse : () => Promise.resolve([]),
+        delete: () => Promise.resolve(true),
+    };
+
+    /* The manifest read is already guarded inside sw.js; a rejecting fetch
+     * keeps these scenarios about the cache calls and nothing else. */
+    globalThis.fetch = () => Promise.reject(new TypeError('Load failed'));
 }
 
 /* navigator is a read-only accessor on globalThis from node 21. */
@@ -232,6 +323,54 @@ if (scenario.startsWith('push-')) {
 
         failCallbacks.forEach((cb) => cb());
     }
+} else if (scenario.startsWith('sw-install') || scenario.startsWith('sw-activate')) {
+    const name = scenario.startsWith('sw-install') ? 'install' : 'activate';
+
+    /* What `waitUntil` is handed is the WHOLE question: the browser fails the
+     * install — and leaves the visitor with no worker and therefore no push —
+     * when that promise rejects. */
+    let handed = null;
+
+    for (const handler of listeners[name] ?? []) {
+        handler({ waitUntil: (promise) => { handed = promise; } });
+    }
+
+    try {
+        await handed;
+        sw.settled = 'resolved';
+    } catch (error) {
+        sw.settled = `rejected: ${error?.name ?? 'unknown'}`;
+    }
+} else if (scenario.startsWith('alpine-')) {
+    for (const handler of docListeners['alpine:init'] ?? []) {
+        handler();
+    }
+
+    /* The three shapes Alpine hands its error handler: a root that carries a
+     * marker, one that carries none, and a failure with no element at all. */
+    const cases = {
+        'alpine-x-data-failed': [
+            new ReferenceError('$persist is not defined'),
+            fakeElement(['data-push-banner', 'data-standalone-only']),
+            "{ dismissed: $persist(false).as('cfb.push.dismissed.1') }",
+        ],
+        /* Flux's own attribute FIRST, the screen's marker second — so only
+         * the preference can pick the right one, and a fallback that took
+         * whatever came first would name the component library. */
+        'alpine-flux-first': [
+            new ReferenceError("Can't find variable: active"),
+            fakeElement(['data-flux-field', 'data-home-swiper'], 'SECTION'),
+            'active === 0',
+        ],
+        'alpine-unmarked-root': [
+            new ReferenceError("Can't find variable: active"),
+            fakeElement(['data-flux-field'], 'SECTION'),
+            'active === 0',
+        ],
+        'alpine-no-element': [new ReferenceError('boom'), null, 'whatever'],
+    };
+
+    alpineErrorHandler(...cases[scenario]);
 } else if (scenario === 'island-failure') {
     /* The door the Blade islands report through — an Alpine `.catch()` that
      * knows what it was doing, which is the one thing the listener cannot. */
@@ -242,9 +381,18 @@ if (scenario.startsWith('push-')) {
     }
 }
 
-/* Let the rejection handlers and the reporter's own fetch settle. */
+/* Let the rejection handlers and the reporter's own fetch settle.
+ *
+ * Both phases, deliberately: `setImmediate` drains the microtask and check
+ * work the promise paths use, and Alpine's rethrow is a `setTimeout(…, 0)`,
+ * which lands in the TIMERS phase and would otherwise still be pending when
+ * the JSON below is printed. */
 for (let tick = 0; tick < 5; tick++) {
     await new Promise((resolve) => setImmediate(resolve));
 }
 
-console.log(JSON.stringify({ posts, result, knocks }));
+for (let tick = 0; tick < 2; tick++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+console.log(JSON.stringify({ posts, result, knocks, rethrown, sw }));

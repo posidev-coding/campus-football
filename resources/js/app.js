@@ -338,6 +338,112 @@ window.addEventListener('unhandledrejection', (event) => {
  * own, which is why the listener has to go mining in a stack for one; caught
  * here, the source is simply known.
  */
+/*
+ * AN ALPINE EXPRESSION THAT THREW, WITH THE ELEMENT THAT OWNS IT.
+ *
+ * Alpine attaches a scope to a node only once its `x-data` expression has
+ * evaluated. When that evaluation throws, every descendant expression falls
+ * through to the empty parent scope and throws its own ReferenceError — and
+ * Alpine rethrows all of them asynchronously, so what reaches the window
+ * listener above is a handful of bare "Can't find variable: dismissed" with
+ * `livewire.min.js` for a source and nothing to say WHICH root died.
+ *
+ * Production read exactly that: five ReferenceErrors from one installed 393px
+ * session on `/`, one each from five separate roots — which is one boot
+ * failure wearing five anonymous names, and the reporting could not say what
+ * broke (CFB-81). The class had been through this twice before: an `x-data`
+ * inside a Blade conditional (CFB-44) and a bundle that never loaded
+ * (CFB-46), and neither fits this one.
+ *
+ * `setErrorHandler` is Alpine's own seam and this is the whole use of it:
+ * report the failure NAMED, then do exactly what Alpine's handler does. The
+ * console warning and the async rethrow are reproduced deliberately rather
+ * than skipped — the rethrow is what the window listener above hears, and
+ * swallowing it here would trade five anonymous reports for one named report
+ * and no stack, which is a worse trade than it looks.
+ *
+ * ROOTS ARE REPORTED BEFORE THEIR CHILDREN because Alpine evaluates them in
+ * that order, which matters: the reporter spends at most five reports per
+ * page, and the cause is the one worth spending them on.
+ */
+document.addEventListener('alpine:init', () => {
+    try {
+        const alpine = window.Alpine;
+
+        if (typeof alpine?.setErrorHandler !== 'function') return;
+
+        alpine.setErrorHandler((error, el, expression = undefined) => {
+            try {
+                window.cfbErrors.report({
+                    kind: 'error',
+                    message: failureMessage(`Alpine expression failed on ${elementLabel(el)}`, error),
+                    /* The bundle that registered the handler. An Alpine
+                     * expression has no file of its own, and `livewire.min.js`
+                     * — where the rethrow surfaces — names the evaluator
+                     * rather than anything anybody can edit. */
+                    source: import.meta.url,
+                    line: null,
+                    col: null,
+                    /* The expression is the identity of the directive that
+                     * failed, and it is the half a stack cannot give. */
+                    stack: [
+                        expression ? `Expression: ${String(expression)}` : null,
+                        error?.stack ? String(error.stack) : null,
+                    ].filter(Boolean).join('\n\n') || null,
+                });
+            } catch { /* never let the reporter be the bug */ }
+
+            /* Alpine's own handler, reproduced. Anything less changes what
+             * the console shows and what the window listener hears. */
+            try {
+                const thrown = Object.assign(
+                    error ?? { message: 'No error message given.' },
+                    { el, expression },
+                );
+
+                console.warn(`Alpine Expression Error: ${thrown.message}\n\n${expression ? 'Expression: "' + expression + '"\n\n' : ''}`, el);
+
+                setTimeout(() => {
+                    throw thrown;
+                }, 0);
+            } catch { /* never let the reporter be the bug */ }
+        });
+    } catch { /* never let the reporter be the bug */ }
+});
+
+/*
+ * What to call the element an expression failed on.
+ *
+ * A `data-*` marker is the only identity on these roots that survives a
+ * rebuild: ids are rare in this app and every class is a Tailwind utility, so
+ * a class list would name a shape rather than a thing. Flux's own `data-flux-*`
+ * attributes are skipped when anything else is available — they name the
+ * component library, not the screen.
+ *
+ * Never invented. An element with nothing to say is reported as its tag, and a
+ * missing element says so, because a made-up selector sends the next reader to
+ * a node that does not exist.
+ */
+function elementLabel(el) {
+    try {
+        if (!el) return 'an unknown element';
+
+        const data = Array.from(el.attributes ?? [])
+            .map((attribute) => attribute.name)
+            .filter((name) => name.startsWith('data-'));
+
+        const marker = data.find((name) => !name.startsWith('data-flux')) ?? data[0];
+
+        if (marker) return `[${marker}]`;
+
+        if (el.id) return `#${el.id}`;
+
+        return String(el.tagName ?? 'element').toLowerCase();
+    } catch {
+        return 'an unknown element';
+    }
+}
+
 function reportFailure(label, error) {
     try {
         window.cfbErrors.report({

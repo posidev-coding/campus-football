@@ -202,13 +202,22 @@ describe('the service worker', function () {
 
     it('survives an offline-page hiccup at install', function () {
         /*
-         * An unguarded addAll rejection fails the whole install: no service
-         * worker and NO PUSH for that visitor until the next update check.
-         * The guard trades the offline fallback for the worker itself.
+         * An unguarded rejection fails the whole install: no service worker
+         * and NO PUSH for that visitor until the next update check. The guard
+         * trades the offline fallback for the worker itself.
+         *
+         * The catch has to cover the cache step AS A UNIT. It used to sit on
+         * `addAll` alone, which left `caches.open()` outside it — and that is
+         * the call that rejects when storage is refused, which production
+         * reported twice in a day. The `not` below is that bug, pinned shut at
+         * the source; what the guard actually DOES is asserted behaviorally in
+         * PwaSeamTest, against the real file under node.
          */
         $worker = file_get_contents(public_path('sw.js'));
 
-        expect($worker)->toContain('cache.addAll([OFFLINE_URL]).catch(() => {})');
+        expect($worker)
+            ->toContain('.then((cache) => cache.addAll([OFFLINE_URL]))')
+            ->not->toContain('cache.addAll([OFFLINE_URL]).catch(() => {})');
     });
 
     it('never mediates Livewire or admin traffic', function () {
