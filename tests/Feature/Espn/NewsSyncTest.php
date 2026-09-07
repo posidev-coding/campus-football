@@ -8,6 +8,7 @@ use App\Models\Team;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGameSummary;
 use App\Services\Espn\Sync\SyncNews;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
@@ -108,6 +109,141 @@ it('survives a competing writer inserting the same article_team row mid-write', 
 
     expect($linked->sort()->values()->all())->toBe([61, 333])
         ->and($linked)->toHaveCount(2);
+});
+
+/**
+ * A deadlock on the first write against a table, once — the shape MySQL
+ * hands back to the loser of a lock cycle.
+ *
+ * `errorInfo` AND the code, because Laravel's QueryException copies both off
+ * the PDOException underneath it: a fake that set only one would pass a
+ * check that read the other, which is how a retry test proves nothing.
+ */
+function deadlockOnce(string $table, string $sqlstate = '40001'): void
+{
+    $fired = false;
+
+    DB::beforeExecuting(function (string $sql) use ($table, $sqlstate, &$fired) {
+        if ($fired || ! str_contains($sql, $table)) {
+            return;
+        }
+
+        if (! str_starts_with(strtolower(ltrim($sql)), 'insert')) {
+            return;
+        }
+
+        $fired = true;
+
+        $previous = new class($sqlstate) extends PDOException
+        {
+            public function __construct(string $sqlstate)
+            {
+                parent::__construct("SQLSTATE[{$sqlstate}]: Deadlock found when trying to get lock");
+
+                $this->code = $sqlstate;
+                $this->errorInfo = [$sqlstate, 1213, 'Deadlock found when trying to get lock'];
+            }
+        };
+
+        throw new QueryException('mysql', $sql, [], $previous);
+    });
+}
+
+it('inserts in one agreed order however ESPN ordered the payload', function () {
+    /*
+     * THE DEADLOCK'S FIRST HALF. `teamIds()` preserves ESPN's payload order,
+     * and two writers of one national story routinely disagree about it — so
+     * they took the same row locks on `unique(article_id, team_id)` in
+     * opposite orders and MySQL rolled one of them back. Production's example
+     * was article 6913 with (228, 99).
+     *
+     * Asserted on the BINDINGS rather than on the rows, because the rows are
+     * identical either way. Order is the whole fix, and it is invisible in
+     * the outcome.
+     */
+    $inserts = [];
+
+    DB::listen(function ($query) use (&$inserts) {
+        if (str_starts_with(strtolower(ltrim($query->sql)), 'insert') && str_contains($query->sql, 'article_team')) {
+            /*
+             * The column position is READ OFF THE SQL rather than assumed.
+             * Laravel `ksort`s each record before building a multi-row
+             * insert, so the bindings arrive alphabetically — article_id,
+             * created_at, team_id, updated_at — and a hardcoded index would
+             * be silently wrong the day a column is added.
+             */
+            preg_match('/\((.*?)\)\s+values/i', $query->sql, $matches);
+
+            $columns = array_map(fn (string $c): string => trim($c, ' `'), explode(',', $matches[1]));
+            $at = array_search('team_id', $columns, true);
+
+            $inserts[] = array_values(array_map(
+                fn (array $row): int => (int) $row[$at],
+                array_chunk($query->bindings, count($columns)),
+            ));
+        }
+    });
+
+    app(SyncNews::class)->store([...articlePayload([61, 333]), 'id' => 900_001]);
+    app(SyncNews::class)->store([...articlePayload([333, 61]), 'id' => 900_002]);
+
+    expect($inserts)->toHaveCount(2)
+        ->and($inserts[0])->toBe([61, 333])
+        ->and($inserts[1])->toBe([61, 333]);
+});
+
+it('retries a deadlock and lands the links', function () {
+    // MySQL has already rolled the loser back, and both statements are
+    // idempotent, so trying again is the whole answer — and the alternative
+    // is what production did: abandon the rest of a batch of up to 50.
+    deadlockOnce('article_team');
+
+    app(SyncNews::class)->store(articlePayload([61, 333]));
+
+    $article = Article::where('espn_id', 47667165)->sole();
+
+    expect($article->teams()->pluck('teams.id')->sort()->values()->all())->toBe([61, 333]);
+});
+
+it('re-raises a query error that is not a deadlock, unretried', function () {
+    /*
+     * The retry is for contention and nothing else. A loop that swallowed a
+     * missing column or a foreign key would turn a bug into three seconds of
+     * silence and then the same bug.
+     */
+    deadlockOnce('article_team', sqlstate: '42S22');
+
+    expect(fn () => app(SyncNews::class)->store(articlePayload([61, 333])))
+        ->toThrow(QueryException::class);
+});
+
+it('writes nothing at all when the links already say what the payload says', function () {
+    /*
+     * The third of the three, and the one that makes the other two rare: ESPN
+     * hands the same national story to several jobs, so most writers reaching
+     * here have nothing to change — and running the pair anyway is two
+     * lock-taking statements for no row.
+     *
+     * The read decides only WHETHER to write, never what: the write path is
+     * idempotent on its own, so a stale read costs a redundant write and can
+     * never cost a wrong row.
+     */
+    app(SyncNews::class)->store(articlePayload([61, 333]));
+
+    $writes = 0;
+
+    DB::listen(function ($query) use (&$writes) {
+        if (str_contains($query->sql, 'article_team') && ! str_starts_with(strtolower(ltrim($query->sql)), 'select')) {
+            $writes++;
+        }
+    });
+
+    // The same payload again, and the same payload with the teams reversed —
+    // neither is a change once both writers agree on an order.
+    app(SyncNews::class)->store(articlePayload([61, 333]));
+    app(SyncNews::class)->store(articlePayload([333, 61]));
+
+    expect($writes)->toBe(0);
 });
 
 it('still detaches a link the payload dropped', function () {
