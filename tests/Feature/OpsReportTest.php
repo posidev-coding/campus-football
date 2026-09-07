@@ -8,6 +8,9 @@ use App\Models\ActivityEvent;
 use App\Models\ClientError;
 use App\Models\FeedRun;
 use App\Models\PageViewDaily;
+use App\Models\Pick;
+use App\Models\Slate;
+use App\Models\SlateGame;
 use App\Models\User;
 use App\Models\UxEvent;
 use App\Support\CoverageReport;
@@ -325,6 +328,86 @@ describe('the derived pick-through rate', function () {
 
         expect($row['status'])->toBe(OpsReport::WARN)
             ->and($row['detail'])->toContain('25% of first-time slate opens');
+    });
+
+    it('counts a repeat opener ONCE when the clickstream covers the window', function () {
+        /*
+         * THE WHOLE CARD. `slate_entered` fires per (user, slate) open, so
+         * somebody who opens on three days and never picks contributed three
+         * times and the published number was a FLOOR rather than a rate —
+         * lower than the truth by an unknown amount, at exactly the moment it
+         * crossed a warn threshold.
+         *
+         * No sixth counter was needed to close it: a slate open is already a
+         * page view of `pickem.group` carrying the `slate` facet and a user
+         * id, so distinct READERS is a query, and the numerator comes off
+         * `picks` — the truth table — so both sides count the same people.
+         */
+        $covered = ActivityEvent::factory()->create(['occurred_at' => now()->subDays(10)]);
+
+        expect($covered->occurred_at)->not->toBeNull();
+
+        [$season, $week] = pickemSeasonWeek();
+        $slateGame = SlateGame::factory()->create([
+            'slate_id' => Slate::factory()->create(['week_id' => $week->id])->id,
+            'game_id' => pickemGame($season, $week)->id,
+        ]);
+
+        $readers = User::factory()->count(20)->create();
+
+        foreach ($readers as $index => $reader) {
+            // The first reader opens on three separate days and never picks.
+            $opens = $index === 0 ? 3 : 1;
+
+            foreach (range(1, $opens) as $day) {
+                ActivityEvent::factory()->create([
+                    'user_id' => $reader->id,
+                    'route' => 'pickem.group',
+                    'facet' => 'slate',
+                    'occurred_at' => now()->subDays($day),
+                ]);
+            }
+
+            if ($index > 0 && $index <= 15) {
+                Pick::factory()->create([
+                    'user_id' => $reader->id,
+                    'slate_game_id' => $slateGame->id,
+                ]);
+            }
+        }
+
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'pick_through');
+
+        // Twenty readers, not twenty-two opens — and fifteen of them picked.
+        expect($row['detail'])->toContain('15 of 20')
+            ->and($row['detail'])->toContain('readers who opened a slate')
+            // A rate, so it does not hedge.
+            ->and($row['detail'])->not->toContain('At least');
+    });
+
+    it('says "at least" while the sensor has not covered the whole window', function () {
+        /*
+         * The `funnel_since` rule. `activity_events` began when the sensor
+         * shipped, so a 7-day rate read off two days of it is a two-day number
+         * wearing a week's label — worse than the floor it would replace. The
+         * counters answer instead, and the wording stops anybody reading the
+         * result as the rate it is not.
+         */
+        ActivityEvent::factory()->create([
+            'route' => 'pickem.group', 'facet' => 'slate', 'occurred_at' => now()->subHour(),
+        ]);
+
+        foreach (range(1, 40) as $i) {
+            app(RecordUxEvent::class)->handle(UxSignal::SlateEntered);
+        }
+        foreach (range(1, 30) as $i) {
+            app(RecordUxEvent::class)->handle(UxSignal::FirstPickMade);
+        }
+
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'pick_through');
+
+        expect($row['detail'])->toContain('At least 75%')
+            ->and($row['detail'])->toContain('first-time slate opens');
     });
 
     it('counts today, which the nightly rollup has not persisted yet', function () {
