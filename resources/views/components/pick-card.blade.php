@@ -150,6 +150,16 @@
                         <flux:icon.check-circle-fill variant="micro" class="size-3.5" />
                         +{{ $pick->points ?? 0 }}
                     </span>
+                @elseif ($pick->result === App\Models\Pick::PUSH)
+                    {{-- THREE-WAY, because a push is not a wrong call. The
+                         number came out even and the reader missed nothing, so
+                         it wears neither mark: zinc and a dash, not red and a
+                         cross. The points are already right — a push scores 0,
+                         same as a loss — and this was only ever the telling. --}}
+                    <span class="flex items-center gap-1 font-semibold text-zinc-500 dark:text-zinc-400">
+                        <flux:icon.dash-circle-fill variant="micro" class="size-3.5" />
+                        Push · {{ $pick->points ?? 0 }}
+                    </span>
                 @else
                     <span class="flex items-center gap-1 font-semibold text-red-600 dark:text-red-400">
                         <flux:icon.x-circle-fill variant="micro" class="size-3.5" />

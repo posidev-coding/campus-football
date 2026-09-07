@@ -628,8 +628,11 @@ new class extends Component
                             return ['state' => 'none', 'team' => null, 'abbr' => null, 'tone' => 'neutral'];
                         }
 
+                        // Three-way, like the member branch below: the Bear
+                        // pushes on an even number too, and it was wearing the
+                        // miss for it.
                         $tone = $slateGame->game->completed
-                            ? ($grader->resultFor($slateGame, $slateGame->game, $slateGame->bear_team_id) === Pick::WIN ? 'win' : 'loss')
+                            ? self::pickTone($grader->resultFor($slateGame, $slateGame->game, $slateGame->bear_team_id))
                             : 'neutral';
 
                         $team = $side($slateGame, $slateGame->bear_team_id);
@@ -650,7 +653,7 @@ new class extends Component
                         'state' => 'pick',
                         'team' => $team,
                         'abbr' => $team?->abbreviation,
-                        'tone' => $pick->result === null ? 'neutral' : ($pick->result === Pick::WIN ? 'win' : 'loss'),
+                        'tone' => self::pickTone($pick->result),
                     ];
                 })->values()->all();
 
@@ -688,6 +691,30 @@ new class extends Component
             ->all();
 
         return $rows === [] ? null : ['columns' => $columns, 'rows' => $rows];
+    }
+
+    /**
+     * A graded result as a grid tone — THREE-WAY, not two.
+     *
+     * `Pick::PUSH` is a real value the grader returns when the favorite's
+     * margin lands exactly on the number, and both branches above used to
+     * fold it into `loss` with a `=== WIN ? … : …`. Since CFB-67 the grid
+     * grades by light, so that read as desaturated and faded — the disabled
+     * treatment, on a call the reader did not get wrong.
+     *
+     * Here rather than inline twice: the member's pick and the Bear's are the
+     * same question, and two copies of a three-way is where the third arm
+     * quietly goes missing again.
+     */
+    private static function pickTone(?string $result): string
+    {
+        return match ($result) {
+            Pick::WIN => 'win',
+            Pick::PUSH => 'push',
+            Pick::LOSS => 'loss',
+            // Ungraded — a live pick has not lost anything yet.
+            default => 'neutral',
+        };
     }
 
     /**
