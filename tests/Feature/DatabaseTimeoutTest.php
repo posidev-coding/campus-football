@@ -20,6 +20,11 @@ use Pdo\Mysql;
  * What they assert is that the ceiling is DECLARED, that it sits above the
  * wake rather than under it, and that the retry the fix leans on is still
  * armed — a connection added later has to declare one too.
+ *
+ * WHAT THE CEILING ACTUALLY COVERS was measured later and is smaller than it
+ * looks: `ATTR_TIMEOUT` bounds reaching the server and nothing after it. See
+ * the last test in this file, and the docblock in config/database.php it
+ * points at.
  */
 
 /**
@@ -101,8 +106,10 @@ it('keeps that timeout above the wake and under a bounded ceiling', function () 
      * not an improvement for a reader.
      *
      * The upper bound is where holding a request worker stops being
-     * defensible. Laravel's connector retries the connect once, so the real
-     * worst case is DOUBLE whatever is asserted here.
+     * defensible. Laravel's connector retries the connect once, so two of
+     * these is the worst case FOR REACHING THE SERVER — which is the only
+     * part of a connect this number bounds. The last test in this file is
+     * about the part it does not.
      */
     $timeouts = collect(pdoMysqlConnections())
         ->map(fn (array $connection): int => $connection['options'][PDO::ATTR_TIMEOUT])
@@ -184,4 +191,36 @@ it('still recognizes a connect timeout as a lost connection, so the retry arms',
     expect($detector->causedByLostConnection(
         new PDOException('SQLSTATE[HY000] [2002] Connection timed out')
     ))->toBeTrue();
+});
+
+it('has no read timeout to declare, which is the half ATTR_TIMEOUT does not cover', function () {
+    /*
+     * THE CORRECTION THAT COST 15.6 SECONDS. `PDO::ATTR_TIMEOUT` maps to
+     * `MYSQL_OPT_CONNECT_TIMEOUT`, which bounds REACHING the server. The
+     * greeting, the TLS handshake and auth that follow are reads, and reads
+     * are bounded by the `mysqlnd.net_read_timeout` ini — default 86400, a
+     * day. So a waking database that completes the TCP handshake and then
+     * stalls before it speaks blocks with no ceiling at all, which is what
+     * production billed to a single-row `feed_runs` INSERT at 15586ms.
+     *
+     * MEASURED (2026-09-06), because reasoning about it is how the wrong
+     * bound got written down the first time. Against a listener that accepts
+     * the connection and then says nothing, a PDO connect with
+     * `ATTR_TIMEOUT => 2` blocked past 120 SECONDS; the same connect under
+     * `php -d mysqlnd.net_read_timeout=3` failed at exactly 3.00s with
+     * `[2006] MySQL server has gone away`.
+     *
+     * What this test pins is why the app cannot simply declare the missing
+     * ceiling beside the one it has: there is no read-timeout attribute to
+     * put in the options array. If a future pdo_mysql grows one, this goes
+     * red and the fix becomes available in config rather than in a global
+     * ini — which is the outcome worth being told about.
+     */
+    $attributes = collect((new ReflectionClass(PDO::class))->getConstants())
+        ->keys()
+        ->filter(fn (string $name): bool => str_contains($name, 'MYSQL_ATTR'))
+        ->filter(fn (string $name): bool => str_contains($name, 'READ') || str_contains($name, 'TIMEOUT'))
+        ->all();
+
+    expect($attributes)->toBe([]);
 });
