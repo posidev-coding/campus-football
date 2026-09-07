@@ -11,6 +11,7 @@ use App\Models\ClientError;
 use App\Models\FeedRun;
 use App\Models\PageViewDaily;
 use App\Models\UxEvent;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -358,15 +359,35 @@ class OpsReport
      * `slate_entered` skips a member who already has an entry — otherwise
      * every reopen of a sheet somebody already filled in grew the
      * denominator against a numerator that could never answer it, and the
-     * reported rate fell as engagement rose. Read the number as a FLOOR
-     * either way: a member who opens on three days and never picks still
-     * counts three times, which this pipeline cannot close without
-     * persisting who read what.
+     * reported rate fell as engagement rose.
+     *
+     * THAT DIVISION IS A FLOOR, NOT A RATE, and it says so now. A member who
+     * opens on three days and never picks contributes three times, so the
+     * published number is lower than the truth by an unknown amount — which
+     * matters most at exactly the moment it crosses a warn threshold.
+     *
+     * The clickstream can close it, and closing it needed no sixth counter:
+     * a slate open is already a page view of `pickem.group`/`pickem.room`
+     * carrying the `slate` facet and a user id ({@see RecordActivity::FACETS}).
+     * So when the sensor covers the window, both sides of this division are
+     * PEOPLE — distinct readers who opened a slate, and how many of them have
+     * a pick — and the answer is a rate.
+     *
+     * WHEN IT DOES NOT COVER THE WINDOW, the counters answer instead and the
+     * detail says "at least". A window that starts before the sensor did is
+     * not that window's number — the `funnel_since` rule — and a 7-day rate
+     * read off two days of data would be a far worse number than the floor it
+     * replaced. The row upgrades itself the day the coverage arrives.
      */
     private function pickThrough(): array
     {
-        $entered = $this->funnelTotal(UxSignal::SlateEntered);
-        $picked = $this->funnelTotal(UxSignal::FirstPickMade);
+        [$entered, $picked, $counted] = $this->pickThroughReaders() ?? [
+            $this->funnelTotal(UxSignal::SlateEntered),
+            $this->funnelTotal(UxSignal::FirstPickMade),
+            false,
+        ];
+
+        $noun = $counted ? 'readers who opened a slate' : 'first-time slate opens';
 
         if ($entered < self::RATE_SAMPLE_FLOOR) {
             return $this->row(
@@ -375,7 +396,7 @@ class OpsReport
                 self::OK,
                 $entered === 0
                     ? 'No slates opened yet'
-                    : "Only {$entered} first-time slate opens — too few to read a rate from",
+                    : "Only {$entered} {$noun} — too few to read a rate from",
                 null,
             );
         }
@@ -387,11 +408,71 @@ class OpsReport
             'pick_through',
             'Pick-through · 7d',
             $abandoned > self::ABANDON_WARN ? self::WARN : self::OK,
-            "{$rate}% of first-time slate opens became a pick ({$picked} of {$entered})",
+            // "At least", when the denominator is a counter rather than a
+            // population: a repeat opener who never picks is counted more than
+            // once, so the true rate is higher by an unknown amount and a bare
+            // percentage would be read as the answer.
+            ($counted ? '' : 'At least ')."{$rate}% of {$noun} became a pick ({$picked} of {$entered})",
             $abandoned > self::ABANDON_WARN
                 ? 'More than half open a slate for the first time and leave without picking. Walk the pick surface at 390px.'
                 : null,
         );
+    }
+
+    /**
+     * The same question asked of PEOPLE, when the clickstream can answer it.
+     *
+     * A slate open is already a page view of `pickem.group`/`pickem.room`
+     * carrying the `slate` facet and a user id, so distinct readers needs no
+     * new counter — which is the thing {@see pickThrough()}'s docblock refuses
+     * on principle.
+     *
+     * NULL WHEN THE SENSOR DOES NOT COVER THE WINDOW, and that is the whole
+     * guard: `activity_events` began when the sensor shipped, so a 7-day rate
+     * read off two days of it is a two-day number wearing a week's label —
+     * worse than the floor it would replace. The caller falls back and says
+     * "at least".
+     *
+     * The numerator comes from `picks`, a truth table, so it counts the same
+     * people the denominator does rather than a second counter that can
+     * disagree with it.
+     *
+     * @return array{0: int, 1: int, 2: bool}|null
+     */
+    private function pickThroughReaders(): ?array
+    {
+        if (! Schema::hasTable('activity_events')) {
+            return null;
+        }
+
+        $since = now()->timezone(config('cfb.timezone'))->subDays(7);
+        $first = ActivityEvent::query()->min('occurred_at');
+
+        // No rows at all, or the earliest one lands inside the window: either
+        // way the sensor was not counting for all of it.
+        if ($first === null || CarbonImmutable::parse($first)->gt($since)) {
+            return null;
+        }
+
+        $readers = ActivityEvent::query()
+            ->whereIn('route', RecordActivity::FACET_ROUTES)
+            ->where('facet', 'slate')
+            ->whereNotNull('user_id')
+            ->where('occurred_at', '>=', $since)
+            ->distinct()
+            ->pluck('user_id');
+
+        if ($readers->isEmpty()) {
+            return [0, 0, true];
+        }
+
+        $picked = DB::table('picks')
+            ->whereIn('user_id', $readers)
+            ->where('created_at', '>=', $since)
+            ->distinct()
+            ->count('user_id');
+
+        return [$readers->count(), $picked, true];
     }
 
     // ------------------------------------------------------------- readers
