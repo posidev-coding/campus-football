@@ -162,6 +162,11 @@ switch (scenario) {
     case 'alpine-flux-first':
     case 'alpine-unmarked-root':
     case 'alpine-no-element':
+    case 'sw-install-storage-refused':
+    case 'sw-install-ok':
+    case 'sw-activate-storage-refused':
+    case 'sw-activate-keys-refused':
+    case 'sw-activate-ok':
     case 'push-granted':
     case 'asset-script':
     case 'asset-stylesheet':
@@ -191,6 +196,44 @@ switch (scenario) {
 
     default:
         throw new Error(`Unknown scenario: ${scenario}`);
+}
+
+/*
+ * THE SERVICE WORKER'S OWN GLOBALS, for the `sw-*` scenarios only.
+ *
+ * `public/sw.js` is not bundled and has no component around it either, so it
+ * gets the same treatment app.js does: imported for real against a stubbed
+ * worker scope, so what is asserted is what the handler DOES rather than the
+ * source that describes it.
+ */
+const sw = { skipWaiting: 0, claim: 0, settled: null };
+
+globalThis.self = globalThis;
+globalThis.skipWaiting = () => { sw.skipWaiting++; };
+globalThis.clients = { claim: () => { sw.claim++; return Promise.resolve(); } };
+
+if (scenario.startsWith('sw-install') || scenario.startsWith('sw-activate')) {
+    /* Storage refused, which is the failure production reported twice in a
+     * day: site data blocked, a private window partitioning it, or quota
+     * under pressure. `caches.open()` is the call that rejects, and it sat
+     * outside the catch. */
+    const refuse = () => Promise.reject(new DOMException('The operation is insecure.', 'SecurityError'));
+
+    const workingCache = {
+        addAll: () => Promise.resolve(),
+        keys: () => Promise.resolve([]),
+        delete: () => Promise.resolve(true),
+    };
+
+    globalThis.caches = {
+        open: scenario.endsWith('-storage-refused') ? refuse : () => Promise.resolve(workingCache),
+        keys: scenario === 'sw-activate-keys-refused' ? refuse : () => Promise.resolve([]),
+        delete: () => Promise.resolve(true),
+    };
+
+    /* The manifest read is already guarded inside sw.js; a rejecting fetch
+     * keeps these scenarios about the cache calls and nothing else. */
+    globalThis.fetch = () => Promise.reject(new TypeError('Load failed'));
 }
 
 /* navigator is a read-only accessor on globalThis from node 21. */
@@ -280,6 +323,24 @@ if (scenario.startsWith('push-')) {
 
         failCallbacks.forEach((cb) => cb());
     }
+} else if (scenario.startsWith('sw-install') || scenario.startsWith('sw-activate')) {
+    const name = scenario.startsWith('sw-install') ? 'install' : 'activate';
+
+    /* What `waitUntil` is handed is the WHOLE question: the browser fails the
+     * install — and leaves the visitor with no worker and therefore no push —
+     * when that promise rejects. */
+    let handed = null;
+
+    for (const handler of listeners[name] ?? []) {
+        handler({ waitUntil: (promise) => { handed = promise; } });
+    }
+
+    try {
+        await handed;
+        sw.settled = 'resolved';
+    } catch (error) {
+        sw.settled = `rejected: ${error?.name ?? 'unknown'}`;
+    }
 } else if (scenario.startsWith('alpine-')) {
     for (const handler of docListeners['alpine:init'] ?? []) {
         handler();
@@ -334,4 +395,4 @@ for (let tick = 0; tick < 2; tick++) {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-console.log(JSON.stringify({ posts, result, knocks, rethrown }));
+console.log(JSON.stringify({ posts, result, knocks, rethrown, sw }));

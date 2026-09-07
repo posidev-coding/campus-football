@@ -20,18 +20,47 @@ const BYPASS = ['/livewire', '/admin', '/broadcasting', '/webhooks'];
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE)
-            /* Guarded: an unhandled rejection here fails the WHOLE install —
-             * no service worker and therefore NO PUSH for that visitor until
-             * the next update check. If /offline hiccups, the only thing
-             * worth losing is the offline fallback itself. */
-            .then((cache) => cache.addAll([OFFLINE_URL]).catch(() => {}))
+            .then((cache) => cache.addAll([OFFLINE_URL]))
+            /* Guarded AS A UNIT, and this is the whole point of the shape: an
+             * unhandled rejection here fails the WHOLE install — no service
+             * worker and therefore NO PUSH for that visitor until the next
+             * update check, and `navigator.serviceWorker.ready` never resolves,
+             * so the push banner's turnOn() awaits forever with `busy` stuck
+             * true and no way back.
+             *
+             * The catch used to sit on `addAll` alone, which left
+             * `caches.open()` outside it — and that is the call that rejects
+             * when site data is blocked, a private window partitions storage,
+             * or quota is under pressure. Production reported it twice in a
+             * day as the browser's bare "Error: Rejected".
+             *
+             * If the cache step hiccups the only thing worth losing is the
+             * offline fallback itself, so `skipWaiting()` runs either way. */
+            .catch(() => {})
             .then(() => self.skipWaiting())
     );
 });
 
 self.addEventListener('activate', (event) => {
+    /* Same shape and the same reason as install. `caches.keys()` and the
+     * `caches.open()` below reject under exactly the storage conditions that
+     * broke the install, and a rejected activate strands the worker in
+     * `installed` — it never claims its clients, so the page it was meant to
+     * serve goes on being served by nothing. Pruning is the only thing worth
+     * losing here; the claim is not. */
     event.waitUntil(
-        caches.keys()
+        prune()
+            .catch(() => {})
+            .then(() => self.clients.claim())
+    );
+});
+
+/**
+ * Drop every cache from an older deploy, then the stale build assets left
+ * inside the current one.
+ */
+function prune() {
+    return caches.keys()
             .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
             /* Stale deploys inside the SAME cache: /build/ files are content-
              * hashed so an old entry is never re-served by URL, but nothing
@@ -64,10 +93,8 @@ self.addEventListener('activate', (event) => {
                         })
                         .map((request) => cache.delete(request))
                 ));
-            })
-            .then(() => self.clients.claim())
-    );
-});
+            });
+}
 
 self.addEventListener('fetch', (event) => {
     const request = event.request;

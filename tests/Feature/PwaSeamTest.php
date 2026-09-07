@@ -22,13 +22,13 @@ use Illuminate\Support\Facades\Process;
  *
  * @return array{posts: list<array{url: string, body: array<string, mixed>}>, result: ?string}
  */
-function pwaSeam(string $scenario): array
+function pwaSeam(string $scenario, ?string $module = null): array
 {
     $result = Process::run([
         'node',
         base_path('tests/pwa-seam-harness.mjs'),
         $scenario,
-        resource_path('js/app.js'),
+        $module ?? resource_path('js/app.js'),
     ]);
 
     expect($result->successful())->toBeTrue($result->errorOutput());
@@ -81,6 +81,72 @@ describe('a bundle that failed to load', function () {
         expect($reports)->toHaveCount(1)
             ->and($reports[0]['message'])->toBe('boom')
             ->and($reports[0]['line'])->toBe(3);
+    });
+});
+
+/** The worker itself, which is not bundled and has no component around it either. */
+function swSeam(string $scenario): array
+{
+    return pwaSeam($scenario, public_path('sw.js'))['sw'];
+}
+
+describe('the service worker install', function () {
+    /*
+     * WHAT `waitUntil` IS HANDED IS THE WHOLE QUESTION. When that promise
+     * rejects the browser fails the install, `register()` rejects with the
+     * browser's bare "Error: Rejected", and the visitor gets no worker at all
+     * — which costs push as much as the offline page:
+     * `navigator.serviceWorker.ready` never resolves, so the push banner's
+     * turnOn() awaits forever with `busy` stuck true and no way back.
+     *
+     * The catch used to sit on `addAll` alone. `caches.open()` was outside it,
+     * and that is the call that rejects when site data is blocked, a private
+     * window partitions storage, or quota is under pressure. Production
+     * reported it twice in a day.
+     */
+    it('installs anyway when storage refuses the cache outright', function () {
+        $sw = swSeam('sw-install-storage-refused');
+
+        expect($sw['settled'])->toBe('resolved')
+            ->and($sw['skipWaiting'])->toBe(1);
+    });
+
+    it('still precaches and skips waiting when storage is fine', function () {
+        // Broken back from the assertion above: the healthy path has to run
+        // the same two steps, or "resolved" up there proves nothing.
+        $sw = swSeam('sw-install-ok');
+
+        expect($sw['settled'])->toBe('resolved')
+            ->and($sw['skipWaiting'])->toBe(1);
+    });
+});
+
+describe('the service worker activate', function () {
+    /*
+     * The same shape, and the same reason. A rejected activate strands the
+     * worker in `installed`: it never claims its clients, so the page it was
+     * meant to serve goes on being served by nothing. Pruning is the only
+     * thing worth losing here — the claim is not.
+     */
+    it('claims its clients even when the cache list cannot be read', function () {
+        $sw = swSeam('sw-activate-keys-refused');
+
+        expect($sw['settled'])->toBe('resolved')
+            ->and($sw['claim'])->toBe(1);
+    });
+
+    it('claims them when storage refuses to open the cache to prune it', function () {
+        $sw = swSeam('sw-activate-storage-refused');
+
+        expect($sw['settled'])->toBe('resolved')
+            ->and($sw['claim'])->toBe(1);
+    });
+
+    it('claims them on the healthy path too', function () {
+        $sw = swSeam('sw-activate-ok');
+
+        expect($sw['settled'])->toBe('resolved')
+            ->and($sw['claim'])->toBe(1);
     });
 });
 
