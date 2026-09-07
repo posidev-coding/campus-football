@@ -85,8 +85,33 @@ return [
              * `causedByLostConnection()`. On Linux a connect timeout reads
              * `SQLSTATE[HY000] [2002] Connection timed out`, which is on that
              * needle list, so the second attempt meets an already-waking
-             * database and succeeds. Worst case is two attempts — ~10s, and
-             * bounded, which is the entire point.
+             * database and succeeds. Two attempts, ~10s.
+             *
+             * WHAT THIS DOES NOT BOUND, and the correction that cost 15.6s.
+             * `PDO::ATTR_TIMEOUT` maps to `MYSQL_OPT_CONNECT_TIMEOUT`, which
+             * bounds REACHING the server and nothing after it. The greeting,
+             * the TLS handshake and auth are reads, and reads are bounded by
+             * the `mysqlnd.net_read_timeout` ini — whose default is 86400,
+             * a day. A waking database that completes the TCP handshake and
+             * then stalls before its greeting therefore blocks with no
+             * ceiling at all, which is the shape production billed to a
+             * single-row `feed_runs` INSERT at 15586ms: half again the ~10s
+             * this docblock used to claim as a bound.
+             *
+             * MEASURED, not reasoned (2026-09-06). Against a listener that
+             * accepts the TCP connection and then says nothing, a PDO connect
+             * with `ATTR_TIMEOUT => 2` blocked past 120 SECONDS. The same
+             * connect under `php -d mysqlnd.net_read_timeout=3` failed at
+             * exactly 3.00s with `[2006] MySQL server has gone away`.
+             *
+             * So the app cannot declare this ceiling here: pdo_mysql exposes
+             * no read-timeout attribute — there is no
+             * `PDO::MYSQL_ATTR_READ_TIMEOUT` — and the only lever is that
+             * global ini, which bounds EVERY read on every connection and
+             * would cut a legitimately long aggregate off at the same number.
+             * That is a deployment decision with a real cost, so it is named
+             * here rather than guessed at: the value below buys a ceiling on
+             * reaching the server, and reaching the server is all it buys.
              *
              * That retry is NOT the one CFB-8 describes as unavailable. CFB-8
              * is `Connection::handleQueryException()`, which rethrows outright
