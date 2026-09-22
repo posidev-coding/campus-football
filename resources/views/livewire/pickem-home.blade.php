@@ -355,9 +355,9 @@ new class extends Component
          * filter, so one count answers for all of them. By reference —
          * an arrow function would capture the null by value forever.
          */
-        $viable = null;
+        $counts = null;
 
-        return $groups->map(function (Group $group) use ($contests, $slates, $tallies, $entries, $wins, $fallbackDeadline, $week, $pending, &$viable) {
+        return $groups->map(function (Group $group) use ($contests, $slates, $tallies, $entries, $wins, $fallbackDeadline, $week, $pending, &$counts) {
             $contest = $contests->get($group->id);
             $slate = $contest === null ? null : $slates->get($contest->id);
             $slateTallies = $slate === null ? null : $tallies->get($slate->id);
@@ -382,11 +382,14 @@ new class extends Component
              * Saturday) leaves the door alone rather than closing it.
              */
             $buildable = true;
+            $awaitingLines = false;
 
             if ($commissioner && $state === 'waiting' && $contest !== null && ! $group->isRoom() && $week !== null && $pending !== null) {
-                $viable ??= app(SuggestSlate::class)->viableCount($contest, $week, $pending);
+                $counts ??= app(SuggestSlate::class)->counts($contest, $week, $pending);
 
-                $buildable = SlateFeasibility::fromCount($viable, $contest, $pending)['ok'];
+                $window = SlateFeasibility::fromCount($counts['viable'], $contest, $pending, $counts['scheduled']);
+                $buildable = $window['ok'];
+                $awaitingLines = $window['awaitingLines'];
             }
 
             return [
@@ -394,6 +397,7 @@ new class extends Component
                 'contest' => $contest,
                 'commissioner' => $commissioner,
                 'buildable' => $buildable,
+                'awaitingLines' => $awaitingLines,
                 'state' => $state,
                 'made' => (int) ($tally->made ?? 0),
                 'total' => $slate?->games->count() ?? 0,

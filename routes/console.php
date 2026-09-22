@@ -99,6 +99,24 @@ Schedule::command('cfb:games --tier=current')
     ->days([ScheduleClass::THURSDAY, ScheduleClass::FRIDAY, ScheduleClass::SATURDAY, ScheduleClass::SUNDAY])
     ->withoutOverlapping(30);
 
+/*
+ * Tier 2b — the upcoming card while commissioners build it. Tuesday and
+ * Wednesday are the build window (the slate is due Thursday noon), and a
+ * group's build door only counts games carrying a line. With only the 04:00
+ * `recent` pass on those days, a line ESPN posted at 9am sat unseen until
+ * the next morning — measured 2026-09-22: 4 lined games on Sat Sep 26 after
+ * the morning pass, and every group's build door shut on them. One request
+ * per run, and 08:00-23:00 sits inside hours the live tier already keeps
+ * the cluster awake for, so this buys freshness without new wakes at night.
+ * A cron hour-range rather than between(): the overdue check reads the cron
+ * alone, and a between() gap would read as a missed run every morning.
+ */
+Schedule::command('cfb:games --tier=current')
+    ->cron('0 8-23 * * '.ScheduleClass::TUESDAY.','.ScheduleClass::WEDNESDAY)
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping(30);
+
 // Tier 3 — last week plus this week. Two requests, nightly. Picks up stat
 // corrections and rescheduled games without touching the rest of the season.
 Schedule::command('cfb:games --tier=recent')

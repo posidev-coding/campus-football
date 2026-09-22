@@ -1166,6 +1166,17 @@ class Voice
             'r' => 'This Saturday is a warmup with a TV deal. Next week the whole sport clocks in and you can deal a real card.',
         ],
 
+        /*
+         * The card holds enough football and only the lines are missing —
+         * a wait, not a verdict. Never "next week": the build door comes
+         * back on its own the moment the books post.
+         */
+        'group.slate.lines_pending' => [
+            'pg' => 'The games are on the schedule — the sportsbooks just have not priced most of them yet. The build button comes back once they do.',
+            'pg13' => 'The games are here. The lines are not. Vegas is still doing its homework — the button comes back when it turns it in.',
+            'r' => 'Plenty of football, zero spreads. The books are still hungover from last Saturday. The button comes back when they sober up and post the numbers.',
+        ],
+
         'group.season.empty' => [
             'pg' => 'No weeks in the books yet. Season standings start counting when the first slate goes final.',
             'pg13' => 'Nothing on the ledger yet. Standings start counting the first time a week goes official.',

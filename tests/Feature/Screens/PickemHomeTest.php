@@ -292,6 +292,26 @@ describe('my week (inside the flag)', function () {
             ->assertDontSee('Build the slate');
     });
 
+    it('says the card is waiting on lines when the Saturday is full but unpriced', function () {
+        // Twelve games on 9/5, four lined: the build CTA stays away, but
+        // the card names the missing lines rather than a thin Saturday.
+        $this->travelTo('2026-09-02 16:00:00');
+
+        [, $week] = splitPickemWeek();
+
+        foreach (Game::query()->whereDate('kickoff_at', '2026-09-05')->take(4)->get() as $game) {
+            pickemOdd($game);
+        }
+
+        [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+        Livewire::actingAs($commissioner)->test('pickem-home')
+            ->assertSee($group->name)
+            ->assertSee('Waiting on betting lines')
+            ->assertDontSee('Not enough games this Saturday')
+            ->assertDontSee('Build the slate');
+    });
+
     it('names both ways to play on a first run, and the modes under one of them', function () {
         /*
          * The doors ARE the pitch and the create door both. The old screen

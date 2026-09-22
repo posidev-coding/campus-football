@@ -77,6 +77,7 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'group.slate.waiting',
     'group.slate.build_prompt',
     'group.slate.thin',
+    'group.slate.lines_pending',
     'group.room.no_card',
     'group.season.empty',
     'group.mode_changed',

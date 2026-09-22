@@ -92,9 +92,26 @@ class SuggestSlate
      */
     public function viableCount(Contest $contest, Week $week, ?CarbonInterface $saturday = null): int
     {
-        return $this->candidates($contest, $week, $saturday)
-            ->filter(fn (Game $game) => GameQualityScore::for($game) !== null)
-            ->count();
+        return $this->counts($contest, $week, $saturday)['viable'];
+    }
+
+    /**
+     * Both halves of the pool from ONE candidate pass: every game on the
+     * Saturday's card (`scheduled`) and the ones a slate could hold
+     * (`viable`, which needs a usable line). The gap between them is what
+     * tells "no lines posted yet" apart from "not enough football" — the
+     * first fixes itself by Thursday, the second does not.
+     *
+     * @return array{scheduled: int, viable: int}
+     */
+    public function counts(Contest $contest, Week $week, ?CarbonInterface $saturday = null): array
+    {
+        $candidates = $this->candidates($contest, $week, $saturday);
+
+        return [
+            'scheduled' => $candidates->count(),
+            'viable' => $candidates->filter(fn (Game $game) => GameQualityScore::for($game) !== null)->count(),
+        ];
     }
 
     /**
