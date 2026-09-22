@@ -128,6 +128,33 @@ it('takes the build door away on a Saturday that cannot seat the mode', function
         ->assertDontSee('Build the slate');
 });
 
+it('waits on the lines instead of closing the week when the card is full but unpriced', function () {
+    /*
+     * Measured 2026-09-22: Sat Sep 26 carried a full card and four lined
+     * games on the Tuesday of the build window. The door is still shut —
+     * an ATS slate cannot hold a spreadless game — but "not enough games"
+     * and "next Saturday" were both false. Enough football, missing lines,
+     * is a wait that ends on its own, and the clubhouse says exactly that.
+     */
+    $this->travelTo('2026-09-02 12:00:00');
+
+    [, $week] = splitPickemWeek();
+
+    foreach (Game::query()->whereDate('kickoff_at', '2026-09-05')->take(4)->get() as $game) {
+        pickemOdd($game);
+    }
+
+    [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+    Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+        ->assertSee('Waiting on betting lines.')
+        ->assertSee('Shotgun needs 10 games with a line. This Saturday has 12 games, and 4 have one so far.')
+        ->assertSee(Voice::line('group.slate.lines_pending', for: $commissioner))
+        ->assertDontSee('Not enough games this Saturday')
+        ->assertDontSee('The next slate can go up')
+        ->assertDontSee('Build the slate');
+});
+
 it('keeps the build door on a Saturday the mode fits, thin week or not', function () {
     // The same fixture one week on: 9/5 carries twelve lined games, so
     // Shotgun's ten fits and nothing is taken away. The gate has to be

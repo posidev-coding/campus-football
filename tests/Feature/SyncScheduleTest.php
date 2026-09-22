@@ -98,6 +98,27 @@ it('sweeps pick reminders often enough for a ninety-minute last call', function 
         ->and($entry->expression)->toBe('*/15 * * * *');
 });
 
+it('refreshes the upcoming card hourly through the build window', function () {
+    /*
+     * Tuesday and Wednesday are when commissioners build, and the build
+     * door counts only lined games. The 04:00 `recent` pass alone left a
+     * line posted mid-morning unseen until the next day — 2026-09-22 read
+     * four lined games on a full Saturday. The hours are in the CRON, not
+     * a between(), because the overdue check reads the cron alone.
+     */
+    $entry = collect(app(Schedule::class)->events())
+        ->first(fn (Event $event) => str_contains($event->command ?? '', 'cfb:games --tier=current')
+            && $event->expression === '0 8-23 * * 2,3');
+
+    expect($entry)->not->toBeNull()
+        ->and($entry->timezone)->toBe(config('cfb.timezone'));
+
+    $task = collect(app(SyncSchedule::class)->tasks())
+        ->first(fn (array $task) => $task['name'] === 'cfb:games --tier=current' && str_contains($task['cadence'], 'Tue/Wed'));
+
+    expect($task['cadence'] ?? null)->toBe('hourly Tue/Wed 08:00-23:00');
+});
+
 it('schedules recruiting by relative token, never a resolved year', function () {
     $commands = collect(app(Schedule::class)->events())
         ->map(fn (Event $event) => $event->command ?? '')

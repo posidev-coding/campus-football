@@ -70,7 +70,7 @@ new class extends Component
      * numbers the refusal states and the next Saturday it could go up,
      * already formatted. Plain scalars — it rides to the browser and back.
      *
-     * @var array{viable: int, needed: int, next: string}|array{}
+     * @var array{viable: int, scheduled: int|null, needed: int, awaitingLines: bool, next: string}|array{}
      */
     public array $thinWindow = [];
 
@@ -142,7 +142,9 @@ new class extends Component
             if (! $window['ok']) {
                 $this->thinWindow = [
                     'viable' => $window['viable'],
+                    'scheduled' => $window['scheduled'],
                     'needed' => $window['needed'],
+                    'awaitingLines' => $window['awaitingLines'],
                     'next' => $window['next']->format('M j'),
                 ];
 
@@ -479,7 +481,20 @@ new class extends Component
 <div class="flex flex-col gap-5 md:mx-auto md:w-full md:max-w-3xl">
     <h1 class="sr-only">Build the slate</h1>
 
-    @if ($thinWindow !== [])
+    @if ($thinWindow !== [] && $thinWindow['awaitingLines'])
+        {{-- Enough football, not enough lines yet: the clubhouse's own
+             wait, for anyone who arrived by URL. --}}
+        <div class="flex flex-col gap-3 rounded-xl border border-dashed border-zinc-300 p-4 dark:border-zinc-700">
+            <flux:heading size="lg">Waiting on betting lines</flux:heading>
+            <flux:subheading>
+                {{ $contest->mode->label() }} needs {{ $thinWindow['needed'] }} games with a line. This Saturday has {{ $thinWindow['scheduled'] }} games, and {{ $thinWindow['viable'] }} have one so far.
+            </flux:subheading>
+            <flux:subheading>{{ Voice::line('group.slate.lines_pending') }}</flux:subheading>
+            <flux:button :href="route('pickem.group', $group)" wire:navigate variant="primary" class="self-start">
+                Open the clubhouse
+            </flux:button>
+        </div>
+    @elseif ($thinWindow !== [])
         {{-- Words and a door, never a dead end: the same refusal the
              clubhouse gives, for anyone who arrived by URL. --}}
         <div class="flex flex-col gap-3 rounded-xl border border-dashed border-zinc-300 p-4 dark:border-zinc-700">

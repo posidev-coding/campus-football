@@ -222,6 +222,14 @@ class SyncSchedule
             return "hourly {$days}";
         }
 
+        if (preg_match('/^0 (\d+)-(\d+) \* \* ([0-6](?:,[0-6])*)$/', $expression, $m)) {
+            $days = collect(explode(',', $m[3]))
+                ->map(fn (string $d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][(int) $d])
+                ->implode('/');
+
+            return sprintf('hourly %s %02d:00-%02d:00', $days, $m[1], $m[2]);
+        }
+
         if (preg_match('/^(\d+) (\d+) \* \* ([0-6](?:,[0-6])*)$/', $expression, $m)) {
             $days = collect(explode(',', $m[3]))
                 ->map(fn (string $d) => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][(int) $d])

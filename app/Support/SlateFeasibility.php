@@ -33,15 +33,13 @@ use Carbon\CarbonInterface;
 class SlateFeasibility
 {
     /**
-     * @return array{ok: bool, viable: int, needed: int, next: CarbonInterface}
+     * @return array{ok: bool, viable: int, scheduled: int|null, needed: int, awaitingLines: bool, next: CarbonInterface}
      */
     public static function for(Contest $contest, Week $week, CarbonInterface $saturday): array
     {
-        return self::fromCount(
-            app(SuggestSlate::class)->viableCount($contest, $week, $saturday),
-            $contest,
-            $saturday,
-        );
+        $counts = app(SuggestSlate::class)->counts($contest, $week, $saturday);
+
+        return self::fromCount($counts['viable'], $contest, $saturday, $counts['scheduled']);
     }
 
     /**
@@ -50,16 +48,24 @@ class SlateFeasibility
      * where the count was drawn WITHOUT a themed filter, which is every
      * private group: `slate_filter` is a flavored room's knob.
      *
-     * @return array{ok: bool, viable: int, needed: int, next: CarbonInterface}
+     * `$scheduled` is every game on the card, lined or not. Given, it lets
+     * the answer say WHY a Saturday falls short: `awaitingLines` is true
+     * when the card holds enough football and only the lines are missing —
+     * a wait, not a verdict, and the copy must not send the commissioner
+     * to next week over it. Unknown (null) never claims it.
+     *
+     * @return array{ok: bool, viable: int, scheduled: int|null, needed: int, awaitingLines: bool, next: CarbonInterface}
      */
-    public static function fromCount(int $viable, Contest $contest, CarbonInterface $saturday): array
+    public static function fromCount(int $viable, Contest $contest, CarbonInterface $saturday, ?int $scheduled = null): array
     {
         $needed = $contest->mode->engine($contest->settings)->slateSize();
 
         return [
             'ok' => $viable >= $needed,
             'viable' => $viable,
+            'scheduled' => $scheduled,
             'needed' => $needed,
+            'awaitingLines' => $viable < $needed && $scheduled !== null && $scheduled >= $needed,
             // The next Saturday on the calendar, not the next one proven
             // to be playable — the copy says "can", never "will".
             'next' => $saturday->copy()->addWeek(),

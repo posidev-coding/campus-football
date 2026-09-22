@@ -292,7 +292,7 @@ new class extends Component
      * branch that renders it, because it runs the builder's own candidate
      * pass.
      *
-     * @return array{ok: bool, viable: int, needed: int, next: CarbonInterface}|null
+     * @return array{ok: bool, viable: int, scheduled: int|null, needed: int, awaitingLines: bool, next: CarbonInterface}|null
      */
     #[Computed]
     public function slateWindow(): ?array
@@ -1616,7 +1616,16 @@ new class extends Component
                          opening a wizard whose publish can only refuse.
                          Null means the question could not be asked — the
                          door stays exactly where it was. --}}
-                    @if ($window !== null && ! $window['ok'])
+                    @if ($window !== null && ! $window['ok'] && $window['awaitingLines'])
+                        {{-- Enough football, not enough lines: a wait, not
+                             a verdict. Says both numbers and never points
+                             at next week — the door reopens by itself. --}}
+                        <p class="text-sm font-medium">Waiting on betting lines.</p>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">
+                            {{ $this->contest->mode->label() }} needs {{ $window['needed'] }} games with a line. This Saturday has {{ $window['scheduled'] }} games, and {{ $window['viable'] }} have one so far.
+                        </p>
+                        <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ Voice::line('group.slate.lines_pending') }}</p>
+                    @elseif ($window !== null && ! $window['ok'])
                         <p class="text-sm font-medium">Not enough games this Saturday.</p>
                         <p class="text-sm text-zinc-500 dark:text-zinc-400">
                             {{ $this->contest->mode->label() }} needs {{ $window['needed'] }} games and this Saturday's card has {{ $window['viable'] }}.

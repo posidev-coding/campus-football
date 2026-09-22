@@ -382,6 +382,29 @@ it('refuses to open the wizard on a Saturday that cannot seat the mode', functio
     expect(Slate::query()->where('contest_id', $contest->id)->exists())->toBeFalse();
 });
 
+it('tells a URL arrival the lines are pending when the card is full but unpriced', function () {
+    // The clubhouse's wait, for a bookmarked wizard: twelve games on 9/5,
+    // four lined, and still no draft left behind.
+    $this->travelTo('2026-09-02 12:00:00');
+
+    [, $week] = splitPickemWeek();
+
+    foreach (Game::query()->whereDate('kickoff_at', '2026-09-05')->take(4)->get() as $game) {
+        pickemOdd($game);
+    }
+
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+
+    Livewire::actingAs($commissioner)->test('slate-builder', ['group' => $group])
+        ->assertSee('Waiting on betting lines')
+        ->assertSee('Shotgun needs 10 games with a line. This Saturday has 12 games, and 4 have one so far.')
+        ->assertDontSee('Not enough games this Saturday')
+        ->assertSee('Open the clubhouse')
+        ->assertDontSee('Publish the slate');
+
+    expect(Slate::query()->where('contest_id', $contest->id)->exists())->toBeFalse();
+});
+
 it('keeps non-commissioners out of the wizard, and walks the old URL to it', function () {
     [, $group, $contest] = pickemContest();
     $member = User::factory()->create(['admin' => true]);
