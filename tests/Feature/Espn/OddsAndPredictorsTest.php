@@ -266,9 +266,9 @@ describe('odds that arrive in some other shape', function () {
         $current = GameOdd::where('phase', GameOdd::CURRENT)->sole();
 
         // Home +3.5 is the dog: the away side is favored, and the stored
-        // line is the favorite's number.
+        // line stays home-relative, ESPN's own convention.
         expect($current->favorite_team_id)->toBe(333)
-            ->and($current->spread)->toBe(-3.5)
+            ->and($current->spread)->toBe(3.5)
             ->and($current->over_under)->toBe(48.5)
             ->and($current->moneyline_home)->toBe(140)
             ->and($current->moneyline_away)->toBe(-165);
@@ -283,19 +283,47 @@ describe('odds that arrive in some other shape', function () {
 
         $current = GameOdd::where('phase', GameOdd::CURRENT)->sole();
 
+        // BAMA is away: home-relative, the line is +6.5.
         expect($current->favorite_team_id)->toBe(333)
-            ->and($current->spread)->toBe(-6.5);
+            ->and($current->spread)->toBe(6.5);
     });
 
-    it('never infers a favorite from the sign of a bare top-level spread', function () use ($competitors) {
-        // ESPN's sign convention on `spread` is theirs to define; a wrong
-        // favorite grades every pick on the game backwards.
+    it('reads the favorite off a bare home-relative spread', function () use ($competitors) {
+        // ESPN's `spread` is HOME-relative — verified 2026-09-23 on two
+        // production payloads (home dog TENN +4.5 beside "TEX -4.5", home
+        // favorite UGA -14). Negative means home is favored.
         app(SyncOdds::class)->fromCompetition(999, ['competitors' => $competitors, 'odds' => [[
             'provider' => ['id' => '100', 'name' => 'DraftKings'],
-            'spread' => -4.5,
+            'spread' => 4.5,
         ]]]);
 
-        expect(GameOdd::where('phase', GameOdd::CURRENT)->sole()->favorite_team_id)->toBeNull();
+        expect(GameOdd::where('phase', GameOdd::CURRENT)->sole()->favorite_team_id)->toBe(333);
+    });
+
+    it('parses the production scoreboard block as ESPN sends it today', function () {
+        // Trimmed from the 2026-09-23 production payload for TEX at TENN.
+        app(SyncOdds::class)->fromCompetition(999, ['competitors' => [
+            ['homeAway' => 'home', 'team' => ['id' => '61', 'abbreviation' => 'TENN']],
+            ['homeAway' => 'away', 'team' => ['id' => '333', 'abbreviation' => 'TEX']],
+        ], 'odds' => [[
+            'provider' => ['id' => '100', 'name' => 'DraftKings', 'priority' => 1],
+            'details' => 'TEX -4.5',
+            'overUnder' => 55.5,
+            'spread' => 4.5,
+            'awayTeamOdds' => ['favorite' => true, 'underdog' => false, 'team' => ['id' => '333', 'abbreviation' => 'TEX']],
+            'homeTeamOdds' => ['favorite' => false, 'underdog' => true, 'team' => ['id' => '61', 'abbreviation' => 'TENN']],
+            'moneyline' => ['home' => ['close' => ['odds' => '+170']], 'away' => ['close' => ['odds' => '-205']]],
+            'pointSpread' => ['home' => ['close' => ['line' => '+4.5']], 'away' => ['close' => ['line' => '-4.5']]],
+            'total' => ['over' => ['close' => ['line' => 'o55.5']]],
+        ]]]);
+
+        $current = GameOdd::where('phase', GameOdd::CURRENT)->sole();
+
+        expect($current->spread)->toBe(4.5)
+            ->and($current->favorite_team_id)->toBe(333)
+            ->and($current->over_under)->toBe(55.5)
+            ->and($current->moneyline_home)->toBe(170)
+            ->and($current->moneyline_away)->toBe(-205);
     });
 
     it('takes a flagged side whose team is only a $ref from the competitors', function () use ($competitors) {

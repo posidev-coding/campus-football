@@ -188,19 +188,24 @@ class EspnClient
             return null;
         }
 
-        return $this->decode($response, $url);
+        return $this->decode($response, $url, $query);
     }
 
-    protected function decode(Response $response, string $url): ?array
+    protected function decode(Response $response, string $url, array $query = []): ?array
     {
         if ($response->status() === 404) {
             return null;
         }
 
         if (! $response->successful()) {
+            // The query and the start of the body, not just the URL: a 400
+            // on the scoreboard in September 2026 logged only the path, and
+            // which parameter ESPN had turned on could not be told.
             Log::warning('ESPN returned an unsuccessful response', [
                 'url' => $url,
+                'query' => $query,
                 'status' => $response->status(),
+                'body' => Str::limit($response->body(), 300),
             ]);
 
             return null;

@@ -228,64 +228,47 @@ class SyncOdds
     /**
      * The line, from wherever ESPN put it, and the side it names favored.
      *
-     * The top-level `spread` is stored exactly as ESPN sends it — the rows
-     * already written carry that convention, and line movement compares
-     * against them. Only when it is ABSENT is the line rebuilt, from the
-     * `pointSpread` market block or the `details` string ("UGA -10"); a
-     * rebuilt line is written the way it prints, the favorite's number,
-     * negative. Every consumer of a spread reads its magnitude beside
-     * `favorite_team_id`, never its sign.
-     *
-     * The favored side comes back only from a source that NAMES it: the
-     * home market line's sign, or the abbreviation in `details`. The
-     * top-level number's sign convention is ESPN's to define, and a wrong
-     * favorite grades every pick on the game backwards.
+     * HOME-RELATIVE, ESPN's own convention for the top-level `spread` —
+     * verified on two production payloads 2026-09-23: home underdog
+     * Tennessee carried `spread: 4.5` beside "TEX -4.5", home favorite
+     * Georgia `spread: -14` beside "UGA -14". When the top-level number is
+     * absent the line is rebuilt in the same convention, from the
+     * `pointSpread` home market or the `details` string, so line movement
+     * always compares like with like.
      *
      * @return array{spread: float|null, favored: 'home'|'away'|null}
      */
     private function line(array $odds, array $sides): array
     {
-        $favored = null;
-        $rebuilt = null;
+        $spread = is_numeric($odds['spread'] ?? null) ? (float) $odds['spread'] : null;
 
         foreach (['current', 'close', 'open'] as $phase) {
-            $home = $this->number($odds['pointSpread']['home'][$phase]['line'] ?? null);
-
-            if ($home !== null) {
-                $favored = match (true) {
-                    $home < 0 => 'home',
-                    $home > 0 => 'away',
-                    default => null,
-                };
-                $rebuilt = -abs($home);
-
-                break;
-            }
+            $spread ??= $this->number($odds['pointSpread']['home'][$phase]['line'] ?? null);
         }
 
         $details = is_string($odds['details'] ?? null) ? trim($odds['details']) : null;
 
-        if ($details !== null && $rebuilt === null && preg_match('/^(EVEN|PK|PICK)$/i', $details)) {
-            $rebuilt = 0.0;
+        if ($spread === null && $details !== null && preg_match('/^(EVEN|PK|PICK)$/i', $details)) {
+            $spread = 0.0;
         }
 
-        if ($details !== null && preg_match('/^(\S+)\s+([+-]?\d+(?:\.\d+)?)$/', $details, $m)) {
-            $named = match (strtoupper($m[1])) {
-                strtoupper((string) $sides['home']['abbr']) => 'home',
-                strtoupper((string) $sides['away']['abbr']) => 'away',
+        // "UGA -10": the named team gives that number, so home-relative it
+        // is -10 when UGA is home and +10 when UGA is away.
+        if ($spread === null && $details !== null && preg_match('/^(\S+)\s+([+-]?\d+(?:\.\d+)?)$/', $details, $m)) {
+            $spread = match (strtoupper($m[1])) {
+                strtoupper((string) $sides['home']['abbr']) => (float) $m[2],
+                strtoupper((string) $sides['away']['abbr']) => -(float) $m[2],
                 default => null,
             };
-
-            // "UGA -10" names the favorite; "UGA +10" names the dog.
-            if ($named !== null) {
-                $favored ??= (float) $m[2] <= 0 ? $named : ($named === 'home' ? 'away' : 'home');
-                $rebuilt ??= -abs((float) $m[2]);
-            }
         }
 
         return [
-            'spread' => is_numeric($odds['spread'] ?? null) ? (float) $odds['spread'] : $rebuilt,
-            'favored' => $favored,
+            'spread' => $spread,
+            'favored' => match (true) {
+                $spread === null, $spread == 0 => null,
+                $spread < 0 => 'home',
+                default => 'away',
+            },
         ];
     }
 
@@ -380,9 +363,8 @@ class SyncOdds
 
     /**
      * The favorite: the side block flagged `favorite: true` (its own team
-     * id, else that side's competitor), else the side the line itself
-     * names. A pick'em line, or one nothing names, gives null — never a
-     * guess.
+     * id, else that side's competitor), else the side the home-relative
+     * line favors. A pick'em line gives null.
      *
      * @param  'home'|'away'|null  $favored
      */

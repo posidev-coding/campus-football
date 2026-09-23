@@ -6,6 +6,7 @@ use App\Models\Season;
 use App\Models\Team;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGames;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -78,6 +79,59 @@ it('syncs a week in a single request', function () {
     expect(app(SyncGames::class)->week($this->week))->toBe(1);
 
     Http::assertSentCount(1);
+});
+
+describe('a scoreboard request ESPN refuses', function () {
+    /*
+     * September 2026: every multi-day scoreboard request began coming back
+     * 400. The week and season tiers wrote nothing from Sep 15 on — no game,
+     * no line — while each run recorded "complete", and every group's build
+     * door shut on four stale lines. The request now steps down until ESPN
+     * accepts a shape, and says so when none is accepted.
+     */
+    it('never asks for a limit ESPN silently ignores', function () {
+        /*
+         * Measured in production on 2026-09-23: `limit=1000` on one Saturday
+         * returned ESPN's default 25 events, while `limit=300` returned all
+         * 65. A truncated card looks exactly like a complete one.
+         */
+        Queue::fake();
+
+        fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]);
+
+        app(SyncGames::class)->week($this->week);
+
+        Http::assertSent(fn (Request $request) => (int) ($request->data()['limit'] ?? 0) === 300);
+        Http::assertNotSent(fn (Request $request) => (int) ($request->data()['limit'] ?? 0) > 300);
+    });
+
+    it('walks the window one day at a time when every range is refused', function () {
+        Queue::fake();
+
+        Http::fake(['*scoreboard*' => function (Request $request) {
+            $dates = (string) ($request->data()['dates'] ?? '');
+
+            return match (true) {
+                str_contains($dates, '-') => Http::response(['code' => 400, 'message' => 'Failed to get events endpoint.'], 400),
+                $dates === '20250927' => Http::response(['events' => [scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]]),
+                default => Http::response(['events' => []]),
+            };
+        }]);
+
+        expect(app(SyncGames::class)->week($this->week))->toBe(1)
+            ->and(Game::find(401))->not->toBeNull();
+
+        // One refused range, then the seven days of 9/23-9/29 — the exact
+        // shape ESPN answered in production: 400 on any range, 200 per day.
+        Http::assertSentCount(8);
+    });
+
+    it('fails the run instead of calling a refused week quiet', function () {
+        Http::fake(['*scoreboard*' => Http::response(['code' => 400], 400)]);
+
+        expect(fn () => app(SyncGames::class)->week($this->week))
+            ->toThrow(RuntimeException::class, 'ESPN refused every scoreboard request');
+    });
 });
 
 /**

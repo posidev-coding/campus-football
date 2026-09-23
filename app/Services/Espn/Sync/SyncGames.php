@@ -18,6 +18,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -38,8 +39,32 @@ class SyncGames
         private SyncOdds $odds,
     ) {}
 
-    /** ESPN's hard cap on scoreboard results, whatever `limit` says. */
-    private const MAX_EVENTS = 1000;
+    /**
+     * The `limit` every scoreboard request sends.
+     *
+     * NOT 1000. Measured in production on 2026-09-23: `limit=1000` on one
+     * Saturday returned 25 events — ESPN's default page — while `limit=300`
+     * and no limit at all both returned all 65. An oversized limit is now
+     * silently ignored, so asking for "everything" gets the first 25.
+     */
+    private const LIMIT = 300;
+
+    /**
+     * ESPN's default page size: what an ignored `limit` quietly returns.
+     * A payload of exactly this many events is logged, never trusted blind.
+     */
+    private const DEFAULT_PAGE = 25;
+
+    /**
+     * Request shapes ESPN refused during this run — `range` (a multi-day
+     * window at all) or `day:limit` — so a refused shape is learned once per
+     * run, not once per window. Per instance, never static: the next run
+     * asks afresh, and the app returns to one request a window by itself
+     * once ESPN relents.
+     *
+     * @var array<string, true>
+     */
+    private array $refused = [];
 
     /** Days per request window. */
     private const WINDOW_DAYS = 30;
@@ -197,21 +222,27 @@ class SyncGames
      */
     public function range(string $from, ?string $to = null, int $group = 80): int
     {
-        $body = $this->espn->site('scoreboard', [
-            'limit' => self::MAX_EVENTS,
-            'dates' => $to === null ? $from : "{$from}-{$to}",
-            'groups' => $group,
-            // Deliberately uncached: these payloads are hundreds of kilobytes
-            // to tens of megabytes, and live data must never be served stale.
-        ], ttl: 0);
+        $body = $this->scoreboard($from, $to, $group);
 
-        if ($body === null || empty($body['events'])) {
+        if ($body === null) {
+            /*
+             * Every shape of the request was refused. Loud on purpose: a null
+             * here used to return 0 as if the week were simply quiet, and the
+             * run was recorded "complete" for eight days in September 2026
+             * while ESPN answered 400 to every multi-day window — no game or
+             * line was written in that time, and nothing said so.
+             */
+            throw new RuntimeException("ESPN refused every scoreboard request for {$from}".($to === null ? '' : "-{$to}"));
+        }
+
+        if (empty($body['events'])) {
             return 0;
         }
 
-        if (count($body['events']) >= self::MAX_EVENTS) {
-            Log::warning('Scoreboard hit the event cap; this window may be truncated', [
+        if (in_array(count($body['events']), [self::LIMIT, self::DEFAULT_PAGE], true)) {
+            Log::warning('Scoreboard returned exactly a page size; this window may be truncated', [
                 'window' => $to === null ? $from : "{$from}-{$to}",
+                'events' => count($body['events']),
             ]);
         }
 
@@ -288,6 +319,103 @@ class SyncGames
         $this->storeNetworks($body['events']);
 
         return $changed;
+    }
+
+    /**
+     * The scoreboard for a date or range, down a ladder of request shapes
+     * until one is accepted.
+     *
+     * Measured in production on 2026-09-23, after the week and season tiers
+     * had written nothing since Sep 15 while recording "complete":
+     *
+     *   dates=20260922-20260928 (any limit, or none)  400 "Failed to get events endpoint."
+     *   dates=20260926 limit=1000                     200, 25 events (silently truncated)
+     *   dates=20260926 limit=300                      200, 65 events
+     *   dates=20260926 (no limit)                     200, 65 events
+     *
+     * So: the one-request window first, in case ESPN restores ranges; one
+     * ET day at a time when it refuses them; and a day with no `limit` if
+     * even that is refused. Refused shapes are remembered for the run.
+     * Deliberately uncached: these payloads are large, and live data must
+     * never be served stale.
+     *
+     * @return array{events: list<array<string, mixed>>}|null null only when every shape was refused
+     */
+    private function scoreboard(string $from, ?string $to, int $group): ?array
+    {
+        if ($to !== null) {
+            if (! isset($this->refused['range'])) {
+                $body = $this->ask(['limit' => self::LIMIT, 'dates' => "{$from}-{$to}", 'groups' => $group]);
+
+                if ($body !== null) {
+                    return $body;
+                }
+
+                $this->refused['range'] = true;
+            }
+
+            return $this->byDay($from, $to, $group);
+        }
+
+        if (! isset($this->refused['day:'.self::LIMIT])) {
+            $body = $this->ask(['limit' => self::LIMIT, 'dates' => $from, 'groups' => $group]);
+
+            if ($body !== null) {
+                return $body;
+            }
+
+            $this->refused['day:'.self::LIMIT] = true;
+        }
+
+        // One day, no limit — ESPN's own default, which for a single
+        // Saturday measured complete.
+        return $this->ask(['dates' => $from, 'groups' => $group]);
+    }
+
+    /**
+     * One scoreboard request; a refusal is logged with the exact shape so
+     * the next change on ESPN's side is a log search, not an investigation.
+     *
+     * @param  array<string, int|string>  $query
+     */
+    private function ask(array $query): ?array
+    {
+        $body = $this->espn->site('scoreboard', $query, ttl: 0);
+
+        if ($body === null) {
+            Log::warning('ESPN refused a scoreboard shape; stepping down', $query);
+        }
+
+        return $body;
+    }
+
+    /**
+     * A range as one request per ET day, events merged. A week is eight
+     * requests instead of one — still inside the throttle, and only ever
+     * paid once the one-request shape has been refused.
+     *
+     * @return array{events: list<array<string, mixed>>}|null
+     */
+    private function byDay(string $from, string $to, int $group): ?array
+    {
+        $day = CarbonImmutable::createFromFormat('Ymd', $from)->startOfDay();
+        $last = CarbonImmutable::createFromFormat('Ymd', $to)->startOfDay();
+
+        $events = [];
+        $answered = false;
+
+        while ($day->lessThanOrEqualTo($last)) {
+            $body = $this->scoreboard($day->format('Ymd'), null, $group);
+
+            if ($body !== null) {
+                $answered = true;
+                array_push($events, ...($body['events'] ?? []));
+            }
+
+            $day = $day->addDay();
+        }
+
+        return $answered ? ['events' => $events] : null;
     }
 
     /**
