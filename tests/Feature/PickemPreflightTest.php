@@ -172,7 +172,7 @@ it('stays red only when the Saturday can seat no room at all', function () {
     expect($lines['status'])->toBe(PickemPreflight::FAIL)
         ->and($lines['detail'])->toContain('3 lined on Sat Sep 5')
         ->and($lines['detail'])->toContain('not enough for any room to publish')
-        ->and($lines['remedy'])->toBe('cfb:games --tier=current');
+        ->and($lines['remedy'])->toBe('cfb:games --tier=current --year=current');
 });
 
 it('reports the flag as closed, and never resolves Pennant to find out', function () {

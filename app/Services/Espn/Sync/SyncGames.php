@@ -17,6 +17,7 @@ use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
@@ -55,6 +56,12 @@ class SyncGames
      */
     private const DEFAULT_PAGE = 25;
 
+    /** Where a refused multi-day window is remembered across runs. */
+    private const RANGES_REFUSED_KEY = 'espn:scoreboard:ranges-refused';
+
+    /** How long before a refused range is asked about again. */
+    private const RANGES_REFUSED_HOURS = 12;
+
     /**
      * Request shapes ESPN refused during this run — `range` (a multi-day
      * window at all) or `day:limit` — so a refused shape is learned once per
@@ -77,7 +84,8 @@ class SyncGames
 
     /**
      * Tier 4 — the whole season, in overlapping date windows. Nine requests
-     * and ~950 games. Reserved for a backfill or a preseason rebuild;
+     * while ESPN serves ranges, one per ET day (~213) while it refuses them;
+     * ~950 games either way. Reserved for a backfill or a preseason rebuild;
      * everything below is a cheaper way to stay current.
      *
      * Two things force the windowing. First, one request per week silently
@@ -94,16 +102,28 @@ class SyncGames
     public function season(int $year, int $group = 80): int
     {
         $changed = 0;
+        $failures = [];
 
+        // Every window is attempted: one refused day in August must not cost
+        // the rest of the season its pass. The run still fails at the end.
         foreach ($this->windows($year) as [$from, $to]) {
-            $changed += $this->range($from, $to, $group);
+            try {
+                $changed += $this->range($from, $to, $group);
+            } catch (RuntimeException $e) {
+                $failures[] = $e->getMessage();
+            }
+        }
+
+        if ($failures !== []) {
+            throw new RuntimeException(implode('; ', $failures)." ({$changed} games changed in total)");
         }
 
         return $changed;
     }
 
     /**
-     * Tier 3 — one week, one request.
+     * Tier 3 — one week: one request, or one per ET day while ESPN refuses
+     * ranges (see scoreboard()).
      *
      * The weekly cadence: last week's finals and this week's slate. Note this
      * uses the week's DATE RANGE, not ESPN's `week=` parameter, which silently
@@ -153,9 +173,19 @@ class SyncGames
             return 0;
         }
 
-        // Still ONE request. A range only appears in the after-midnight tail,
-        // where it spans two ET dates rather than two calls.
-        return $this->range($days[0], count($days) > 1 ? end($days) : null, $group);
+        /*
+         * ONE request a minute, and never a range: ESPN has answered 400 to
+         * every multi-day `dates` since September 2026, and the step-down
+         * that follows would walk every day in between — every minute. The
+         * list is the two most recent live ET dates at most; on the rare
+         * night they straddle midnight (a late Hawaii kickoff beside a
+         * 22:30 ET game still in the fourth), the minutes alternate between
+         * them, so each game refreshes every other minute and the tier stays
+         * inside its one-request budget.
+         */
+        $days = array_slice($days, -2);
+
+        return $this->range($days[CarbonImmutable::now()->minute % count($days)], null, $group);
     }
 
     public function hasLiveGames(): bool
@@ -235,16 +265,34 @@ class SyncGames
             throw new RuntimeException("ESPN refused every scoreboard request for {$from}".($to === null ? '' : "-{$to}"));
         }
 
-        if (empty($body['events'])) {
+        $changed = $this->storeEvents($body['events'] ?? []);
+
+        /*
+         * Some days of the window answered and some were refused on every
+         * shape. What arrived is stored above; the run still fails, naming
+         * the holes — "complete" over a missing Saturday is the exact
+         * silence this ladder was built to end.
+         */
+        if (($body['missing'] ?? []) !== []) {
+            throw new RuntimeException('ESPN refused every scoreboard request for '.implode(', ', $body['missing'])." ({$changed} games changed from the days that answered)");
+        }
+
+        return $changed;
+    }
+
+    /**
+     * Store one payload's events: the preloaded maps, then each event in
+     * isolation. Returns the number of games that actually changed.
+     *
+     * @param  list<array<string, mixed>>  $events
+     */
+    private function storeEvents(array $events): int
+    {
+        if ($events === []) {
             return 0;
         }
 
-        if (in_array(count($body['events']), [self::LIMIT, self::DEFAULT_PAGE], true)) {
-            Log::warning('Scoreboard returned exactly a page size; this window may be truncated', [
-                'window' => $to === null ? $from : "{$from}-{$to}",
-                'events' => count($body['events']),
-            ]);
-        }
+        $body = ['events' => $events];
 
         $years = $this->yearsIn($body['events']);
         $seasons = Season::whereIn('year', $years)->get()->keyBy(fn (Season $s) => $s->year.':'.$s->type);
@@ -344,14 +392,20 @@ class SyncGames
     private function scoreboard(string $from, ?string $to, int $group): ?array
     {
         if ($to !== null) {
-            if (! isset($this->refused['range'])) {
+            if (! $this->rangesRefused()) {
                 $body = $this->ask(['limit' => self::LIMIT, 'dates' => "{$from}-{$to}", 'groups' => $group]);
 
                 if ($body !== null) {
                     return $body;
                 }
 
-                $this->refused['range'] = true;
+                // Only a REFUSAL teaches anything. A timeout or a 5xx after
+                // retries says nothing about the shape, so the next window
+                // is free to ask again.
+                if ($this->espn->lastStatus() === 400) {
+                    $this->refused['range'] = true;
+                    Cache::put(self::RANGES_REFUSED_KEY, true, now()->addHours(self::RANGES_REFUSED_HOURS));
+                }
             }
 
             return $this->byDay($from, $to, $group);
@@ -364,7 +418,9 @@ class SyncGames
                 return $body;
             }
 
-            $this->refused['day:'.self::LIMIT] = true;
+            if ($this->espn->lastStatus() === 400) {
+                $this->refused['day:'.self::LIMIT] = true;
+            }
         }
 
         // One day, no limit — ESPN's own default, which for a single
@@ -373,8 +429,24 @@ class SyncGames
     }
 
     /**
+     * Whether multi-day windows are known refused — this run, or recently
+     * by any run. Remembered in the cache so the hourly tiers do not each
+     * pay a request that is certain to 400 and log two warnings about it;
+     * the memory expires, so a range ESPN restores is found again within
+     * hours.
+     */
+    private function rangesRefused(): bool
+    {
+        return isset($this->refused['range']) || Cache::get(self::RANGES_REFUSED_KEY) === true;
+    }
+
+    /**
      * One scoreboard request; a refusal is logged with the exact shape so
      * the next change on ESPN's side is a log search, not an investigation.
+     *
+     * A payload of exactly a page size is flagged HERE, per response: on a
+     * merged week one truncated day would hide inside a total that is not a
+     * page size at all.
      *
      * @param  array<string, int|string>  $query
      */
@@ -383,7 +455,18 @@ class SyncGames
         $body = $this->espn->site('scoreboard', $query, ttl: 0);
 
         if ($body === null) {
-            Log::warning('ESPN refused a scoreboard shape; stepping down', $query);
+            Log::warning('ESPN refused a scoreboard shape; stepping down', [
+                ...$query,
+                'status' => $this->espn->lastStatus(),
+            ]);
+
+            return null;
+        }
+
+        $count = count($body['events'] ?? []);
+
+        if (in_array($count, [self::LIMIT, self::DEFAULT_PAGE], true)) {
+            Log::warning('Scoreboard returned exactly a page size; it may be truncated', [...$query, 'events' => $count]);
         }
 
         return $body;
@@ -394,7 +477,10 @@ class SyncGames
      * requests instead of one — still inside the throttle, and only ever
      * paid once the one-request shape has been refused.
      *
-     * @return array{events: list<array<string, mixed>>}|null
+     * A day refused on every shape is not skipped quietly: it comes back in
+     * `missing`, and range() stores what did arrive and then fails the run.
+     *
+     * @return array{events: list<array<string, mixed>>, missing: list<string>}|null null when no day answered
      */
     private function byDay(string $from, string $to, int $group): ?array
     {
@@ -402,12 +488,16 @@ class SyncGames
         $last = CarbonImmutable::createFromFormat('Ymd', $to)->startOfDay();
 
         $events = [];
+        $missing = [];
         $answered = false;
 
         while ($day->lessThanOrEqualTo($last)) {
-            $body = $this->scoreboard($day->format('Ymd'), null, $group);
+            $date = $day->format('Ymd');
+            $body = $this->scoreboard($date, null, $group);
 
-            if ($body !== null) {
+            if ($body === null) {
+                $missing[] = $date;
+            } else {
                 $answered = true;
                 array_push($events, ...($body['events'] ?? []));
             }
@@ -415,7 +505,7 @@ class SyncGames
             $day = $day->addDay();
         }
 
-        return $answered ? ['events' => $events] : null;
+        return $answered ? ['events' => $events, 'missing' => $missing] : null;
     }
 
     /**

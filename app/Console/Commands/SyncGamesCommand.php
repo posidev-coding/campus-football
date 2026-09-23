@@ -26,7 +26,7 @@ class SyncGamesCommand extends Command
 
     protected $signature = 'cfb:games
         {--tier=current : live|today|current|recent|week|season}
-        {--year= : Season year, or current|results resolved at run time (defaults to CFB_SEASON)}
+        {--year= : Season year, or current|results resolved at run time (defaults to current)}
         {--week= : Week number, with --tier=week}
         {--date= : A specific date (Y-m-d), with --tier=today}';
 
@@ -34,7 +34,14 @@ class SyncGamesCommand extends Command
 
     public function handle(SyncGames $games, EspnClient $espn): int
     {
-        $year = app(CfbCalendar::class)->resolveYear($this->option('year'));
+        /*
+         * A bare invocation means THE SEASON BEING PLAYED, resolved from the
+         * calendar — never `config('cfb.season')`. The schedule ran the
+         * current and recent tiers bare, the config default was 2025, and
+         * for the whole of September 2026 they synced 2025's final week
+         * (Dec 8-13) every hour while this season's games went unwritten.
+         */
+        $year = app(CfbCalendar::class)->resolveYear($this->option('year') ?? 'current');
         $tier = $this->option('tier');
 
         // Checked BEFORE the run is recorded — a typo is not a feed run.
@@ -61,8 +68,7 @@ class SyncGamesCommand extends Command
 
             // Last week plus this week. Catches late stat corrections and
             // rescheduled games without touching the rest of the season.
-            'recent' => $this->syncWeek($games, $year, $this->currentWeekNumber($year) - 1)
-                + $this->syncWeek($games, $year, $this->currentWeekNumber($year)),
+            'recent' => $this->recentTier($games, $year),
 
             'week' => $this->syncWeek($games, $year, (int) $this->option('week')),
 
@@ -97,6 +103,32 @@ class SyncGamesCommand extends Command
         }
 
         return $changed + $this->refreshStaleOdds($year);
+    }
+
+    /**
+     * Last week, then this week — BOTH attempted even when the first
+     * throws, so a refused day in last week's window cannot cost this
+     * week's card its nightly pass. The first failure still propagates.
+     */
+    private function recentTier(SyncGames $games, int $year): int
+    {
+        $week = $this->currentWeekNumber($year);
+        $changed = 0;
+        $failure = null;
+
+        foreach ([$week - 1, $week] as $number) {
+            try {
+                $changed += $this->syncWeek($games, $year, $number);
+            } catch (Throwable $e) {
+                $failure ??= $e;
+            }
+        }
+
+        if ($failure !== null) {
+            throw $failure;
+        }
+
+        return $changed;
     }
 
     private function refreshStaleOdds(int $year): int

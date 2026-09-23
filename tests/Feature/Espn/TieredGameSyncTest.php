@@ -7,8 +7,10 @@ use App\Models\Team;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGames;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 
 /*
@@ -81,6 +83,38 @@ it('syncs a week in a single request', function () {
     Http::assertSentCount(1);
 });
 
+it('syncs the season being played when run bare, whatever CFB_SEASON says', function () {
+    /*
+     * Production, 2026-09-23: CFB_SEASON resolved to 2025, the schedule ran
+     * `cfb:games --tier=current` bare, and the log showed it asking ESPN
+     * for dates=20251208-20251213 — 2025's final week — while Sat Sep 26
+     * 2026 sat with four stale lines.
+     */
+    config()->set('cfb.season', 2025);
+    $this->travelTo('2026-09-23 13:00:00');
+
+    $season = Season::factory()->create([
+        'year' => 2026,
+        'type' => Season::REGULAR,
+        'start_date' => '2026-08-22 07:00:00',
+        'end_date' => '2026-12-15 07:59:00',
+    ]);
+    Week::create([
+        'season_id' => $season->id,
+        'number' => 4,
+        'name' => 'Week 4',
+        'start_date' => '2026-09-22 07:00:00',
+        'end_date' => '2026-09-29 06:59:59',
+    ]);
+
+    Http::fake(['*scoreboard*' => Http::response(['events' => []])]);
+
+    $this->artisan('cfb:games', ['--tier' => 'current'])->assertSuccessful();
+
+    Http::assertSent(fn (Request $request) => str_starts_with((string) ($request->data()['dates'] ?? ''), '20260922'));
+    Http::assertNotSent(fn (Request $request) => str_starts_with((string) ($request->data()['dates'] ?? ''), '2025'));
+});
+
 describe('a scoreboard request ESPN refuses', function () {
     /*
      * September 2026: every multi-day scoreboard request began coming back
@@ -124,6 +158,81 @@ describe('a scoreboard request ESPN refuses', function () {
         // One refused range, then the seven days of 9/23-9/29 — the exact
         // shape ESPN answered in production: 400 on any range, 200 per day.
         Http::assertSentCount(8);
+    });
+
+    it('stores the days that answered and still fails the run over a missing one', function () {
+        Queue::fake();
+
+        Http::fake(['*scoreboard*' => function (Request $request) {
+            $dates = (string) ($request->data()['dates'] ?? '');
+
+            return match (true) {
+                str_contains($dates, '-'), $dates === '20250926' => Http::response(['code' => 400, 'message' => 'Failed to get events endpoint.'], 400),
+                $dates === '20250927' => Http::response(['events' => [scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]]),
+                default => Http::response(['events' => []]),
+            };
+        }]);
+
+        expect(fn () => app(SyncGames::class)->week($this->week))
+            ->toThrow(RuntimeException::class, '20250926');
+
+        // Saturday answered and was written; Friday's hole failed the run.
+        expect(Game::find(401))->not->toBeNull();
+    });
+
+    it('remembers a refused range across runs instead of paying the 400 every hour', function () {
+        Queue::fake();
+
+        Http::fake(['*scoreboard*' => fn (Request $request) => str_contains((string) ($request->data()['dates'] ?? ''), '-')
+            ? Http::response(['code' => 400, 'message' => 'Failed to get events endpoint.'], 400)
+            : Http::response(['events' => []])]);
+
+        // Two runs, two instances — the second never asks for the range.
+        app(SyncGames::class)->week($this->week);
+        app(SyncGames::class)->week($this->week);
+
+        $ranges = 0;
+        Http::assertSent(function (Request $request) use (&$ranges): bool {
+            $ranges += str_contains((string) ($request->data()['dates'] ?? ''), '-') ? 1 : 0;
+
+            return true;
+        });
+
+        expect($ranges)->toBe(1);
+    });
+
+    it('does not learn a refusal from a timeout or a server error', function () {
+        Queue::fake();
+
+        // A 503 on the range is not ESPN refusing the shape: the next run
+        // must be free to ask for the range again.
+        Http::fake(['*scoreboard*' => fn (Request $request) => str_contains((string) ($request->data()['dates'] ?? ''), '-')
+            ? Http::response('', 503)
+            : Http::response(['events' => []])]);
+
+        config()->set('espn.http.retries', 1);
+        config()->set('espn.http.retry_delay_ms', 0);
+
+        app(SyncGames::class)->week($this->week);
+
+        expect(Cache::get('espn:scoreboard:ranges-refused'))->toBeNull();
+    });
+
+    it('flags a single day that comes back exactly one default page', function () {
+        Queue::fake();
+        Log::spy();
+
+        Http::fake(['*scoreboard*' => fn (Request $request) => str_contains((string) ($request->data()['dates'] ?? ''), '-')
+            ? Http::response(['code' => 400], 400)
+            : Http::response(['events' => ($request->data()['dates'] ?? '') === '20250927'
+                ? array_map(fn (int $i) => scoreboardEvent(500 + $i, '2025-09-27T19:30Z', 0, 0), range(1, 25))
+                : []])]);
+
+        app(SyncGames::class)->week($this->week);
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context = []) => str_contains($message, 'page size') && ($context['dates'] ?? null) === '20250927')
+            ->once();
     });
 
     it('fails the run instead of calling a refused week quiet', function () {
@@ -654,9 +763,16 @@ describe('starting and holding the live window', function () {
         expect(scoreboardDatesSent())->toBe(['20250927']);
     });
 
-    it('covers both Eastern dates in one request when the slate straddles midnight', function () {
-        // A late Saturday game still playing while an early Sunday game kicks.
-        // Two scoreboard days, still ONE request — the budget is the point.
+    it('covers both Eastern dates one request a minute when the slate straddles midnight', function () {
+        /*
+         * A late Saturday game still playing while an early Sunday game kicks.
+         * Two scoreboard days, still ONE request a minute — the budget is the
+         * point. This asked for `20250927-20250928` in one request until ESPN
+         * began answering 400 to every multi-day `dates` (measured in
+         * production 2026-09-23); the minutes now alternate between the two
+         * dates, so each game refreshes every other minute and no range is
+         * ever sent.
+         */
         $this->travelTo('2025-09-28 05:00:00');
 
         Game::factory()->create([
@@ -680,6 +796,13 @@ describe('starting and holding the live window', function () {
         app(SyncGames::class)->live();
 
         Http::assertSentCount(1);
-        expect(scoreboardDatesSent())->toBe(['20250927-20250928']);
+        expect(scoreboardDatesSent())->toBe(['20250927']);
+
+        // The next minute takes the other date — still one request.
+        $this->travelTo('2025-09-28 05:01:00');
+        app(SyncGames::class)->live();
+
+        Http::assertSentCount(2);
+        expect(scoreboardDatesSent())->toBe(['20250927', '20250928']);
     });
 });

@@ -148,7 +148,13 @@ every live game's score, clock, period and status, which is also everything
 pick'em scoring needs. Respect the tiers in `SyncGames` and
 `routes/console.php`; v3 burst to ~20 requests/second.
 
-    live 0-1 · today 1 · current 1 · recent 2 · season 9
+    live 0-1 · today 1 · current 1 · recent 2 · season 9      (ESPN serving ranges)
+    live 0-1 · today 1 · current 8 · recent 16 · season ~213  (ranges refused, since Sep 2026)
+
+While ESPN refuses multi-day `dates` (400 "Failed to get events endpoint.",
+measured 2026-09-23), every window is fetched one ET day at a time; the
+refusal is cached for 12h so runs do not re-pay it. The live tier never sends
+a range: on a midnight straddle it alternates the two dates by minute.
 
 BOX SCORES are the other half, and they do not ride the scoreboard —
 `cfb:summaries:live` sweeps every in-progress game every two minutes, one

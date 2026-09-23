@@ -30,9 +30,22 @@ class EspnClient
     /** Requests issued by this instance — reported into feed_runs. */
     protected int $callCount = 0;
 
+    /**
+     * The HTTP status of the most recent request, or null when it never got
+     * one (connection failure, exhausted retries). Lets a caller tell ESPN
+     * REFUSING a request shape (400) from a transient failure without the
+     * null-means-no-data contract of get() changing for everyone else.
+     */
+    protected ?int $lastStatus = null;
+
     public function callCount(): int
     {
         return $this->callCount;
+    }
+
+    public function lastStatus(): ?int
+    {
+        return $this->lastStatus;
     }
 
     public function resetCallCount(): void
@@ -175,9 +188,11 @@ class EspnClient
     {
         $this->throttle();
         $this->callCount++;
+        $this->lastStatus = null;
 
         try {
             $response = $this->request()->get($url, $query);
+            $this->lastStatus = $response->status();
         } catch (\Throwable $e) {
             // Connection failures and exhausted retries land here.
             Log::warning('ESPN request failed', [

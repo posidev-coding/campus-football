@@ -61,8 +61,8 @@ class SyncHealth extends Page
     public static function runnableTasks(): array
     {
         return [
-            'cfb:games --tier=current' => 'Games — current week',
-            'cfb:games --tier=recent' => 'Games — recent (last week + this week)',
+            'cfb:games --tier=current --year=current' => 'Games — current week',
+            'cfb:games --tier=recent --year=current' => 'Games — recent (last week + this week)',
             'cfb:games --tier=season --year=current' => 'Games — whole current season',
             'cfb:sync --only=standings --year=results' => 'Standings',
             'cfb:sync --only=compute --year=results' => 'Standings — computed cross-check',

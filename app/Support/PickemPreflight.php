@@ -115,7 +115,7 @@ class PickemPreflight
         $saturday = Cadence::activeSaturday($week);
 
         if ($saturday === null) {
-            return $this->row('rooms', 'Open public rooms', self::FAIL, 'No Saturday to stock rooms for.', 'cfb:games --tier=current');
+            return $this->row('rooms', 'Open public rooms', self::FAIL, 'No Saturday to stock rooms for.', 'cfb:games --tier=current --year=current');
         }
 
         // The red line is the three STANDARD rooms — a specialty room of
@@ -242,13 +242,13 @@ class PickemPreflight
     private function linedGamesCheck(?Week $week): array
     {
         if ($week === null) {
-            return $this->row('lines', 'Lined games', self::FAIL, 'No week to count games in.', 'cfb:games --tier=current');
+            return $this->row('lines', 'Lined games', self::FAIL, 'No week to count games in.', 'cfb:games --tier=current --year=current');
         }
 
         $saturday = Cadence::activeSaturday($week);
 
         if ($saturday === null) {
-            return $this->row('lines', 'Lined games', self::FAIL, 'No Saturday to count games on.', 'cfb:games --tier=current');
+            return $this->row('lines', 'Lined games', self::FAIL, 'No Saturday to count games on.', 'cfb:games --tier=current --year=current');
         }
 
         $card = $saturday->toDateString();
@@ -292,7 +292,7 @@ class PickemPreflight
             'Lined games',
             self::FAIL,
             "{$lined} lined on {$on}; not enough for any room to publish.",
-            'cfb:games --tier=current',
+            'cfb:games --tier=current --year=current',
         );
     }
 
