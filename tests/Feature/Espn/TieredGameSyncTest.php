@@ -89,16 +89,20 @@ describe('a scoreboard request ESPN refuses', function () {
      * door shut on four stale lines. The request now steps down until ESPN
      * accepts a shape, and says so when none is accepted.
      */
-    it('steps down to a smaller limit when the full one is refused', function () {
+    it('never asks for a limit ESPN silently ignores', function () {
+        /*
+         * Measured in production on 2026-09-23: `limit=1000` on one Saturday
+         * returned ESPN's default 25 events, while `limit=300` returned all
+         * 65. A truncated card looks exactly like a complete one.
+         */
         Queue::fake();
 
-        Http::fake(['*scoreboard*' => fn (Request $request) => ($request->data()['limit'] ?? null) == 1000
-            ? Http::response(['code' => 400], 400)
-            : Http::response(['events' => [scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]])]);
+        fakeScoreboard([scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]);
 
-        expect(app(SyncGames::class)->week($this->week))->toBe(1);
+        app(SyncGames::class)->week($this->week);
 
-        Http::assertSentCount(2);
+        Http::assertSent(fn (Request $request) => (int) ($request->data()['limit'] ?? 0) === 300);
+        Http::assertNotSent(fn (Request $request) => (int) ($request->data()['limit'] ?? 0) > 300);
     });
 
     it('walks the window one day at a time when every range is refused', function () {
@@ -108,7 +112,7 @@ describe('a scoreboard request ESPN refuses', function () {
             $dates = (string) ($request->data()['dates'] ?? '');
 
             return match (true) {
-                str_contains($dates, '-') => Http::response(['code' => 400], 400),
+                str_contains($dates, '-') => Http::response(['code' => 400, 'message' => 'Failed to get events endpoint.'], 400),
                 $dates === '20250927' => Http::response(['events' => [scoreboardEvent(401, '2025-09-27T19:30Z', 31, 17)]]),
                 default => Http::response(['events' => []]),
             };
@@ -117,8 +121,9 @@ describe('a scoreboard request ESPN refuses', function () {
         expect(app(SyncGames::class)->week($this->week))->toBe(1)
             ->and(Game::find(401))->not->toBeNull();
 
-        // Two refused range shapes, then the seven days of 9/23-9/29.
-        Http::assertSentCount(9);
+        // One refused range, then the seven days of 9/23-9/29 — the exact
+        // shape ESPN answered in production: 400 on any range, 200 per day.
+        Http::assertSentCount(8);
     });
 
     it('fails the run instead of calling a refused week quiet', function () {
