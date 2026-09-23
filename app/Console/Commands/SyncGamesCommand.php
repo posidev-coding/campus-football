@@ -8,6 +8,7 @@ use App\Models\Week;
 use App\Services\CfbCalendar;
 use App\Services\Espn\EspnClient;
 use App\Services\Espn\Sync\SyncGames;
+use App\Services\Espn\Sync\SyncOdds;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 
@@ -52,7 +53,11 @@ class SyncGamesCommand extends Command
 
             // This week — the default, and the right thing to run hourly on a
             // game day.
-            'current' => $this->syncWeek($games, $year, $this->currentWeekNumber($year)),
+            // Plus the core-API odds fallback for any Saturday game the
+            // scoreboard left without a fresh line — zero requests on a week
+            // the scoreboard behaves. See SyncOdds::refreshStale().
+            'current' => $this->syncWeek($games, $year, $this->currentWeekNumber($year))
+                + $this->refreshStaleOdds($year),
 
             // Last week plus this week. Catches late stat corrections and
             // rescheduled games without touching the rest of the season.
@@ -73,6 +78,28 @@ class SyncGamesCommand extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    private function refreshStaleOdds(int $year): int
+    {
+        $season = Season::where('year', $year)->where('type', Season::REGULAR)->first();
+        $number = $this->currentWeekNumber($year);
+
+        $week = $season === null || $number < 1
+            ? null
+            : Week::where('season_id', $season->id)->where('number', $number)->first();
+
+        if ($week === null) {
+            return 0;
+        }
+
+        $lined = app(SyncOdds::class)->refreshStale($week);
+
+        if ($lined > 0) {
+            $this->line("  <fg=yellow>!</> {$lined} Saturday lines taken from the core odds fallback");
+        }
+
+        return $lined;
     }
 
     private function syncWeek(SyncGames $games, int $year, int $number): int
