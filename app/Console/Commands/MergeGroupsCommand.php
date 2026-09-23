@@ -126,7 +126,9 @@ class MergeGroupsCommand extends Command
 
         $sent = $record['notified'];
 
-        $this->info("Merged into {$into->name}. Queued {$sent['total']} notices (mail {$sent['mail']} · inbox {$sent['inbox']} · push {$sent['push']}).");
+        // Two lines, because a group's name can end in a period of its own.
+        $this->info("Merged into {$into->name}");
+        $this->info("Queued {$sent['total']} notices (mail {$sent['mail']} · inbox {$sent['inbox']} · push {$sent['push']}).");
         $this->line(json_encode($record, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 
         Log::info('pickem:merge-groups', $record);
