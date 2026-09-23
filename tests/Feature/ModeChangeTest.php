@@ -133,3 +133,35 @@ it('shows no lever to a plain member', function () {
     Livewire::actingAs($member)->test('group', ['group' => $group])
         ->assertDontSee('Change the game');
 });
+
+it('keeps the clubhouse standing when a Monday pivot leaves last Saturday\'s untiered card on screen', function () {
+    /*
+     * Sunday and Monday still show the Saturday just played
+     * (Cadence::currentSaturday), and the pick surface prices every card
+     * with the contest's CURRENT engine. A settled Shotgun card has no
+     * tiers, and a tiered engine's pointsFor() has no arm for a null tier
+     * — so the first day of the pivot window rendered a 500 to every member
+     * who opened the slate tab. Found while planning the private-group
+     * merge, whose run day is exactly that Monday.
+     */
+    Notification::fake();
+
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    $slate = pickemDraftSlate($contest);
+    app(PublishSlate::class)->handle($commissioner, $slate);
+    $slate->refresh()->update(['status' => Slate::SETTLED, 'settled_at' => now()]);
+
+    // Monday noon Eastern: the clubhouse is still on Saturday 9/5.
+    $this->travelTo('2026-09-07 16:00:00');
+
+    app(ChangeGroupMode::class)->handle($commissioner, $group, ContestMode::Woodshed);
+
+    $member = User::factory()->create(['admin' => true]);
+    GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+    $html = Livewire::actingAs($member)->test('group', ['group' => $group])
+        ->set('view', 'slate')
+        ->html();
+
+    expect($html)->toContain('wire:key="slate-'.$slate->id.'-pick-');
+});
