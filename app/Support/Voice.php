@@ -1885,6 +1885,90 @@ class Voice
         ],
 
         /*
+         * THE MERGE — private groups folded into one survivor by the house
+         * (MergeGroups). Two readers: whoever MOVED, whose group is gone,
+         * and whoever STAYED, whose group just filled up. Both are thanked
+         * first, because nobody asked either of them.
+         *
+         * The roast stays on the picks, never on the people and never on
+         * the groups that folded. `retired` is the one line that is FACT —
+         * what left History and what did not — so it barely moves between
+         * registers. The rules themselves come from ContestMode::ruleLines(),
+         * never from here, so the game is never described two ways.
+         */
+        'notify.groups_merged.subject.moved' => [
+            'pg' => ':former is now part of :group',
+            'pg13' => ':former is now part of :group',
+            'r' => ':former is now part of :group',
+        ],
+
+        'notify.groups_merged.subject.stayed' => [
+            'pg' => ':group just got bigger',
+            'pg13' => ':group just got bigger',
+            'r' => ':group just got bigger',
+        ],
+
+        'notify.groups_merged.moved.body' => [
+            'pg' => 'Thank you for playing in :former this season — it meant a lot to have you picking with us. To give everyone more people to pick against, the private groups are now one group, :group, and your seat there is already saved, so there is nothing you need to do.',
+            'pg13' => 'Thanks for playing in :former this season — every pick and every argument counted. Small groups make for quiet Saturdays, so the private groups are now one: :group, where your seat is already saved. Bigger field, louder group chat.',
+            'r' => 'Thanks for playing in :former this season. The picks were questionable; the loyalty never was. Small groups make for quiet Saturdays, so every private group just got poured into one: :group, where your seat is already waiting. More rivals, more picks to laugh at.',
+        ],
+
+        'notify.groups_merged.stayed.body' => [
+            'pg' => 'Thank you for playing in :group this season — it meant a lot to have you picking with us. To give everyone more people to pick against, the other :count private groups are joining you there.',
+            'pg13' => 'Thanks for keeping :group going this season — every pick and every argument counted. Small groups make for quiet Saturdays, so the other :count private groups are moving in. Same clubhouse, a lot more company.',
+            'r' => 'Thanks for keeping :group alive this season. The picks were questionable; the loyalty never was. Small groups make for quiet Saturdays, so the other :count private groups just moved in. Same clubhouse, more people to beat.',
+        ],
+
+        'notify.groups_merged.ran' => [
+            'pg' => 'And a special thank-you for running :former — building a slate every week is real work, and it did not go unnoticed.',
+            'pg13' => 'Extra thanks for running :former — building a slate every week is real work, and you did it.',
+            'r' => 'Extra thanks for running :former — building a slate every week is thankless work, so here, have a thank-you.',
+        ],
+
+        'notify.groups_merged.retired' => [
+            'pg' => ':former has been retired along with its slates and standings, so those weeks no longer appear in your History, and its old invite links no longer work. Your XP and Tallboys are yours to keep.',
+            'pg13' => ':former is retired, and its slates and standings go with it — those weeks leave your History, and its old invite links stop working. Your XP and Tallboys stay yours.',
+            'r' => ':former is retired, and its slates and standings go with it — those weeks leave your History, and its old invite links stop working. Your XP and Tallboys stay yours.',
+        ],
+
+        'notify.groups_merged.pivot' => [
+            'pg' => 'Starting with the next slate, :group plays :mode.',
+            'pg13' => 'Starting with the next slate, :group plays :mode. New week, new rules.',
+            'r' => 'Starting with the next slate, :group plays :mode, and it does not grade on a curve.',
+        ],
+
+        'notify.groups_merged.rules' => [
+            'pg' => 'Here is how :mode works:',
+            'pg13' => 'How :mode works:',
+            'r' => 'The rules of :mode, so nobody can plead ignorance later:',
+        ],
+
+        'notify.groups_merged.fresh_start' => [
+            'pg' => 'The season standings start over with the next slate, so everyone begins even.',
+            'pg13' => 'The season table resets with the next slate. Everybody starts 0–0.',
+            'r' => 'The season table resets with the next slate. Everybody starts 0–0, and nobody gets to live off an early lead.',
+        ],
+
+        'notify.groups_merged.runs_it' => [
+            'pg' => 'The next slate is yours to build — :size games. Publish it by :deadline, or the standard slate publishes itself so the group never misses a week.',
+            'pg13' => 'Your move, commissioner: the next slate is :size games. Publish it by :deadline, or the standard slate ships without you.',
+            'r' => 'Your move, commissioner. :size games, due :deadline — sleep through it and the standard slate ships without you.',
+        ],
+
+        'notify.groups_merged.inbox.moved' => [
+            'pg' => ':former is now part of :group, which plays :mode from the next slate.',
+            'pg13' => ':former moved into :group — :mode from the next slate.',
+            'r' => ':former folded into :group — :mode from the next slate, so bring better picks.',
+        ],
+
+        'notify.groups_merged.inbox.stayed' => [
+            'pg' => 'The other private groups joined :group, which plays :mode from the next slate.',
+            'pg13' => 'Every private group moved into :group — :mode from the next slate.',
+            'r' => 'Everybody moved into :group, and it plays :mode from the next slate. More people, fewer excuses.',
+        ],
+
+        /*
          * THE WEEKLY LOOP — picks are due, and here is how you did.
          *
          * Every one of these renders from a QUEUED job, so every caller

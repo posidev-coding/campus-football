@@ -803,6 +803,30 @@ php artisan pickem:announce --slate=42            # clears results_announced_at,
 the ANNOUNCEMENT, never a settle button: payouts are keyed and `settled_at`
 is untouched by anything it does.
 
+Folding private groups into one survivor is `pickem:merge-groups`, and it
+is IRREVERSIBLE — the folded groups are deleted with their slates, picks,
+entries, invites, Talk posts and icons (XP and Tallboys stay; those weeks
+leave History and the weeks-played count behind the Tallboy milestones).
+Snapshot the database first, and read the dry run before the real one:
+
+```
+php artisan pickem:merge-groups                   # every private group, with its code
+php artisan pickem:merge-groups WDSQVFOX --from=AAAA1111,BBBB2222 \
+    --mode=woodshed --ledger=fresh --dry          # the whole plan, nothing written
+php artisan pickem:merge-groups WDSQVFOX --from=AAAA1111,BBBB2222 \
+    --mode=woodshed --ledger=fresh --force        # production refuses without --force
+```
+
+`--mode` (classic, tiered, woodshed or keep) and `--ledger` (fresh or keep)
+are required on every run. `fresh` re-marks the survivor's settled slates as
+exhibitions so its season table starts at 0–0 — the one sanctioned rewrite
+of that flag. It refuses while any slate in the set is published or prelim,
+so its window is settle-to-publish: run it on a Monday, and never within a
+few minutes of the top of the hour, when the publish and settle sweeps run.
+Every member of the survivor gets `GroupsMerged` (inbox always, mail to
+verified addresses, push where subscribed), and the real run prints and
+logs a JSON record of every id it changed, the flipped slates included.
+
 **A seed is not finished when `cfb:migrate` exits.** Its `rosters` and `stats`
 steps QUEUE `SyncTeamSeason` jobs rather than running inline, and seeding
 completed games trips the just-final branch in `SyncGames::store()`, so a

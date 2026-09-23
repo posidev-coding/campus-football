@@ -12,6 +12,7 @@ use App\Models\Slate;
 use App\Models\User;
 use App\Notifications\GroupModeChanged;
 use App\Services\CfbCalendar;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use InvalidArgumentException;
 
@@ -72,29 +73,49 @@ class ChangeGroupMode
             throw ModeChangeBlocked::alreadyUsed();
         }
 
+        $contest = $this->pivot($contest, $mode);
+
+        $told = $group->members()->where('users.id', '!=', $actor->id)->get();
+        Notification::send($told, new GroupModeChanged($group, $mode));
+
+        return $contest;
+    }
+
+    /**
+     * The switch itself, for a caller that has already cleared its own gates
+     * — the commissioner's lever above, and the house folding groups
+     * together in MergeGroups, which announces the change in its own note.
+     *
+     * Only the in-flight guard lives here, because it is not about who is
+     * asking: the engine reads the mode at GRADE time, so a published week
+     * re-priced mid-flight is wrong whoever pulled the lever.
+     *
+     * @throws ModeChangeBlocked when a published week is still in flight
+     */
+    public function pivot(Contest $contest, ContestMode $mode): Contest
+    {
         if ($contest->slates()->whereIn('status', [Slate::PUBLISHED, Slate::PRELIM])->exists()) {
             throw ModeChangeBlocked::slateInFlight();
         }
 
-        $contest->update([
-            'mode' => $mode,
-            'mode_changed_at' => now(),
-        ]);
-
-        // Reset any draft for refill: clear the tiebreaker pointer FIRST —
-        // it references a slate_games row about to be deleted (the FK
-        // would null it anyway; being explicit keeps the intent readable).
-        foreach ($contest->slates()->where('status', Slate::DRAFT)->get() as $draft) {
-            $draft->update([
-                'tiebreaker_slate_game_id' => null,
-                'tiebreaker_metric' => null,
-                'tiebreaker_team_id' => null,
+        DB::transaction(function () use ($contest, $mode): void {
+            $contest->update([
+                'mode' => $mode,
+                'mode_changed_at' => now(),
             ]);
-            $draft->games()->delete();
-        }
 
-        $told = $group->members()->where('users.id', '!=', $actor->id)->get();
-        Notification::send($told, new GroupModeChanged($group, $mode));
+            // Reset any draft for refill: clear the tiebreaker pointer FIRST —
+            // it references a slate_games row about to be deleted (the FK
+            // would null it anyway; being explicit keeps the intent readable).
+            foreach ($contest->slates()->where('status', Slate::DRAFT)->get() as $draft) {
+                $draft->update([
+                    'tiebreaker_slate_game_id' => null,
+                    'tiebreaker_metric' => null,
+                    'tiebreaker_team_id' => null,
+                ]);
+                $draft->games()->delete();
+            }
+        });
 
         return $contest;
     }

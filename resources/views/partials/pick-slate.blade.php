@@ -322,6 +322,11 @@
 
             <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 @foreach ($tierGames as $slateGame)
+                    {{-- An untiered game carries no price, and the engine is
+                         the contest's CURRENT mode: a settled Shotgun card
+                         still on screen after a Monday pivot to a tiered mode
+                         would hand a null tier to a match with no arm for it.
+                         The card only ever prints a tier's price. --}}
                     <x-pick-card
                         wire:key="slate-{{ $slate->id }}-pick-{{ $slateGame->id }}"
                         :slate-game="$slateGame"
@@ -329,7 +334,7 @@
                         :locked="$slateGame->game->hasKickedOff() || ($interactive && $this->needsHandle)"
                         :interactive="$interactive"
                         :tiebreaker="$slate->tiebreaker_slate_game_id === $slateGame->id"
-                        :points="$engine->pointsFor($slateGame)"
+                        :points="$slateGame->tier === null ? null : $engine->pointsFor($slateGame)"
                         :bear-team-id="$slateGame->bear_team_id"
                         :featured="$engine->supportsLock() && $slate->tiebreaker_slate_game_id === $slateGame->id"
                         :lockable="$interactive && $engine->supportsLock() && $slate->tiebreaker_slate_game_id === $slateGame->id"

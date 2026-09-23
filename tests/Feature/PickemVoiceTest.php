@@ -65,6 +65,9 @@ it('speaks every register on the rebuild\'s new families', function (string $key
         // The app invite's share text is personalized by the SHARER's
         // first name; without this the line renders a literal ":inviter".
         'inviter' => 'X',
+        // The merge note: the folded group, the survivor's slate size and
+        // the league's deadline label.
+        'former' => 'X', 'size' => '15', 'deadline' => 'Thu 12:00pm ET',
     ];
 
     $pg = Voice::line($key, $replace, for: User::factory()->make(['content_rating' => ContentRating::Pg]));
@@ -185,6 +188,17 @@ it('speaks every register on the rebuild\'s new families', function (string $key
     'notify.results.bear.beat',
     'notify.results.bear.lost',
     'notify.inbox.empty',
+    // The merge note. Its subjects are facts and `retired` is the one
+    // factual line in it, so those three sit out of this sweep.
+    'notify.groups_merged.moved.body',
+    'notify.groups_merged.stayed.body',
+    'notify.groups_merged.ran',
+    'notify.groups_merged.pivot',
+    'notify.groups_merged.rules',
+    'notify.groups_merged.fresh_start',
+    'notify.groups_merged.runs_it',
+    'notify.groups_merged.inbox.moved',
+    'notify.groups_merged.inbox.stayed',
 ]);
 
 it('leaves no stray token in the weekly loop\'s copy', function () {
@@ -203,6 +217,9 @@ it('leaves no stray token in the weekly loop\'s copy', function () {
         'rival' => 'dave', 'margin' => '4', 'mode' => 'Shotgun',
         // The direct invite credits its sender by handle.
         'inviter' => '@dave',
+        // The merge note names the folded group, the survivor's slate size
+        // and the league's deadline.
+        'former' => 'Fourth and Long', 'size' => '15', 'deadline' => 'Thu 12:00pm ET',
     ];
 
     foreach ($lines as $key => $variants) {
