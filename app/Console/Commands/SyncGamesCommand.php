@@ -11,6 +11,7 @@ use App\Services\Espn\Sync\SyncGames;
 use App\Services\Espn\Sync\SyncOdds;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
+use Throwable;
 
 /**
  * Game sync at a chosen cost tier.
@@ -56,8 +57,7 @@ class SyncGamesCommand extends Command
             // Plus the core-API odds fallback for any Saturday game the
             // scoreboard left without a fresh line — zero requests on a week
             // the scoreboard behaves. See SyncOdds::refreshStale().
-            'current' => $this->syncWeek($games, $year, $this->currentWeekNumber($year))
-                + $this->refreshStaleOdds($year),
+            'current' => $this->currentTier($games, $year),
 
             // Last week plus this week. Catches late stat corrections and
             // rescheduled games without touching the rest of the season.
@@ -78,6 +78,25 @@ class SyncGamesCommand extends Command
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The week, then the odds fallback — and the fallback runs even when the
+     * scoreboard throws, because a refused scoreboard is exactly the week
+     * the fallback exists for. The failure still propagates, so the run is
+     * recorded failed rather than "complete".
+     */
+    private function currentTier(SyncGames $games, int $year): int
+    {
+        try {
+            $changed = $this->syncWeek($games, $year, $this->currentWeekNumber($year));
+        } catch (Throwable $e) {
+            $this->refreshStaleOdds($year);
+
+            throw $e;
+        }
+
+        return $changed + $this->refreshStaleOdds($year);
     }
 
     private function refreshStaleOdds(int $year): int
