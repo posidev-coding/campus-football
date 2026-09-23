@@ -98,6 +98,22 @@ it('sweeps pick reminders often enough for a ninety-minute last call', function 
         ->and($entry->expression)->toBe('*/15 * * * *');
 });
 
+it('names the season on every games sync, never leaning on the config default', function () {
+    /*
+     * The current and recent tiers ran bare, `--year` fell through to
+     * `config('cfb.season')` — 2025 in production — and for all of
+     * September 2026 they synced 2025's final week every hour while this
+     * season went unwritten. The command's own default is fixed too; this
+     * keeps the schedule from ever depending on it.
+     */
+    $bare = collect(app(Schedule::class)->events())
+        ->map(fn (Event $event) => $event->command ?? '')
+        ->filter(fn (string $command) => str_contains($command, 'cfb:games') && ! str_contains($command, '--tier=live'))
+        ->reject(fn (string $command) => str_contains($command, '--year='));
+
+    expect($bare->values()->all())->toBe([]);
+});
+
 it('refreshes the upcoming card hourly through the build window', function () {
     /*
      * Tuesday and Wednesday are when commissioners build, and the build
@@ -114,7 +130,7 @@ it('refreshes the upcoming card hourly through the build window', function () {
         ->and($entry->timezone)->toBe(config('cfb.timezone'));
 
     $task = collect(app(SyncSchedule::class)->tasks())
-        ->first(fn (array $task) => $task['name'] === 'cfb:games --tier=current' && str_contains($task['cadence'], 'Tue/Wed'));
+        ->first(fn (array $task) => $task['name'] === 'cfb:games --tier=current --year=current' && str_contains($task['cadence'], 'Tue/Wed'));
 
     expect($task['cadence'] ?? null)->toBe('hourly Tue/Wed 08:00-23:00');
 });

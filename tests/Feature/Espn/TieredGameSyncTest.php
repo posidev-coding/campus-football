@@ -81,6 +81,38 @@ it('syncs a week in a single request', function () {
     Http::assertSentCount(1);
 });
 
+it('syncs the season being played when run bare, whatever CFB_SEASON says', function () {
+    /*
+     * Production, 2026-09-23: CFB_SEASON resolved to 2025, the schedule ran
+     * `cfb:games --tier=current` bare, and the log showed it asking ESPN
+     * for dates=20251208-20251213 — 2025's final week — while Sat Sep 26
+     * 2026 sat with four stale lines.
+     */
+    config()->set('cfb.season', 2025);
+    $this->travelTo('2026-09-23 13:00:00');
+
+    $season = Season::factory()->create([
+        'year' => 2026,
+        'type' => Season::REGULAR,
+        'start_date' => '2026-08-22 07:00:00',
+        'end_date' => '2026-12-15 07:59:00',
+    ]);
+    Week::create([
+        'season_id' => $season->id,
+        'number' => 4,
+        'name' => 'Week 4',
+        'start_date' => '2026-09-22 07:00:00',
+        'end_date' => '2026-09-29 06:59:59',
+    ]);
+
+    Http::fake(['*scoreboard*' => Http::response(['events' => []])]);
+
+    $this->artisan('cfb:games', ['--tier' => 'current'])->assertSuccessful();
+
+    Http::assertSent(fn (Request $request) => str_starts_with((string) ($request->data()['dates'] ?? ''), '20260922'));
+    Http::assertNotSent(fn (Request $request) => str_starts_with((string) ($request->data()['dates'] ?? ''), '2025'));
+});
+
 describe('a scoreboard request ESPN refuses', function () {
     /*
      * September 2026: every multi-day scoreboard request began coming back

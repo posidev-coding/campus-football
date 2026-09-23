@@ -26,7 +26,7 @@ class SyncGamesCommand extends Command
 
     protected $signature = 'cfb:games
         {--tier=current : live|today|current|recent|week|season}
-        {--year= : Season year, or current|results resolved at run time (defaults to CFB_SEASON)}
+        {--year= : Season year, or current|results resolved at run time (defaults to current)}
         {--week= : Week number, with --tier=week}
         {--date= : A specific date (Y-m-d), with --tier=today}';
 
@@ -34,7 +34,14 @@ class SyncGamesCommand extends Command
 
     public function handle(SyncGames $games, EspnClient $espn): int
     {
-        $year = app(CfbCalendar::class)->resolveYear($this->option('year'));
+        /*
+         * A bare invocation means THE SEASON BEING PLAYED, resolved from the
+         * calendar — never `config('cfb.season')`. The schedule ran the
+         * current and recent tiers bare, the config default was 2025, and
+         * for the whole of September 2026 they synced 2025's final week
+         * (Dec 8-13) every hour while this season's games went unwritten.
+         */
+        $year = app(CfbCalendar::class)->resolveYear($this->option('year') ?? 'current');
         $tier = $this->option('tier');
 
         // Checked BEFORE the run is recorded — a typo is not a feed run.

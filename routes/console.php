@@ -92,7 +92,7 @@ Schedule::command('cfb:summaries:live')
 
 // Tier 2 — the current week on game days, catching finals and late corrections
 // once the live window closes.
-Schedule::command('cfb:games --tier=current')
+Schedule::command('cfb:games --tier=current --year=current')
     ->hourly()
     ->timezone($tz)
     ->when($inSeason)
@@ -111,7 +111,7 @@ Schedule::command('cfb:games --tier=current')
  * A cron hour-range rather than between(): the overdue check reads the cron
  * alone, and a between() gap would read as a missed run every morning.
  */
-Schedule::command('cfb:games --tier=current')
+Schedule::command('cfb:games --tier=current --year=current')
     ->cron('0 8-23 * * '.ScheduleClass::TUESDAY.','.ScheduleClass::WEDNESDAY)
     ->timezone($tz)
     ->when($inSeason)
@@ -119,7 +119,7 @@ Schedule::command('cfb:games --tier=current')
 
 // Tier 3 — last week plus this week. Two requests, nightly. Picks up stat
 // corrections and rescheduled games without touching the rest of the season.
-Schedule::command('cfb:games --tier=recent')
+Schedule::command('cfb:games --tier=recent --year=current')
     ->dailyAt('04:00')
     ->timezone($tz)
     ->when($inSeason)
