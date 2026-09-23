@@ -5,9 +5,11 @@ use App\Models\GameOdd;
 use App\Models\GamePredictor;
 use App\Models\Season;
 use App\Models\Team;
+use App\Models\Week;
 use App\Services\Espn\Sync\SyncOdds;
 use App\Services\Espn\Sync\SyncPredictors;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 beforeEach(function () {
     config()->set('espn.http.rate_limit', 0);
@@ -235,4 +237,168 @@ it('reaches past the default window when a human asks it to', function () {
     // ...and widening it reaches the fixture.
     $this->artisan('cfb:sync --only=predictors --days=25')->assertSuccessful();
     expect(GamePredictor::count())->toBe(1);
+});
+
+describe('odds that arrive in some other shape', function () {
+    /*
+     * September 2026: ESPN's site showed a spread on every Saturday game
+     * while our last line write was Sep 15 — the scoreboard's odds stopped
+     * parsing, silently, and every group's build door shut on the four
+     * stale lines left. These pin each place a line can hide, and the
+     * fallback that fetches it when the scoreboard carries none.
+     */
+    $competitors = [
+        ['homeAway' => 'home', 'team' => ['id' => '61', 'abbreviation' => 'UGA']],
+        ['homeAway' => 'away', 'team' => ['id' => '333', 'abbreviation' => 'BAMA']],
+    ];
+
+    it('reads the market block when the top-level numbers are gone', function () use ($competitors) {
+        app(SyncOdds::class)->fromCompetition(999, ['competitors' => $competitors, 'odds' => [[
+            'provider' => ['id' => '100', 'name' => 'DraftKings'],
+            'pointSpread' => [
+                'home' => ['current' => ['line' => '+3.5', 'odds' => '-110']],
+                'away' => ['current' => ['line' => '-3.5', 'odds' => '-110']],
+            ],
+            'total' => ['over' => ['current' => ['line' => 'o48.5']]],
+            'moneyline' => ['home' => ['current' => ['odds' => '+140']], 'away' => ['current' => ['odds' => '-165']]],
+        ]]]);
+
+        $current = GameOdd::where('phase', GameOdd::CURRENT)->sole();
+
+        // Home +3.5 is the dog: the away side is favored, and the stored
+        // line is the favorite's number.
+        expect($current->favorite_team_id)->toBe(333)
+            ->and($current->spread)->toBe(-3.5)
+            ->and($current->over_under)->toBe(48.5)
+            ->and($current->moneyline_home)->toBe(140)
+            ->and($current->moneyline_away)->toBe(-165);
+    });
+
+    it('reads the favorite off details when no side is flagged', function () use ($competitors) {
+        app(SyncOdds::class)->fromCompetition(999, ['competitors' => $competitors, 'odds' => [[
+            'provider' => ['id' => '100', 'name' => 'DraftKings'],
+            'details' => 'BAMA -6.5',
+            'overUnder' => 51.5,
+        ]]]);
+
+        $current = GameOdd::where('phase', GameOdd::CURRENT)->sole();
+
+        expect($current->favorite_team_id)->toBe(333)
+            ->and($current->spread)->toBe(-6.5);
+    });
+
+    it('never infers a favorite from the sign of a bare top-level spread', function () use ($competitors) {
+        // ESPN's sign convention on `spread` is theirs to define; a wrong
+        // favorite grades every pick on the game backwards.
+        app(SyncOdds::class)->fromCompetition(999, ['competitors' => $competitors, 'odds' => [[
+            'provider' => ['id' => '100', 'name' => 'DraftKings'],
+            'spread' => -4.5,
+        ]]]);
+
+        expect(GameOdd::where('phase', GameOdd::CURRENT)->sole()->favorite_team_id)->toBeNull();
+    });
+
+    it('takes a flagged side whose team is only a $ref from the competitors', function () use ($competitors) {
+        app(SyncOdds::class)->fromCompetition(999, ['competitors' => $competitors, 'odds' => [[
+            'provider' => ['id' => '100', 'name' => 'DraftKings'],
+            'spread' => -7.5,
+            'homeTeamOdds' => ['favorite' => true, 'team' => ['$ref' => 'http://x/teams/61']],
+            'awayTeamOdds' => ['favorite' => false, 'team' => ['$ref' => 'http://x/teams/333']],
+        ]]]);
+
+        expect(GameOdd::where('phase', GameOdd::CURRENT)->sole()->favorite_team_id)->toBe(61);
+    });
+
+    it('skips a $ref stub without throwing, and says what it could not read', function () {
+        Log::spy();
+
+        expect(app(SyncOdds::class)->fromCompetition(999, ['odds' => ['$ref' => 'http://x/odds']]))->toBe(0)
+            ->and(GameOdd::count())->toBe(0);
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message) => str_contains($message, 'no line we could parse'))
+            ->once();
+    });
+});
+
+describe('the core odds fallback', function () {
+    beforeEach(function () {
+        $this->travelTo('2026-09-22 16:00:00');
+
+        $this->week = Week::factory()->create([
+            'season_id' => $this->season->id,
+            'number' => 4,
+            'start_date' => '2026-09-22 07:00:00',
+            'end_date' => '2026-09-29 06:59:59',
+        ]);
+
+        // Saturday 3:30pm ET — inside the slate window.
+        $this->saturday = Game::factory()->create([
+            'id' => 1001,
+            'season_id' => $this->season->id,
+            'week_id' => $this->week->id,
+            'home_team_id' => 61,
+            'away_team_id' => 333,
+            'completed' => false,
+            'kickoff_at' => '2026-09-26 19:30:00',
+            'kickoff_day' => 'Sat',
+        ]);
+    });
+
+    it('fetches a line for a Saturday game the scoreboard left stale', function () {
+        // The last line anyone wrote is a week old — exactly the state
+        // production sat in.
+        GameOdd::create([
+            'game_id' => 1001, 'provider_id' => 100, 'provider' => 'DraftKings',
+            'phase' => GameOdd::CURRENT, 'spread' => -10, 'favorite_team_id' => 61,
+            'captured_at' => '2026-09-15 09:00:00',
+        ]);
+
+        Http::fake(['*events/1001/competitions/1001/odds*' => Http::response(['count' => 1, 'items' => [[
+            'provider' => ['id' => '100', 'name' => 'DraftKings'],
+            'details' => 'UGA -9.5',
+            'overUnder' => 52.5,
+            'spread' => -9.5,
+            'homeTeamOdds' => ['favorite' => true, 'team' => ['$ref' => 'http://x/teams/61']],
+            'awayTeamOdds' => ['favorite' => false, 'team' => ['$ref' => 'http://x/teams/333']],
+        ]]])]);
+
+        expect(app(SyncOdds::class)->refreshStale($this->week))->toBe(1);
+
+        $current = GameOdd::where('game_id', 1001)->where('phase', GameOdd::CURRENT)->sole();
+
+        expect($current->spread)->toBe(-9.5)
+            ->and($current->favorite_team_id)->toBe(61)
+            ->and($current->captured_at->greaterThan(now()->subMinute()))->toBeTrue();
+    });
+
+    it('follows $ref stubs when the collection is not expanded', function () {
+        Http::fake([
+            '*events/1001/competitions/1001/odds/100*' => Http::response([
+                'provider' => ['id' => '100', 'name' => 'DraftKings'],
+                'details' => 'BAMA -3',
+                'overUnder' => 47.5,
+            ]),
+            '*events/1001/competitions/1001/odds*' => Http::response(['count' => 1, 'items' => [
+                ['$ref' => 'http://sports.core.api.espn.com/v2/sports/football/leagues/college-football/events/1001/competitions/1001/odds/100'],
+            ]]),
+        ]);
+
+        expect(app(SyncOdds::class)->refreshStale($this->week))->toBe(1)
+            ->and(GameOdd::where('game_id', 1001)->where('phase', GameOdd::CURRENT)->sole()->favorite_team_id)->toBe(333);
+    });
+
+    it('spends nothing on a Saturday the scoreboard already lined', function () {
+        GameOdd::create([
+            'game_id' => 1001, 'provider_id' => 100, 'provider' => 'DraftKings',
+            'phase' => GameOdd::CURRENT, 'spread' => -10, 'favorite_team_id' => 61,
+            'captured_at' => now()->subMinutes(20),
+        ]);
+
+        Http::fake();
+
+        expect(app(SyncOdds::class)->refreshStale($this->week))->toBe(0);
+
+        Http::assertNothingSent();
+    });
 });
