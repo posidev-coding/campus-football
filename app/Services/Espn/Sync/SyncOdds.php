@@ -149,10 +149,13 @@ class SyncOdds
             ->where('week_id', $week->id)
             ->upcoming()
             ->where('kickoff_at', '<=', CarbonImmutable::now()->addDays(8))
+            // Fresh means a current line from the last few hours — a pick'em
+            // (spread 0) names no favorite and is still a fresh line, not a
+            // reason to ask the core API again every run.
             ->whereDoesntHave('odds', fn ($query) => $query
                 ->where('phase', GameOdd::CURRENT)
                 ->whereNotNull('spread')
-                ->whereNotNull('favorite_team_id')
+                ->where(fn ($line) => $line->whereNotNull('favorite_team_id')->orWhere('spread', 0))
                 ->where('captured_at', '>=', $fresh))
             ->with(['homeTeam:id,abbreviation', 'awayTeam:id,abbreviation'])
             ->get()

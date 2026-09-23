@@ -68,8 +68,7 @@ class SyncGamesCommand extends Command
 
             // Last week plus this week. Catches late stat corrections and
             // rescheduled games without touching the rest of the season.
-            'recent' => $this->syncWeek($games, $year, $this->currentWeekNumber($year) - 1)
-                + $this->syncWeek($games, $year, $this->currentWeekNumber($year)),
+            'recent' => $this->recentTier($games, $year),
 
             'week' => $this->syncWeek($games, $year, (int) $this->option('week')),
 
@@ -104,6 +103,32 @@ class SyncGamesCommand extends Command
         }
 
         return $changed + $this->refreshStaleOdds($year);
+    }
+
+    /**
+     * Last week, then this week — BOTH attempted even when the first
+     * throws, so a refused day in last week's window cannot cost this
+     * week's card its nightly pass. The first failure still propagates.
+     */
+    private function recentTier(SyncGames $games, int $year): int
+    {
+        $week = $this->currentWeekNumber($year);
+        $changed = 0;
+        $failure = null;
+
+        foreach ([$week - 1, $week] as $number) {
+            try {
+                $changed += $this->syncWeek($games, $year, $number);
+            } catch (Throwable $e) {
+                $failure ??= $e;
+            }
+        }
+
+        if ($failure !== null) {
+            throw $failure;
+        }
+
+        return $changed;
     }
 
     private function refreshStaleOdds(int $year): int

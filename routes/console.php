@@ -117,7 +117,8 @@ Schedule::command('cfb:games --tier=current --year=current')
     ->when($inSeason)
     ->withoutOverlapping(30);
 
-// Tier 3 — last week plus this week. Two requests, nightly. Picks up stat
+// Tier 3 — last week plus this week. Two requests nightly (sixteen while ESPN
+// refuses ranges — see SyncGames::scoreboard()). Picks up stat
 // corrections and rescheduled games without touching the rest of the season.
 Schedule::command('cfb:games --tier=recent --year=current')
     ->dailyAt('04:00')
@@ -210,7 +211,8 @@ Schedule::command('cfb:sync --only=teams --year=current')
     ->when($offSeason)
     ->withoutOverlapping();
 
-// A full-season reconcile, deliberately rare. Nine requests. Next season's
+// A full-season reconcile, deliberately rare. Nine requests (~213 while ESPN
+// refuses ranges — one per ET day, weekly). Next season's
 // schedule publishes in the spring, so this keeps a monthly beat out of season.
 Schedule::command('cfb:games --tier=season --year=current')
     ->weeklyOn(ScheduleClass::TUESDAY, '05:00')
