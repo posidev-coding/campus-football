@@ -5,7 +5,9 @@ namespace App\Support;
 use App\Models\BrandSetting;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 /**
  * The one thing anything asks about the brand.
@@ -92,6 +94,15 @@ class Brand
     ];
 
     private const CACHE_KEY = 'brand:settings';
+
+    /** The launch-screen sets' home on the upload disk, one folder per fingerprint. */
+    private const SPLASH_ROOT = 'brand/splash';
+
+    /**
+     * Bump when splash() draws differently, so a stored set is not served
+     * past a change to the composition itself.
+     */
+    private const SPLASH_REVISION = 1;
 
     private const TTL = 86400;
 
@@ -314,8 +325,8 @@ class Brand
     }
 
     /**
-     * One iOS launch screen, composed on demand: the brand's ink, the app
-     * icon centered at an icon's scale rather than a poster's.
+     * One iOS launch screen, RENDERED: the brand's ink, the app icon centered
+     * at an icon's scale rather than a poster's.
      *
      * iOS ignores the manifest recipe Android builds its splash from — it
      * wants a pre-rendered PNG per device size, declared as
@@ -324,54 +335,152 @@ class Brand
      * in step with its icons; a shipped static set would be one more asset
      * list to forget.
      *
-     * Cached under the settings row's version, so saving the App Branding
-     * page starts a fresh set and the stale entries age out with the TTL.
-     * Returns null when the icon cannot be read, so the route can 404.
+     * The route never calls this directly — {@see self::storedSplash()} does,
+     * and only when the stored copy is missing. Returns null when the icon
+     * cannot be read, so the route can 404.
      */
     public static function splash(int $width, int $height, int $dpr): ?string
     {
-        $version = self::settings()['version'] ?? 0;
+        if (($bytes = self::bytes('icon-512')) === null) {
+            return null;
+        }
 
-        return Cache::remember(
-            "brand:splash:{$version}:{$width}x{$height}@{$dpr}",
-            self::TTL,
-            function () use ($width, $height, $dpr): ?string {
-                if (($bytes = self::bytes('icon-512')) === null) {
-                    return null;
-                }
+        if (($icon = imagecreatefromstring($bytes)) === false) {
+            return null;
+        }
 
-                if (($icon = imagecreatefromstring($bytes)) === false) {
-                    return null;
-                }
+        $canvas = imagecreatetruecolor($width * $dpr, $height * $dpr);
 
-                $canvas = imagecreatetruecolor($width * $dpr, $height * $dpr);
+        [$r, $g, $b] = sscanf(self::color('ink'), '#%02x%02x%02x');
+        imagefill($canvas, 0, 0, imagecolorallocate($canvas, $r, $g, $b));
 
-                [$r, $g, $b] = sscanf(self::color('ink'), '#%02x%02x%02x');
-                imagefill($canvas, 0, 0, imagecolorallocate($canvas, $r, $g, $b));
+        $size = (int) round(min($width, $height) * $dpr * 0.28);
 
-                $size = (int) round(min($width, $height) * $dpr * 0.28);
-
-                imagecopyresampled(
-                    $canvas,
-                    $icon,
-                    intdiv($width * $dpr - $size, 2),
-                    intdiv($height * $dpr - $size, 2),
-                    0,
-                    0,
-                    $size,
-                    $size,
-                    imagesx($icon),
-                    imagesy($icon),
-                );
-                imagedestroy($icon);
-
-                ob_start();
-                imagepng($canvas);
-                imagedestroy($canvas);
-
-                return ob_get_clean() ?: null;
-            },
+        imagecopyresampled(
+            $canvas,
+            $icon,
+            intdiv($width * $dpr - $size, 2),
+            intdiv($height * $dpr - $size, 2),
+            0,
+            0,
+            $size,
+            $size,
+            imagesx($icon),
+            imagesy($icon),
         );
+        imagedestroy($icon);
+
+        ob_start();
+        imagepng($canvas);
+        imagedestroy($canvas);
+
+        return ob_get_clean() ?: null;
+    }
+
+    /**
+     * One iOS launch screen as the route serves it: the stored copy, rendered
+     * and stored only when it is missing.
+     *
+     * It used to be Cache::remember with a day's TTL, so the whole set expired
+     * together and got re-rendered on real users' requests once a day. Each
+     * of the fourteen sizes took over a second, up to 13s at worst, while
+     * someone looked at a blank app (CFB-88). The set now lives on the upload
+     * disk under a fingerprint of what it is drawn from, and
+     * {@see self::storeSplashes()} writes it when those inputs change. This
+     * render is only the fallback: the first request after a deploy, or a
+     * set the job has not reached yet.
+     *
+     * A failed store is logged and the rendered bytes are still served. A
+     * launch screen is not worth a 500.
+     */
+    public static function storedSplash(int $width, int $height, int $dpr): ?string
+    {
+        $path = self::splashPath($width, $height, $dpr);
+
+        try {
+            $stored = self::disk()->get($path);
+        } catch (Throwable) {
+            $stored = null;
+        }
+
+        if (is_string($stored) && $stored !== '') {
+            return $stored;
+        }
+
+        if (($png = self::splash($width, $height, $dpr)) === null) {
+            return null;
+        }
+
+        try {
+            self::disk()->put($path, $png);
+        } catch (Throwable $e) {
+            Log::warning('Launch screen rendered but not stored', ['path' => $path, 'error' => $e->getMessage()]);
+        }
+
+        return $png;
+    }
+
+    /**
+     * Render and store the whole launch-screen set for the current brand,
+     * then drop every other set.
+     *
+     * Run by RenderBrandSplashes when the ink or the icon changes, so a
+     * rebrand's first readers are served stored bytes rather than paying for
+     * the render. A size already stored under this fingerprint is left alone:
+     * the same inputs draw the same picture.
+     *
+     * @return int images written
+     */
+    public static function storeSplashes(): int
+    {
+        $written = 0;
+
+        foreach (self::SPLASH as [$width, $height, $dpr]) {
+            $path = self::splashPath($width, $height, $dpr);
+
+            if (self::disk()->exists($path) || ($png = self::splash($width, $height, $dpr)) === null) {
+                continue;
+            }
+
+            self::disk()->put($path, $png);
+            $written++;
+        }
+
+        $current = self::SPLASH_ROOT.'/'.self::splashFingerprint();
+
+        foreach (self::disk()->directories(self::SPLASH_ROOT) as $directory) {
+            if ($directory !== $current) {
+                self::disk()->deleteDirectory($directory);
+            }
+        }
+
+        return $written;
+    }
+
+    /** Where one size of the current set lives on the upload disk. */
+    public static function splashPath(int $width, int $height, int $dpr): string
+    {
+        return self::SPLASH_ROOT.'/'.self::splashFingerprint()."/{$width}x{$height}@{$dpr}.png";
+    }
+
+    /**
+     * What a launch screen is drawn from, hashed: the resolved ink, the icon
+     * it centers, and the composition's own revision.
+     *
+     * NOT the settings row's version. That moves on every save, and a new
+     * tagline would throw away fourteen images nothing about it touched. A
+     * shipped icon is identified by its bytes, because a redeploy can change
+     * the file under the same path.
+     */
+    private static function splashFingerprint(): string
+    {
+        $upload = self::settings()['assets']['icon-512'] ?? null;
+
+        $icon = filled($upload)
+            ? "upload:{$upload}"
+            : 'shipped:'.(md5_file(public_path(self::SHIPPED['icon-512'])) ?: '');
+
+        return substr(md5(self::SPLASH_REVISION.'|'.self::color('ink').'|'.$icon), 0, 16);
     }
 
     /**

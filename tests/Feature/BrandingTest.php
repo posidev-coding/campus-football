@@ -1,10 +1,13 @@
 <?php
 
+use App\Jobs\RenderBrandSplashes;
 use App\Models\BrandSetting;
 use App\Models\User;
 use App\Support\Brand;
 use Filament\Facades\Filament;
 use Illuminate\Contracts\Support\Htmlable;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * The brand is resolved in one place and rendered in five — the two layouts'
@@ -201,6 +204,8 @@ describe('the generated artifacts', function () {
     ]);
 
     it('serves an iOS launch screen at the exact pixel size it declares', function () {
+        Storage::fake(config('cfb.upload_disk'));
+
         [$w, $h, $dpr] = Brand::SPLASH[0];
 
         $png = $this->get("/brand/splash/{$w}x{$h}@{$dpr}.png")
@@ -214,6 +219,93 @@ describe('the generated artifacts', function () {
 
         expect($width)->toBe($w * $dpr)
             ->and($height)->toBe($h * $dpr);
+    });
+
+    it('serves the stored launch screen and never renders on the warm path', function () {
+        /*
+         * The set used to live in the cache for a day and expire together,
+         * so once a day fourteen real readers paid for a render while their
+         * app sat blank — up to 13s (CFB-88). Bytes only the STORE could
+         * hold prove the renderer never ran: a render would be a real PNG.
+         */
+        Storage::fake(config('cfb.upload_disk'));
+
+        [$w, $h, $dpr] = Brand::SPLASH[0];
+        Storage::disk(config('cfb.upload_disk'))->put(Brand::splashPath($w, $h, $dpr), 'stored-not-rendered');
+
+        $response = $this->get("/brand/splash/{$w}x{$h}@{$dpr}.png")
+            ->assertOk()
+            ->assertHeader('Content-Type', 'image/png');
+
+        expect($response->getContent())->toBe('stored-not-rendered')
+            // Session, CSRF and queued cookies stay stripped from this route.
+            ->and($response->headers->has('Set-Cookie'))->toBeFalse();
+    });
+
+    it('renders and stores a launch screen that is missing, once', function () {
+        Storage::fake(config('cfb.upload_disk'));
+
+        [$w, $h, $dpr] = Brand::SPLASH[1];
+        $path = Brand::splashPath($w, $h, $dpr);
+
+        expect(Storage::disk(config('cfb.upload_disk'))->exists($path))->toBeFalse();
+
+        $first = $this->get("/brand/splash/{$w}x{$h}@{$dpr}.png")->assertOk()->getContent();
+
+        // The fallback is a real render, and it is kept.
+        expect(bin2hex(substr($first, 0, 4)))->toBe('89504e47')
+            ->and(Storage::disk(config('cfb.upload_disk'))->get($path))->toBe($first);
+    });
+
+    it('renders the whole set ahead of time and drops the stale one', function () {
+        Storage::fake(config('cfb.upload_disk'));
+        $disk = Storage::disk(config('cfb.upload_disk'));
+
+        $disk->put('brand/splash/0000stale0000000/390x844@3.png', 'old ink');
+
+        (new RenderBrandSplashes)->handle();
+
+        foreach (Brand::SPLASH as [$w, $h, $dpr]) {
+            expect($disk->exists(Brand::splashPath($w, $h, $dpr)))->toBeTrue();
+        }
+
+        expect($disk->directories('brand/splash'))->toHaveCount(1)
+            ->and($disk->exists('brand/splash/0000stale0000000/390x844@3.png'))->toBeFalse();
+    });
+
+    it('re-renders when the ink or the icon changes, and for nothing else', function () {
+        /*
+         * Triggered by the thing that invalidates the set, never by a clock
+         * — and not by every save either: a tagline changes none of the
+         * fourteen pictures.
+         */
+        Storage::fake(config('cfb.upload_disk'));
+
+        $setting = BrandSetting::current();
+        [$w, $h, $dpr] = Brand::SPLASH[0];
+        $before = Brand::splashPath($w, $h, $dpr);
+
+        Queue::fake();
+
+        $setting->update(['tagline' => 'Something new', 'assets' => ['og-image' => 'brand/custom.png']]);
+        Queue::assertNotPushed(RenderBrandSplashes::class);
+        expect(Brand::splashPath($w, $h, $dpr))->toBe($before);
+
+        $setting->update(['color_ink' => '#101820']);
+        Queue::assertPushed(RenderBrandSplashes::class, 1);
+
+        // A new ink is a new set at a new path, so the old one is never
+        // served under it.
+        expect(Brand::splashPath($w, $h, $dpr))->not->toBe($before);
+
+        // The icon is the other input. Asked of the model rather than the
+        // queue: the job is unique, and the ink's render still holds the lock
+        // under a fake queue, which is the dedupe working.
+        $setting->update(['assets' => ['og-image' => 'brand/custom.png', 'icon-512' => 'brand/icon.png']]);
+        expect($setting->changedSplashInputs())->toBeTrue();
+
+        $setting->update(['assets' => ['og-image' => 'brand/other.png', 'icon-512' => 'brand/icon.png']]);
+        expect($setting->changedSplashInputs())->toBeFalse();
     });
 
     it('refuses a splash size it did not declare', function (string $spec) {

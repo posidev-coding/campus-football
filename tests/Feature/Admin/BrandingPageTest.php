@@ -4,9 +4,14 @@ use App\Filament\Pages\Branding;
 use App\Models\BrandSetting;
 use App\Models\User;
 use App\Support\Brand;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 
 beforeEach(function () {
+    // An ink change renders the launch-screen set (sync queue under test),
+    // and it must land on a fake rather than the real public disk.
+    Storage::fake(config('cfb.upload_disk'));
+
     $this->admin = User::factory()->create();
     $this->admin->forceFill(['admin' => true])->save();
 });
