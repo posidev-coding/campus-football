@@ -148,6 +148,69 @@ describe('actives', function () {
     });
 });
 
+/** Eleven people who registered on Tue Sep 1, each here in every week since. */
+function retainedCohort(): void
+{
+    foreach (User::factory()->count(11)->create(['created_at' => '2026-09-01 16:00:00']) as $user) {
+        foreach (['2026-09-02', '2026-09-09', '2026-09-16', '2026-09-22'] as $day) {
+            UserDay::factory()->create(['user_id' => $user->id, 'day' => $day]);
+        }
+    }
+}
+
+describe('retention', function () {
+    it('publishes no cell for a week that has not closed', function () {
+        /*
+         * Wednesday Sep 23: the 2026-09-01 cohort's fourth week runs Sep 22
+         * to Sep 28, and two of its seven days have happened. The grid read
+         * [1, 0.636, 0.636, 0.182], a collapse that was only an unfinished
+         * week (CFB-95). The count is what is asserted, because a null or a
+         * zero in the fourth slot would both be the same lie.
+         */
+        $this->travelTo('2026-09-23 16:00:00');
+        retainedCohort();
+
+        $row = collect(catalog()->retention())->firstWhere('cohort', '2026-09-01');
+
+        expect($row['size'])->toBe(11)
+            ->and($row['weeks'])->toHaveCount(3)
+            ->and($row['weeks'])->toBe([1.0, 1.0, 1.0]);
+    });
+
+    it('keeps every cell once the week has closed', function () {
+        // The Tuesday after: Sep 22-28 is complete, so the row is whole.
+        $this->travelTo('2026-09-29 16:00:00');
+        retainedCohort();
+
+        $row = collect(catalog()->retention())->firstWhere('cohort', '2026-09-01');
+
+        expect($row['weeks'])->toBe([1.0, 1.0, 1.0, 1.0]);
+    });
+});
+
+describe('cohorts', function () {
+    it('withholds activation until the LAST registrant has had seven days', function () {
+        /*
+         * The cohort week is Tue Sep 1 to Mon Sep 7. Somebody who registered
+         * on the Monday has had one day when the week's start is seven days
+         * old, and was counted as not activated anyway (CFB-95). Ten people,
+         * so the floor is not what is doing the work.
+         */
+        User::factory()->count(9)->create(['created_at' => '2026-09-01 16:00:00']);
+        User::factory()->create(['created_at' => '2026-09-07 23:00:00']);
+
+        // Eight days after the week began, and two after it ended.
+        $this->travelTo('2026-09-09 16:00:00');
+
+        expect(collect(catalog()->cohorts())->firstWhere('week', '2026-09-01')['activated_7d'])->toBeNull();
+
+        // A week after the week ended: everybody has had their seven days.
+        $this->travelTo('2026-09-15 16:00:00');
+
+        expect(collect(catalog()->cohorts())->firstWhere('week', '2026-09-01')['activated_7d'])->toBe(0.0);
+    });
+});
+
 describe('devices', function () {
     it('keeps "not reported" as its own bucket and out of the installed rate', function () {
         /*
