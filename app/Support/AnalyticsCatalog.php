@@ -223,22 +223,45 @@ class AnalyticsCatalog
      * is the other reason the raw table keeps thirty days, and it caps this
      * question's window at what the raw table still holds.
      *
+     * BOTH HALVES READ THE SAME ROWS. `views` used to come off the rollup
+     * while `visitors` came off the raw stream, under one `since`. The rollup
+     * does not run between 03:00 and 08:00 league time, so for those hours it
+     * is a day behind. Production reported 9 automated visitors beside 0
+     * automated views, a population with no traffic (CFB-85). Now both count
+     * the same page-view rows over the same days, so a visitor always has a
+     * view and neither half can run ahead of the other. The rollup remains
+     * the source for the per-route and per-device questions, where no
+     * distinct count has to agree with it.
+     *
      * @return array<string, mixed>
      */
     public function traffic(?AnalyticsWindow $window = null): array
     {
         $window ??= AnalyticsWindow::of(7);
 
+        /*
+         * The window, cut to what the raw table still holds whole. A 90-day or
+         * season ask would otherwise count thirty days under a longer label.
+         * `since` says where the count really starts, like every other window.
+         */
+        $held = $this->firstWholeRawDay();
+        $from = max($window->fromDate(), $held);
+        $since = $window->sinceDate() === null ? null : max($window->sinceDate(), $held);
+
+        $pageViews = fn () => ActivityEvent::query()
+            ->whereBetween('day', [$from, $window->toDate()])
+            ->where('kind', ActivityKind::PageView->value);
+
         $views = $this->keyed(
-            PageViewDaily::query()
-                ->whereBetween('day', [$window->fromDate(), $window->toDate()])
+            $pageViews()
                 ->groupBy('audience')
-                ->selectRaw('audience as k, sum(views) as v'),
+                ->selectRaw('audience as k, count(*) as v'),
         );
 
+        // People who read a page, the same definition as the daily table's
+        // `visitors`. An action with no view is not a visit.
         $visitors = $this->keyed(
-            ActivityEvent::query()
-                ->whereBetween('day', [$window->fromDate(), $window->toDate()])
+            $pageViews()
                 ->groupBy('audience')
                 // One person is one visitor whichever column identifies them,
                 // and the prefixes stop user 12 and visitor hash "12" reading
@@ -257,10 +280,8 @@ class AnalyticsCatalog
          * same table as the visitors, so the ratio is not two tables' windows
          * divided into each other.
          */
-        $guestViews = ActivityEvent::query()
-            ->whereBetween('day', [$window->fromDate(), $window->toDate()])
+        $guestViews = $pageViews()
             ->where('audience', ActivityEvent::GUEST)
-            ->where('kind', ActivityKind::PageView->value)
             ->whereNotNull('visitor')
             ->groupBy('visitor')
             ->selectRaw('count(*) as n')
@@ -281,6 +302,8 @@ class AnalyticsCatalog
             'visitors' => [
                 'guest' => $visitors[ActivityEvent::GUEST] ?? 0,
                 'member' => $visitors[ActivityEvent::MEMBER] ?? 0,
+                // Every audience `views` names, so no view belongs to nobody.
+                'staff' => $visitors[ActivityEvent::STAFF] ?? 0,
                 'automated' => $visitors[ActivityEvent::AUTOMATED] ?? 0,
             ],
             // Null with no guests: no ratio, not a ratio of zero.
@@ -288,8 +311,25 @@ class AnalyticsCatalog
                 ? null
                 : round($guestViews->sum() / $guestViews->count(), 2),
             'guest_one_view_visitors' => $guestViews->filter(fn ($n): bool => (int) $n === 1)->count(),
-            'since' => $window->sinceDate(),
+            'since' => $since,
         ];
+    }
+
+    /**
+     * The first league day `activity_events` still holds whole.
+     *
+     * The prune cuts at thirty days before NOW, so the day that cut lands in is
+     * already partly gone. Counting starts the day after it. Worked out from
+     * the retention rule rather than from `min(day)`, because a quiet first
+     * day and a pruned one look the same in the data.
+     */
+    private function firstWholeRawDay(): string
+    {
+        return CarbonImmutable::now(config('cfb.timezone'))
+            ->subDays(ActivityEvent::KEEP_DAYS)
+            ->startOfDay()
+            ->addDay()
+            ->toDateString();
     }
 
     // ------------------------------------------------------- 3. actives

@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ActivityFeature;
+use App\Enums\ActivityKind;
 use App\Enums\ViewportBucket;
 use App\Models\ActivityEvent;
 use App\Models\Contest;
@@ -12,6 +13,7 @@ use App\Models\SlateEntry;
 use App\Models\SlateGame;
 use App\Models\User;
 use App\Models\UserDay;
+use App\Support\ActivityRollup;
 use App\Support\AnalyticsCatalog;
 use App\Support\AnalyticsWindow;
 use App\Support\Cadence;
@@ -55,8 +57,6 @@ describe('traffic', function () {
             'user_id' => null, 'visitor' => 'crawler', 'audience' => ActivityEvent::AUTOMATED,
         ]);
 
-        PageViewDaily::factory()->create(['day' => '2026-09-02', 'audience' => ActivityEvent::AUTOMATED, 'views' => 4]);
-
         $traffic = catalog()->traffic(AnalyticsWindow::of(7));
 
         expect($traffic['visitors']['guest'])->toBe(3)
@@ -64,6 +64,102 @@ describe('traffic', function () {
             ->and($traffic['views']['automated'])->toBe(4)
             ->and($traffic['guest_views_per_visitor'])->toBe(1.67)
             ->and($traffic['guest_one_view_visitors'])->toBe(2);
+    });
+
+    it('cannot report a visitor with no view while the rollup is a day behind', function () {
+        /*
+         * CFB-85, the exact shape production caught. At 07:02 ET the hourly
+         * rollup has not run since 03:00, so it holds through yesterday while
+         * the raw stream already holds today. `views` read the rollup and
+         * `visitors` read the stream: 9 automated visitors beside 0 automated
+         * views, under one `since`.
+         */
+        $this->travelTo('2026-09-24 11:02:00');
+
+        ActivityEvent::factory()->guest()->count(2)->create(['occurred_at' => '2026-09-22 16:00:00']);
+        ActivityEvent::factory()->staff()->count(3)->create(['occurred_at' => '2026-09-23 15:00:00']);
+
+        // Today, and not yet rolled: nine crawlers that said so at the door,
+        // one member and one staff reader.
+        foreach (range(1, 9) as $n) {
+            ActivityEvent::factory()->create([
+                'user_id' => null, 'visitor' => "crawler-{$n}", 'audience' => ActivityEvent::AUTOMATED,
+                'occurred_at' => '2026-09-24 10:30:00',
+            ]);
+        }
+        ActivityEvent::factory()->create(['occurred_at' => '2026-09-24 10:40:00']);
+        $staff = ActivityEvent::factory()->staff()->create(['occurred_at' => '2026-09-24 10:45:00']);
+        ActivityEvent::factory()->staff()->create(['user_id' => $staff->user_id, 'occurred_at' => '2026-09-24 10:50:00']);
+
+        // The rollup as it stands at 07:02: through yesterday, and no further.
+        foreach (['2026-09-22', '2026-09-23'] as $day) {
+            app(ActivityRollup::class)->day(CarbonImmutable::parse($day, config('cfb.timezone')));
+        }
+
+        $traffic = catalog()->traffic(AnalyticsWindow::of(7));
+
+        expect($traffic['views']['automated'])->toBe(9)
+            ->and($traffic['visitors']['automated'])->toBe(9)
+            ->and($traffic['views']['member'])->toBe(1)
+            ->and($traffic['views']['staff'])->toBe(5)
+            ->and($traffic['since'])->toBe('2026-09-22');
+
+        // The invariant, whatever the hour: the halves name the same
+        // audiences, and no audience has people without pages.
+        expect(array_keys($traffic['visitors']))->toEqualCanonicalizing(array_keys($traffic['views']));
+
+        foreach ($traffic['visitors'] as $audience => $people) {
+            expect($people > 0 ? $traffic['views'][$audience] > 0 : true)
+                ->toBeTrue("{$audience} has {$people} visitors and no views");
+        }
+    });
+
+    it('counts staff readers, so staff views belong to somebody', function () {
+        // `views` has always split staff out. `visitors` had no staff key, so
+        // this week's 181 staff views were read by nobody at all.
+        $founder = User::factory()->create();
+
+        ActivityEvent::factory()->staff()->count(3)->create(['user_id' => $founder->id]);
+
+        $traffic = catalog()->traffic(AnalyticsWindow::of(7));
+
+        expect($traffic['views']['staff'])->toBe(3)
+            ->and($traffic['visitors']['staff'])->toBe(1)
+            ->and($traffic['visitors']['member'])->toBe(0);
+    });
+
+    it('does not call an action with no page a visit', function () {
+        // Visitors are people who read a page, the same definition the
+        // daily table's `visitors` uses, so a visitor always has a view.
+        ActivityEvent::factory()->action(ActivityKind::Searched)->create();
+
+        $traffic = catalog()->traffic(AnalyticsWindow::of(7));
+
+        expect($traffic['visitors']['member'])->toBe(0)
+            ->and($traffic['views']['member'])->toBe(0);
+    });
+
+    it('starts a long window where the raw table still holds whole days', function () {
+        /*
+         * Both halves come off `activity_events`, which keeps thirty days. A
+         * 90-day ask would count thirty under a ninety-day label, so `since`
+         * moves up to the first whole day the prune left. That is the day
+         * after the one the cut lands in, since the cut's own day is partly gone.
+         */
+        PageViewDaily::factory()->create(['day' => '2026-09-06']);
+
+        $this->travelTo('2026-10-20 12:00:00');
+
+        // Not pruned yet, but past the line — it must not be counted either,
+        // or the number would depend on whether the prune had run.
+        ActivityEvent::factory()->create(['occurred_at' => '2026-09-10 16:00:00']);
+        ActivityEvent::factory()->create(['occurred_at' => '2026-10-01 16:00:00']);
+
+        $traffic = catalog()->traffic(AnalyticsWindow::of(90));
+
+        // 08:00 ET on Oct 20, less thirty days, is Sep 20; its first whole day is Sep 21.
+        expect($traffic['since'])->toBe('2026-09-21')
+            ->and($traffic['views']['member'])->toBe(1);
     });
 
     it('has no ratio at all with no guests, rather than a ratio of zero', function () {
