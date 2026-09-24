@@ -95,6 +95,54 @@ it('keeps sr-only text inside the stat-grid that scrolls it', function () {
         .' box and widens the page.');
 });
 
+it('never clips a right-aligned flex row, which would cut its label from the left', function () {
+    /*
+     * `truncate` on a `justify-end` flex row clips the wrong end. The row's
+     * text is an anonymous flex item, which cannot take an ellipsis, and
+     * justify-end hands the overflow to the row's START — the game scorebug
+     * rendered "7 PSU" as "SU" at 320. Put the text in its own `min-w-0
+     * truncate` item instead: the row then never overflows, so there is
+     * nothing for justify-end to push, and the cut lands at the end.
+     */
+    $violations = [];
+
+    foreach (bladeViews() as $path => $contents) {
+        preg_match_all('/class="([^"]*)"/', $contents, $classes);
+
+        foreach ($classes[1] as $class) {
+            if (preg_match('/(?<![\w-])justify-end(?![\w-])/', $class) && preg_match('/(?<![\w:-])truncate(?![\w-])/', $class)) {
+                $violations[] = $path;
+            }
+        }
+    }
+
+    expect($violations)->toBe([], implode(', ', $violations)
+        .' — truncates a justify-end row, which clips from the start.');
+});
+
+it('never lets a container query itself', function () {
+    /*
+     * A container query resolves against the nearest ANCESTOR container, so
+     * an `@min-*` / `@max-*` variant on the `@container` element itself never
+     * matches and fails silently — the scorebug row's gap stayed compact at
+     * 390 until the container moved to a wrapper around it.
+     */
+    $violations = [];
+
+    foreach (bladeViews() as $path => $contents) {
+        preg_match_all('/class="([^"]*)"/', $contents, $classes);
+
+        foreach ($classes[1] as $class) {
+            if (preg_match('/(?<![\w-])@container(?![\w-])/', $class) && preg_match('/(?<![\w-])@(min|max)-/', $class)) {
+                $violations[] = $path;
+            }
+        }
+    }
+
+    expect($violations)->toBe([], implode(', ', $violations)
+        .' — queries its own @container, which never matches.');
+});
+
 it('renders the gutter track only through x-gutter-tabs', function () {
     /*
      * The zinc track with the raised active pad replaced the blue pill
