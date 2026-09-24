@@ -584,6 +584,25 @@ describe('the board it feeds back', function () {
             ->toBe(['already-fixed' => 'done', 'wont-fix' => 'dismissed']);
     });
 
+    it('orders the board by recency, and by key where recency ties', function () {
+        // The clock is frozen, so every factory row ties on last_seen_at —
+        // without a tiebreak MySQL hands these back in whatever order it
+        // likes, and the advisor reads a different payload each run.
+        WorkbookItem::factory()->dismissed()->create(['key' => 'zebra']);
+        WorkbookItem::factory()->dismissed()->create(['key' => 'apple']);
+        WorkbookItem::factory()->dismissed()->create([
+            'key' => 'mango',
+            'last_seen_at' => now()->addMinute(),
+        ]);
+        WorkbookItem::factory()->create(['key' => 'open-zebra']);
+        WorkbookItem::factory()->create(['key' => 'open-apple']);
+
+        $workbook = telemetry()['workbook'];
+
+        expect(array_keys($workbook['answered']))->toBe(['mango', 'apple', 'zebra'])
+            ->and(array_column($workbook['open'], 'key'))->toBe(['open-apple', 'open-zebra']);
+    });
+
     it('keeps the answered out of the open list', function () {
         WorkbookItem::factory()->dismissed()->create(['key' => 'wont-fix']);
 
