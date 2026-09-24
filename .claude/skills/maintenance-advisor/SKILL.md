@@ -183,15 +183,20 @@ These five are new instruments, and every one of them is easier to misread than
 the machine sections above. A wrong finding here does not just waste a pass — it
 proposes deleting a screen people use.
 
-- **Every analytics section carries `since`, and the `funnel_since` rule
-  generalizes to all of them.** A window whose `since` falls inside it is not
+- **Every analytics WINDOW carries `since`, and the `funnel_since` rule
+  generalizes to all of them.** A section holding several windows keys each
+  number by its window and bounds it beside it — `audience.actives` has
+  `league_week_actives`/`league_week_since` (Tuesday to today, so two days
+  wide on a Wednesday) and `rolling_28d_actives`/`rolling_28d_since`, and
+  `audience.adoption.rolling_actives` is a rolling count over `window_days`.
+  Never compare two numbers without comparing their windows first. A window whose `since` falls inside it is not
   that window's number. Do not file "traffic fell" or "nobody opens this
   screen" until `since` predates the window. A 28-day route count off a
   fortnight-old rollup is a fortnight's count wearing a month's label.
 - **`null` in a rate is "too few to read", and it is never zero.** A retention
   cell of null (cohort under 10), an `activated_7d` of null (a cohort under
   seven days old, which has not had its chance yet), a `quiet` of null (the
-  window is not covered), a `stickiness_28d` of null — **none of these is a
+  window is not covered), a `stickiness` of null (read `stickiness_covered_days` beside it) — **none of these is a
   finding.** The counts sit beside every null, so read those instead.
 - **Compare Saturday to Saturday and week to week** (Tuesday to Monday, which
   is what `Cadence::TURNOVER_DOW` makes a week here), never day to day. Check

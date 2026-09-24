@@ -40,9 +40,9 @@ class AdoptionRadial extends ApexChartWidget
     {
         $adoption = app(AnalyticsCatalog::class)->adoption(AnalyticsWindow::from($this->pageFilters ?? []));
 
-        return $adoption['wau'] < AnalyticsCatalog::MIN_PEOPLE
-            ? 'Too few weekly actives to read a share — '.$adoption['wau'].' so far'
-            : 'Share of '.$adoption['wau'].' weekly actives';
+        return $adoption['rolling_actives'] < AnalyticsCatalog::MIN_PEOPLE
+            ? 'Too few actives to read a share — '.$adoption['rolling_actives'].' in '.$adoption['window_days'].' days so far'
+            : 'Share of '.$adoption['rolling_actives'].' people active in the last '.$adoption['window_days'].' days';
     }
 
     protected function getOptions(): array

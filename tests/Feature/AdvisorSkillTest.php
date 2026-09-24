@@ -9,7 +9,7 @@ use App\Support\TelemetrySnapshot;
  * reads `SKILL.md` and it reads the snapshot, and the section table in that
  * file is the ONLY thing telling it what any key means. A section that ships
  * undocumented is not a small gap: the routine either ignores a number nobody
- * told it about, or — worse — decides for itself what `stickiness_28d` is and
+ * told it about, or — worse — decides for itself what `stickiness` is and
  * files a finding on its own guess.
  *
  * So this is a sweep rather than a list. Adding a sixth section to the

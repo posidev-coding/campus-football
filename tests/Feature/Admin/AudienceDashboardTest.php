@@ -202,7 +202,7 @@ describe('adoption', function () {
         $chart = audienceWidget(AdoptionRadial::class);
 
         expect($chart->instance()->options['series'])->toBe([])
-            ->and(invade($chart->instance())->getSubheading())->toContain('Too few weekly actives');
+            ->and(invade($chart->instance())->getSubheading())->toContain('Too few actives to read a share');
     });
 
     it('draws the shares once there are enough people to divide by', function () {
@@ -217,7 +217,7 @@ describe('adoption', function () {
         $chart = audienceWidget(AdoptionRadial::class);
 
         expect($chart->instance()->options['series'])->toContain(50.0)
-            ->and(invade($chart->instance())->getSubheading())->toContain('Share of 10 weekly actives');
+            ->and(invade($chart->instance())->getSubheading())->toContain('Share of 10 people active in the last 28 days');
     });
 });
 
