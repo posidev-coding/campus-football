@@ -433,16 +433,16 @@ describe('the attention sections', function () {
         expect(collect(telemetry()['routes']['top'])->firstWhere('route', 'rankings')['views'])->toBe(6);
     });
 
-    it('keeps staff traffic visible and out of the visitor counts', function () {
-        PageViewDaily::factory()->create([
-            'day' => '2026-09-04', 'route' => 'home',
-            'audience' => ActivityEvent::STAFF, 'views' => 40,
+    it('keeps staff traffic visible and out of the member counts', function () {
+        ActivityEvent::factory()->staff()->count(40)->create([
+            'user_id' => User::factory()->create()->id, 'occurred_at' => '2026-09-04 16:00:00',
         ]);
 
         $traffic = telemetry()['traffic'];
 
         expect($traffic['views']['staff'])->toBe(40)
             ->and($traffic['views']['member'])->toBe(0)
+            ->and($traffic['visitors']['member'])->toBe(0)
             ->and($traffic['window_days'])->toBe(7)
             ->and($traffic)->toHaveKey('since');
     });

@@ -191,7 +191,7 @@ from `.ai/rules/enums.md`, generalized).
 | 8 | Device mix | views and people by viewport bucket and installed state, "not reported" as its own category | views; monthly actives | `devices` | informational |
 | 9 | Time-of-week heat | raw events over 28 days grouped by weekday and league hour | none | dashboard only (168 cells is prompt noise) | none |
 | 10 | Pick'em health per slate | `LiveState::build($saturday, names: false)` for this Saturday and last, plus late-pick share (picks updated inside `Cadence::LAST_CALL_MINUTES` of first kickoff / picks) and reminder lift (entries created between `picks_reminded_at` and first kickoff / members without an entry at the reminder) | members at first kickoff (`group_members.created_at <= kickoff`) | `pickem_health[]` — ids and counts, never a group name | entries ≥ 5 |
-| 11 | Guest versus member traffic | `page_views_daily` by audience, 7 and 28 days | total views | `traffic` | none |
+| 11 | Guest versus member traffic | raw page views by audience, 7 and 28 days — both halves off `activity_events`, so views and visitors cover the same rows (CFB-85: the rollup runs a day behind between 03:00 and 08:00), capped at the thirty days the raw table holds | total views | `traffic` | none |
 | 12 | Error rate per route | `client_errors` in 24h grouped by `path`, resolved to a route name through the router, divided by raw views of that route in the same 24h | views on that route | `errors.client[].route`, `views_24h` | views ≥ 50 |
 | 13 | Onboarding drop by step | unchanged: `funnel` and `funnel_since` | — | already there | — |
 | 14 | Pick timing inside a slate | `picks.created_at` and `updated_at` against publish, deadline, reminder and first kickoff | — | dashboard only | — |
@@ -518,7 +518,7 @@ window and `since`, applying the floor by returning null below it. Widgets
 is updated to the new key list in the same PR):
 
 ```
-traffic         { window_days: 7, views: {guest, member, staff, automated}, visitors: {guest, member, automated}, guest_views_per_visitor|null, guest_one_view_visitors, since }
+traffic         { window_days: 7, views: {guest, member, staff, automated}, visitors: {guest, member, staff, automated}, guest_views_per_visitor|null, guest_one_view_visitors, since }
 audience        { actives:   {dau, league_week_actives, league_week_since, league_week_days, rolling_28d_actives, rolling_28d_since, stickiness, stickiness_covered_days},
                   adoption:  {rolling_actives, window_days, since, features: {picked: {users, share}, talked, read_talk, followed, joined, lobby, stats, searched, asked, invited, installed}},
                   cohorts:   [{week, registered, verified, onboarded, reached_picks, picks_home_seen, entered, installed, activated_7d|null}],   // eight weeks
