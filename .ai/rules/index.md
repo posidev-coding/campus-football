@@ -36,6 +36,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Enums/UxSignal.php,app/Actions/RecordUxEvent.php,app/Listeners/**,resources/views/livewire/** | .ai/rules/listeners-views-livewire.md |
 | app/Livewire/**, resources/views/livewire/**, resources/views/components/** | .ai/rules/livewire-alpine.md |
 | resources/views/livewire/**,app/Livewire/** | .ai/rules/livewire-livewire.md |
+| app/Support/WeekTrends.php,resources/views/livewire/group.blade.php,app/Models/Slate.php | .ai/rules/livewire-models.md |
 | resources/views/livewire/pickem-home.blade.php,resources/views/livewire/lobby.blade.php,app/Support/Lobby.php,routes/web.php | .ai/rules/livewire-support.md |
 | config/livewire.php,resources/views/livewire/home.blade.php,resources/views/livewire/onboarding.blade.php,resources/views/livewire/tour.blade.php | .ai/rules/livewire-views-livewire-views-livewire.md |
 | app/Support/SlateFeasibility.php,resources/views/livewire/group.blade.php,resources/views/livewire/slate-builder.blade.php,resources/views/livewire/pickem-home.blade.php | .ai/rules/livewire-views-livewire.md |
