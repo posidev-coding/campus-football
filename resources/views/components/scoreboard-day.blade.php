@@ -10,6 +10,11 @@
     // all of them would spend the only ranking signal the block has on saying
     // "followed", which the reader can already see from the position.
     'lead' => false,
+    // One cell of a wider grid rather than a full-width row: the pinned
+    // followed-team groups, which wrap side by side from `sm` up. A followed
+    // team almost always has ONE game in a week, so a group that kept its own
+    // three-column grid left two of those columns empty on every desktop row.
+    'cell' => false,
 ])
 
 {{--
@@ -18,9 +23,14 @@
     Shared by the ordinary day groups and by the pinned followed-team groups,
     so the two cannot drift apart — the sticky offset, the opaque background
     and the z-index are decided once here rather than per caller.
+
+    A `cell` is sticky at base ONLY. From `sm` up it sits in a column of its
+    parent's grid and is one card tall, so there is nothing for its heading to
+    stick over. The full-bleed `-mx-4` is cancelled at the same breakpoint, or
+    its background would paint into the neighboring cell.
 --}}
 <div
-    {{ $attributes->class(['flex flex-col gap-2']) }}
+    {{ $attributes->class(['flex flex-col gap-2', 'min-w-0' => $cell]) }}
     @if ($pinned) data-pinned="true" @endif
 >
     {{-- Fully opaque, not a translucent blur. A half-transparent heading with
@@ -37,7 +47,10 @@
          names painted straight over the background and it read as though there
          were none. The ladder is chrome 30, day heading 20, card contents 10. --}}
     <flux:subheading
-        class="sticky z-20 -mx-4 flex min-w-0 items-center gap-1.5 bg-white px-4 py-1.5 dark:bg-zinc-950"
+        :class="Illuminate\Support\Arr::toCssClasses([
+            'sticky z-20 -mx-4 flex min-w-0 items-center gap-1.5 bg-white px-4 py-1.5 dark:bg-zinc-950',
+            'sm:static sm:mx-0 sm:px-0' => $cell,
+        ])"
         style="top: var(--scores-chrome, 0px)"
     >
         @if ($lead)
@@ -53,7 +66,7 @@
         @endif
     </flux:subheading>
 
-    <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+    <div @class(['grid gap-2', 'sm:grid-cols-2 xl:grid-cols-3' => ! $cell])>
         @foreach ($games as $game)
             <x-game-card :game="$game" wire:key="game-{{ $game->id }}" />
         @endforeach

@@ -222,7 +222,7 @@ of, so it does not appear. Fetching it separately and re-checking the scope
 afterwards is the same behavior held together by a condition that has to be kept
 in step with `Scope` forever.
 
-**All followed teams float, in the user's own order.** Four things the
+**All followed teams float, in the user's own order.** Five things the
 presentation has to get right:
 
 - **First team to want a game claims it.** Two followed teams playing each other
@@ -233,6 +233,14 @@ presentation has to get right:
   card appearing twice reads as a duplicate fixture, not as a ranking.
 - **Carry the date on the pinned heading.** Lifted out of the chronology a card
   only says "7:30pm", so the heading reads `Tennessee · Saturday, Sep 12`.
+- **Wrap them into one grid.** A followed team almost always has one game a
+  week, so a group per team — each with its own three-column grid — stacked
+  single cards in the left third of a desktop column. Every team-day is one
+  `x-scoreboard-day cell` inside a single `data-pinned-teams` grid: a plain
+  column at base, two across from `sm`, three from `xl`. A cell's heading is
+  sticky at base only and drops its `-mx-4` bleed from `sm`, where it would
+  paint into the neighboring cell. A Thursday-and-Saturday team gets two cells
+  under the same heading.
 - **No union, and none needed.** This once had to merge a separate favorite
   into the followed set, because a favorite lived outside the list and could
   disagree with it. An ordered list cannot, which is the point of the change.

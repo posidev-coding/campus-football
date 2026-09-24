@@ -753,6 +753,121 @@ describe('all followed teams float', function () {
             ->and(substr($html, strpos($html, 'data-pinned="true"'), 2000))->toContain('Tennessee');
     });
 
+    describe('wrapping into one grid', function () {
+        beforeEach(function () {
+            // An ordinary game on Friday, so the page has a day group to mark
+            // where the pinned grid ENDS. Without one, "inside the wrapper"
+            // would be every byte after it.
+            Game::factory()->finished()->create([
+                'season_id' => $this->season->id, 'week_id' => $this->week->id,
+                'home_team_id' => 77, 'away_team_id' => 333,
+                'kickoff_at' => '2025-09-26 23:30:00',
+            ]);
+
+            // The pinned grid, from its opening tag to the first day group.
+            $this->pinnedGrid = function (string $html): string {
+                $start = strpos($html, 'data-pinned-teams');
+
+                expect($start)->toBeInt()
+                    ->and(substr_count($html, 'data-pinned-teams'))->toBe(1);
+
+                return substr($html, $start, strpos($html, 'wire:key="day-', $start) - $start);
+            };
+        });
+
+        it('puts every followed team in ONE grid that wraps from sm up', function () {
+            /*
+             * One grid per team, each with its own three columns, stacked two
+             * single cards in the left third of a desktop column. The class
+             * string is pinned because no feature test can measure a column:
+             * base is the plain column 390 always had, and the grid is
+             * additive from `sm`.
+             */
+            Game::factory()->finished()->create([
+                'season_id' => $this->season->id, 'week_id' => $this->week->id,
+                'home_team_id' => 2633, 'away_team_id' => 61,
+                'kickoff_at' => '2025-09-27 19:30:00',
+            ]);
+            Game::factory()->finished()->create([
+                'season_id' => $this->season->id, 'week_id' => $this->week->id,
+                'home_team_id' => 334, 'away_team_id' => 61,
+                'kickoff_at' => '2025-09-25 19:30:00',
+            ]);
+
+            $html = ($this->slate)();
+            $grid = ($this->pinnedGrid)($html);
+
+            expect($grid)->toStartWith('data-pinned-teams')
+                ->toContain('class="flex flex-col gap-5 sm:grid sm:grid-cols-2 sm:gap-x-2 xl:grid-cols-3"')
+                // Every pinned cell is inside it; none leaked into the days.
+                ->and(substr_count($grid, 'data-pinned="true"'))->toBe(2)
+                ->and(substr_count($html, 'data-pinned="true"'))->toBe(2);
+
+            // Account order, lead first — Alabama kicks off two days EARLIER,
+            // so chronology would put it ahead of Tennessee.
+            $cells = array_slice(explode('data-pinned="true"', $grid), 1);
+
+            expect($cells[0])->toContain('Tennessee')
+                ->and($cells[1])->toContain('Alabama Crimson')
+                // The pin marks the team ranked first, not every followed one.
+                ->and($cells[0])->toContain('shrink-0 text-blue-500')
+                ->and($cells[1])->not->toContain('shrink-0 text-blue-500');
+        });
+
+        it('keeps both games of a team that plays twice in the window', function () {
+            // A Thursday and a Saturday is rare but real. Each day is its own
+            // cell under the same heading, so neither card is dropped and
+            // neither loses its date.
+            $thursday = Game::factory()->finished()->create([
+                'season_id' => $this->season->id, 'week_id' => $this->week->id,
+                'home_team_id' => 2633, 'away_team_id' => 61,
+                'kickoff_at' => '2025-09-25 19:30:00',
+            ]);
+            $saturday = Game::factory()->finished()->create([
+                'season_id' => $this->season->id, 'week_id' => $this->week->id,
+                'home_team_id' => 333, 'away_team_id' => 2633,
+                'kickoff_at' => '2025-09-27 19:30:00',
+            ]);
+
+            $grid = ($this->pinnedGrid)(($this->slate)());
+            $cells = array_slice(explode('data-pinned="true"', $grid), 1);
+
+            expect($cells)->toHaveCount(2)
+                ->and($cells[0])->toContain('Tennessee')->toContain('Thursday, Sep 25')
+                ->toContain('wire:key="game-'.$thursday->id.'"')
+                ->and($cells[1])->toContain('Tennessee')->toContain('Saturday, Sep 27')
+                ->toContain('wire:key="game-'.$saturday->id.'"');
+        });
+
+        it('makes a pinned cell stop sticking, and bleeding, only from sm up', function () {
+            /*
+             * A cell is one card tall, so its heading has nothing to stick
+             * over, and the full-bleed `-mx-4` would paint into the cell beside
+             * it. Both are cancelled at `sm` and NOT at base, where 390 must
+             * render exactly as it did — so the base string is asserted whole
+             * beside the override, and the day groups must not carry it.
+             */
+            Game::factory()->finished()->create([
+                'season_id' => $this->season->id, 'week_id' => $this->week->id,
+                'home_team_id' => 2633, 'away_team_id' => 61,
+                'kickoff_at' => '2025-09-27 19:30:00',
+            ]);
+
+            $html = ($this->slate)();
+            $grid = ($this->pinnedGrid)($html);
+            $days = substr($html, strpos($html, 'wire:key="day-'));
+
+            $base = 'sticky z-20 -mx-4 flex min-w-0 items-center gap-1.5 bg-white px-4 py-1.5 dark:bg-zinc-950';
+
+            expect($grid)->toContain($base.' sm:static sm:mx-0 sm:px-0')
+                // One column of cards inside a cell, never a grid of its own.
+                ->not->toContain('sm:grid-cols-2 xl:grid-cols-3"')
+                ->and($days)->toContain($base.'"')
+                ->not->toContain('sm:static')
+                ->toContain('grid gap-2 sm:grid-cols-2 xl:grid-cols-3');
+        });
+    });
+
     it('still respects the scope for every followed team', function () {
         /*
          * BOTH sides out of scope, which is the case worth testing. Moving only
