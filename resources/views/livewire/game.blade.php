@@ -926,93 +926,110 @@ new class extends Component
             <p class="mt-1 truncate text-center text-micro font-medium text-zinc-500">{{ $game->note }}</p>
         @endif
 
-        <div class="mt-2 flex items-center gap-2">
-            @foreach ($this->sides as $index => $side)
-                @php
-                    $winner = $game->winnerTeamId();
-                    $lost = $game->completed && $winner !== null && $winner !== $side['team']?->id;
-                    $possession = $this->isLive && $side['team'] && $game->possession_team_id === $side['team']->id;
-                @endphp
+        {{-- A container, so the row can compact itself when IT is narrow:
+             at 320 each side had 96px, and a 40px logo, a two-digit score and
+             the gaps left the label 12px — "7 PSU" rendered as "SU". Base is
+             the compact row; everything at @min-[22rem] (a 390 phone's 358px
+             row and up) is the layout it always had. The container is a
+             WRAPPER because an element cannot query itself — the row's own
+             gap would never widen back. --}}
+        <div class="@container mt-2">
+            <div class="flex items-center gap-1.5 @min-[22rem]:gap-2">
+                @foreach ($this->sides as $index => $side)
+                    @php
+                        $winner = $game->winnerTeamId();
+                        $lost = $game->completed && $winner !== null && $winner !== $side['team']?->id;
+                        $possession = $this->isLive && $side['team'] && $game->possession_team_id === $side['team']->id;
+                    @endphp
 
-                @if ($index === 1)
-                    {{-- Center: what the game is doing right now. --}}
-                    <div class="flex w-20 shrink-0 flex-col items-center gap-0.5 text-center">
-                        @if ($this->isLive)
-                            <span class="flex items-center gap-1 text-micro font-semibold text-red-600 dark:text-red-400">
-                                <x-live-dot />
-                                {{ $game->status_detail ?? 'Live' }}
-                            </span>
+                    @if ($index === 1)
+                        {{-- Center: what the game is doing right now. --}}
+                        <div class="flex w-14 shrink-0 flex-col items-center gap-0.5 text-center @min-[22rem]:w-20">
+                            @if ($this->isLive)
+                                <span class="flex items-center gap-1 text-micro font-semibold text-red-600 dark:text-red-400">
+                                    <x-live-dot />
+                                    {{ $game->status_detail ?? 'Live' }}
+                                </span>
 
-                            @if ($game->down_distance_text)
-                                <span @class([
-                                    'text-micro font-medium',
-                                    'text-red-600 dark:text-red-400' => $game->is_red_zone,
-                                    'text-zinc-500' => ! $game->is_red_zone,
-                                ])>{{ $game->down_distance_text }}</span>
+                                @if ($game->down_distance_text)
+                                    <span @class([
+                                        'text-micro font-medium',
+                                        'text-red-600 dark:text-red-400' => $game->is_red_zone,
+                                        'text-zinc-500' => ! $game->is_red_zone,
+                                    ])>{{ $game->down_distance_text }}</span>
+                                @endif
+                            @elseif ($game->completed)
+                                <span class="text-stat font-semibold">Final</span>
+                            @else
+                                <span class="text-micro font-medium text-zinc-500">
+                                    {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('D M j') }}
+                                </span>
+                                <span class="text-stat font-semibold">
+                                    {{ $game->kickoffLabel('time') }}
+                                </span>
                             @endif
-                        @elseif ($game->completed)
-                            <span class="text-stat font-semibold">Final</span>
-                        @else
-                            <span class="text-micro font-medium text-zinc-500">
-                                {{ $game->kickoff_at->setTimezone(config('cfb.timezone'))->format('D M j') }}
-                            </span>
-                            <span class="text-stat font-semibold">
-                                {{ $game->kickoffLabel('time') }}
-                            </span>
+                        </div>
+                    @endif
+
+                    <div @class([
+                        'flex min-w-0 flex-1 items-center gap-1.5 @min-[22rem]:gap-2',
+                        'flex-row-reverse text-right' => $index === 1,
+                    ])>
+                        {{-- The game page is WHERE the team links live — cards
+                             send every tap here precisely because these exist. --}}
+                        <a
+                            @if ($side['team']) href="{{ route('team', $side['team']) }}" wire:navigate @endif
+                            @class([
+                                'flex min-w-0 items-center gap-1.5 @min-[22rem]:gap-2',
+                                'flex-row-reverse' => $index === 1,
+                            ])
+                        >
+                            {{-- Sized to the two-line identity beside it — the mark
+                                 is how a team is recognized before the letters are
+                                 read, and at size-6 it was subordinate to its own
+                                 abbreviation. --}}
+                            <x-team-logo :team="$side['team']" size="size-8 @min-[22rem]:size-10" class="shrink-0" />
+
+                            <div class="flex min-w-0 flex-col">
+                                {{-- The abbreviation is the ONLY item that clips. A
+                                     flex row cannot ellipsize a bare text node, and
+                                     with justify-end an overflowing row spills out
+                                     of its START — the away side lost its rank and
+                                     first letter. With the text in its own min-w-0
+                                     item the row never overflows, so justify-end
+                                     has nothing to push and the cut lands at the
+                                     end, with an ellipsis. --}}
+                                <span class="flex min-w-0 items-center gap-1 text-sm font-semibold @if ($index === 1) justify-end @endif @if ($lost) text-zinc-400 @endif">
+                                    @if ($possession)
+                                        <span class="size-1.5 shrink-0 rounded-full bg-amber-500" title="Possession" aria-hidden="true"></span>
+                                        <span class="sr-only">has possession</span>
+                                    @endif
+                                    @if ($side['rank'])
+                                        <span class="shrink-0 text-micro font-medium text-zinc-400">{{ $side['rank'] }}</span>
+                                    @endif
+                                    <span class="min-w-0 truncate">{{ $side['team']?->abbreviation ?? 'TBD' }}</span>
+                                </span>
+
+                                <span class="truncate text-micro text-zinc-500">
+                                    @if ($this->isLive && $side['timeouts'] !== null)
+                                        {{ str_repeat('●', $side['timeouts']) }}{{ str_repeat('○', max(0, 3 - $side['timeouts'])) }}
+                                    @else
+                                        {{ $side['record'] }}
+                                    @endif
+                                </span>
+                            </div>
+                        </a>
+
+                        @if ($game->completed || $this->isLive)
+                            <span @class([
+                                'tabular shrink-0 text-xl tracking-tight @min-[22rem]:text-2xl',
+                                'font-bold' => ! $lost,
+                                'font-semibold text-zinc-400' => $lost,
+                            ])>{{ $side['score'] }}</span>
                         @endif
                     </div>
-                @endif
-
-                <div @class([
-                    'flex min-w-0 flex-1 items-center gap-2',
-                    'flex-row-reverse text-right' => $index === 1,
-                ])>
-                    {{-- The game page is WHERE the team links live — cards
-                         send every tap here precisely because these exist. --}}
-                    <a
-                        @if ($side['team']) href="{{ route('team', $side['team']) }}" wire:navigate @endif
-                        @class([
-                            'flex min-w-0 items-center gap-2',
-                            'flex-row-reverse' => $index === 1,
-                        ])
-                    >
-                        {{-- Sized to the two-line identity beside it — the mark
-                             is how a team is recognized before the letters are
-                             read, and at size-6 it was subordinate to its own
-                             abbreviation. --}}
-                        <x-team-logo :team="$side['team']" size="lg" class="shrink-0" />
-
-                        <div class="flex min-w-0 flex-col">
-                            <span class="flex items-center gap-1 truncate text-sm font-semibold @if ($index === 1) justify-end @endif @if ($lost) text-zinc-400 @endif">
-                                @if ($possession)
-                                    <span class="size-1.5 shrink-0 rounded-full bg-amber-500" title="Possession" aria-hidden="true"></span>
-                                    <span class="sr-only">has possession</span>
-                                @endif
-                                @if ($side['rank'])
-                                    <span class="text-micro font-medium text-zinc-400">{{ $side['rank'] }}</span>
-                                @endif
-                                {{ $side['team']?->abbreviation ?? 'TBD' }}
-                            </span>
-
-                            <span class="truncate text-micro text-zinc-500">
-                                @if ($this->isLive && $side['timeouts'] !== null)
-                                    {{ str_repeat('●', $side['timeouts']) }}{{ str_repeat('○', max(0, 3 - $side['timeouts'])) }}
-                                @else
-                                    {{ $side['record'] }}
-                                @endif
-                            </span>
-                        </div>
-                    </a>
-
-                    @if ($game->completed || $this->isLive)
-                        <span @class([
-                            'tabular shrink-0 text-2xl tracking-tight',
-                            'font-bold' => ! $lost,
-                            'font-semibold text-zinc-400' => $lost,
-                        ])>{{ $side['score'] }}</span>
-                    @endif
-                </div>
-            @endforeach
+                @endforeach
+            </div>
         </div>
 
         @if ($this->isLive && $game->last_play_text)

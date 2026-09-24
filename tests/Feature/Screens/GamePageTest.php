@@ -631,6 +631,50 @@ describe('the scorebug nav row', function () {
         Livewire::test('game', ['game' => $this->game->fresh()])
             ->assertSee('College Football Playoff National Championship');
     });
+
+    it('clips a team label at its end, never its rank', function () {
+        /*
+         * At 320 the right-hand label rendered "SU" for "7 PSU": the name row
+         * was a justify-end flex box carrying `truncate`, so its overflow
+         * spilled out of the START and took the rank with it. The rank now
+         * refuses to shrink and only the abbreviation, in its own min-w-0
+         * item, can clip — at the end, with an ellipsis.
+         */
+        $this->game->update(['home_rank' => 7]);
+
+        $html = Livewire::test('game', ['game' => $this->game->fresh()])->html();
+
+        expect($html)
+            ->toContain('<span class="shrink-0 text-micro font-medium text-zinc-400">7</span>')
+            ->toContain('<span class="min-w-0 truncate">UGA</span>')
+            ->toContain('<span class="min-w-0 truncate">ALA</span>');
+
+        preg_match_all('/class="([^"]*\bjustify-end\b[^"]*)"/', $html, $rows);
+
+        expect($rows[1])->not->toBeEmpty();
+
+        foreach ($rows[1] as $row) {
+            expect($row)->not->toMatch('/(?<![\w:-])truncate(?![\w-])/');
+        }
+    });
+
+    it('compacts the scorebug on a narrow row and keeps the 390 layout above it', function () {
+        /*
+         * At 320 each side had 96px: a 40px logo, a two-digit score and the
+         * gaps left the label 12px. The row is a container query — compact at
+         * base, and every `@min-[22rem]` (a 390 phone's 358px row) restores
+         * exactly what 390 always had. The container is a WRAPPER: an
+         * element cannot query itself, so the row's gap would never widen.
+         */
+        $html = Livewire::test('game', ['game' => $this->game])->html();
+
+        expect($html)
+            ->toContain('<div class="@container mt-2">')
+            ->toContain('class="flex items-center gap-1.5 @min-[22rem]:gap-2"')
+            ->toContain('flex w-14 shrink-0 flex-col items-center gap-0.5 text-center @min-[22rem]:w-20')
+            ->toContain('size-8 @min-[22rem]:size-10')
+            ->toContain('text-xl tracking-tight @min-[22rem]:text-2xl');
+    });
 });
 
 describe('the hand-asked refresh', function () {
