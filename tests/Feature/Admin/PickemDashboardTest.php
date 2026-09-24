@@ -239,6 +239,79 @@ describe('the reminder lift', function () {
             ->toBe(0.667);
     });
 
+    it('never counts somebody the reminder could not have moved', function () {
+        /*
+         * Slate 298 read 0.6. The denominator was the members who could have
+         * been moved, but the numerator was every entry made after the wave,
+         * including a member who JOINED after it and so was never the
+         * reminder's to move. One eligible member entered, and so did one
+         * latecomer: that is 1 of 1, not 2 of 1 (CFB-91).
+         */
+        $group = Group::factory()->create();
+        $reminded = Cadence::currentSaturday()->setTime(10, 0);
+        $slate = saturdaySlate($group, ['picks_reminded_at' => $reminded]);
+
+        $eligible = pickemJoinedAt($group, '2026-08-01 00:00:00');
+        $latecomer = pickemJoinedAt($group, $reminded->addMinutes(30)->toDateTimeString());
+
+        foreach ([$eligible, $latecomer] as $member) {
+            SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $member->id])
+                ->forceFill(['created_at' => $reminded->addHour()])->save();
+        }
+
+        $row = collect(app(LiveState::class)->build(Cadence::currentSaturday(), names: false)['contests'])
+            ->firstWhere('slate_id', $slate->id);
+
+        expect($row['reminder_lift'])->toBe(1.0)
+            // And the late share says which window it counts.
+            ->and($row['late_window_minutes'])->toBe(Cadence::LAST_CALL_MINUTES);
+    });
+
+    it('reads exactly 1.0 when every eligible member entered, and never more', function () {
+        $group = Group::factory()->create();
+        $reminded = Cadence::currentSaturday()->setTime(10, 0);
+        $slate = saturdaySlate($group, ['picks_reminded_at' => $reminded]);
+
+        foreach (range(1, 3) as $i) {
+            SlateEntry::factory()->create([
+                'slate_id' => $slate->id,
+                'user_id' => pickemJoinedAt($group, '2026-08-01 00:00:00')->id,
+            ])->forceFill(['created_at' => $reminded->addHour()])->save();
+        }
+
+        // Three more join after the wave and enter too. The rate must not move.
+        foreach (range(1, 3) as $i) {
+            SlateEntry::factory()->create([
+                'slate_id' => $slate->id,
+                'user_id' => pickemJoinedAt($group, $reminded->addMinutes(10)->toDateTimeString())->id,
+            ])->forceFill(['created_at' => $reminded->addHours(2)])->save();
+        }
+
+        expect(collect(app(LiveState::class)->build(Cadence::currentSaturday(), names: false)['contests'])
+            ->firstWhere('slate_id', $slate->id)['reminder_lift'])->toBe(1.0);
+    });
+
+    it('stays null with no wave sent, and with nobody left to move', function () {
+        // Two different absences, and neither is a zero.
+        $quiet = Group::factory()->create();
+        $unsent = saturdaySlate($quiet, ['picks_reminded_at' => null]);
+        pickemJoinedAt($quiet, '2026-08-01 00:00:00');
+
+        $done = Group::factory()->create();
+        $reminded = Cadence::currentSaturday()->setTime(10, 0);
+        $finished = saturdaySlate($done, ['picks_reminded_at' => $reminded]);
+        SlateEntry::factory()->create([
+            'slate_id' => $finished->id,
+            'user_id' => pickemJoinedAt($done, '2026-08-01 00:00:00')->id,
+        ])->forceFill(['created_at' => $reminded->subHour()])->save();
+
+        $rows = collect(app(LiveState::class)->build(Cadence::currentSaturday(), names: false)['contests'])
+            ->keyBy('slate_id');
+
+        expect($rows[$unsent->id]['reminder_lift'])->toBeNull()
+            ->and($rows[$finished->id]['reminder_lift'])->toBeNull();
+    });
+
     it('still refuses to name a group, machine skin on', function () {
         // No shape of this report names a room. The snapshot reads these rows
         // and the snapshot leaves the machine.
