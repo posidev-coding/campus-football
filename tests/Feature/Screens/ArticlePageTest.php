@@ -1,8 +1,11 @@
 <?php
 
+use App\Jobs\FetchArticleStory;
 use App\Models\Article;
 use App\Models\Team;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
+use Livewire\Livewire;
 
 beforeEach(function () {
     config()->set('espn.http.rate_limit', 0);
@@ -26,22 +29,112 @@ it('renders the body in the app rather than sending the reader to ESPN', functio
     Http::assertNothingSent();
 });
 
-it('fetches a body it does not have yet, once', function () {
+it('fills a body it does not have yet in behind the page, once', function () {
+    /*
+     * Used to be fetched inline in mount() — and when ESPN's `now` host sat
+     * at its 5s ceiling, the page waited out nearly all of it (CFB-96). Now
+     * the render is a database read, `wire:init` queues the fetch, and the
+     * body arrives on the next poll. Still one request per article, ever.
+     */
     Http::fake(['*now.core.api.espn.com*' => Http::response([
-        'headlines' => [['story' => '<p>Fetched on first view.</p>', 'images' => []]],
+        'headlines' => [['story' => '<p>Fetched behind the first view.</p>', 'images' => []]],
     ])]);
 
     $article = Article::factory()->create();
 
     $this->get(route('article', $article))
         ->assertOk()
-        ->assertSee('Fetched on first view.', escape: false);
+        ->assertDontSee('Fetched behind the first view.', escape: false);
 
-    expect($article->fresh()->story)->not->toBeNull();
+    Http::assertNothingSent();
 
-    $this->get(route('article', $article))->assertOk();
+    // The browser's `wire:init`. The test queue is sync, so the job runs here.
+    Livewire::test('article', ['article' => $article])->call('requestStory');
+
+    $this->get(route('article', $article))
+        ->assertOk()
+        ->assertSee('Fetched behind the first view.', escape: false);
+
+    // A second reader finds it stored and asks for nothing.
+    Livewire::test('article', ['article' => $article->fresh()])->call('requestStory');
 
     Http::assertSentCount(1);
+});
+
+describe('a body that is not here yet', function () {
+    it('renders without waiting on ESPN, and asks it nothing on the render', function () {
+        // ESPN at its worst. The page must not notice, because it never asks.
+        Http::fake(['*now.core.api.espn.com*' => Http::response(null, 500)]);
+
+        $article = Article::factory()->create(['description' => 'Heupel on the bye week.']);
+
+        $this->get(route('article', $article))
+            ->assertOk()
+            ->assertSee('data-story="pending"', escape: false)
+            ->assertSee('wire:init="requestStory"', escape: false)
+            ->assertSee('Heupel on the bye week.')
+            ->assertSee($article->url, escape: false)
+            // Not asked is not "no body" — the page must not claim a finding.
+            ->assertDontSee('has not published a readable body');
+
+        Http::assertNothingSent();
+    });
+
+    it('queues one fetch for a page full of readers', function () {
+        Queue::fake();
+
+        $article = Article::factory()->create();
+
+        foreach (range(1, 5) as $reader) {
+            Livewire::test('article', ['article' => $article])->call('requestStory');
+        }
+
+        Queue::assertPushed(FetchArticleStory::class, 1);
+    });
+
+    it('queues nothing for a story it already holds, or a video with none to find', function () {
+        Queue::fake();
+        Http::fake();
+
+        $stored = Article::factory()->withStory('<p>Already here.</p>')->create();
+        $media = Article::factory()->media()->create();
+
+        foreach ([$stored, $media] as $article) {
+            $this->get(route('article', $article))
+                ->assertOk()
+                ->assertDontSee('data-story="pending"', escape: false);
+
+            Livewire::test('article', ['article' => $article])->call('requestStory');
+        }
+
+        Queue::assertNothingPushed();
+        Http::assertNothingSent();
+    });
+
+    it('stops waiting on a fetch that failed, and does not call it a missing body', function () {
+        /*
+         * A failed request writes neither `story` nor `story_fetched_at`, so
+         * "it landed" can never arrive. Past the ceiling the reader gets the
+         * link and an honest line, and the poll stops.
+         */
+        Http::fake(['*now.core.api.espn.com*' => Http::response(null, 500)]);
+
+        $article = Article::factory()->create();
+
+        $page = Livewire::test('article', ['article' => $article])->call('requestStory');
+
+        expect($article->fresh()->story_fetched_at)->toBeNull();
+
+        $page->assertSee('data-story="pending"', escape: false);
+
+        $this->travel(31)->seconds();
+
+        $page->call('$refresh')
+            ->assertDontSee('data-story="pending"', escape: false)
+            ->assertDontSee('wire:poll', escape: false)
+            ->assertSee('The story has not come through from ESPN yet.')
+            ->assertDontSee('has not published a readable body');
+    });
 });
 
 it('says what a video post is instead of showing an empty page', function () {
