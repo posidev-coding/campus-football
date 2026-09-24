@@ -16,6 +16,7 @@ use App\Models\Week;
 use App\Support\GameRanks;
 use App\Support\Voice;
 use Illuminate\Support\Facades\DB;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 
 /*
@@ -1497,4 +1498,141 @@ it('counts the PEOPLE in the field, and not the Bear beside them', function () {
     expect($html)->toContain('The Bear')
         ->and(weekPlaceOf($html))->toContain('1st of 2')
         ->and(weekPlaceOf($html))->not->toContain('of 3');
+});
+
+describe('the card pager on Standings', function () {
+    /*
+     * CFB-29. Paging back through cards already played. A card is a SATURDAY,
+     * not a week: one ESPN week can hold two, and slates are unique on
+     * (contest_id, saturday), so the strip is built and ordered by Saturday.
+     */
+
+    /**
+     * Played cards for one contest, each with the given points per user.
+     *
+     * @param  array<string, array<int, int>>  $cards  saturday => [user id => points]
+     * @return array<string, Slate>
+     */
+    $played = function (Contest $contest, array $cards): array {
+        [, $week] = pickemSeasonWeek();
+
+        return collect($cards)->map(function (array $points, string $saturday) use ($contest, $week) {
+            $slate = Slate::factory()->create([
+                'contest_id' => $contest->id, 'week_id' => $week->id, 'saturday' => $saturday,
+                'status' => Slate::SETTLED, 'settled_at' => now(),
+            ]);
+
+            foreach ($points as $userId => $total) {
+                SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $userId, 'final_points' => $total]);
+            }
+
+            return $slate;
+        })->all();
+    };
+
+    it('does not appear with one card, since there is nothing to page', function () use ($played) {
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $played($contest, ['2026-09-05' => [$commissioner->id => 9]]);
+
+        Livewire::actingAs($commissioner)->test('group', ['group' => $group])
+            ->set('view', 'standings')
+            ->assertDontSeeHtml('data-card-pager');
+    });
+
+    it('pages the week table to a played card, and back', function () use ($played) {
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $member = User::factory()->create(['handle' => 'shedhand']);
+        GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+        // Created out of order, so the strip's order has to come from the
+        // Saturday rather than the row id.
+        $cards = $played($contest, [
+            '2026-09-12' => [$commissioner->id => 20, $member->id => 1],
+            '2026-09-05' => [$commissioner->id => 3, $member->id => 10],
+        ]);
+
+        $page = Livewire::actingAs($commissioner)->test('group', ['group' => $group])->set('view', 'standings');
+
+        expect(array_column($page->instance()->cards, 'range'))->toBe(['Sep 5', 'Sep 12']);
+
+        $page->call('selectWeek', $cards['2026-09-05']->id)
+            ->assertSeeHtml('data-card-pager')
+            ->assertSee('Week 1 · Sep 5')
+            // The grid now shows for any played card, so its scroll has to
+            // contain its own sr-only labels. Without `relative` they are
+            // positioned against the page and pan it sideways at 390 (measured
+            // at 693px in the device harness). Pinned, because no PHP test
+            // can measure a layout.
+            ->assertSeeHtml('class="stat-grid relative" data-picks-scroll');
+
+        expect($page->instance()->shownStandings->first()['user']->id)->toBe($member->id);
+
+        $page->call('selectWeek', $cards['2026-09-12']->id);
+
+        expect($page->instance()->shownStandings->first()['user']->id)->toBe($commissioner->id);
+    });
+
+    it('keeps both cards of a split week apart', function () use ($played) {
+        // 2026 Week 1 is 8/29 AND 9/5. By week_id they are one week; on the
+        // strip they are two cards, each with its own date.
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        [, $week] = splitPickemWeek();
+
+        $cards = $played($contest, [
+            '2026-08-29' => [$commissioner->id => 4],
+            '2026-09-05' => [$commissioner->id => 7],
+        ]);
+
+        expect($cards['2026-08-29']->week_id)->toBe($cards['2026-09-05']->week_id);
+
+        $strip = Livewire::actingAs($commissioner)->test('group', ['group' => $group])->instance()->cards;
+
+        expect($strip)->toHaveCount(2)
+            ->and(array_column($strip, 'week_id'))->toBe([$cards['2026-08-29']->id, $cards['2026-09-05']->id])
+            ->and(array_column($strip, 'range'))->toBe(['Aug 29', 'Sep 5']);
+    });
+
+    it('refuses a card from another group, however it arrives', function () use ($played) {
+        /*
+         * The pager's id is a slate id, and a public property is whatever the
+         * browser sends. A card that is not on THIS contest's strip must
+         * never become the table, or one group's page prints another's.
+         */
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $played($contest, ['2026-09-05' => [$commissioner->id => 3], '2026-09-12' => [$commissioner->id => 5]]);
+
+        [$stranger, , $elsewhere] = pickemContest(ContestMode::Classic);
+        $theirs = $played($elsewhere, ['2026-09-19' => [$stranger->id => 99]])['2026-09-19'];
+
+        $page = Livewire::actingAs($commissioner)->test('group', ['group' => $group])->set('view', 'standings');
+
+        // Through the handler: ignored.
+        $page->call('selectWeek', $theirs->id);
+
+        expect($page->instance()->card)->toBeNull();
+
+        // Straight at the property: the lock refuses it.
+        expect(fn () => $page->set('card', $theirs->id))
+            ->toThrow(CannotUpdateLockedPropertyException::class);
+
+        // And if it were ever set server-side anyway, the table still would
+        // not show it.
+        $page->instance()->card = $theirs->id;
+
+        expect($page->instance()->shownCard?->id)->not->toBe($theirs->id);
+    });
+
+    it('moves only the week table, never the place above it', function () use ($played) {
+        // The band's place and the you-strip are about the card in play.
+        // Paging a table back is reading history, not changing where you stand.
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $cards = $played($contest, ['2026-09-05' => [$commissioner->id => 3], '2026-09-12' => [$commissioner->id => 5]]);
+
+        $page = Livewire::actingAs($commissioner)->test('group', ['group' => $group])->set('view', 'standings');
+        $before = $page->instance()->youStrip;
+
+        $page->call('selectWeek', $cards['2026-09-05']->id);
+
+        expect($page->instance()->youStrip)->toBe($before);
+    });
 });

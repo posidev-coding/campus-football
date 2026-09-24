@@ -43,8 +43,10 @@ use App\Support\Voice;
 use App\Support\WeekTrends;
 use Carbon\CarbonInterface;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -111,6 +113,18 @@ new class extends Component
 
     /** The pivot modal's chosen target — a ContestMode backing value. */
     public ?string $pivotTo = null;
+
+    /**
+     * THE CARD THE STANDINGS TABLE IS SHOWING, when the reader has paged
+     * back to one already played: a slate id, and null for the card in play.
+     *
+     * Locked, and honored only when it is one of THIS contest's cards
+     * ({@see shownCard()}): a public property is whatever the browser sends,
+     * and an id from another group would otherwise print that group's table.
+     * Not a #[Url]: the card in play is the page everyone shares.
+     */
+    #[Locked]
+    public ?int $card = null;
 
     /**
      * The commissioner's chosen icon file, held only between the file
@@ -268,11 +282,22 @@ new class extends Component
             return null;
         }
 
+        return $this->cardQuery()
+            ->onCard($this->currentWeek)
+            ->first();
+    }
+
+    /**
+     * This contest's slates with everything a card renders: the pick surface,
+     * the week table and the picks grid. The card in play and a card paged
+     * back to load the same way, so the two can never render differently.
+     */
+    private function cardQuery(): Builder
+    {
         $team = self::TEAM_COLUMNS;
 
         return Slate::query()
             ->where('contest_id', $this->contest->id)
-            ->onCard($this->currentWeek)
             ->with([
                 "games.game.homeTeam:{$team}",
                 "games.game.awayTeam:{$team}",
@@ -281,8 +306,111 @@ new class extends Component
                 'tiebreakerTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'entries.user:id,first_name,last_name,handle',
                 'contest.group:id,name,kind',
-            ])
-            ->first();
+            ]);
+    }
+
+    /**
+     * The cards the week scroller pages through: every published card of
+     * this contest, in SATURDAY order. Never by week_id, because one ESPN
+     * week can hold two Saturdays and both cards belong on the strip
+     * (.ai/rules/views-livewire-support.md). Each carries its date as the
+     * pill's second line, so a split week's two cards read apart even when
+     * the fan numbering gives them one label.
+     *
+     * Shaped for `x-week-scroller`, whose `week_id` is the slate id here,
+     * the way Rankings passes a release id through the same strip.
+     *
+     * Empty below two cards: with one there is nothing to page, and a
+     * one-Saturday room never grows a second.
+     *
+     * @return list<array{week_id: int, label: string, range: string}>
+     */
+    #[Computed]
+    public function cards(): array
+    {
+        if ($this->contest === null) {
+            return [];
+        }
+
+        $cards = $this->contest->slates()
+            ->where('status', '!=', Slate::DRAFT)
+            ->with('week')
+            ->orderBy('saturday')
+            ->get(['id', 'week_id', 'saturday']);
+
+        if ($cards->count() < 2) {
+            return [];
+        }
+
+        return $cards->map(fn (Slate $slate): array => [
+            'week_id' => $slate->id,
+            'label' => Cadence::displayWeekLabel($slate->week, $slate->saturday),
+            'range' => $slate->saturday->format('M j'),
+        ])->all();
+    }
+
+    /**
+     * Page the standings to another card. Named for the scroller's baked-in
+     * `wire:click`; the bracket is the postseason's and means nothing here.
+     * A card that is not on the strip is ignored rather than trusted.
+     */
+    public function selectWeek(int $weekId, string $bracket = ''): void
+    {
+        if (! in_array($weekId, array_column($this->cards, 'week_id'), true)) {
+            return;
+        }
+
+        $this->card = $weekId === $this->slate?->id ? null : $weekId;
+
+        unset($this->shownCard, $this->shownStatus, $this->shownStandings, $this->picksGrid);
+    }
+
+    /**
+     * The card the week table and the picks grid are about: the one paged
+     * to, or the card in play. Only those two follow the pager. The band's
+     * place, the you-strip and the season table stay on the card in play.
+     */
+    #[Computed]
+    public function shownCard(): ?Slate
+    {
+        if ($this->card === null || ! in_array($this->card, array_column($this->cards, 'week_id'), true)) {
+            return $this->slate;
+        }
+
+        return $this->cardQuery()->whereKey($this->card)->first();
+    }
+
+    /**
+     * The week table's heading: "This week" on the card in play, the card's
+     * own label and date on one paged back to, so a past table never reads
+     * as this week's.
+     */
+    #[Computed]
+    public function shownTitle(): string
+    {
+        $shown = collect($this->cards)->firstWhere('week_id', $this->shownCard?->id);
+
+        return $shown === null || $this->shownCard?->id === $this->slate?->id
+            ? 'This week'
+            : $shown['label'].' · '.$shown['range'];
+    }
+
+    /** {@see surfaceStatus()}, for the card being shown. */
+    #[Computed]
+    public function shownStatus(): ?string
+    {
+        return $this->statusOf($this->shownCard);
+    }
+
+    /** {@see weekStandings()}, for the card being shown. */
+    #[Computed]
+    public function shownStandings(): Collection
+    {
+        $shown = $this->shownCard;
+
+        return $shown === null || $shown->id === $this->slate?->id
+            ? $this->weekStandings
+            : $this->standingsFor($shown);
     }
 
     /**
@@ -325,8 +453,11 @@ new class extends Component
     #[Computed]
     public function surfaceStatus(): ?string
     {
-        $slate = $this->slate;
+        return $this->statusOf($this->slate);
+    }
 
+    private function statusOf(?Slate $slate): ?string
+    {
         if ($slate === null || ! $slate->isPublished()) {
             return null;
         }
@@ -351,8 +482,12 @@ new class extends Component
     #[Computed]
     public function weekStandings(): Collection
     {
-        $slate = $this->slate;
+        return $this->standingsFor($this->slate);
+    }
 
+    /** @return Collection<int, array<string, mixed>> */
+    private function standingsFor(?Slate $slate): Collection
+    {
         if ($slate === null || ! $slate->isPublished()) {
             return collect();
         }
@@ -581,9 +716,9 @@ new class extends Component
     #[Computed]
     public function picksGrid(): ?array
     {
-        $slate = $this->slate;
+        $slate = $this->shownCard;
 
-        if ($slate === null || ! in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true)) {
+        if ($slate === null || ! in_array($this->shownStatus, ['live', 'prelim', 'final'], true)) {
             return null;
         }
 
@@ -616,7 +751,7 @@ new class extends Component
         $engine = $this->contest?->mode->engine($this->contest->settings);
         $bear = $slate->bear_theme !== null && ($engine?->hasBear() ?? false);
 
-        $rows = $this->weekStandings
+        $rows = $this->shownStandings
             ->map(function (array $standing) use ($games, $picks, $side, $grader, $bear) {
                 $isBear = $standing['key'] === 'bear';
                 $mine = $standing['user'] === null
@@ -1154,6 +1289,7 @@ new class extends Component
             $this->contest, $this->pivotChoices, $this->slate, $this->surfaceStatus,
             $this->weekStandings, $this->seasonStandings, $this->seasonHasHistory,
             $this->placing, $this->youStrip, $this->picksGrid,
+            $this->cards, $this->shownCard, $this->shownStatus, $this->shownStandings,
         );
     }
 
@@ -1264,7 +1400,7 @@ new class extends Component
     protected function refreshPicks(): void
     {
         $this->refreshPickState();
-        unset($this->slate, $this->surfaceStatus, $this->weekStandings, $this->seasonStandings, $this->placing, $this->youStrip, $this->picksGrid);
+        unset($this->slate, $this->surfaceStatus, $this->weekStandings, $this->seasonStandings, $this->placing, $this->youStrip, $this->picksGrid, $this->shownCard, $this->shownStatus, $this->shownStandings);
     }
 
     private function normalizedView(string $view): string
@@ -1679,12 +1815,17 @@ new class extends Component
                 <x-you-strip data-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" :trend="$this->youStrip['trend']" />
             @endif
 
-            @if (in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true) && $this->weekStandings->isNotEmpty())
+            {{-- The pager for the cards already played. It moves this table
+                 and the grid under it, and nothing above: the band's place
+                 and the strip stay on the card in play. --}}
+            <x-week-scroller data-card-pager :weeks="$this->cards" :selected="$this->shownCard?->id" />
+
+            @if (in_array($this->shownStatus, ['live', 'prelim', 'final'], true) && $this->shownStandings->isNotEmpty())
                 <x-standings-table
-                    :rows="$this->weekStandings"
-                    :status="$this->surfaceStatus"
+                    :rows="$this->shownStandings"
+                    :status="$this->shownStatus"
                     :headings="['Pts']"
-                    title="This week"
+                    :title="$this->shownTitle"
                     :names="$this->showsRealNames"
                 />
             @endif
