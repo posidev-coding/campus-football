@@ -1,8 +1,12 @@
 <?php
 
+use App\Actions\PublishSlate;
 use App\Actions\RecordActivity;
 use App\Enums\ActivityKind;
 use App\Models\ActivityEvent;
+use App\Models\Group;
+use App\Models\Pick;
+use App\Models\SlateEntry;
 use App\Models\User;
 use App\Support\Release;
 use Illuminate\Redis\RedisManager;
@@ -246,10 +250,11 @@ describe('the facet allowlist', function () {
 
         Redis::connection('pulse')->flushdb();
 
-        // Not an allowlisted stop: null, never the raw value.
+        // Not a stop: the screen folds it to the slate, and the sensor records
+        // where the reader landed — never the raw value.
         $this->actingAs($member)->get(route('pickem.group', $group).'?view=../etc')->assertOk();
 
-        expect(firstEntry()['facet'])->toBe('');
+        expect(firstEntry()['facet'])->toBe('slate');
 
         Redis::connection('pulse')->flushdb();
 
@@ -257,6 +262,62 @@ describe('the facet allowlist', function () {
         $this->get(route('scoreboard').'?view=talk')->assertOk();
 
         expect(firstEntry()['facet'])->toBe('');
+    });
+
+    it('records the slate for a clubhouse address that names no stop', function () {
+        /*
+         * `#[Url(except: 'slate')]` keeps the default stop out of the
+         * address, so a reader on the slate — the most-read stop, and the
+         * only one the ops card's pick-through counts — never has
+         * `?view=slate`. Read off the parameter, every one of those views
+         * landed with no facet, and "No slates opened yet" sat beside a
+         * funnel that had counted seventeen.
+         */
+        [$member, $group] = pickemContest();
+
+        $this->actingAs($member)->get(route('pickem.group', $group))->assertOk();
+
+        expect(firstEntry())->toMatchArray(['route' => 'pickem.group', 'facet' => 'slate']);
+
+        Redis::connection('pulse')->flushdb();
+
+        // A room is the same screen at its own address.
+        [, $week] = pickemSeasonWeek();
+        $room = Group::factory()->room($week->id)->create();
+
+        $this->actingAs($member)->get(route('pickem.room', $room))->assertOk();
+
+        expect(firstEntry())->toMatchArray(['route' => 'pickem.room', 'facet' => 'slate']);
+    });
+
+    it('records the standings a bare address opens on once the entry is in and the card is playing', function () {
+        /*
+         * Why the address could never answer this, even with a default: the
+         * front door sends a reader whose entry is complete to Standings
+         * once the card is playing. Counting that as a slate read would add
+         * every Saturday revisit by somebody who already picked to both
+         * sides of pick-through, and the rate would climb with the games.
+         */
+        [$commissioner, $group, $contest] = pickemContest();
+        $slate = pickemDraftSlate($contest);
+        app(PublishSlate::class)->handle($commissioner, $slate);
+
+        $games = $slate->fresh()->games()->with('game')->get();
+
+        foreach ($games as $slateGame) {
+            Pick::factory()->create([
+                'slate_game_id' => $slateGame->id,
+                'user_id' => $commissioner->id,
+                'picked_team_id' => $slateGame->game->home_team_id,
+            ]);
+        }
+        SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $commissioner->id, 'tiebreaker_total' => 48]);
+
+        $games->first()->game->update(['kickoff_at' => now()->subHour()]);
+
+        $this->actingAs($commissioner)->get(route('pickem.group', $group))->assertOk();
+
+        expect(firstEntry()['facet'])->toBe('standings');
     });
 
     it('allows exactly the stops the clubhouse renders', function () {

@@ -5,6 +5,7 @@ use App\Actions\HandOffCommissioner;
 use App\Actions\InviteUserToGroup;
 use App\Actions\JoinGroup;
 use App\Actions\LeaveGroup;
+use App\Actions\RecordActivity;
 use App\Actions\RecordUxEvent;
 use App\Actions\RemoveGroupMember;
 use App\Actions\SetGroupIcon;
@@ -148,6 +149,10 @@ new class extends Component
         if (request()->query('view') === null && $this->opensToStandings()) {
             $this->view = 'standings';
         }
+
+        // The page-view sensor records this, not the address: a bare URL
+        // may be the slate or, past the front door, the standings.
+        RecordActivity::showing(request(), $this->view);
 
         $this->countSlateEntry();
     }
