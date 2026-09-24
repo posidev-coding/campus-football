@@ -252,8 +252,20 @@
 }
 
 /* Wide stat tables scroll inside their own container. The page body must never
-   scroll sideways — the most common way a data-dense mobile layout breaks. */
+   scroll sideways — the most common way a data-dense mobile layout breaks.
+
+   `position: relative` is what makes the overflow hold. Overflow clips only
+   the descendants whose containing block is inside the box, and an
+   absolutely positioned child resolves against its nearest POSITIONED
+   ancestor — so without it every `sr-only` header and label (they are
+   `position: absolute`) escapes to the page, sits at its column's static x,
+   and widens the document instead. The picks grid's fifteenth column pushed
+   a 390px page to 693px and it panned. Nothing inside a stat-grid is
+   positioned to escape it on purpose: the sticky name column pins to this
+   box's scroll either way, and `relative` without a z-index opens no
+   stacking context. */
 @utility stat-grid {
+    position: relative;
     overflow-x: auto;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;

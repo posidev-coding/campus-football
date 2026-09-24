@@ -367,10 +367,28 @@ hometown find it before anything else does.
 Check for it with the document, never the eye — an element's
 `getBoundingClientRect()` still reports its full width inside an
 `overflow-x: auto` container, so a `stat-grid` table reads as an overflow when
-it is behaving exactly as intended. The real test is whether the document
-actually scrolls:
+it is behaving exactly as intended. The real test is whether the document is
+wider than its viewport:
 
-    scrollTo({left: 999}); window.scrollX === 0
+    document.documentElement.scrollWidth === document.documentElement.clientWidth
+
+Never `scrollTo({left: 999}); window.scrollX === 0`, which this section used to
+recommend. `<html>` wears `motion-safe:scroll-smooth`, so that call starts an
+animation and reads `scrollX` before it has moved: 0 on a page that pans. If
+you must scroll, pass `behavior: 'instant'`.
+
+**A `stat-grid` has to be a containing block, or `sr-only` text escapes it.**
+`overflow-x: auto` clips only the descendants whose containing block is inside
+the box. `sr-only` is `position: absolute`, so with no positioned ancestor in
+between, a header's hidden label resolves against something further up the
+page, sits at its column's static x, and widens the document. The picks grid's
+fifteenth column took a 390px page to 693px. The utility carries
+`position: relative` for every caller: nothing inside a stat-grid is positioned
+to escape it on purpose, the sticky name column pins to the box's own scroll
+either way, and `relative` without a z-index opens no stacking context.
+Standings, Rankings, Recruiting, Conference and the line score all fit at 390
+(and at 320) with their widest data, so none of them showed it. It surfaces
+only when a hidden label sits in a column past the viewport's edge.
 
 **In a TABLE the fix is `w-full max-w-0`, not `min-w-0`.** Same cause — a cell
 sizes to its content's min-content width, and `truncate` makes that the whole
