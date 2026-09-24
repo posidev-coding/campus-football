@@ -1,5 +1,7 @@
 <?php
 
+use App\Actions\PublishSlate;
+use App\Enums\ContestMode;
 use App\Models\BrandSetting;
 use App\Support\Remember;
 use Illuminate\Redis\RedisManager;
@@ -57,6 +59,61 @@ describe('the layout, while the cache store is down', function () {
                 && $context['store'] === 'redis'
                 && $context['key'] === 'brand:settings')
             ->atLeast()->once();
+    });
+});
+
+describe('a signed-in screen, while the cache store is down', function () {
+    it('renders My Picks from the rows, with the nav dot honestly lit', function () {
+        config()->set('cfb.pickem_open', true);
+
+        // A published slate with no picks is a week that still needs the
+        // reader, so the dot has to be ON. A default would read false, so a
+        // lit dot proves the rows were read.
+        [$commissioner, , $contest] = pickemContest(ContestMode::Classic);
+        app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+        Log::spy();
+        breakCacheStore();
+
+        // /picks names every read the app layout needs: the calendar under
+        // the pulse, TeamGlance under the header search, and the dot.
+        $this->actingAs($commissioner)
+            ->get(route('pickem.home'))
+            ->assertOk()
+            ->assertSee('Picks waiting');
+
+        foreach (['calendar:season:', 'glance:held:', 'glance:ranks', 'pickem-pulse:dot:'.$commissioner->id] as $key) {
+            Log::shouldHaveReceived('warning')
+                ->withArgs(fn (string $message, array $context) => str_starts_with($context['key'], $key))
+                ->atLeast()->once();
+        }
+    });
+});
+
+describe('Remember::filledOrSource', function () {
+    it('never stores an empty answer, so a draining sync cannot pin one', function () {
+        $computed = 0;
+        // An empty LIST, not null: a null is uncacheable by construction, so
+        // a test built on one passes whether or not the guard holds.
+        $compute = function () use (&$computed): array {
+            $computed++;
+
+            return [];
+        };
+
+        Remember::filledOrSource('probe', 60, $compute);
+        Remember::filledOrSource('probe', 60, $compute);
+
+        expect($computed)->toBe(2)
+            ->and(Cache::has('probe'))->toBeFalse();
+    });
+
+    it('reads the source when the store is down, and never masks the source failing', function () {
+        breakCacheStore();
+
+        expect(Remember::filledOrSource('probe', 60, fn (): array => [2026]))->toBe([2026])
+            ->and(fn () => Remember::filledOrSource('probe', 60, fn () => throw new RuntimeException('database is down')))
+            ->toThrow(RuntimeException::class, 'database is down');
     });
 });
 

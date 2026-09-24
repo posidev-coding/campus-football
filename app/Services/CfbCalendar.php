@@ -9,8 +9,8 @@ use App\Models\Ranking;
 use App\Models\Season;
 use App\Models\Week;
 use App\Support\Cadence;
+use App\Support\Remember;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * The single source of truth for "where are we in the college football year".
@@ -43,6 +43,14 @@ class CfbCalendar
      */
     private const PRESEASON_WINDOW_DAYS = 45;
 
+    /**
+     * Every read here goes through Remember::orSource, not Cache::remember.
+     * The cache only speeds up reads of seasons, weeks and rankings. Almost
+     * every screen asks this class first, so a Redis stall that threw here
+     * 500'd the whole site while MySQL was fine. Now a stall reads the rows
+     * instead. Only the store calls are guarded: a database failure still
+     * throws.
+     */
     private const CACHE_TTL = 900;
 
     /**
@@ -141,7 +149,7 @@ class CfbCalendar
             return self::$memo[$key];
         }
 
-        $attributes = Cache::remember(
+        $attributes = Remember::orSource(
             'calendar:season:'.$at->format('Y-m-d'),
             self::CACHE_TTL,
             fn () => $this->uncachedSeason($at)?->getAttributes(),
@@ -212,7 +220,7 @@ class CfbCalendar
             return self::$memo[$key];
         }
 
-        $attributes = Cache::remember(
+        $attributes = Remember::orSource(
             'calendar:week:'.$at->format('Y-m-d'),
             self::CACHE_TTL,
             fn () => $this->uncachedWeek($at)?->getAttributes(),
@@ -246,7 +254,7 @@ class CfbCalendar
      */
     public function resultsYear(): int
     {
-        return Cache::remember('calendar:results-year', self::CACHE_TTL, function () {
+        return Remember::orSource('calendar:results-year', self::CACHE_TTL, function () {
             /*
              * Ordered by YEAR, not by season id.
              *
@@ -281,7 +289,7 @@ class CfbCalendar
      */
     public function scoreboardYear(): int
     {
-        return Cache::remember('calendar:scoreboard-year', self::CACHE_TTL, function () {
+        return Remember::orSource('calendar:scoreboard-year', self::CACHE_TTL, function () {
             $current = $this->currentYear();
 
             $hasSchedule = Season::query()
@@ -314,7 +322,7 @@ class CfbCalendar
             return $current->number;
         }
 
-        return Cache::remember(
+        return Remember::orSource(
             "calendar:default-week:{$season->id}",
             self::CACHE_TTL,
             fn () => Week::query()
@@ -352,7 +360,7 @@ class CfbCalendar
     {
         $year ??= $this->pollYear();
 
-        return Cache::remember("calendar:default-poll:{$year}", self::CACHE_TTL, function () use ($year) {
+        return Remember::orSource("calendar:default-poll:{$year}", self::CACHE_TTL, function () use ($year) {
             $seasonIds = Season::where('year', $year)->pluck('id');
 
             if ($seasonIds->isEmpty()) {
@@ -382,7 +390,7 @@ class CfbCalendar
      */
     public function pollYear(): int
     {
-        return Cache::remember('calendar:poll-year', self::CACHE_TTL, function () {
+        return Remember::orSource('calendar:poll-year', self::CACHE_TTL, function () {
             $year = Season::query()
                 ->whereIn('id', Ranking::query()
                     ->whereIn('poll', array_map(fn (Poll $p) => $p->value, Poll::major()))
@@ -404,7 +412,7 @@ class CfbCalendar
     {
         $year ??= $this->pollYear();
 
-        return Cache::remember("calendar:polls:{$year}", self::CACHE_TTL, function () use ($year) {
+        return Remember::orSource("calendar:polls:{$year}", self::CACHE_TTL, function () use ($year) {
             // Spans season types — the preseason poll and final rankings live
             // outside the regular season.
             $seasonIds = Season::where('year', $year)->pluck('id');
@@ -435,7 +443,7 @@ class CfbCalendar
      */
     public function rankingsYear(string $poll = 'ap'): int
     {
-        return Cache::remember("calendar:rankings-year:{$poll}", self::CACHE_TTL, function () use ($poll) {
+        return Remember::orSource("calendar:rankings-year:{$poll}", self::CACHE_TTL, function () use ($poll) {
             $year = Season::query()
                 ->whereIn('id', Ranking::where('poll', $poll)->distinct()->pluck('season_id'))
                 ->orderByDesc('year')
@@ -462,7 +470,7 @@ class CfbCalendar
      */
     public function rankingReleases(int $year, string $poll): array
     {
-        return Cache::remember("calendar:releases:{$year}:{$poll}", self::CACHE_TTL, function () use ($year, $poll) {
+        return Remember::orSource("calendar:releases:{$year}:{$poll}", self::CACHE_TTL, function () use ($year, $poll) {
             $seasons = Season::where('year', $year)
                 ->whereIn('type', [Season::PRESEASON, Season::REGULAR, Season::POSTSEASON])
                 ->get()
@@ -531,7 +539,7 @@ class CfbCalendar
      */
     public function weekReleases(int $year): array
     {
-        return Cache::remember("calendar:weeks:{$year}", self::CACHE_TTL, function () use ($year) {
+        return Remember::orSource("calendar:weeks:{$year}", self::CACHE_TTL, function () use ($year) {
             $seasons = Season::where('year', $year)
                 ->whereIn('type', [Season::REGULAR, Season::POSTSEASON])
                 ->get()

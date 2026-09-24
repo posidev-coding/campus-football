@@ -82,6 +82,40 @@ class Remember
      */
     public static function orSource(string $key, int $ttl, Closure $compute)
     {
+        return self::guarded($key, $ttl, $compute, fn (mixed $value): bool => $value !== null);
+    }
+
+    /**
+     * filled() with orSource()'s guard: an empty result is still never
+     * served or stored, and a store that throws is skipped for the source.
+     *
+     * For a filled() read the layout cannot render without. TeamGlance::year()
+     * sits under the header search on every page. That read has to stay
+     * filled(), or a sync still draining pins "not held" for an hour.
+     *
+     * @template TValue
+     *
+     * @param  Closure(): TValue  $compute
+     * @return TValue
+     */
+    public static function filledOrSource(string $key, int $ttl, Closure $compute)
+    {
+        return self::guarded($key, $ttl, $compute, fn (mixed $value): bool => $value !== null && $value !== []);
+    }
+
+    /**
+     * The one guarded read-through behind orSource() and filledOrSource().
+     * `$isAnswer` decides both whether a cached value is served and whether
+     * a computed one is stored.
+     *
+     * @template TValue
+     *
+     * @param  Closure(): TValue  $compute
+     * @param  Closure(mixed): bool  $isAnswer
+     * @return TValue
+     */
+    private static function guarded(string $key, int $ttl, Closure $compute, Closure $isAnswer)
+    {
         try {
             $cached = Cache::get($key);
         } catch (Throwable $e) {
@@ -90,11 +124,15 @@ class Remember
             return $compute();
         }
 
-        if ($cached !== null) {
+        if ($isAnswer($cached)) {
             return $cached;
         }
 
         $value = $compute();
+
+        if (! $isAnswer($value)) {
+            return $value;
+        }
 
         try {
             Cache::put($key, $value, $ttl);
