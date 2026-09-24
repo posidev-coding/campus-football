@@ -1,8 +1,9 @@
 <?php
 
+use App\Jobs\FetchArticleStory;
 use App\Models\Article;
-use App\Services\Espn\Sync\SyncArticleStory;
 use App\Support\ArticleStory;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -17,6 +18,12 @@ use Livewire\Component;
  *     read, so an article that gets shared costs one request no matter how many
  *     people open it.
  *   - A miss is throttled per ARTICLE, not per viewer (see SyncArticleStory).
+ *   - And it is never fetched ON THE RENDER. It used to be, in mount(), and
+ *     when ESPN's `now` host sat at its 5s ceiling the page waited out nearly
+ *     all of it (CFB-96). The page renders what is stored, and a missing body
+ *     is queued as FetchArticleStory from `wire:init`, so only a browser that
+ *     runs the page asks for it. A crawler walking every /news/{article} costs
+ *     no ESPN requests at all, and that crawl is most of this route's traffic.
  *
  * A third of articles are `Media` — ESPN video and photo posts with no body at
  * all — so this screen must read well with nothing to render. It says so and
@@ -28,13 +35,71 @@ use Livewire\Component;
  */
 new class extends Component
 {
+    /**
+     * How long to wait on a queued story before handing the reader the link.
+     *
+     * A failed fetch writes neither the story nor `story_fetched_at` — no data,
+     * not "no body" — so "it landed" can never arrive for it. Without a
+     * ceiling the page would poll forever. The player screen's game log has the
+     * same one, for the same reason.
+     */
+    private const WAIT_CEILING = 30;
+
+    /** How long one dispatch answers for every reader of the same story. */
+    private const DISPATCH_GUARD_SECONDS = 300;
+
     public Article $article;
+
+    /**
+     * When this page asked for the story. Unix seconds, not Carbon: it rides
+     * through Livewire's snapshot.
+     */
+    public ?int $askedAt = null;
 
     public function mount(Article $article): void
     {
         $this->article = $article->load('teams:id,slug,display_name,short_display_name,abbreviation,logo,logo_dark');
+    }
 
-        app(SyncArticleStory::class)->fill($this->article);
+    /**
+     * Queue the body, from `wire:init` — never from mount().
+     *
+     * One dispatch per article per guard window, however many readers land at
+     * once. The job is unique as well, but the guard means a busy story does
+     * not even reach the queue's lock.
+     */
+    public function requestStory(): void
+    {
+        $this->askedAt = now()->getTimestamp();
+
+        if (! $this->article->storyIsWorthFetching()) {
+            return;
+        }
+
+        if (Cache::add("article:story:dispatched:{$this->article->id}", true, self::DISPATCH_GUARD_SECONDS)) {
+            FetchArticleStory::dispatch($this->article->id);
+        }
+    }
+
+    /**
+     * Is a body plausibly on its way?
+     *
+     * Only while it has never been asked for. Once `story_fetched_at` is
+     * stamped the answer is in, whether or not it is a body. Before
+     * `wire:init` has run this is true, which is what a crawler sees: the
+     * description and the link, never a false "no body".
+     *
+     * `$article` is re-read from the database on every request (Livewire
+     * holds a model as its key), so a poll sees the job's write unprompted.
+     */
+    #[Computed]
+    public function awaitingStory(): bool
+    {
+        if (! $this->article->storyIsWorthFetching()) {
+            return false;
+        }
+
+        return $this->askedAt === null || now()->getTimestamp() - $this->askedAt < self::WAIT_CEILING;
     }
 
     /**
@@ -133,6 +198,34 @@ new class extends Component
                 <flux:icon name="arrow-up-right" variant="micro" />
             </a>
         </div>
+    @elseif ($this->awaitingStory)
+        {{--
+            Never asked for yet, or asked moments ago. `wire:init` queues the
+            fetch only once a browser has the page, which is what keeps a
+            crawler from spending ESPN requests. The poll reads our own
+            database and stops once the body lands or the wait ceiling passes.
+            The link is here too: a reader with no JavaScript, or no patience,
+            still has the story.
+        --}}
+        <div
+            class="flex flex-col items-start gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800"
+            @if ($askedAt === null) wire:init="requestStory" @endif
+            wire:poll.2s.visible
+            data-story="pending"
+        >
+            @if ($article->description)
+                <p class="text-sm text-zinc-600 dark:text-zinc-300">{{ $article->description }}</p>
+            @endif
+
+            <p class="inline-flex items-center gap-2 text-stat text-zinc-500 dark:text-zinc-400">
+                <flux:icon.loading class="size-3.5 shrink-0" />
+                Loading the story from ESPN…
+            </p>
+
+            <flux:button href="{{ $article->url }}" target="_blank" rel="noopener noreferrer" variant="ghost" size="sm">
+                Read it on ESPN
+            </flux:button>
+        </div>
     @else
         {{--
             No body: a video or photo post, or the rare story ESPN serves us
@@ -146,9 +239,14 @@ new class extends Component
             @endif
 
             <p class="text-stat text-zinc-500 dark:text-zinc-400">
-                {{ $article->type === App\Models\Article::MEDIA
-                    ? 'This one is a video on ESPN rather than a written story.'
-                    : 'ESPN has not published a readable body for this one.' }}
+                {{-- Three different answers, and only the middle one is a
+                     finding: a fetch that has not come back is not a story
+                     without a body. --}}
+                {{ match (true) {
+                    $article->type === App\Models\Article::MEDIA => 'This one is a video on ESPN rather than a written story.',
+                    $article->story_fetched_at !== null => 'ESPN has not published a readable body for this one.',
+                    default => 'The story has not come through from ESPN yet.',
+                } }}
             </p>
 
             <flux:button href="{{ $article->url }}" target="_blank" rel="noopener noreferrer" variant="primary" size="sm">
