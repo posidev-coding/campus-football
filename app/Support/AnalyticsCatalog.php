@@ -384,10 +384,11 @@ class AnalyticsCatalog
      * so the only honest denominator for `activated_7d`. Reporting one without
      * the other would hand the advisor a rate it cannot check.
      *
-     * `activated_7d` is null two ways over: below the floor, and before the
-     * cohort is {@see MATURITY_DAYS} old. The second is the trap — a cohort
-     * registered on Thursday has not had its seven days yet, and dividing
-     * anyway prints a collapse every single week.
+     * `activated_7d` is null two ways over: below the floor, and before its
+     * LAST registrant is {@see MATURITY_DAYS} days old. The second is the
+     * trap — somebody who registered on the Monday that closes the week has
+     * not had their seven days when the week's first registrant has, and
+     * dividing anyway prints a collapse every single week.
      *
      * @return list<array<string, mixed>>
      */
@@ -402,7 +403,14 @@ class AnalyticsCatalog
         foreach ($weeks as $start) {
             $users = $people[$start->toDateString()] ?? collect();
             $size = $users->count();
-            $matured = $start->addDays(self::MATURITY_DAYS)->lte($now);
+            /*
+             * Matured once the LAST person in the cohort has had their seven
+             * days, which is the week's end plus MATURITY_DAYS, not its start
+             * plus it. Counting from the start let the Monday registrant be
+             * measured a day in and counted as not activated, pulling the rate
+             * down every week the cohort was big enough to publish (CFB-95).
+             */
+            $matured = $start->addWeek()->addDays(self::MATURITY_DAYS)->lte($now);
 
             $activated = $users->filter(fn (object $user): bool => $user->first_entry_at !== null
                 && CarbonImmutable::parse($user->first_entry_at)
@@ -557,7 +565,8 @@ class AnalyticsCatalog
      * Weekly retention: of the people who registered in week N, how many were
      * still here in week N+k (question 4).
      *
-     * A cell is null under the floor rather than 0. The difference matters
+     * A cell exists only once its week has closed, and is null under the
+     * floor rather than 0. The difference matters
      * more here than anywhere else in this class — a retention grid full of
      * honest-looking zeros is the single most persuasive wrong chart an early
      * product can draw itself.
@@ -595,7 +604,16 @@ class AnalyticsCatalog
             for ($k = 0; $k < self::COHORT_WEEKS; $k++) {
                 $from = $start->addWeeks($k);
 
-                if ($from->gt($today)) {
+                /*
+                 * A cell appears once its week has CLOSED, not once it has
+                 * begun. The guard used to test the start, so on a Wednesday
+                 * the newest cell was two days of a seven-day window. It
+                 * published 18.2% beside three complete cells, and it is the
+                 * cell a reader's eye lands on first (CFB-95). Dropped rather
+                 * than nulled, the way a future week already is: the row is
+                 * one shorter until the week is over.
+                 */
+                if ($from->addDays(7)->gt($today)) {
                     break;
                 }
 
