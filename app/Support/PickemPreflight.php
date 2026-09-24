@@ -8,8 +8,10 @@ use App\Models\Group;
 use App\Models\Slate;
 use App\Models\Week;
 use App\Services\CfbCalendar;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use JsonException;
 
 /**
@@ -154,6 +156,23 @@ class PickemPreflight
             ? ''
             : ' '.$exempt->map(fn (ContestMode $mode) => $mode->label())->implode(', ').': not enough games this Saturday.';
 
+        /*
+         * NOTHING SEATABLE IS NOT A PASS. When every mode is exempt the
+         * count reads "0 of 0 stocked" and went green, beside a lines row
+         * reading red for the same card, on exactly the Saturday somebody
+         * needed to see it (CFB-99, Sat Sep 26 on four lined games). The
+         * exemption stays; an empty shelf is what it says instead.
+         */
+        if ($exempt->count() === count(ContestMode::cases())) {
+            return $this->row(
+                'rooms',
+                'Open public rooms',
+                self::WARN,
+                'No mode can be seated for '.$this->shortfall($week, $saturday),
+                'cfb:games --tier=current --year=current',
+            );
+        }
+
         if ($missing->isNotEmpty()) {
             return $this->row(
                 'rooms',
@@ -210,6 +229,20 @@ class PickemPreflight
 
         $missing = $possible->reject(fn (array $entry) => $stocked->contains($entry['flavor']->value));
 
+        // An empty shelf the Saturday could not fill: the same story the
+        // rooms row tells, and WARN at most, because this row never blocks.
+        // The skipped list is dropped here — naming all ten says nothing
+        // the one sentence does not.
+        if ($possible->isEmpty()) {
+            return $this->row(
+                'flavors',
+                'Specialty rooms',
+                self::WARN,
+                'No specialty room can be seated for '.$this->shortfall($week, $saturday),
+                'cfb:games --tier=current --year=current',
+            );
+        }
+
         $detail = $stocked->unique()->count().' of '.$possible->count().' possible specialty rooms stocked.'
             .($skipped->isEmpty() ? '' : ' Skipped: '.$skipped->implode(', ').' (not enough games).');
 
@@ -251,20 +284,7 @@ class PickemPreflight
             return $this->row('lines', 'Lined games', self::FAIL, 'No Saturday to count games on.', 'cfb:games --tier=current --year=current');
         }
 
-        $card = $saturday->toDateString();
-
-        // Both halves are PHP checks. The ET time-of-day boundary shifts
-        // under DST and cannot be asked in SQL, and the DATE is read off
-        // `kickoff_at` converted to ET — never off `kickoff_day`, which is a
-        // weekday name, and never off the UTC date, which drops a 20:00 ET
-        // kickoff into Sunday.
-        $lined = Game::query()
-            ->where('week_id', $week->id)
-            ->whereHas('odds')
-            ->get()
-            ->filter(fn (Game $game) => $game->inSlateWindow())
-            ->filter(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString() === $card)
-            ->count();
+        $lined = $this->linedOn($week, $saturday);
 
         $on = 'Sat '.$saturday->format('M j');
 
@@ -506,6 +526,44 @@ class PickemPreflight
             self::OK,
             "{$total} persisted, all agreeing with the flag ({$state}).",
         );
+    }
+
+    /**
+     * Lined games on the card being sold: the one number all three shelf
+     * rows are about, counted once so they cannot disagree on it.
+     *
+     * Both halves are PHP checks. The ET time-of-day boundary shifts under
+     * DST and cannot be asked in SQL, and the DATE is read off `kickoff_at`
+     * converted to ET — never off `kickoff_day`, which is a weekday name, and
+     * never off the UTC date, which drops a 20:00 ET kickoff into Sunday.
+     */
+    private function linedOn(Week $week, CarbonInterface $saturday): int
+    {
+        $card = $saturday->toDateString();
+
+        return Game::query()
+            ->where('week_id', $week->id)
+            ->whereHas('odds')
+            ->get()
+            ->filter(fn (Game $game) => $game->inSlateWindow())
+            ->filter(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString() === $card)
+            ->count();
+    }
+
+    /**
+     * "Sat Sep 26 — only 4 lined games." when the lines are why nothing can
+     * be seated, which is what makes the rooms, flavors and lines rows read
+     * as one story. A card with enough lines that still seats nothing is not
+     * given a reason it does not have.
+     */
+    private function shortfall(Week $week, CarbonInterface $saturday): string
+    {
+        $on = 'Sat '.$saturday->format('M j');
+        $lined = $this->linedOn($week, $saturday);
+
+        return $lined < self::LINED_GAMES_NEEDED
+            ? "{$on} — only {$lined} lined ".Str::plural('game', $lined).'.'
+            : "{$on}.";
     }
 
     /**

@@ -175,6 +175,38 @@ it('stays red only when the Saturday can seat no room at all', function () {
         ->and($lines['remedy'])->toBe('cfb:games --tier=current --year=current');
 });
 
+it('never calls an empty shelf healthy — the rooms and flavors rows tell the lines story', function () {
+    /*
+     * Sat Sep 26, 2026: a full card, four lines. Every mode was exempt, so
+     * rooms read "0 of 0 possible modes stocked" and flavors read "0 of 0
+     * possible specialty rooms" — two greens beside a red for the same card,
+     * on the Saturday somebody needed to see it (CFB-99).
+     */
+    $this->travelTo('2026-09-02 16:00:00');
+
+    [$season, $week] = pickemSeasonWeek();
+
+    foreach (range(1, 20) as $i) {
+        $game = pickemGame($season, $week, ['kickoff_at' => '2026-09-05 19:30:00']);
+
+        if ($i <= 4) {
+            pickemOdd($game);
+        }
+    }
+
+    $checks = preflight();
+
+    expect($checks['rooms']['status'])->toBe(PickemPreflight::WARN)
+        ->and($checks['rooms']['detail'])->toBe('No mode can be seated for Sat Sep 5 — only 4 lined games.')
+        ->and($checks['rooms']['remedy'])->toBe('cfb:games --tier=current --year=current')
+        // The specialty shelf never blocks, so WARN is its ceiling.
+        ->and($checks['flavors']['status'])->toBe(PickemPreflight::WARN)
+        ->and($checks['flavors']['detail'])->toBe('No specialty room can be seated for Sat Sep 5 — only 4 lined games.')
+        // And the row that was already right stays right.
+        ->and($checks['lines']['status'])->toBe(PickemPreflight::FAIL)
+        ->and($checks['lines']['detail'])->toContain('4 lined on Sat Sep 5');
+});
+
 it('reports the flag as closed, and never resolves Pennant to find out', function () {
     User::factory()->create(['admin' => false]);
 
