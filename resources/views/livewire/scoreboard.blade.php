@@ -606,17 +606,34 @@ new class extends Component
 
              There is no scope check here on purpose. These come from the same
              filtered set as everything else, so a team the scope excluded never
-             reaches this loop. --}}
-        @foreach ($this->pinned as $group)
-            <x-scoreboard-day
-                :heading="$group['team']->placeName()"
-                :meta="$group['day']"
-                :games="$group['games']"
-                pinned
-                :lead="$group['lead']"
-                wire:key="pinned-{{ $group['team']->id }}-{{ $loop->index }}"
-            />
-        @endforeach
+             reaches this loop.
+
+             ONE grid for all of them, each team's heading and card a single
+             cell. A group per team, each with its own three-column grid,
+             stacked two single cards in the left third of a desktop column and
+             pushed the day groups a full screen down. Base stays the plain
+             column it always was — the grid is additive from `sm`. A team with
+             a Thursday and a Saturday game gets a cell per day, the same
+             heading on both, which is how the day groups below read too. --}}
+        @if ($this->pinned !== [])
+            <div
+                data-pinned-teams
+                class="flex flex-col gap-5 sm:grid sm:grid-cols-2 sm:gap-x-2 xl:grid-cols-3"
+                wire:key="pinned-teams"
+            >
+                @foreach ($this->pinned as $group)
+                    <x-scoreboard-day
+                        :heading="$group['team']->placeName()"
+                        :meta="$group['day']"
+                        :games="$group['games']"
+                        pinned
+                        cell
+                        :lead="$group['lead']"
+                        wire:key="pinned-{{ $group['team']->id }}-{{ $loop->index }}"
+                    />
+                @endforeach
+            </div>
+        @endif
 
         @foreach ($this->games as $day => $games)
             <x-scoreboard-day :heading="$day" :games="$games" wire:key="day-{{ $day }}" />
