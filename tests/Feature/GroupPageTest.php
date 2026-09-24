@@ -1558,12 +1558,11 @@ describe('the card pager on Standings', function () {
         $page->call('selectWeek', $cards['2026-09-05']->id)
             ->assertSeeHtml('data-card-pager')
             ->assertSee('Week 1 · Sep 5')
-            // The grid now shows for any played card, so its scroll has to
-            // contain its own sr-only labels. Without `relative` they are
-            // positioned against the page and pan it sideways at 390 (measured
-            // at 693px in the device harness). Pinned, because no PHP test
-            // can measure a layout.
-            ->assertSeeHtml('class="stat-grid relative" data-picks-scroll');
+            // The grid now shows for any played card. Its scroll contains
+            // its own sr-only labels because the stat-grid utility is
+            // `position: relative` — ChromeConsistencyTest pins that for
+            // every caller, so the grid needs no class of its own.
+            ->assertSeeHtml('class="stat-grid" data-picks-scroll');
 
         expect($page->instance()->shownStandings->first()['user']->id)->toBe($member->id);
 

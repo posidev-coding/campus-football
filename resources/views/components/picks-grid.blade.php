@@ -74,13 +74,7 @@
         <p class="text-micro text-zinc-500 dark:text-zinc-400">Picks show at kickoff.</p>
     </div>
 
-    {{-- `relative`, or the cells' `sr-only` labels escape the scroll. They
-         are position: absolute, and without a positioned ancestor inside
-         the card their containing block is the page, so neither this
-         overflow nor the card's overflow-hidden clips them. Fifteen columns
-         of them pushed the document to 693px at 390, and it panned sideways
-         (found paging to a played card, CFB-29). --}}
-    <div class="stat-grid relative" data-picks-scroll>
+    <div class="stat-grid" data-picks-scroll>
         <table class="w-full text-micro whitespace-nowrap">
             <thead>
                 <tr class="border-b border-zinc-100 text-zinc-500 dark:border-zinc-800/60">
