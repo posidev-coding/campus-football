@@ -423,7 +423,9 @@ class AnalyticsCatalog
                 'cohort' => $size,
                 'verified' => $users->whereNotNull('email_verified_at')->count(),
                 'onboarded' => $users->whereNotNull('onboarded_at')->count(),
-                'reached_picks' => $users->whereNotNull('picks_first_seen_at')->count(),
+                // Arrival, not the Picks HOME stamp: see reachedPicks().
+                'reached_picks' => $users->filter(fn (object $user): bool => self::reachedPicks($user->picks_first_seen_at, $user->first_entry_at))->count(),
+                'picks_home_seen' => $users->whereNotNull('picks_first_seen_at')->count(),
                 'entered' => $users->whereNotNull('first_entry_at')->count(),
                 'installed' => $users->whereNotNull('standalone_seen_at')->count(),
                 'activated_7d' => $matured && $size >= self::MIN_PEOPLE
@@ -433,6 +435,30 @@ class AnalyticsCatalog
         }
 
         return $rows;
+    }
+
+    /**
+     * Did this person reach Picks? They opened the Picks home, OR they
+     * entered a slate, which nobody can do without reaching Picks.
+     *
+     * NOT `picks_first_seen_at` alone. That column has one writer, EnterPicks,
+     * and one caller, the /picks home screen's mount(). So it means "opened
+     * /picks", and a member who followed an invite straight into a clubhouse
+     * and picked the whole card was not counted. The Sep 1 cohort read 8
+     * reached against 11 entered, a funnel narrower in the middle than at the
+     * bottom (CFB-89). The column keeps its meaning on purpose: it is the
+     * Tallboy wallet's start line and the first-visit tour's trigger, and
+     * widening its writer would move both. It is still published, as
+     * `picks_home_seen`.
+     *
+     * A FLOOR, stated as one: somebody who opened a clubhouse and neither
+     * picked nor visited /picks is not here. The clickstream could add them,
+     * but only from 2026-09-06, which would make one funnel step mean
+     * different things across cohorts.
+     */
+    private static function reachedPicks(mixed $picksFirstSeenAt, mixed $firstEntryAt): bool
+    {
+        return $picksFirstSeenAt !== null || $firstEntryAt !== null;
     }
 
     // ------------------------------------------------- the lifecycle funnel
@@ -454,7 +480,10 @@ class AnalyticsCatalog
      * denominator, and the widget prints counts rather than percentages
      * between them.
      *
-     * @return array{registered: int, verified: int, onboarded: int, reached_picks: int, entered: int, installed: int, since: ?string, window_days: int}
+     * `reached_picks` is ARRIVAL, the same definition cohorts() uses: see
+     * {@see reachedPicks()}. The SQL here and the PHP there must agree.
+     *
+     * @return array{registered: int, verified: int, onboarded: int, reached_picks: int, picks_home_seen: int, entered: int, installed: int, since: ?string, window_days: int}
      */
     public function lifecycle(?AnalyticsWindow $window = null): array
     {
@@ -476,7 +505,8 @@ class AnalyticsCatalog
             ->selectRaw('
                 sum(users.email_verified_at is not null) as verified,
                 sum(users.onboarded_at is not null) as onboarded,
-                sum(users.picks_first_seen_at is not null) as reached_picks,
+                sum(users.picks_first_seen_at is not null or entries.first_entry_at is not null) as reached_picks,
+                sum(users.picks_first_seen_at is not null) as picks_home_seen,
                 sum(entries.first_entry_at is not null) as entered,
                 sum(users.standalone_seen_at is not null) as installed
             ')
@@ -490,6 +520,7 @@ class AnalyticsCatalog
             'verified' => (int) ($users->verified ?? 0),
             'onboarded' => (int) ($users->onboarded ?? 0),
             'reached_picks' => (int) ($users->reached_picks ?? 0),
+            'picks_home_seen' => (int) ($users->picks_home_seen ?? 0),
             'entered' => (int) ($users->entered ?? 0),
             'installed' => (int) ($users->installed ?? 0),
             'window_days' => $window->days,

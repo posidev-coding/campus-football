@@ -257,6 +257,48 @@ describe('saturday retention', function () {
 });
 
 describe('cohorts', function () {
+    it('counts arrival at Picks, so the funnel never narrows below entered', function () {
+        /*
+         * The Sep 1 cohort read reached_picks 8, entered 11 (CFB-89), which is
+         * impossible as a funnel. `picks_first_seen_at` is stamped only by the
+         * /picks HOME screen, so a member who went straight into a clubhouse
+         * from an invite and picked the whole card was not counted.
+         *
+         * Twelve people. 0-2 opened /picks; 2-6 entered a slate, and 3-6 of
+         * those never went near /picks. Seven reached Picks.
+         */
+        $people = User::factory()->count(12)->create(['created_at' => '2026-09-01 16:00:00']);
+
+        foreach ($people->take(3) as $user) {
+            $user->forceFill(['picks_first_seen_at' => '2026-09-02 12:00:00'])->save();
+        }
+
+        foreach ($people->slice(2, 5) as $user) {
+            SlateEntry::factory()->create(['user_id' => $user->id]);
+        }
+
+        $row = collect(catalog()->cohorts())->firstWhere('week', '2026-09-01');
+
+        expect($row['reached_picks'])->toBe(7)
+            ->and($row['entered'])->toBe(5)
+            // The column is still published, under the name of what it means.
+            ->and($row['picks_home_seen'])->toBe(3)
+            // And its meaning did not move: entering a slate stamps nothing.
+            ->and($people[4]->fresh()->picks_first_seen_at)->toBeNull();
+
+        // The invariant, across the whole grid and the lifecycle funnel,
+        // rather than the one cell the fixture is about.
+        foreach (catalog()->cohorts() as $week) {
+            expect($week['reached_picks'])->toBeGreaterThanOrEqual($week['entered']);
+        }
+
+        $funnel = catalog()->lifecycle(AnalyticsWindow::of(7));
+
+        expect($funnel['reached_picks'])->toBe(7)
+            ->and($funnel['picks_home_seen'])->toBe(3)
+            ->and($funnel['reached_picks'])->toBeGreaterThanOrEqual($funnel['entered']);
+    });
+
     it('withholds activation until the LAST registrant has had seven days', function () {
         /*
          * The cohort week is Tue Sep 1 to Mon Sep 7. Somebody who registered

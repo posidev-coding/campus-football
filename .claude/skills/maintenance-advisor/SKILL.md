@@ -42,7 +42,7 @@ identifiers anywhere:
 | `funnel` | Seven days of the nine named UX signals |
 | `funnel_since` | The first day each `funnel` total covers — a signal added this week reads zero for every day before it shipped |
 | `traffic` | Views and visitors over 7 days, split guest / member / staff |
-| `audience` | `actives` (daily, weekly, monthly, stickiness), `adoption` (share of weekly actives per feature), `cohorts` (eight registration weeks), `retention` (weekly grid), `saturday_retention` (`since` plus six `pairs`; a `from` before `since` is `active: null`, and a `to` before `since` or not yet over is `retained`/`share: null`, never 0) |
+| `audience` | `actives` (daily, weekly, monthly, stickiness), `adoption` (share of weekly actives per feature), `cohorts` (eight registration weeks; `reached_picks` is arrival, meaning opened /picks or entered a slate, so it is never below `entered`, and `picks_home_seen` is the /picks-home stamp alone), `retention` (weekly grid), `saturday_retention` (`since` plus six `pairs`; a `from` before `since` is `active: null`, and a `to` before `since` or not yet over is `retained`/`share: null`, never 0) |
 | `routes` | 28 days of route popularity — `top` by views and visitors, `quiet` for the screens nobody opens |
 | `devices` | Viewport bucket mix and installed share, 28 days. "Not reported" is its own bucket |
 | `pickem_health` | One row per slate for this Saturday and last — ids and counts, never a group name |
