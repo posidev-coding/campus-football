@@ -118,6 +118,10 @@ class TelemetrySnapshot
             ->open()
             ->orderByRaw("field(severity, 'critical', 'high', 'medium', 'low')")
             ->orderByDesc('last_seen_at')
+            // `key` is unique, so it settles every tie — a frozen clock or a
+            // batch filed in one second otherwise hands the advisor a
+            // different order on every read.
+            ->orderBy('key')
             ->limit(100)
             ->get()
             ->map(fn (WorkbookItem $item): array => [
@@ -141,6 +145,7 @@ class TelemetrySnapshot
         $answered = WorkbookItem::query()
             ->whereIn('status', [WorkbookStatus::Done->value, WorkbookStatus::Dismissed->value])
             ->orderByDesc('last_seen_at')
+            ->orderBy('key')
             ->limit(200)
             ->pluck('status', 'key')
             ->map(fn (WorkbookStatus $status): string => $status->value)
