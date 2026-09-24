@@ -518,7 +518,7 @@ window and `since`, applying the floor by returning null below it. Widgets
 is updated to the new key list in the same PR):
 
 ```
-traffic         { window_days: 7, views: {guest, member, staff}, visitors: {guest, member}, since }
+traffic         { window_days: 7, views: {guest, member, staff, automated}, visitors: {guest, member, automated}, guest_views_per_visitor|null, guest_one_view_visitors, since }
 audience        { actives:   {dau, league_week_actives, league_week_since, league_week_days, rolling_28d_actives, rolling_28d_since, stickiness, stickiness_covered_days},
                   adoption:  {rolling_actives, window_days, since, features: {picked: {users, share}, talked, read_talk, followed, joined, lobby, stats, searched, asked, invited, installed}},
                   cohorts:   [{week, registered, verified, onboarded, reached_picks, picks_home_seen, entered, installed, activated_7d|null}],   // eight weeks

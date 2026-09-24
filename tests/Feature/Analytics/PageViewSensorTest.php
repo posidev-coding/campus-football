@@ -240,6 +240,63 @@ describe('who and what it records', function () {
     });
 });
 
+describe('who a visitor is', function () {
+    it('is one visitor for a browser that returns its session cookie', function () {
+        /*
+         * A guest is sha256(session id), so the identity is exactly as good as
+         * the client's cookie handling. Three requests that carry the cookie
+         * back are one person. The test client does NOT return cookies on its
+         * own, which is the very behavior that made 2,996 guest views into
+         * 2,894 "visitors" in production (CFB-94), so it is handed back here.
+         */
+        $this->get(route('scoreboard'))->assertOk();
+        $session = session()->getId();
+
+        foreach (range(1, 2) as $again) {
+            $this->withCookie(config('session.cookie'), $session)->get(route('scoreboard'))->assertOk();
+        }
+
+        expect(collect(streamEntries())->pluck('visitor')->unique()->all())->toHaveCount(1);
+    });
+
+    it('mints a new visitor per request for a client that never returns it', function () {
+        // The mechanism itself, pinned so nobody reads the guest count
+        // without knowing it: no cookie back, no continuity.
+        $this->get(route('scoreboard'))->assertOk();
+        $this->get(route('scoreboard'))->assertOk();
+
+        expect(collect(streamEntries())->pluck('visitor')->unique()->all())->toHaveCount(2);
+    });
+
+    it('files software that says so under automated, never under guest', function (string $agent) {
+        $this->withHeader('User-Agent', $agent)->get(route('scoreboard'))->assertOk();
+
+        expect(firstEntry()['audience'])->toBe((string) ActivityEvent::AUTOMATED);
+    })->with([
+        'search crawler' => 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+        'chat unfurler' => 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)',
+        'social unfurler' => 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+        'http client' => 'curl/8.4.0',
+        'headless browser' => 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/120.0 Safari/537.36',
+        'no agent at all' => '',
+    ]);
+
+    it('keeps a phone a guest, and an account a person whatever it claims', function () {
+        $this->withHeader('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1')
+            ->get(route('scoreboard'))->assertOk();
+
+        expect(firstEntry()['audience'])->toBe((string) ActivityEvent::GUEST);
+
+        Redis::connection('pulse')->flushdb();
+
+        $this->actingAs(User::factory()->create())
+            ->withHeader('User-Agent', 'curl/8.4.0')
+            ->get(route('scoreboard'))->assertOk();
+
+        expect(firstEntry()['audience'])->toBe((string) ActivityEvent::MEMBER);
+    });
+});
+
 describe('the facet allowlist', function () {
     it('records the clubhouse stop, and nothing else on any other screen', function () {
         [$member, $group] = pickemContest();
