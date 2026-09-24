@@ -104,11 +104,15 @@ class Brand
      * Memoized on top of the cache because this is read a dozen times in one
      * request — every head tag, every lockup, every icon URL.
      *
+     * Through Remember::orSource because `partials/head` is on every layout:
+     * a cache stall reads the row instead of 500ing the whole site, and the
+     * memo means it costs one failed store call per request, not a dozen.
+     *
      * @return array<string, mixed>
      */
     public static function settings(): array
     {
-        return self::$memo ??= Cache::remember(self::CACHE_KEY, self::TTL, function (): array {
+        return self::$memo ??= Remember::orSource(self::CACHE_KEY, self::TTL, function (): array {
             $row = BrandSetting::query()->first();
 
             if ($row === null) {
