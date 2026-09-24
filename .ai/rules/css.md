@@ -14,3 +14,8 @@ No browser test can catch a regression here (in a tab every env() is 0 and the n
 
 ## A dropdown that NAVIGATES is still an x-filter-menu
 An item may carry `href`; `filter-menu/item` renders it as a navigating flux:menu.item with wire:navigate, keyed and bolded exactly like a setting row, with `note` riding as the menu item's suffix ("3 open"). Never a second dropdown species. `x-group-switcher` is the one caller (2026-09-01): pure navigation off the host's Seats computed, no Livewire state. `variant="hero"` is the clubhouse title — currentColor like `accent`, no ring (a ring around a title reads as a button), label clamped to two lines instead of truncated. The switcher is also the one piece of chrome allowed ABOVE a plate (docs/ui-system.md rule 8).
+
+## A stat-grid is a containing block, and overflow is measured, never scrolled
+AMENDS "truncate cannot clip a box that is free to grow": its check `scrollTo({left:999}); window.scrollX === 0` is a FALSE PASS — <html> is `motion-safe:scroll-smooth`, so scrollX reads 0 before the animation moves. Measure instead: `documentElement.scrollWidth === clientWidth` (or scroll with `behavior:'instant'`).
+
+`overflow-x: auto` clips only descendants whose containing block is inside the box, and `sr-only` is `position: absolute`. So the `stat-grid` utility carries `position: relative` for every caller (2026-09-24): without it a hidden header label in a column past the viewport escaped and widened the page (picks grid, 390 → 693px). Never put static/absolute/fixed/sticky on a stat-grid; ChromeConsistencyTest sweeps for it and pins the utility.

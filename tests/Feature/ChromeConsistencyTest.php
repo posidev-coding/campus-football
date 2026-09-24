@@ -58,6 +58,43 @@ it('scrolls horizontally only where the rule allows', function () {
         .' x-filter-menu; fixed sets that fit at 390px in an x-pill-strip.');
 });
 
+it('keeps sr-only text inside the stat-grid that scrolls it', function () {
+    /*
+     * `overflow-x: auto` clips only descendants whose containing block is
+     * inside the box. An `sr-only` span is `position: absolute`, so with no
+     * positioned ancestor in between it escapes to the page at its column's
+     * static x and widens the document — the picks grid's fifteenth column
+     * took a 390px page to 693px. The utility carries `relative` so every
+     * caller is covered, and no caller may take it back off.
+     *
+     * A browser check has to measure the document, never scroll it:
+     * <html> is `motion-safe:scroll-smooth`, so `scrollTo({left: 999})`
+     * leaves `scrollX` at 0 for a frame and passes a page that pans. Compare
+     * `documentElement.scrollWidth` to `clientWidth` instead.
+     */
+    $css = file_get_contents(resource_path('css/app.css'));
+
+    expect(preg_match('/@utility stat-grid \{(?<body>[^}]*)\}/', $css, $match))->toBe(1)
+        ->and($match['body'])->toContain('position: relative;')
+        ->and($match['body'])->toContain('overflow-x: auto;');
+
+    $violations = [];
+
+    foreach (bladeViews() as $path => $contents) {
+        preg_match_all('/class="([^"]*\bstat-grid\b[^"]*)"/', $contents, $classes);
+
+        foreach ($classes[1] as $class) {
+            if (preg_match('/(?<![\w-])(static|absolute|fixed|sticky)(?![\w-])/', $class, $position)) {
+                $violations[] = "{$path} [{$position[1]}]";
+            }
+        }
+    }
+
+    expect($violations)->toBe([], implode(', ', $violations)
+        .' — repositions a stat-grid, so its sr-only text escapes the scroll'
+        .' box and widens the page.');
+});
+
 it('renders the gutter track only through x-gutter-tabs', function () {
     /*
      * The zinc track with the raised active pad replaced the blue pill
