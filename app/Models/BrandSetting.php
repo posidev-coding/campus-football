@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Jobs\RenderBrandSplashes;
 use App\Support\Brand;
 use Illuminate\Database\Eloquent\Model;
 
@@ -45,8 +46,37 @@ class BrandSetting extends Model
            that only cleared the cache would still serve the old brand for the
            rest of the request that made it — including the redirect the admin
            page lands on, which is precisely where the change is looked for. */
-        static::saved(fn () => Brand::flush());
+        static::saved(function (BrandSetting $setting): void {
+            Brand::flush();
+
+            if ($setting->changedSplashInputs()) {
+                RenderBrandSplashes::dispatch();
+            }
+        });
         static::deleted(fn () => Brand::flush());
+    }
+
+    /**
+     * Did this save change what a launch screen is drawn from: the ink, or
+     * the icon it centers?
+     *
+     * Nothing else. A tagline, a favicon or an og card changes none of the
+     * fourteen images, and re-rendering them for it is the waste CFB-88 took
+     * off the request path.
+     */
+    public function changedSplashInputs(): bool
+    {
+        if ($this->wasChanged('color_ink')) {
+            return true;
+        }
+
+        if (! $this->wasChanged('assets')) {
+            return false;
+        }
+
+        $before = json_decode((string) ($this->getPrevious()['assets'] ?? ''), true);
+
+        return ($before['icon-512'] ?? null) !== ($this->assets['icon-512'] ?? null);
     }
 
     /**

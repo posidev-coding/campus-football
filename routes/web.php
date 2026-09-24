@@ -180,7 +180,7 @@ Route::get('brand/splash/{spec}.png', function (string $spec) {
     $size = [(int) $m[1], (int) $m[2], (int) $m[3]];
     abort_unless(in_array($size, Brand::SPLASH, true), 404);
 
-    abort_if(($png = Brand::splash(...$size)) === null, 404);
+    abort_if(($png = Brand::storedSplash(...$size)) === null, 404);
 
     return response($png, 200, [
         'Content-Type' => 'image/png',
