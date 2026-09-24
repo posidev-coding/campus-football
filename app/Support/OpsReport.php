@@ -428,10 +428,19 @@ class OpsReport
      * on principle.
      *
      * NULL WHEN THE SENSOR DOES NOT COVER THE WINDOW, and that is the whole
-     * guard: `activity_events` began when the sensor shipped, so a 7-day rate
-     * read off two days of it is a two-day number wearing a week's label —
-     * worse than the floor it would replace. The caller falls back and says
-     * "at least".
+     * guard: a 7-day rate read off two days of data is a two-day number
+     * wearing a week's label — worse than the floor it would replace. The
+     * caller falls back and says "at least".
+     *
+     * Coverage is measured on the SLATE FACET, not on the table. The sensor
+     * shipped 2026-09-06, but a bare clubhouse address recorded no facet at
+     * all until CFB-93, so for weeks `activity_events` was old enough to pass
+     * a table-wide check while holding no slate reads whatsoever — and the
+     * check it had then published "No slates opened yet" beside a funnel
+     * that had counted seventeen.
+     *
+     * An empty reader set is null for the same reason: no rows is no data,
+     * never a measured zero. The counters are what answer it.
      *
      * The numerator comes from `picks`, a truth table, so it counts the same
      * people the denominator does rather than a second counter that can
@@ -446,24 +455,27 @@ class OpsReport
         }
 
         $since = now()->timezone(config('cfb.timezone'))->subDays(7);
-        $first = ActivityEvent::query()->min('occurred_at');
 
-        // No rows at all, or the earliest one lands inside the window: either
-        // way the sensor was not counting for all of it.
+        $slateReads = ActivityEvent::query()
+            ->whereIn('route', RecordActivity::FACET_ROUTES)
+            ->where('facet', 'slate')
+            ->whereNotNull('user_id');
+
+        $first = (clone $slateReads)->min('occurred_at');
+
+        // No slate read at all, or the earliest lands inside the window:
+        // either way the facet was not being written for all of it.
         if ($first === null || CarbonImmutable::parse($first)->gt($since)) {
             return null;
         }
 
-        $readers = ActivityEvent::query()
-            ->whereIn('route', RecordActivity::FACET_ROUTES)
-            ->where('facet', 'slate')
-            ->whereNotNull('user_id')
+        $readers = $slateReads
             ->where('occurred_at', '>=', $since)
             ->distinct()
             ->pluck('user_id');
 
         if ($readers->isEmpty()) {
-            return [0, 0, true];
+            return null;
         }
 
         $picked = DB::table('picks')
