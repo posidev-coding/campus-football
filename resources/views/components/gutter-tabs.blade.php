@@ -43,6 +43,20 @@
      * an accordion or a menu, never a scroll. This is still not a scroll:
      * the track is `w-full` and overflow would be a design bug, not a
      * gesture.
+     *
+     * `shrink` is sized to content but CAPPED at its row (`max-w-full`),
+     * and its cells may shrink (`min-w-0`, never `shrink-0`), so below the
+     * width a set was designed at the padding gives way before the page
+     * does. Measured at 320 (a 288px row): the game strip (Recap · Box ·
+     * Scoring · Drives · Odds) is 316.5px at px-3 and the lobby's room
+     * types (All · House · Quick · Spotlight · Conference) 351.8px — 332
+     * and 368 of scrollWidth against 320, and the lobby overflowed at 360
+     * too. Capped, the game keeps 8-10px of padding a side and the lobby's
+     * widest label ~1.6px. Tighter padding below a breakpoint was not
+     * enough: at px-2 the lobby is still 312px. The label is a centered
+     * flex item that cannot shrink, so the space comes out of the padding
+     * only; a set whose bare labels outrun the row still belongs in an
+     * x-filter-menu. At 390 nothing moves — every set fits at px-3.
      */
     if (! array_is_list($items)) {
         $items = collect($items)
@@ -56,7 +70,7 @@
     {{ $attributes->class([
         'flex h-8 rounded-lg bg-zinc-800/5 p-[3px] dark:bg-white/10',
         'w-full' => in_array($variant, ['block', 'fill'], true),
-        'w-max' => $variant === 'shrink',
+        'w-max max-w-full' => $variant === 'shrink',
     ]) }}
     role="group"
     @if ($label) aria-label="{{ $label }}" @endif
@@ -79,7 +93,7 @@
                 'flex items-center justify-center rounded-md text-sm font-medium whitespace-nowrap transition-colors',
                 'min-w-0 flex-1 px-2' => $variant === 'block',
                 'min-w-0 flex-auto px-2' => $variant === 'fill',
-                'shrink-0 px-3' => $variant === 'shrink',
+                'min-w-0 px-3' => $variant === 'shrink',
                 'bg-white text-zinc-800 shadow-xs dark:bg-white/20 dark:text-white' => $active,
                 'text-zinc-600 hover:text-zinc-800 dark:text-white/70 dark:hover:text-white' => ! $active,
             ])

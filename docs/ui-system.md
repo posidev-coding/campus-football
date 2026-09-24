@@ -190,7 +190,15 @@ the components encode:
    Invite 34.4 · Talk 25.9) total 298px and 54px is shared. A sixth stop
    ("Rules", 36.4px) fits neither way, which is why the mode brief is an
    accordion on the Slate tab and not a tab. None of the three scrolls; a
-   set that cannot fit any way belongs in a `filter-menu`.
+   set that cannot fit any way belongs in a `filter-menu`. `shrink` is
+   capped at its row (`w-max max-w-full`, cells `min-w-0` rather than
+   `shrink-0`, 2026-09-24): below its design width the padding gives way
+   before the document does. At 320 the game strip (316.5px) and the
+   lobby's room types (351.8px, which overflowed at 360 as well) pushed
+   the page to 332 and 368 of scrollWidth in a 288px row; capped, the game
+   keeps 8-10px a side and the lobby's "Conference" ~1.6px. Tighter
+   padding below a breakpoint was measured and rejected — the lobby is
+   still 312px at `px-2`.
 8. **Row order, top down**: plate or team nav → filter bar → gutter →
    content. The WHEN menu rides the plate's actions slot when one exists,
    else the filter bar's — or, on the team page, the hero. ONE exception,
