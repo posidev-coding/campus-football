@@ -523,7 +523,7 @@ audience        { actives:   {dau, league_week_actives, league_week_since, leagu
                   adoption:  {rolling_actives, window_days, since, features: {picked: {users, share}, talked, read_talk, followed, joined, lobby, stats, searched, asked, invited, installed}},
                   cohorts:   [{week, registered, verified, onboarded, reached_picks, entered, installed, activated_7d|null}],   // eight weeks
                   retention: [{cohort, size, weeks: [w0..w7 | null]}],
-                  saturday_retention: [{from, to, active, retained, share|null}] }
+                  saturday_retention: {since, pairs: [{from, to, active|null, retained|null, share|null}]} }
 routes          { window_days: 28, since, top: [{route, views, visitors}], quiet: [{route, views}] | null }
 devices         { window_days: 28, since, by_bucket: {unknown, compact, phone, tablet, desktop}, installed_share|null }
 pickem_health   [ LiveState::build(..., names: false) rows for this Saturday and last, plus late_share|null, reminder_lift|null ]

@@ -650,11 +650,22 @@ class AnalyticsCatalog
      * nothing at all. Six pairs, so a season's shape is visible without the
      * payload growing a table.
      *
-     * @return list<array<string, mixed>>
+     * NO DATA IS NULL, AT EACH END ON ITS OWN. A Saturday before the sensor
+     * started was written as `active: 0`, and the pair ending on the COMING
+     * Saturday was published as 0% retained, three days before anybody could
+     * have come back (CFB-92). Each end is vouched for separately now:
+     * `active` needs a covered `from`, and `retained` and `share` need a `to`
+     * that is covered AND over. A Saturday still being played is not over;
+     * its night games are still counting. The section carries its own
+     * `since` so a reader can see which rows the sensor stands behind.
+     *
+     * @return array{since: ?string, pairs: list<array{from: string, to: string, active: ?int, retained: ?int, share: ?float}>}
      */
     public function saturdayRetention(): array
     {
         $current = Cadence::currentSaturday();
+        $since = app(ActivityRollup::class)->since();
+        $today = CarbonImmutable::now(config('cfb.timezone'))->toDateString();
 
         $saturdays = collect(range(self::SATURDAY_PAIRS, 0))
             ->map(fn (int $back): string => $current->subWeeks($back)->toDateString());
@@ -668,26 +679,33 @@ class AnalyticsCatalog
             ->groupBy(fn ($row): string => CarbonImmutable::parse($row->day)->toDateString())
             ->map(fn ($rows): array => $rows->pluck('user_id')->all());
 
-        $rows = [];
+        $pairs = [];
 
         foreach ($saturdays->slice(0, self::SATURDAY_PAIRS) as $i => $from) {
             $to = $saturdays[$i + 1];
-            $before = $present[$from] ?? [];
-            $after = $present[$to] ?? [];
-            $retained = count(array_intersect($before, $after));
 
-            $rows[] = [
+            // Date strings, so these compare as dates. An absent bucket on a
+            // COVERED Saturday is a real zero; on an uncovered one it is not.
+            $fromKnown = $since !== null && $from >= $since;
+            $toKnown = $since !== null && $to >= $since && $to < $today;
+
+            $active = $fromKnown ? count($present[$from] ?? []) : null;
+            $retained = $fromKnown && $toKnown
+                ? count(array_intersect($present[$from] ?? [], $present[$to] ?? []))
+                : null;
+
+            $pairs[] = [
                 'from' => $from,
                 'to' => $to,
-                'active' => count($before),
+                'active' => $active,
                 'retained' => $retained,
-                'share' => count($before) >= self::MIN_PEOPLE
-                    ? round($retained / count($before), 3)
+                'share' => $retained !== null && $active >= self::MIN_PEOPLE
+                    ? round($retained / $active, 3)
                     : null,
             ];
         }
 
-        return $rows;
+        return ['since' => $since, 'pairs' => $pairs];
     }
 
     // --------------------------------------------------------- 7. routes

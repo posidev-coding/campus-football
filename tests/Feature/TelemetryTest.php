@@ -458,6 +458,7 @@ describe('the attention sections', function () {
             // rather than one section-level since that fits only one of them.
             ->and($telemetry['audience']['actives'])->toHaveKeys(['league_week_since', 'rolling_28d_since'])
             ->and($telemetry['audience']['adoption'])->toHaveKey('since')
+            ->and($telemetry['audience']['saturday_retention'])->toHaveKey('since')
             ->and($telemetry['routes'])->toHaveKey('since')
             ->and($telemetry['devices'])->toHaveKey('since');
     });

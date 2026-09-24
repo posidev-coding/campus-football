@@ -188,6 +188,74 @@ describe('retention', function () {
     });
 });
 
+/** Twelve people, here on each of the given Saturdays. */
+function saturdayRegulars(array $saturdays): void
+{
+    foreach (User::factory()->count(12)->create() as $user) {
+        foreach ($saturdays as $day) {
+            UserDay::factory()->create(['user_id' => $user->id, 'day' => $day]);
+        }
+    }
+}
+
+describe('saturday retention', function () {
+    it('never publishes a share for a Saturday that has not been played', function () {
+        /*
+         * Wednesday Sep 23. The last pair runs Sep 19 to the COMING Saturday,
+         * Sep 26, and it was published as 0% retained, three days before
+         * anybody could have come back (CFB-92). The 19th is real and counted;
+         * the 26th is not over, so what depends on it is null, not 0.
+         */
+        $this->travelTo('2026-09-23 16:00:00');
+        saturdayRegulars(['2026-09-12', '2026-09-19']);
+
+        $pairs = collect(catalog()->saturdayRetention()['pairs'])->keyBy('to');
+
+        expect($pairs['2026-09-26']['active'])->toBe(12)
+            ->and($pairs['2026-09-26']['retained'])->toBeNull()
+            ->and($pairs['2026-09-26']['share'])->toBeNull()
+            // The pair that HAS been played still answers, in full.
+            ->and($pairs['2026-09-19']['retained'])->toBe(12)
+            ->and($pairs['2026-09-19']['share'])->toBe(1.0);
+    });
+
+    it('writes no zero for a Saturday the sensor never covered', function () {
+        /*
+         * The rollup starts on Sep 12. Every Saturday before it read
+         * `active: 0`, a claim that nobody was here, when the data says
+         * nothing at all. The section's since says where it starts.
+         */
+        $this->travelTo('2026-09-23 16:00:00');
+        saturdayRegulars(['2026-09-12', '2026-09-19']);
+
+        $section = catalog()->saturdayRetention();
+        $pairs = collect($section['pairs'])->keyBy('from');
+
+        expect($section['since'])->toBe('2026-09-12')
+            ->and($pairs['2026-08-15']['active'])->toBeNull()
+            ->and($pairs['2026-08-15']['retained'])->toBeNull()
+            ->and($pairs['2026-08-15']['share'])->toBeNull()
+            // Uncovered at the FROM end and covered at the TO end is still
+            // unanswerable: there is nobody to have retained.
+            ->and($pairs['2026-09-05']['active'])->toBeNull()
+            ->and($pairs['2026-09-05']['retained'])->toBeNull()
+            ->and($pairs['2026-09-12']['active'])->toBe(12);
+    });
+
+    it('counts a covered, finished Saturday nobody came to as a real zero', function () {
+        // Not every zero is a substitution. With the sensor running and the
+        // Saturday over, an empty bucket IS the measurement.
+        $this->travelTo('2026-09-23 16:00:00');
+        saturdayRegulars(['2026-09-12']);
+
+        $pair = collect(catalog()->saturdayRetention()['pairs'])->firstWhere('from', '2026-09-12');
+
+        expect($pair['active'])->toBe(12)
+            ->and($pair['retained'])->toBe(0)
+            ->and($pair['share'])->toBe(0.0);
+    });
+});
+
 describe('cohorts', function () {
     it('withholds activation until the LAST registrant has had seven days', function () {
         /*
