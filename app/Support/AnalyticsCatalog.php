@@ -102,7 +102,7 @@ class AnalyticsCatalog
         ],
         'actives' => [
             'title' => 'Actives and stickiness',
-            'summary' => 'how many PEOPLE were here: daily, weekly and monthly actives, and daily over monthly as stickiness',
+            'summary' => 'how many PEOPLE were here: today, this league week (Tuesday on) and the last 28 days, each with its own since, and daily over monthly as stickiness',
         ],
         'adoption' => [
             'title' => 'Feature adoption',
@@ -279,8 +279,8 @@ class AnalyticsCatalog
     public function actives(): array
     {
         $window = AnalyticsWindow::of(28);
+        $week = AnalyticsWindow::leagueWeek();
         $today = CarbonImmutable::now(config('cfb.timezone'))->startOfDay();
-        $weekFrom = Cadence::currentSaturday()->subDays(4);
 
         $mau = $this->distinctPeople($window->fromDate(), $window->toDate());
         $covered = $window->coveredDays();
@@ -295,25 +295,36 @@ class AnalyticsCatalog
             ->whereBetween('day', [$window->fromDate(), $window->toDate()])
             ->count();
 
+        /*
+         * EVERY NUMBER CARRIES ITS OWN WINDOW. This section holds three, and
+         * one section-level `since` beside all of them read as a collapse
+         * that was not there: a two-day league week under the name `wau`,
+         * next to adoption's rolling-seven-day `wau`, under the 28-day
+         * window's since (CFB-87). The window is in each key now, so a
+         * number read out of context still says what it counts.
+         */
         return [
             'dau' => $this->distinctPeople($today->toDateString(), $today->toDateString()),
-            // Tuesday through Monday, the week the whole product turns over
-            // on — never a rolling seven days, or two adjacent numbers hold
-            // different amounts of Saturday.
-            'wau' => $this->distinctPeople($weekFrom->toDateString(), $today->toDateString()),
-            'mau' => $mau,
-            'stickiness_28d' => $mau >= self::MIN_PEOPLE && $covered > 0
+            // Tuesday through today, the week the whole product turns over
+            // on — see AnalyticsWindow::leagueWeek().
+            'league_week_actives' => $this->distinctPeople($week->fromDate(), $week->toDate()),
+            'league_week_since' => $week->sinceDate(),
+            'league_week_days' => $week->days,
+            'rolling_28d_actives' => $mau,
+            'rolling_28d_since' => $window->sinceDate(),
+            // Divided by the days COVERED, and named for them rather than
+            // for the 28 it does not yet have.
+            'stickiness' => $mau >= self::MIN_PEOPLE && $covered > 0
                 ? round($dailySum / $covered / $mau, 3)
                 : null,
-            'covered_days' => $covered,
-            'since' => $window->sinceDate(),
+            'stickiness_covered_days' => $covered,
         ];
     }
 
     // ------------------------------------------------------- 6. adoption
 
     /**
-     * Feature adoption: the share of weekly actives who did each thing
+     * Feature adoption: the share of the window's actives who did each thing
      * (question 6).
      *
      * The denominator is weekly ACTIVES, not registered users — "do the people
@@ -325,7 +336,7 @@ class AnalyticsCatalog
     public function adoption(?AnalyticsWindow $window = null): array
     {
         $window ??= AnalyticsWindow::of(7);
-        $wau = $this->distinctPeople($window->fromDate(), $window->toDate());
+        $actives = $this->distinctPeople($window->fromDate(), $window->toDate());
 
         $features = [];
 
@@ -338,12 +349,19 @@ class AnalyticsCatalog
 
             $features[$this->snake($feature->name)] = [
                 'users' => $users,
-                'share' => $wau >= self::MIN_PEOPLE ? round($users / $wau, 3) : null,
+                'share' => $actives >= self::MIN_PEOPLE ? round($users / $actives, 3) : null,
             ];
         }
 
+        /*
+         * Keyed by its window, like actives: a ROLLING count, which is right
+         * for a share's denominator and is not the league week. Named `wau`,
+         * it sat beside the league-week `wau` as the same word for a
+         * different number (CFB-87). A dashboard range filter widens it, and
+         * `window_days` says by how much.
+         */
         return [
-            'wau' => $wau,
+            'rolling_actives' => $actives,
             'window_days' => $window->days,
             'since' => $window->sinceDate(),
             'features' => $features,

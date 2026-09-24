@@ -54,7 +54,7 @@ describe('adoption', function () {
 
         $adoption = catalog()->adoption(AnalyticsWindow::of(7));
 
-        expect($adoption['wau'])->toBe(10)
+        expect($adoption['rolling_actives'])->toBe(10)
             ->and($adoption['features']['picked']['users'])->toBe(4)
             ->and($adoption['features']['picked']['share'])->toBe(0.4);
     });
@@ -72,7 +72,7 @@ describe('adoption', function () {
 
         $adoption = catalog()->adoption(AnalyticsWindow::of(7));
 
-        expect($adoption['wau'])->toBe(9)
+        expect($adoption['rolling_actives'])->toBe(9)
             // The COUNT stays. A null share with a visible 9 is readable; a
             // null with nothing beside it is just a hole.
             ->and($adoption['features']['picked']['users'])->toBe(9)
@@ -101,9 +101,50 @@ describe('actives', function () {
 
         $actives = catalog()->actives();
 
-        expect($actives['mau'])->toBe(10)
-            ->and($actives['covered_days'])->toBe(2)
-            ->and($actives['stickiness_28d'])->toBe(1.0);
+        expect($actives['rolling_28d_actives'])->toBe(10)
+            ->and($actives['stickiness_covered_days'])->toBe(2)
+            ->and($actives['stickiness'])->toBe(1.0);
+    });
+
+    it('names each window, so a two-day league week never reads as a rolling seven', function () {
+        /*
+         * Wednesday, the day the two diverge most. The same snapshot used to
+         * publish audience.actives.wau = 4 and audience.adoption.wau = 14:
+         * the league week (Tuesday on, two days wide) and a rolling seven
+         * days, under one name and beside the 28-day window's since (CFB-87).
+         * Both numbers are right. Only the names were wrong, so the names are
+         * what this pins.
+         */
+        $this->travelTo('2026-09-09 16:00:00'); // Wed noon ET; the week turned over Tuesday
+
+        $days = ['2026-09-05' => 4, '2026-09-07' => 3, '2026-09-08' => 2, '2026-09-09' => 1];
+
+        foreach ($days as $day => $people) {
+            foreach (User::factory()->count($people)->create() as $user) {
+                UserDay::factory()->create(['user_id' => $user->id, 'day' => $day]);
+            }
+        }
+
+        $actives = catalog()->actives();
+        $adoption = catalog()->adoption(AnalyticsWindow::of(7));
+
+        // Tuesday and Wednesday only: the Monday three belong to last week.
+        expect($actives['league_week_actives'])->toBe(3)
+            ->and($actives['league_week_since'])->toBe('2026-09-08')
+            ->and($actives['league_week_days'])->toBe(2)
+            // Everybody since the 3rd, bounded by the rollup's first day.
+            ->and($adoption['rolling_actives'])->toBe(10)
+            ->and($adoption['window_days'])->toBe(7)
+            ->and($adoption['since'])->toBe('2026-09-05')
+            ->and($actives['rolling_28d_actives'])->toBe(10)
+            ->and($actives['rolling_28d_since'])->toBe('2026-09-05');
+
+        // The collision itself: no bare `wau`, and no one `since` in a
+        // section that holds three windows.
+        expect($actives)->not->toHaveKey('wau')
+            ->and($actives)->not->toHaveKey('since')
+            ->and($actives)->not->toHaveKey('stickiness_28d')
+            ->and($adoption)->not->toHaveKey('wau');
     });
 });
 

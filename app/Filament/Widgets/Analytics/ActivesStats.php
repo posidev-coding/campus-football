@@ -43,25 +43,25 @@ class ActivesStats extends BaseWidget
                 ->chart($daily)
                 ->color('success'),
 
-            Stat::make('Weekly actives', (string) $actives['wau'])
-                ->description('This pick\'em week, Tuesday through Monday')
+            Stat::make('This week\'s actives', (string) $actives['league_week_actives'])
+                ->description('This pick\'em week so far, Tuesday on — '.$actives['league_week_days'].' '.str('day')->plural($actives['league_week_days']))
                 ->chart($daily)
                 ->color('info'),
 
-            Stat::make('Monthly actives', (string) $actives['mau'])
+            Stat::make('Monthly actives', (string) $actives['rolling_28d_actives'])
                 ->description('28 days — four whole pick\'em weeks')
                 ->chart($daily),
 
             Stat::make(
                 'Stickiness',
-                $actives['stickiness_28d'] === null
+                $actives['stickiness'] === null
                     ? 'no data'
-                    : round($actives['stickiness_28d'] * 100).'%',
+                    : round($actives['stickiness'] * 100).'%',
             )
-                ->description($actives['stickiness_28d'] === null
+                ->description($actives['stickiness'] === null
                     ? 'Too few people to divide yet'
-                    : 'Mean daily actives over monthly, '.$actives['covered_days'].' days covered')
-                ->color($actives['stickiness_28d'] === null ? 'gray' : 'warning'),
+                    : 'Mean daily actives over monthly, '.$actives['stickiness_covered_days'].' days covered')
+                ->color($actives['stickiness'] === null ? 'gray' : 'warning'),
         ];
     }
 
@@ -87,7 +87,7 @@ class ActivesStats extends BaseWidget
             ->selectRaw('day, count(*) as people')
             ->pluck('people', 'day');
 
-        $since = app(AnalyticsCatalog::class)->actives()['since'];
+        $since = app(AnalyticsCatalog::class)->actives()['rolling_28d_since'];
 
         $trend = [];
 

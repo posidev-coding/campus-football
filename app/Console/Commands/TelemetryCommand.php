@@ -60,17 +60,28 @@ class TelemetryCommand extends Command
         $this->newLine();
         // The date, again, and for the same reason the funnel carries one: a
         // stickiness of 0.2 off four covered days is not a month's number.
-        $this->line(sprintf('  <fg=gray>Actives · since %s</>', $actives['since'] ?? 'no data'));
+        $this->line('  <fg=gray>Actives · each window says its own since</>');
 
+        $this->line(sprintf('    %-30s %6d', 'today', $actives['dau']));
         $this->line(sprintf(
-            '    %-30s %6d   wau %d   mau %d   stickiness %s',
-            'daily actives',
-            $actives['dau'],
-            $actives['wau'],
-            $actives['mau'],
+            '    %-30s %6d   since %s',
+            "league week ({$actives['league_week_days']}d)",
+            $actives['league_week_actives'],
+            $actives['league_week_since'] ?? 'no data',
+        ));
+        $this->line(sprintf(
+            '    %-30s %6d   since %s',
+            'rolling 28 days',
+            $actives['rolling_28d_actives'],
+            $actives['rolling_28d_since'] ?? 'no data',
+        ));
+        $this->line(sprintf(
+            '    %-30s %6s   over %d covered days',
+            'stickiness',
             // "no data" and never 0.0 — below the floor there is no rate, and
             // printing one is the substitution the whole layer refuses.
-            $actives['stickiness_28d'] === null ? 'no data' : $actives['stickiness_28d'],
+            $actives['stickiness'] === null ? 'no data' : $actives['stickiness'],
+            $actives['stickiness_covered_days'],
         ));
 
         $failing = collect($snapshot['ops'])->where('status', OpsReport::FAIL)->count();

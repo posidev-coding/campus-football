@@ -83,6 +83,24 @@ class AnalyticsWindow
     }
 
     /**
+     * The league week so far: Tuesday, when the pick'em week turns over
+     * (Cadence::TURNOVER_DOW), through today.
+     *
+     * Deliberately not a rolling seven days, or two adjacent weekly numbers
+     * hold different amounts of Saturday. On a Wednesday that makes it two
+     * days wide, so it must never be read beside a rolling seven-day count
+     * under the same name. That collision published 4 and 14 as the same
+     * `wau` (CFB-87). Through {@see between()} like every other range, so
+     * its `since` means the same thing theirs does.
+     */
+    public static function leagueWeek(): self
+    {
+        $to = CarbonImmutable::now(config('cfb.timezone'))->startOfDay();
+
+        return self::between(Cadence::currentSaturday()->subDays(4), $to, 'league week');
+    }
+
+    /**
      * The one constructor that reads `since` — every range resolves through
      * here, so a rolling window and the season window cannot disagree about
      * what "the sensor was not counting yet" means.

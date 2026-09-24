@@ -175,7 +175,7 @@ describe('the answer', function () {
             ->and($answer['key'])->toBe('actives')
             ->and($answer['title'])->toBe('Actives and stickiness')
             ->and($answer['asked'])->toBe('How many people were here this week?')
-            ->and(collect($answer['rows'])->firstWhere('label', 'Mau')['value'])->toBe('10');
+            ->and(collect($answer['rows'])->firstWhere('label', 'Rolling 28d actives')['value'])->toBe('10');
     });
 
     it('carries since, because a window is not the days it has data for', function () {
@@ -212,7 +212,7 @@ describe('the answer', function () {
 
         [$answer] = askOps();
 
-        expect(collect($answer['rows'])->firstWhere('label', 'Stickiness 28d')['value'])->toBe('no data');
+        expect(collect($answer['rows'])->firstWhere('label', 'Stickiness')['value'])->toBe('no data');
     });
 
     it('keeps a long list as a capped table rather than a hundred flattened lines', function () {
@@ -293,7 +293,10 @@ describe('the door', function () {
             // thing the asker opened it for.
             ->assertActionMounted('askTheData')
             ->assertMountedActionModalSee('Actives and stickiness')
-            ->assertMountedActionModalSee('Counted since 2026-09-05');
+            // Actives holds three windows, so each bound is a row beside its
+            // own number rather than one "Counted since" over all of them.
+            ->assertMountedActionModalSee('Rolling 28d since')
+            ->assertMountedActionModalSee('2026-09-05');
     });
 
     it('says one plain sentence on a miss, never the developer reason', function () {

@@ -454,7 +454,9 @@ describe('the attention sections', function () {
         $telemetry = telemetry();
 
         expect($telemetry['traffic'])->toHaveKey('since')
-            ->and($telemetry['audience']['actives'])->toHaveKey('since')
+            // Actives holds three windows, so each carries its own bound
+            // rather than one section-level since that fits only one of them.
+            ->and($telemetry['audience']['actives'])->toHaveKeys(['league_week_since', 'rolling_28d_since'])
             ->and($telemetry['audience']['adoption'])->toHaveKey('since')
             ->and($telemetry['routes'])->toHaveKey('since')
             ->and($telemetry['devices'])->toHaveKey('since');
