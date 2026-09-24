@@ -126,7 +126,17 @@ new class extends Component
     #[Computed]
     public function shelves(): array
     {
-        return LobbyCatalog::shelves($this->openRooms);
+        /*
+         * Dashed against THIS Saturday's shelf, not the whole catalog. A
+         * flavor resting for lack of take-up (CFB-100) must not read "not
+         * enough games", which is the one thing the closed rows say. One
+         * query per render, for the take-up, never one per row.
+         */
+        $weekId = app(CfbCalendar::class)->defaultWeekId(app(CfbCalendar::class)->currentYear());
+        $week = $weekId === null ? null : Week::find($weekId);
+        $saturday = $week === null ? null : Cadence::activeSaturday($week);
+
+        return LobbyCatalog::shelves($this->openRooms, $saturday === null ? null : LobbyCatalog::shelf($saturday));
     }
 
     /**

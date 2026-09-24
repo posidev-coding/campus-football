@@ -208,8 +208,11 @@ class PickemPreflight
             return $this->row('flavors', 'Specialty rooms', self::WARN, 'No week to stock the shelf for.');
         }
 
-        $specialties = collect(LobbyCatalog::entries())
-            ->filter(fn (array $entry) => $entry['flavor'] !== null);
+        // This Saturday's shelf, not the whole catalog: a flavor resting for
+        // lack of take-up is not missing, and must not WARN (CFB-100).
+        $shelf = LobbyCatalog::shelf($saturday);
+        $specialties = collect($shelf)->filter(fn (array $entry) => $entry['flavor'] !== null);
+        $resting = count(LobbyCatalog::entries()) - count($shelf);
 
         $stocked = Group::query()
             ->where('kind', Group::KIND_LOBBY)
@@ -244,7 +247,8 @@ class PickemPreflight
         }
 
         $detail = $stocked->unique()->count().' of '.$possible->count().' possible specialty rooms stocked.'
-            .($skipped->isEmpty() ? '' : ' Skipped: '.$skipped->implode(', ').' (not enough games).');
+            .($skipped->isEmpty() ? '' : ' Skipped: '.$skipped->implode(', ').' (not enough games).')
+            .($resting === 0 ? '' : ' '.$resting.' resting (no take-up in '.LobbyCatalog::DEMAND_SATURDAYS.' Saturdays).');
 
         return $missing->isEmpty()
             ? $this->row('flavors', 'Specialty rooms', self::OK, $detail)

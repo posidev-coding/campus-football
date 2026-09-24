@@ -6,11 +6,14 @@ use App\Enums\ContestMode;
 use App\Enums\LobbyFlavor;
 use App\Models\Game;
 use App\Models\Group;
+use App\Models\GroupMember;
 use App\Models\Pick;
 use App\Models\Slate;
 use App\Models\User;
 use App\Services\Contests\PickGrader;
+use App\Support\Cadence;
 use App\Support\GameRanks;
+use App\Support\Lobby;
 use App\Support\LobbyCatalog;
 use App\Support\PickemPreflight;
 use App\Support\Voice;
@@ -431,4 +434,168 @@ it('stocks the specialty shelf and reports it honestly in the preflight', functi
         ->and($flavors['detail'])->toContain('Skipped:')
         ->and($flavors['detail'])->toContain('Ranked Action')
         ->and($flavors['detail'])->toContain('Pac-12 After Dark');
+});
+
+describe('stocking the specialty shelf on take-up', function () {
+    /*
+     * CFB-100. Two Saturdays of production stocked twelve and thirteen house
+     * rooms, and every specialty room seated nobody while the one private
+     * group seated fifteen. A flavor is stocked when a room of it seated
+     * somebody in the last DEMAND_SATURDAYS, when it has no room in that
+     * window at all, or on its turn in the rotation.
+     */
+
+    /** A past room of this flavor on a Saturday, with this many members seated. */
+    $pastRoom = function (LobbyFlavor $flavor, string $saturday, int $members): Group {
+        [, $week] = pickemSeasonWeek();
+
+        $room = Group::factory()->room($week->id)->create(['flavor' => $flavor->value]);
+        $contest = $room->contests()->create(['season_year' => 2026, 'mode' => $flavor->mode(), 'settings' => $flavor->settings()]);
+        Slate::factory()->create([
+            'contest_id' => $contest->id, 'week_id' => $week->id, 'saturday' => $saturday,
+            'status' => Slate::SETTLED, 'settled_at' => now(),
+        ]);
+        GroupMember::factory()->count($members)->create(['group_id' => $room->id]);
+
+        return $room;
+    };
+
+    /** Every flavor had a room on each Saturday given, and nobody took one. */
+    $idle = function (array $saturdays) use ($pastRoom): void {
+        foreach ($saturdays as $saturday) {
+            foreach (LobbyFlavor::cases() as $flavor) {
+                $pastRoom($flavor, $saturday, 0);
+            }
+        }
+    };
+
+    $saturday = fn (string $day): CarbonImmutable => CarbonImmutable::parse($day, config('cfb.timezone'));
+
+    it('rests a flavor nobody took, apart from its turn in the rotation', function () use ($idle, $saturday) {
+        $idle(['2026-09-19']);
+
+        expect(LobbyCatalog::offeredFlavors($saturday('2026-09-26')))->toHaveCount(LobbyCatalog::ROTATION);
+    });
+
+    it('stocks a flavor a room of which seated somebody in the window', function () use ($idle, $pastRoom, $saturday) {
+        $idle(['2026-09-19']);
+        // Two Saturdays back is still inside a three-Saturday window.
+        $pastRoom(LobbyFlavor::TwoMinuteDrill, '2026-09-12', 1);
+
+        $offered = LobbyCatalog::offeredFlavors($saturday('2026-09-26'));
+
+        expect($offered)->toContain(LobbyFlavor::TwoMinuteDrill)
+            ->and($offered)->toHaveCount(1 + LobbyCatalog::ROTATION);
+    });
+
+    it('stocks a flavor with no history at all, because no data is not a zero', function () use ($pastRoom, $saturday) {
+        /*
+         * Every flavor idle but Upset Alley, which has never had a room. It
+         * has to be offered. If "unknown" counted as nobody taking it, the
+         * shelf would empty itself on the first quiet week and nothing
+         * could ever bring it back.
+         */
+        foreach (LobbyFlavor::cases() as $flavor) {
+            if ($flavor !== LobbyFlavor::UpsetAlley) {
+                $pastRoom($flavor, '2026-09-19', 0);
+            }
+        }
+
+        $offered = LobbyCatalog::offeredFlavors($saturday('2026-09-26'));
+
+        expect($offered)->toContain(LobbyFlavor::UpsetAlley)
+            ->and($offered)->toHaveCount(1 + LobbyCatalog::ROTATION);
+    });
+
+    it('forgets take-up older than the window', function () use ($idle, $pastRoom, $saturday) {
+        $idle(['2026-09-19']);
+        // Four Saturdays back: outside the window, so it earns nothing now.
+        $pastRoom(LobbyFlavor::TwoMinuteDrill, '2026-08-29', 5);
+
+        expect(LobbyCatalog::offeredFlavors($saturday('2026-09-26')))->toHaveCount(LobbyCatalog::ROTATION);
+    });
+
+    it('turns the rotation every Saturday, so every resting flavor gets a turn', function () use ($idle, $saturday) {
+        // Idle history that keeps all ten resting from Sep 26 to Oct 24.
+        $idle(['2026-09-19', '2026-10-10']);
+
+        $turns = collect(['2026-09-26', '2026-10-03', '2026-10-10', '2026-10-17', '2026-10-24'])
+            ->map(fn (string $day) => LobbyCatalog::offeredFlavors($saturday($day)));
+
+        // The same Saturday always answers the same, so an hourly sweep is
+        // stable...
+        expect(LobbyCatalog::offeredFlavors($saturday('2026-09-26')))->toBe($turns[0])
+            // ...and five Saturdays of two cover all ten.
+            ->and($turns->flatten()->unique(fn (LobbyFlavor $flavor) => $flavor->value)->count())
+            ->toBe(count(LobbyFlavor::cases()));
+    });
+
+    it('keeps the three standard rooms whatever the history says', function () use ($idle, $saturday) {
+        $idle(['2026-09-19']);
+
+        $standard = collect(LobbyCatalog::shelf($saturday('2026-09-26')))
+            ->filter(fn (array $entry) => $entry['flavor'] === null)
+            ->pluck('mode')
+            ->all();
+
+        expect($standard)->toBe([ContestMode::Classic, ContestMode::Tiered, ContestMode::Woodshed]);
+    });
+
+    it('stocks nothing the shelf rests, through the sweep, and the preflight does not call it missing', function () use ($idle) {
+        [, $week] = lobbyFlavorWeek();
+        $target = Cadence::activeSaturday($week);
+
+        // Every flavor idle on the Saturday before the one being stocked.
+        $idle([$target->subWeek()->toDateString()]);
+
+        $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+        $offered = collect(LobbyCatalog::offeredFlavors($target))->map(fn (LobbyFlavor $flavor) => $flavor->value);
+
+        $spawned = Group::query()
+            ->where('week_id', $week->id)
+            ->whereNotNull('flavor')
+            ->whereHas('contests.slates', fn ($s) => $s->where('saturday', $target->toDateString()))
+            ->pluck('flavor');
+
+        expect($spawned->diff($offered))->toBeEmpty()
+            ->and($spawned->count())->toBeLessThanOrEqual(LobbyCatalog::ROTATION);
+
+        $flavors = collect(app(PickemPreflight::class)->checks())->keyBy('key')['flavors'];
+
+        // A resting flavor is not a missing one: nothing here is a WARN.
+        expect($flavors['status'])->toBe(PickemPreflight::OK)
+            ->and($flavors['detail'])->toContain('resting');
+    });
+
+    it('never dashes a resting flavor as "not enough games"', function () use ($idle) {
+        [, $week] = lobbyFlavorWeek();
+        $target = Cadence::activeSaturday($week);
+        $idle([$target->subWeek()->toDateString()]);
+
+        $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+        $offered = LobbyCatalog::shelf($target);
+        $closed = collect(LobbyCatalog::shelves(Lobby::openRooms(pickemAdmin()), $offered))
+            ->flatMap(fn (array $shelf) => $shelf['closed'])
+            ->pluck('flavor')
+            ->filter()
+            ->map(fn (LobbyFlavor $flavor) => $flavor->value);
+
+        $onOffer = collect($offered)->pluck('flavor')->filter()->map(fn (LobbyFlavor $flavor) => $flavor->value);
+
+        // Every dashed flavor was on offer this Saturday, so "not enough
+        // games" is true of it. A resting flavor is left off entirely.
+        expect($closed->diff($onOffer))->toBeEmpty();
+
+        // And the screen itself passes its Saturday's shelf, rather than
+        // dashing against the whole catalog.
+        $screen = collect(Livewire::actingAs(pickemAdmin())->test('lobby')->instance()->shelves)
+            ->flatMap(fn (array $shelf) => $shelf['closed'])
+            ->pluck('flavor')
+            ->filter()
+            ->map(fn (LobbyFlavor $flavor) => $flavor->value);
+
+        expect($screen->diff($onOffer))->toBeEmpty();
+    });
 });

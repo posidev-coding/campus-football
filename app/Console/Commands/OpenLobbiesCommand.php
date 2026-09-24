@@ -20,7 +20,9 @@ use Throwable;
 
 /**
  * The lobby's shelf-stocking sweep: at least ONE open public room for
- * every catalog entry the current Saturday can support.
+ * every entry on this Saturday's shelf that the Saturday can support.
+ * The shelf is the three standard rooms plus the specialty flavors with
+ * take-up ({@see LobbyCatalog::shelf()}).
  *
  * The join hook spawns the next room the instant one fills — this sweep
  * is the belt under those suspenders: the very first rooms of a week
@@ -76,7 +78,9 @@ class OpenLobbiesCommand extends Command
 
             $spawned = 0;
 
-            foreach (LobbyCatalog::entries() as $entry) {
+            // The SHELF, not the catalog: a specialty flavor nobody has
+            // taken in DEMAND_SATURDAYS rests this week (CFB-100).
+            foreach (LobbyCatalog::shelf($saturday) as $entry) {
                 if (! $entry['mode']->available()) {
                     continue;
                 }

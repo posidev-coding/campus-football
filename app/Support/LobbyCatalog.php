@@ -10,6 +10,7 @@ use App\Models\Group;
 use App\Models\Slate;
 use App\Models\Week;
 use App\Services\Contests\SuggestSlate;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
@@ -34,6 +35,21 @@ class LobbyCatalog
     private const MIN_FLEX = 5;
 
     /**
+     * How many Saturdays back a specialty flavor's take-up is read. Three
+     * is long enough that one quiet weekend does not close a shelf, and
+     * short enough that a flavor nobody has touched in a month stops being
+     * stocked, swept and reminded about every hour.
+     */
+    public const DEMAND_SATURDAYS = 3;
+
+    /**
+     * Unclaimed flavors stocked anyway each Saturday, so a shelf closed for
+     * lack of take-up can earn its way back. Two of ten puts every flavor
+     * back on the shelf about every five weeks.
+     */
+    public const ROTATION = 2;
+
+    /**
      * The inventory, in stocking-and-display order: the three standard rooms
      * (the preflight's red line), then the specialty shelf.
      *
@@ -56,6 +72,122 @@ class LobbyCatalog
         }
 
         return $entries;
+    }
+
+    /**
+     * What THIS Saturday's shelf offers: the three standard rooms always,
+     * and each specialty flavor only when the take-up says so (CFB-100).
+     *
+     * Two Saturdays of production stocked twelve and thirteen house rooms,
+     * and every specialty room seated nobody while the one private group
+     * seated fifteen. A room the sweep keeps open costs a slate suggestion,
+     * an hourly restock check and a reminder cadence, whoever takes it. So a
+     * flavor is stocked when:
+     *
+     *   - one of its rooms seated anybody in the last DEMAND_SATURDAYS, or
+     *   - it had NO room in that window at all: no history is not a zero,
+     *     and treating it as one would empty the shelf on the first quiet
+     *     week with nothing ever able to bring it back, or
+     *   - it is this Saturday's turn in the ROTATION of the rest.
+     *
+     * The standard three are unconditional. PickemPreflight treats them as
+     * the red line, and a lobby with no Classic room is not a lobby.
+     *
+     * This is an OFFER, like entries(): feasibility still trims it through
+     * resolve() at spawn. One query, and never from a per-row render.
+     *
+     * @return list<array{mode: ContestMode, flavor: ?LobbyFlavor}>
+     */
+    public static function shelf(CarbonInterface $saturday): array
+    {
+        $offered = self::offeredFlavors($saturday);
+
+        return array_values(array_filter(
+            self::entries(),
+            fn (array $entry): bool => $entry['flavor'] === null || in_array($entry['flavor'], $offered, true),
+        ));
+    }
+
+    /**
+     * The specialty flavors this Saturday offers, in case order.
+     *
+     * @return list<LobbyFlavor>
+     */
+    public static function offeredFlavors(CarbonInterface $saturday): array
+    {
+        $takeUp = self::takeUp($saturday);
+
+        $claimed = [];
+        $unclaimed = [];
+
+        foreach (LobbyFlavor::cases() as $flavor) {
+            // Absent from the map means no room in the window: stock it.
+            if (($takeUp[$flavor->value] ?? null) === null || $takeUp[$flavor->value] > 0) {
+                $claimed[] = $flavor;
+            } else {
+                $unclaimed[] = $flavor;
+            }
+        }
+
+        return array_values(array_filter(
+            LobbyFlavor::cases(),
+            fn (LobbyFlavor $flavor): bool => in_array($flavor, $claimed, true)
+                || in_array($flavor, self::rotation($unclaimed, $saturday), true),
+        ));
+    }
+
+    /**
+     * Members seated per flavor across its rooms in the DEMAND_SATURDAYS
+     * before this one. A flavor with no room in the window is ABSENT, not
+     * zero, and only absence means "unknown".
+     *
+     * Read by the Saturday the room's card was on, never by week: an ESPN
+     * week can hold two Saturdays (.ai/rules/views-livewire-support.md).
+     *
+     * @return array<string, int> flavor value => members seated
+     */
+    private static function takeUp(CarbonInterface $saturday): array
+    {
+        // The Saturday's own date, immutable: a mutable instance would move
+        // under the first subDays() and take the upper bound with it.
+        $day = CarbonImmutable::parse($saturday->toDateString());
+        $from = $day->subDays(7 * self::DEMAND_SATURDAYS)->toDateString();
+        $before = $day->toDateString();
+
+        return Group::query()
+            ->where('kind', Group::KIND_LOBBY)
+            ->whereNotNull('flavor')
+            ->whereHas('contests.slates', fn ($slates) => $slates
+                ->where('status', '!=', Slate::DRAFT)
+                ->where('saturday', '>=', $from)
+                ->where('saturday', '<', $before))
+            ->withCount('memberships')
+            ->get(['id', 'flavor'])
+            ->groupBy('flavor')
+            ->map(fn (Collection $rooms): int => (int) $rooms->sum('memberships_count'))
+            ->all();
+    }
+
+    /**
+     * This Saturday's turn among the unclaimed flavors: ROTATION of them,
+     * chosen by the Saturday itself, so every hourly sweep of one Saturday
+     * stocks the same two and the next Saturday moves on.
+     *
+     * @param  list<LobbyFlavor>  $unclaimed
+     * @return list<LobbyFlavor>
+     */
+    private static function rotation(array $unclaimed, CarbonInterface $saturday): array
+    {
+        $count = count($unclaimed);
+
+        if ($count <= self::ROTATION) {
+            return $unclaimed;
+        }
+
+        $weekNumber = intdiv(CarbonImmutable::parse($saturday->toDateString(), 'UTC')->getTimestamp(), 7 * 86_400);
+        $start = ($weekNumber * self::ROTATION) % $count;
+
+        return array_map(fn (int $i): LobbyFlavor => $unclaimed[($start + $i) % $count], range(0, self::ROTATION - 1));
     }
 
     /**
@@ -109,10 +241,16 @@ class LobbyCatalog
      * SEATED in counts as stocked — the shape exists, they are in it — so
      * it never renders as closed behind their back.
      *
+     * A flavor this Saturday's shelf does not OFFER is never dashed. The
+     * closed rows say "not enough games", and a flavor left off for lack of
+     * take-up is not that. So the caller passes {@see shelf()}, read once per
+     * render. The full catalog is the default for a caller with no Saturday.
+     *
      * @param  Collection<int, Group>  $rooms  seat-inclusive, in sortKey order
+     * @param  list<array{mode: ContestMode, flavor: ?LobbyFlavor}>|null  $offered  this Saturday's shelf
      * @return list<array{shelf: LobbyShelf, rooms: list<array{room: Group, mode: ContestMode, gameCount: ?int, seats: int, seated: bool}>, closed: list<array{mode: ContestMode, flavor: ?LobbyFlavor, label: string}>}>
      */
-    public static function shelves(Collection $rooms): array
+    public static function shelves(Collection $rooms, ?array $offered = null): array
     {
         $transient = $rooms->filter(fn (Group $room) => $room->isRoom());
 
@@ -147,7 +285,7 @@ class LobbyCatalog
         $closedByShelf = [];
 
         if ($stocked !== []) {
-            foreach (self::entries() as $entry) {
+            foreach ($offered ?? self::entries() as $entry) {
                 if (isset($stocked[self::shapeKey($entry['mode'], $entry['flavor'])])) {
                     continue;
                 }
