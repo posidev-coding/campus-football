@@ -92,6 +92,11 @@ class PickemPulse
      * the completing act so "Entry in" never wears a stale nag, and the
      * Tuesday turnover ages out inside one TTL. A dot, never a count —
      * nav-tab's own decree.
+     *
+     * Read through Remember::orSource because the bottom nav is on every
+     * signed-in page. If the store stalls, the answer is read from the
+     * rows, never assumed. A default `false` would hide a week that is
+     * still waiting on the reader.
      */
     public static function needsAttention(User $user): bool
     {
@@ -103,7 +108,7 @@ class PickemPulse
             return false;
         }
 
-        return (bool) Cache::remember(
+        return (bool) Remember::orSource(
             'pickem-pulse:dot:'.$user->id,
             300,
             fn (): bool => self::cards($user)->contains(fn (array $card) => in_array($card['state'], ['upcoming', 'live'], true)

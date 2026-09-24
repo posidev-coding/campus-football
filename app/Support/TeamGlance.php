@@ -58,6 +58,8 @@ class TeamGlance
      * `Remember::filled` rather than `Cache::remember`, for the usual reason:
      * a lookup that runs while the season's sync is still draining would
      * otherwise pin "not held" for an hour and keep the whole app a year back.
+     * The `orSource` form, because the header search asks for this on every
+     * page, so a cache stall has to read the row rather than 500 the site.
      */
     public static function year(): int
     {
@@ -65,7 +67,7 @@ class TeamGlance
             $calendar = app(CfbCalendar::class);
             $year = $calendar->scoreboardYear();
 
-            $held = Remember::filled(
+            $held = Remember::filledOrSource(
                 "glance:held:{$year}",
                 self::CACHE_SECONDS,
                 fn (): ?bool => TeamSeason::where('season_year', $year)->exists() ?: null,
@@ -228,11 +230,14 @@ class TeamGlance
      * CFP once it exists, AP until then, the same choice the rankings screen
      * defaults to.
      *
+     * Through Remember::orSource because the header search sorts by it on
+     * every page. If the store stalls, the rows are read instead.
+     *
      * @return array<int, int>
      */
     public static function ranks(): array
     {
-        return self::$memo['ranks'] ??= Cache::remember(
+        return self::$memo['ranks'] ??= Remember::orSource(
             'glance:ranks',
             self::CACHE_SECONDS,
             function () {
