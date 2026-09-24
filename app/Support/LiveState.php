@@ -179,6 +179,11 @@ class LiveState
                  * AnalyticsCatalog, so this stays the raw measurement.
                  */
                 'late_share' => $late[$slate->id] ?? null,
+                // The window late_share counts, stated rather than inferred:
+                // the last N minutes before first kickoff. reminder_lift's
+                // window is picks_reminded_at to first_kickoff, both above,
+                // so the two rates are adjacent but answer different spans.
+                'late_window_minutes' => Cadence::LAST_CALL_MINUTES,
                 'reminder_lift' => $lift[$slate->id] ?? null,
             ];
         })->all();
@@ -269,6 +274,10 @@ class LiveState
      * rooted in entries. That person IS the reminder's audience; rooting in
      * entries would measure the lift only on people who had already played.
      *
+     * THE NUMERATOR IS DRAWN FROM THAT SAME SET: entries by the eligible,
+     * counted once per person. Anybody else, such as a member who joined after
+     * the wave, was never the reminder's to move.
+     *
      * NULL with no wave sent, and null when nobody was left to move.
      *
      * @param  Collection<int, Slate>  $slates
@@ -294,21 +303,33 @@ class LiveState
                     ->where('slate_id', $slate->id)
                     ->where('created_at', '<=', $reminded)
                     ->select('user_id'))
-                ->count();
+                ->pluck('user_id')
+                ->all();
 
-            if ($eligible === 0) {
+            if ($eligible === []) {
                 $out[$slate->id] = null;
 
                 continue;
             }
 
+            /*
+             * The numerator is drawn FROM the denominator. It used to count
+             * every entry row made between the wave and kickoff, so a member
+             * who joined after the reminder, and so was never anybody it could
+             * move, still counted as moved. The ratio could pass 1 and was not
+             * a rate (CFB-91, slate 298). Distinct people, too: the unique
+             * (slate_id, user_id) index makes that one row each today, and the
+             * count must not depend on the index staying put.
+             */
             $moved = DB::table('slate_entries')
                 ->where('slate_id', $slate->id)
+                ->whereIn('user_id', $eligible)
                 ->where('created_at', '>', $reminded)
                 ->where('created_at', '<=', $kickoff)
-                ->count();
+                ->distinct()
+                ->count('user_id');
 
-            $out[$slate->id] = round($moved / $eligible, 3);
+            $out[$slate->id] = round($moved / count($eligible), 3);
         }
 
         return $out;
