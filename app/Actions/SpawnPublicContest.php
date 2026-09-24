@@ -4,10 +4,13 @@ namespace App\Actions;
 
 use App\Enums\ContestMode;
 use App\Enums\LobbyFlavor;
+use App\Models\Contest;
+use App\Models\Game;
 use App\Models\Group;
 use App\Models\PickemSetting;
 use App\Models\Slate;
 use App\Models\Week;
+use App\Services\Contests\SuggestSlate;
 use App\Support\Cadence;
 use App\Support\LobbyCatalog;
 use App\Support\RoomNames;
@@ -41,6 +44,7 @@ class SpawnPublicContest
     public function __construct(
         private AutoPublishStandardSlate $standard,
         private PublishSlate $publish,
+        private SuggestSlate $suggest,
     ) {}
 
     public function handle(ContestMode $mode, Week $week, ?CarbonInterface $saturday = null, ?LobbyFlavor $flavor = null): ?Group
@@ -69,6 +73,19 @@ class SpawnPublicContest
             }
 
             $settings = $resolved['settings'];
+        }
+
+        $firstKickoff = $this->firstKickoff($sibling, $mode, $settings, $week, $saturday);
+
+        if ($firstKickoff === null || $firstKickoff->lessThanOrEqualTo(now()->addMinutes(Cadence::ROOM_RUNWAY_MINUTES))) {
+            Log::info('Lobby room too close to its first kickoff; not spawned.', [
+                'mode' => $mode->value,
+                'flavor' => $flavor?->value,
+                'saturday' => $saturday->format('Y-m-d'),
+                'first_kickoff' => $firstKickoff?->toIso8601String(),
+            ]);
+
+            return null;
         }
 
         do {
@@ -102,6 +119,42 @@ class SpawnPublicContest
         }
 
         return $group;
+    }
+
+    /**
+     * The first kickoff of the card this room WOULD deal, asked before
+     * anything is created.
+     *
+     * THE RUNWAY GATE lives here rather than in the sweep's hasOpenRoom(),
+     * whose docblock says why it must not learn the under-way condition. Here
+     * it covers both doors: the hourly sweep, and spawn-on-fill when the last
+     * seat of a room goes after the card is already close. A room closes to
+     * new seats at its first kickoff, so one opened inside
+     * Cadence::ROOM_RUNWAY_MINUTES sells for minutes and then collects a
+     * reminder cadence it can never use. ACC Action opened 45 minutes out on
+     * 2026-09-19 and drew nobody (CFB-98). Skipping is the right outcome: a
+     * shape that becomes seatable at noon on a Saturday does not get a room.
+     *
+     * A clone deals its sibling's card exactly, so that card is the answer.
+     * A first room asks the same suggestion the standard builder is about to
+     * run, on an unsaved contest the way LobbyCatalog::resolve() probes. A
+     * new room has no members, so the follow bonus cannot differ between the
+     * two. Null is no card to measure, and the caller skips it.
+     *
+     * @param  array<string, mixed>|null  $settings
+     */
+    private function firstKickoff(?Slate $sibling, ContestMode $mode, ?array $settings, Week $week, CarbonInterface $saturday): ?CarbonInterface
+    {
+        if ($sibling !== null) {
+            return $sibling->loadMissing('games.game:id,kickoff_at')->firstKickoff();
+        }
+
+        $gameIds = array_column(
+            $this->suggest->for((new Contest)->forceFill(['mode' => $mode, 'settings' => $settings]), $week, $saturday),
+            'game_id',
+        );
+
+        return Game::query()->whereIn('id', $gameIds)->get(['id', 'kickoff_at'])->min('kickoff_at');
     }
 
     /**

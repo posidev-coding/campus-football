@@ -191,6 +191,61 @@ it('keeps at least one open room per catalog entry through the sweep, idempotent
     expect(Group::query()->where('kind', Group::KIND_LOBBY)->count())->toBe(6);
 });
 
+it('opens no room inside its card\'s runway, and does once the runway is there', function () {
+    /*
+     * ACC Action opened 45 minutes before its card on 2026-09-19, sold for
+     * those 45 minutes, drew nobody, and still collected a reminder cadence.
+     * The fixture's card kicks off at 19:30Z, so 18:45Z is that exact shape.
+     * Both directions, or the gate could be off-by-everything.
+     */
+    publicContestWeek();
+
+    $this->travelTo('2026-09-05 18:45:00');
+    $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+    expect(Group::query()->where('kind', Group::KIND_LOBBY)->count())->toBe(0);
+
+    // A second tick inside the hour asks again and still opens nothing —
+    // no clone, no loop, no room that is closed the moment it exists.
+    $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+    expect(Group::query()->where('kind', Group::KIND_LOBBY)->count())->toBe(0);
+
+    // The same card with its runway: the shelf stocks.
+    $this->travelTo('2026-09-05 16:00:00');
+    $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+    expect(Group::query()->where('kind', Group::KIND_LOBBY)->count())->toBe(6);
+});
+
+it('does not clone a filled room\'s card once it is inside the runway', function () {
+    /*
+     * The sibling path, the one hasOpenRoom()'s docblock is about: a room
+     * that FILLS stops counting as stocked, so late on a Saturday the sweep
+     * and the join hook both reach for a clone of a card that is about to
+     * start. The clone would be identical, including its first kickoff, and
+     * that kickoff is the answer.
+     */
+    [, $week] = publicContestWeek();
+
+    $this->travelTo('2026-09-05 12:00:00');
+    $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+    expect($room)->not->toBeNull();
+
+    $room->update(['filled_at' => now()]);
+
+    $this->travelTo('2026-09-05 18:45:00');
+
+    expect(app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week))->toBeNull()
+        ->and(Group::query()->where('kind', Group::KIND_LOBBY)->count())->toBe(1);
+
+    // Earlier the same day the sibling's card still has its runway.
+    $this->travelTo('2026-09-05 15:00:00');
+
+    expect(app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week))->not->toBeNull();
+});
+
 it('records the pass that stocked the shelf, and the pass that found it full', function () {
     /*
      * The join hook usually restocks a room the instant one fills, so the

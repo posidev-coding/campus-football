@@ -76,6 +76,19 @@ class Cadence
     public const LAST_CALL_MINUTES = 90;
 
     /**
+     * How far off a public room's first kickoff must still be for the room
+     * to open at all.
+     *
+     * A lobby room closes to new seats at its card's first kickoff, so a room
+     * spawned inside this window sells for minutes. ACC Action opened 45
+     * minutes before its card on 2026-09-19 and drew nobody (CFB-98). The
+     * floor is the last call, because a room that cannot outlive its own last
+     * call should never open. It is a principled floor, not a measured
+     * optimum: raise it when a Saturday's rooms say where the real line is.
+     */
+    public const ROOM_RUNWAY_MINUTES = self::LAST_CALL_MINUTES;
+
+    /**
      * How recently wave one must have fired to suppress the last call.
      *
      * A slate published late — Friday night, for a Saturday noon kick —
