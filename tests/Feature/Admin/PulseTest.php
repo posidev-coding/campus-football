@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Support\PulseExceptions;
 use Laravel\Pulse\Contracts\Ingest;
 use Laravel\Pulse\Ingests\RedisIngest;
 use Laravel\Pulse\Recorders;
@@ -120,7 +121,7 @@ describe('the ingest path', function () {
 describe('the recorder roster', function () {
     it('records performance, exceptions and usage', function () {
         foreach ([
-            Recorders\Exceptions::class,
+            PulseExceptions::class,
             Recorders\SlowJobs::class,
             Recorders\SlowOutgoingRequests::class,
             Recorders\SlowQueries::class,
@@ -130,6 +131,20 @@ describe('the recorder roster', function () {
         ] as $recorder) {
             expect(config("pulse.recorders.{$recorder}.enabled"))->toBeTrue($recorder);
         }
+    });
+
+    it('records exceptions through the subclass, and keeps the card its sample rate', function () {
+        /*
+         * PulseExceptions files a Livewire exception under its component
+         * rather than under RecordPageView (CFB-86). Pulse's own recorder is
+         * off so nothing records twice, but its key stays, because Pulse's
+         * Exceptions card reads the sample rate from it.
+         */
+        expect(is_subclass_of(PulseExceptions::class, Recorders\Exceptions::class))->toBeTrue()
+            ->and(config('pulse.recorders.'.Recorders\Exceptions::class.'.enabled'))->toBeFalse()
+            ->and(config('pulse.recorders.'.Recorders\Exceptions::class.'.sample_rate'))
+            ->toBe(config('pulse.recorders.'.PulseExceptions::class.'.sample_rate'))
+            ->and(config('pulse.recorders.'.PulseExceptions::class.'.location'))->toBeTrue();
     });
 
     it('leaves the two high-volume recorders off', function () {
