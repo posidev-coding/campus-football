@@ -62,6 +62,29 @@ class ActivityRollup
 
     public const LOBBY_ROUTE = 'pickem.lobby';
 
+    /**
+     * The truth tables {@see mergeTruth()} folds in: table, person, stamp, bit.
+     *
+     * Each fold is a range on the stamp grouped by the person, and each table
+     * carries a `(stamp, person)` index built for exactly that. Without it,
+     * every hourly pass walked tables that never prune (CFB-102). Change a
+     * stamp or a person here and the index has to follow;
+     * ActivitySchemaTest fails until it does.
+     *
+     * @var list<array{0: string, 1: string, 2: string, 3: ActivityFeature}>
+     */
+    public const TRUTH_SOURCES = [
+        // A CHANGED pick is playing too, so this reads updated_at — the
+        // one truth column here that is not a creation stamp.
+        ['picks', 'user_id', 'updated_at', ActivityFeature::Picked],
+        ['conversation_posts', 'user_id', 'created_at', ActivityFeature::Talked],
+        ['team_follows', 'user_id', 'created_at', ActivityFeature::Followed],
+        ['group_members', 'user_id', 'created_at', ActivityFeature::Joined],
+        // The INVITER: sending an invite is the adoption being measured;
+        // receiving one is somebody else's.
+        ['group_invites', 'inviter_id', 'created_at', ActivityFeature::Invited],
+    ];
+
     /** Rows per upsert statement. */
     private const CHUNK = 500;
 
@@ -257,19 +280,7 @@ class ActivityRollup
      */
     private function mergeTruth(array &$people, CarbonImmutable $start, CarbonImmutable $end): void
     {
-        $sources = [
-            // A CHANGED pick is playing too, so this reads updated_at — the
-            // one truth column here that is not a creation stamp.
-            ['picks', 'user_id', 'updated_at', ActivityFeature::Picked],
-            ['conversation_posts', 'user_id', 'created_at', ActivityFeature::Talked],
-            ['team_follows', 'user_id', 'created_at', ActivityFeature::Followed],
-            ['group_members', 'user_id', 'created_at', ActivityFeature::Joined],
-            // The INVITER: sending an invite is the adoption being measured;
-            // receiving one is somebody else's.
-            ['group_invites', 'inviter_id', 'created_at', ActivityFeature::Invited],
-        ];
-
-        foreach ($sources as [$table, $column, $stamp, $feature]) {
+        foreach (self::TRUTH_SOURCES as [$table, $column, $stamp, $feature]) {
             $rows = DB::table($table)
                 ->selectRaw("{$column} as person, min({$stamp}) as first_at, max({$stamp}) as last_at")
                 // Half-open, so a row at midnight belongs to exactly one day.

@@ -8,6 +8,7 @@ use App\Models\ActivityEvent;
 use App\Models\PageViewDaily;
 use App\Models\User;
 use App\Models\UserDay;
+use App\Support\ActivityRollup;
 use App\Support\Navigation;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
@@ -409,6 +410,28 @@ describe('the factories', function () {
             ->and($cell->viewport_bucket)->toBe(ViewportBucket::Phone)
             ->and($day->day->toDateString())->toBe('2026-09-02')
             ->and($day->viewport_bucket)->toBe(ViewportBucket::Phone);
+    });
+});
+
+describe('the rollup\'s truth-table indexes', function () {
+    it('gives every truth table an index that leads with the stamp the rollup filters', function () {
+        /*
+         * CFB-102. Each fold is `where stamp >= ? and stamp < ? group by
+         * person`, and an index is only worth what that query can use. One
+         * that leads with the person cannot seek the day, which is how all
+         * five tables came to be walked whole every hour. `(stamp, person)`
+         * seeks the range and covers the select list, so the fold never
+         * reads a row.
+         *
+         * Read off the rollup's own list, so changing a stamp there without
+         * moving its index fails here instead of going slow in production.
+         */
+        foreach (ActivityRollup::TRUTH_SOURCES as [$table, $person, $stamp]) {
+            $indexed = collect(Schema::getIndexes($table))
+                ->contains(fn (array $index): bool => $index['columns'] === [$stamp, $person]);
+
+            expect($indexed)->toBeTrue("{$table} has no ({$stamp}, {$person}) index");
+        }
     });
 });
 

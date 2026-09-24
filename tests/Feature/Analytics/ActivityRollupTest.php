@@ -8,6 +8,7 @@ use App\Models\ActivityEvent;
 use App\Models\ConversationPost;
 use App\Models\FeedRun;
 use App\Models\Group;
+use App\Models\GroupInvite;
 use App\Models\GroupMember;
 use App\Models\PageViewDaily;
 use App\Models\Pick;
@@ -17,6 +18,7 @@ use App\Models\UserDay;
 use App\Support\ActivityRollup;
 use App\Support\AnalyticsWindow;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 /*
  * Phase 3 of docs/plans/analytics.md: the fold from thirty days of raw rows
@@ -39,6 +41,31 @@ function rollDay(string $day = ROLLUP_DAY): array
 function screenView(array $attributes = []): ActivityEvent
 {
     return ActivityEvent::factory()->create($attributes);
+}
+
+/** One row in every table mergeTruth reads, for one person, on the rollup day. */
+function seedEveryTruthTable(User $person): void
+{
+    $group = Group::factory()->create();
+    $at = ['created_at' => '2026-09-02 18:00:00', 'updated_at' => '2026-09-02 18:00:00'];
+
+    Pick::factory()->create(['user_id' => $person->id, ...$at]);
+    ConversationPost::factory()->create([
+        'user_id' => $person->id, 'topic_type' => 'group', 'topic_id' => $group->id, 'created_at' => '2026-09-02 19:00:00',
+    ]);
+    GroupMember::factory()->create(['user_id' => $person->id, 'group_id' => $group->id, ...$at]);
+    GroupInvite::factory()->create(['inviter_id' => $person->id, 'group_id' => $group->id, ...$at]);
+    $person->followedTeams()->attach(Team::factory()->create()->id, ['position' => 1]);
+}
+
+/** The bits only a truth table can set. */
+function truthBits(): int
+{
+    return array_reduce(
+        array_column(ActivityRollup::TRUTH_SOURCES, 3),
+        fn (int $bits, ActivityFeature $feature): int => $bits | $feature->value,
+        0,
+    );
 }
 
 describe('the page-view cells', function () {
@@ -300,6 +327,40 @@ describe('the truth tables', function () {
     });
 });
 
+describe('the truth reads', function () {
+    it('offers the planner a (stamp, person) index for every fold it runs', function () {
+        /*
+         * CFB-102: each fold used to walk its whole table, and the tables
+         * never prune. This runs the real rollup, captures the SQL it sends,
+         * and EXPLAINs each fold. `possible_keys` is the planner saying the
+         * index CAN serve this exact WHERE. Whether it then CHOOSES the index
+         * is a cost call that depends on table size. The PR body has that
+         * measurement; a seeded test table is too small to show it.
+         */
+        seedEveryTruthTable(User::factory()->create());
+
+        $folds = [];
+        DB::listen(function ($query) use (&$folds): void {
+            if (str_contains($query->sql, ' group by ')) {
+                $folds[] = $query;
+            }
+        });
+
+        rollDay();
+
+        foreach (ActivityRollup::TRUTH_SOURCES as [$table, $person, $stamp]) {
+            $fold = collect($folds)->first(fn ($query): bool => str_contains($query->sql, "from `{$table}`"));
+
+            expect($fold)->not->toBeNull("the rollup sent no fold for {$table}");
+
+            $plan = DB::selectOne('explain '.$fold->sql, $fold->bindings);
+
+            expect(explode(',', (string) $plan->possible_keys))
+                ->toContain("{$table}_{$stamp}_{$person}_index");
+        }
+    });
+});
+
 describe('re-running a day', function () {
     it('corrects a cell rather than doubling it', function () {
         screenView(['route' => 'home', 'viewport' => 390]);
@@ -318,6 +379,28 @@ describe('re-running a day', function () {
 
         expect(PageViewDaily::count())->toBe(1)
             ->and(PageViewDaily::sole()->views)->toBe(2);
+    });
+
+    it('writes byte-identical presence rows when a day with every truth table is rolled again', function () {
+        // Every source mergeTruth reads, plus a view, for two people, so an
+        // index change that shifted a group or a bound shows up as a diff.
+        foreach (User::factory()->count(2)->create() as $person) {
+            seedEveryTruthTable($person);
+            screenView(['user_id' => $person->id, 'route' => 'home', 'viewport' => 390]);
+        }
+
+        $rows = fn (): array => DB::table('user_days')->orderBy('user_id')->get()
+            ->map(fn (object $row): array => (array) $row)->all();
+
+        rollDay();
+        $first = $rows();
+
+        rollDay();
+
+        expect($first)->toHaveCount(2)
+            ->and($rows())->toBe($first)
+            // Every truth bit landed, so the re-roll compared real folds.
+            ->and(collect($first)->every(fn (array $row): bool => ($row['features'] & truthBits()) === truthBits()))->toBeTrue();
     });
 
     it('corrects a presence row rather than doubling it', function () {
