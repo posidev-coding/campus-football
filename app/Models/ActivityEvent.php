@@ -41,12 +41,22 @@ class ActivityEvent extends Model
      */
     public const KEEP_DAYS = 30;
 
-    /** 0 guest, 1 member, 2 staff. Recorded at request time. */
+    /** 0 guest, 1 member, 2 staff, 3 automated. Recorded at request time. */
     public const GUEST = 0;
 
     public const MEMBER = 1;
 
     public const STAFF = 2;
+
+    /**
+     * A signed-out request from a client that announces itself as software:
+     * a crawler, a link unfurler, an uptime check. Recorded, never dropped, so
+     * it can be counted, and kept out of GUEST so "guest visitors" means
+     * people. A client that never returns the session cookie is a new visitor
+     * on every request. That is how 2,996 guest views became 2,894 guest
+     * "visitors" (CFB-94).
+     */
+    public const AUTOMATED = 3;
 
     public $timestamps = false;
 

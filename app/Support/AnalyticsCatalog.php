@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Enums\ActivityFeature;
+use App\Enums\ActivityKind;
 use App\Enums\UxSignal;
 use App\Enums\ViewportBucket;
 use App\Http\Middleware\RecordPageView;
@@ -245,6 +246,26 @@ class AnalyticsCatalog
                 ->selectRaw('audience as k, count(distinct coalesce(concat("u", user_id), concat("v", visitor))) as v'),
         );
 
+        /*
+         * HOW MUCH OF "GUEST" IS STILL ONE REQUEST AT A TIME. A guest is
+         * identified by their session, so a client that never returns the
+         * cookie is a new visitor on every request. The sensor now files the
+         * ones that say they are software under AUTOMATED, but a crawler that
+         * dresses as a browser stays a guest. These two numbers let a reader
+         * judge what is left, rather than trust a visitor count that ran 2,894
+         * against 2,996 views (CFB-94). Both come off `activity_events`, the
+         * same table as the visitors, so the ratio is not two tables' windows
+         * divided into each other.
+         */
+        $guestViews = ActivityEvent::query()
+            ->whereBetween('day', [$window->fromDate(), $window->toDate()])
+            ->where('audience', ActivityEvent::GUEST)
+            ->where('kind', ActivityKind::PageView->value)
+            ->whereNotNull('visitor')
+            ->groupBy('visitor')
+            ->selectRaw('count(*) as n')
+            ->pluck('n');
+
         return [
             'window_days' => $window->days,
             'views' => [
@@ -254,11 +275,19 @@ class AnalyticsCatalog
                 // founder's own browsing is most of the traffic, and a number
                 // that quietly includes it is the one that misleads.
                 'staff' => $views[ActivityEvent::STAFF] ?? 0,
+                // Counted, never dropped: software that said so at the door.
+                'automated' => $views[ActivityEvent::AUTOMATED] ?? 0,
             ],
             'visitors' => [
                 'guest' => $visitors[ActivityEvent::GUEST] ?? 0,
                 'member' => $visitors[ActivityEvent::MEMBER] ?? 0,
+                'automated' => $visitors[ActivityEvent::AUTOMATED] ?? 0,
             ],
+            // Null with no guests: no ratio, not a ratio of zero.
+            'guest_views_per_visitor' => $guestViews->isEmpty()
+                ? null
+                : round($guestViews->sum() / $guestViews->count(), 2),
+            'guest_one_view_visitors' => $guestViews->filter(fn ($n): bool => (int) $n === 1)->count(),
             'since' => $window->sinceDate(),
         ];
     }

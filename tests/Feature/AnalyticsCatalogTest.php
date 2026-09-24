@@ -35,6 +35,45 @@ function catalog(): AnalyticsCatalog
     return app(AnalyticsCatalog::class);
 }
 
+describe('traffic', function () {
+    it('counts software apart from guests, and says how much of guest is one request', function () {
+        /*
+         * Guest "visitors" ran 2,894 against 2,996 views, 1.03 each, because a
+         * client that never returns the session cookie is a new visitor on
+         * every request (CFB-94). What said it was software is AUTOMATED;
+         * what is left carries the two numbers a reader needs to judge it.
+         */
+        $guest = fn (string $visitor, int $views) => ActivityEvent::factory()->count($views)->create([
+            'user_id' => null, 'visitor' => $visitor, 'audience' => ActivityEvent::GUEST,
+        ]);
+
+        $guest('reader', 3);
+        $guest('one-a', 1);
+        $guest('one-b', 1);
+
+        ActivityEvent::factory()->count(4)->create([
+            'user_id' => null, 'visitor' => 'crawler', 'audience' => ActivityEvent::AUTOMATED,
+        ]);
+
+        PageViewDaily::factory()->create(['day' => '2026-09-02', 'audience' => ActivityEvent::AUTOMATED, 'views' => 4]);
+
+        $traffic = catalog()->traffic(AnalyticsWindow::of(7));
+
+        expect($traffic['visitors']['guest'])->toBe(3)
+            ->and($traffic['visitors']['automated'])->toBe(1)
+            ->and($traffic['views']['automated'])->toBe(4)
+            ->and($traffic['guest_views_per_visitor'])->toBe(1.67)
+            ->and($traffic['guest_one_view_visitors'])->toBe(2);
+    });
+
+    it('has no ratio at all with no guests, rather than a ratio of zero', function () {
+        $traffic = catalog()->traffic(AnalyticsWindow::of(7));
+
+        expect($traffic['guest_views_per_visitor'])->toBeNull()
+            ->and($traffic['guest_one_view_visitors'])->toBe(0);
+    });
+});
+
 describe('adoption', function () {
     it('divides each feature by the people who were here, not by everybody', function () {
         // "Do the people who are here use this" is a different question from
