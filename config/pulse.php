@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\PulseExceptions;
 use Laravel\Pulse\Http\Middleware\Authorize;
 use Laravel\Pulse\Pulse;
 use Laravel\Pulse\Recorders;
@@ -193,7 +194,23 @@ return [
             ],
         ],
 
+        /*
+         * DISABLED, and still here: Pulse's own Exceptions dashboard card reads
+         * `sample_rate` from this key, whatever records the exceptions. The
+         * subclass below records in its place; the two rates must agree.
+         */
         Recorders\Exceptions::class => [
+            'enabled' => false,
+            'sample_rate' => env('PULSE_EXCEPTIONS_SAMPLE_RATE', 1),
+        ],
+
+        /*
+         * Pulse's own recorder, subclassed so a Livewire exception is filed
+         * under the component that threw it rather than under the first app
+         * frame, which for every Livewire update is RecordPageView's
+         * `$next()` (CFB-86). See App\Support\PulseExceptions.
+         */
+        PulseExceptions::class => [
             'enabled' => env('PULSE_EXCEPTIONS_ENABLED', true),
             'sample_rate' => env('PULSE_EXCEPTIONS_SAMPLE_RATE', 1),
             'location' => env('PULSE_EXCEPTIONS_LOCATION', true),
