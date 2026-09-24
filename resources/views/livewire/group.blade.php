@@ -40,6 +40,7 @@ use App\Support\Placing;
 use App\Support\Seats;
 use App\Support\SlateFeasibility;
 use App\Support\Voice;
+use App\Support\WeekTrends;
 use Carbon\CarbonInterface;
 use Flux\Flux;
 use Illuminate\Support\Collection;
@@ -1005,7 +1006,11 @@ new class extends Component
      * and a seat with no entry has no rank worth inventing. Null when the
      * viewer holds no seat at all (an outsider previewing a lobby).
      *
-     * @return array{name: string, stats: list<array{label: string, value: string}>}|null
+     * THE RUN BELOW IT: the viewer's last few weeks, each one's place and
+     * whether it was the top half of the group (WeekTrends, CFB-30). Groups
+     * only, like the season columns: a one-Saturday room has no run.
+     *
+     * @return array{name: string, stats: list<array{label: string, value: string}>, trend: list<array<string, mixed>>}|null
      */
     #[Computed]
     public function youStrip(): ?array
@@ -1039,6 +1044,10 @@ new class extends Component
             $stats[] = ['label' => 'Pts', 'value' => $seasonRow === null ? '—' : (string) $seasonRow['cells'][1]];
         }
 
+        $trend = $this->contest === null || $this->group->isRoom()
+            ? []
+            : (WeekTrends::for($this->contest)[$user->id] ?? []);
+
         return [
             /*
              * THE SAME ANSWER THE TABLE TWO ROWS BELOW GIVES.
@@ -1063,6 +1072,7 @@ new class extends Component
                 ? ($user->name ?: ($user->handle !== null ? '@'.$user->handle : ''))
                 : ($user->handle !== null ? '@'.$user->handle : $user->name),
             'stats' => $stats,
+            'trend' => $trend,
         ];
     }
 
@@ -1666,7 +1676,7 @@ new class extends Component
                      the strip and the standings table below it both print an
                      identity, so a test that cannot tell them apart passes on
                      the table while the strip says something else. --}}
-                <x-you-strip data-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" />
+                <x-you-strip data-you-strip :name="$this->youStrip['name']" :stats="$this->youStrip['stats']" :trend="$this->youStrip['trend']" />
             @endif
 
             @if (in_array($this->surfaceStatus, ['live', 'prelim', 'final'], true) && $this->weekStandings->isNotEmpty())

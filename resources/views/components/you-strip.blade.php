@@ -24,12 +24,30 @@
     'stats' => [],
     /** `panel` (the blue tile) or `bare` (the row alone; the host paints the surface). */
     'variant' => 'panel',
+    /**
+     * The viewer's recent weeks from `App\Support\WeekTrends`, drawn as a
+     * second row under the stats. Empty draws nothing, and the strip's markup
+     * is exactly the one-row strip it always was.
+     *
+     * @var list<array{saturday: string, place: int, field: int, tied: bool, top_half: bool}>
+     */
+    'trend' => [],
 ])
 
+{{--
+    A SECOND ROW, not a fifth column: four columns are all 390px holds, and
+    five pills beside them would squeeze the identity cell to nothing. The
+    row wrapper only exists when there is a trend, so a host that passes none
+    gets the one-row strip unchanged.
+--}}
 <div {{ $attributes->class([
-    'flex items-center gap-4 py-3',
+    'flex items-center gap-4 py-3' => $trend === [],
+    'flex flex-col gap-2 py-3' => $trend !== [],
     'rounded-xl border border-blue-200/70 bg-blue-50/60 px-4 dark:border-blue-900/40 dark:bg-blue-950/30' => $variant === 'panel',
 ]) }}>
+    @if ($trend !== [])
+        <div class="flex items-center gap-4">
+    @endif
     <div class="min-w-0 flex-1">
         <p class="text-micro font-medium uppercase tracking-wide text-blue-700/80 dark:text-blue-300/80">You</p>
         <p class="truncate font-semibold leading-tight">{{ $name }}</p>
@@ -41,4 +59,9 @@
             <p class="tabular whitespace-nowrap text-sm font-bold">{{ $stat['value'] }}</p>
         </div>
     @endforeach
+    @if ($trend !== [])
+        </div>
+
+        <x-week-trend :weeks="$trend" />
+    @endif
 </div>

@@ -588,6 +588,77 @@ function youStripOf(string $html, int $chars = 400): string
     return $table === false ? $slice : substr($slice, 0, $table);
 }
 
+describe('the run under the you-strip', function () {
+    /*
+     * CFB-30. The viewer's last weeks as places, green for the top half of
+     * the group that week and red for the bottom half. Places rather than W/L
+     * letters, because the Wins column two rows down counts weekly WINS and a
+     * "W" meaning top half would contradict a 0 there.
+     */
+    $twoWeeks = function (): array {
+        [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+        $member = User::factory()->create();
+        GroupMember::factory()->create(['group_id' => $group->id, 'user_id' => $member->id]);
+
+        [, $week] = pickemSeasonWeek();
+
+        // Week one the commissioner leads; week two the member does.
+        foreach (['2026-09-05' => [12, 4], '2026-09-12' => [3, 9]] as $saturday => [$mine, $theirs]) {
+            $slate = Slate::factory()->create([
+                'contest_id' => $contest->id, 'week_id' => $week->id, 'saturday' => $saturday,
+                'status' => Slate::SETTLED, 'settled_at' => now(),
+            ]);
+            SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $commissioner->id, 'final_points' => $mine]);
+            SlateEntry::factory()->create(['slate_id' => $slate->id, 'user_id' => $member->id, 'final_points' => $theirs]);
+        }
+
+        return [$commissioner, $group];
+    };
+
+    it('draws the viewer\'s weeks oldest first, each place colored by its half', function () use ($twoWeeks) {
+        [$commissioner, $group] = $twoWeeks();
+
+        $strip = youStripOf(
+            Livewire::actingAs($commissioner)->test('group', ['group' => $group])->set('view', 'standings')->html(),
+            6000,
+        );
+
+        expect($strip)->toContain('data-week-trend')
+            ->and($strip)->toContain('Last 2')
+            ->and($strip)->toMatch('/data-top-half="true".*data-top-half="false"/s')
+            ->and($strip)->toContain('Sep 5 · 1st of 2 · top half')
+            ->and($strip)->toContain('Sep 12 · 2nd of 2 · bottom half');
+    });
+
+    it('draws no run before a week has placed anybody', function () {
+        // Null is no run, and the strip is the one-row strip it always was
+        // rather than a row of placeholders.
+        [$commissioner, $group] = pickemContest(ContestMode::Classic);
+
+        $html = Livewire::actingAs($commissioner)->test('group', ['group' => $group])->set('view', 'standings')->html();
+
+        expect(youStripOf($html, 6000))->not->toContain('data-week-trend')
+            // The strip's own element keeps its one-row class.
+            ->and($html)->toMatch('/class="flex items-center gap-4 py-3[^"]*"\s+data-you-strip/');
+    });
+
+    it('draws no run in a one-Saturday room', function () use ($twoWeeks) {
+        // A room has no season columns, and no run either.
+        [$commissioner, $group] = $twoWeeks();
+        [, $week] = pickemSeasonWeek();
+        $group->update(['kind' => Group::KIND_LOBBY, 'week_id' => $week->id]);
+
+        expect($group->fresh()->isRoom())->toBeTrue();
+
+        $strip = youStripOf(
+            Livewire::actingAs($commissioner)->test('group', ['group' => $group])->set('view', 'standings')->html(),
+            6000,
+        );
+
+        expect($strip)->not->toContain('data-week-trend');
+    });
+});
+
 it('prints real names in a private group and handles in a public room', function () {
     /*
      * The seam is the KIND of room, not a preference. A private group is
