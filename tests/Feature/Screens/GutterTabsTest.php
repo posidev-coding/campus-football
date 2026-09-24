@@ -53,7 +53,7 @@ it('fills the row with content-sized cells that share only the spare width', fun
         ->and(substr_count($html, 'wire:key="gt-'))->toBe(5);
 });
 
-it('leaves block and shrink exactly as they were', function () {
+it('leaves block exactly as it was and keeps shrink sized to content', function () {
     $block = renderGutterTabs('block');
     $shrink = renderGutterTabs('shrink');
 
@@ -62,10 +62,43 @@ it('leaves block and shrink exactly as they were', function () {
         ->toContain('px-2')
         ->not->toContain('flex-auto');
 
+    // A whole class token: `max-w-full` carries `w-full` as a substring.
     expect((string) str($shrink)->before('<button'))->toContain('w-max')
-        ->not->toContain('w-full')
-        ->and(gutterCellWith($shrink, 'wire:key="gt-standings"'))->toContain('shrink-0')
-        ->toContain('px-3')
+        ->not->toMatch('/[\s"]w-full[\s"]/')
+        ->and(gutterCellWith($shrink, 'wire:key="gt-standings"'))->toContain('px-3')
         ->not->toContain('flex-auto')
         ->not->toContain('flex-1');
 });
+
+it('caps a shrink track at its row so a 320px phone never scrolls sideways', function () {
+    /*
+     * At 320 the game strip (Recap · Box · Scoring · Drives · Odds) was a
+     * 316.5px `w-max` track in a 288px row, and the lobby's room types
+     * 351.8px: 332 and 368 of document scrollWidth against 320. Capped at
+     * the row with cells free to shrink, the padding gives way instead of
+     * the page. A `shrink-0` cell makes the cap a lie — the track clips
+     * nothing and its children overflow it — so the cells are pinned too.
+     */
+    $shrink = renderGutterTabs('shrink');
+
+    $track = (string) str($shrink)->before('<button');
+
+    expect($track)->toContain('w-max max-w-full');
+
+    foreach (['slate', 'standings', 'members', 'invite', 'talk'] as $value) {
+        expect(gutterCellWith($shrink, "wire:key=\"gt-{$value}\""))
+            ->toContain('min-w-0')
+            ->not->toContain('shrink-0');
+    }
+});
+
+it('never lets any variant outgrow its row', function (string $variant) {
+    $html = renderGutterTabs($variant);
+
+    $track = (string) str($html)->before('<button');
+
+    // A track is either the row's width or capped at it, never free.
+    expect($track)->toMatch('/[\s"](max-)?w-full[\s"]/')
+        ->and(gutterCellWith($html, 'wire:key="gt-standings"'))->toContain('min-w-0')
+        ->and($html)->not->toContain('shrink-0');
+})->with(['shrink', 'block', 'fill']);
