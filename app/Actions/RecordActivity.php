@@ -63,12 +63,9 @@ class RecordActivity
      * carry it on.
      *
      * The clubhouse is the only screen where the route name is not the whole
-     * story: `?view=talk` and `?view=slate` are the difference between
-     * "opened the group" and "read the talk", and `ActivityFeature::ReadTalk`
-     * has no other source — a post is `conversation_posts` and a READ is
-     * nowhere. Everything else about a query string is ignored on purpose: a
-     * signed link, an invite code and a search term all travel there, and a
-     * sensor that copied the query would be copying those into a table.
+     * story: its slate and talk stops are the difference between "opened the
+     * group" and "read the talk", and `ActivityFeature::ReadTalk` has no other
+     * source — a post is `conversation_posts` and a READ is nowhere.
      *
      * `PageViewSensorTest` pins this list against the clubhouse's own `VIEWS`
      * so the two cannot drift apart.
@@ -77,6 +74,20 @@ class RecordActivity
 
     /** @var list<string> */
     public const FACETS = ['slate', 'standings', 'members', 'invite', 'talk'];
+
+    /**
+     * The request attribute a faceted screen leaves the stop it RENDERED on.
+     *
+     * Not the query string, because the address does not say which stop is
+     * on screen (CFB-93). `#[Url(except: 'slate')]` keeps the default stop
+     * out of it, so a reader on the slate never has `?view=slate` — and
+     * reading the parameter recorded every slate view with no facet at all.
+     * Nor is a bare address simply the slate: the clubhouse's front door
+     * opens on Standings once the reader's entry is in and the card is
+     * playing, and it folds a stop the reader cannot have (a room's invite, a
+     * guest's talk) to another one. Only the screen knows where it landed.
+     */
+    public const FACET_ATTRIBUTE = 'activity.facet';
 
     /** The widest and narrowest client width worth believing. */
     private const MIN_WIDTH = 200;
@@ -303,9 +314,18 @@ class RecordActivity
     }
 
     /**
-     * The clubhouse's `?view=` stop, when this route is allowed one and the
-     * value is one we render. Anything else is null — an allowlist, because
-     * this is one of the two places client input enters the pipeline.
+     * Called by a faceted screen once it has decided which stop it is
+     * showing, so the page view records where the reader actually landed.
+     */
+    public static function showing(Request $request, string $facet): void
+    {
+        $request->attributes->set(self::FACET_ATTRIBUTE, $facet);
+    }
+
+    /**
+     * The stop the clubhouse rendered, when this route is allowed one and the
+     * stop is one we know. Anything else is null — still an allowlist, and a
+     * screen that never said which stop it showed is no data, not a default.
      */
     public static function facetFor(Request $request): ?string
     {
@@ -313,9 +333,9 @@ class RecordActivity
             return null;
         }
 
-        $view = $request->query('view');
+        $facet = $request->attributes->get(self::FACET_ATTRIBUTE);
 
-        return is_string($view) && in_array($view, self::FACETS, true) ? $view : null;
+        return is_string($facet) && in_array($facet, self::FACETS, true) ? $facet : null;
     }
 
     private function push(ActivityKind $kind, Request $request, ?string $facet, ?Model $subject = null): void

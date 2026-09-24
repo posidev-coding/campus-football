@@ -343,7 +343,11 @@ describe('the derived pick-through rate', function () {
          * id, so distinct READERS is a query, and the numerator comes off
          * `picks` — the truth table — so both sides count the same people.
          */
-        $covered = ActivityEvent::factory()->create(['occurred_at' => now()->subDays(10)]);
+        // Coverage is the SLATE FACET's, not the table's — see the tests
+        // below — so the read that proves the window covered is a slate read.
+        $covered = ActivityEvent::factory()->create([
+            'route' => 'pickem.group', 'facet' => 'slate', 'occurred_at' => now()->subDays(10),
+        ]);
 
         expect($covered->occurred_at)->not->toBeNull();
 
@@ -408,6 +412,78 @@ describe('the derived pick-through rate', function () {
 
         expect($row['detail'])->toContain('At least 75%')
             ->and($row['detail'])->toContain('first-time slate opens');
+    });
+
+    it('never reads a sensor with no slate reads as nobody opening a slate', function () {
+        /*
+         * The snapshot CFB-93 was filed from. The sensor had run for weeks —
+         * old enough to cover any window — but a bare clubhouse address
+         * recorded no facet, so there was not one slate read in the table.
+         * The row said "No slates opened yet" beside a funnel that had
+         * counted seventeen. No rows is no data; the counters answer it.
+         */
+        ActivityEvent::factory()->count(3)->create(['occurred_at' => now()->subDays(10)]);
+        ActivityEvent::factory()->count(3)->create(['route' => 'pickem.group', 'occurred_at' => now()->subDay()]);
+
+        foreach (range(1, 17) as $i) {
+            app(RecordUxEvent::class)->handle(UxSignal::SlateEntered);
+            app(RecordUxEvent::class)->handle(UxSignal::FirstPickMade);
+        }
+
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'pick_through');
+
+        expect($row['detail'])->toBe('Only 17 first-time slate opens — too few to read a rate from');
+    });
+
+    it('falls back to the counters when a covered week holds no slate read', function () {
+        /*
+         * The facet DID cover the window — a slate read from ten days ago
+         * proves it was being written — and still nothing inside the week.
+         * An empty result is indistinguishable from a facet that stopped
+         * being written, so it is no data rather than a covered zero.
+         */
+        ActivityEvent::factory()->create([
+            'route' => 'pickem.group', 'facet' => 'slate', 'occurred_at' => now()->subDays(10),
+        ]);
+
+        foreach (range(1, 17) as $i) {
+            app(RecordUxEvent::class)->handle(UxSignal::SlateEntered);
+        }
+
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'pick_through');
+
+        expect($row['detail'])->toBe('Only 17 first-time slate opens — too few to read a rate from');
+    });
+
+    it('says "at least" until the slate facet itself covers the window', function () {
+        /*
+         * The week this fix ships: the TABLE is weeks old, but slate reads
+         * begin today. A rate read off them is a two-day number wearing a
+         * week's label — the thing the coverage guard exists to refuse — so
+         * the guard has to ask about the facet, not about the table.
+         */
+        ActivityEvent::factory()->create(['occurred_at' => now()->subDays(10)]);
+
+        foreach (User::factory()->count(20)->create() as $reader) {
+            ActivityEvent::factory()->create([
+                'user_id' => $reader->id,
+                'route' => 'pickem.group',
+                'facet' => 'slate',
+                'occurred_at' => now()->subDays(2),
+            ]);
+        }
+
+        foreach (range(1, 40) as $i) {
+            app(RecordUxEvent::class)->handle(UxSignal::SlateEntered);
+        }
+        foreach (range(1, 30) as $i) {
+            app(RecordUxEvent::class)->handle(UxSignal::FirstPickMade);
+        }
+
+        $row = collect((new OpsReport)->checks())->firstWhere('key', 'pick_through');
+
+        expect($row['detail'])->toContain('At least 75%')
+            ->and($row['detail'])->not->toContain('readers who opened a slate');
     });
 
     it('counts today, which the nightly rollup has not persisted yet', function () {
