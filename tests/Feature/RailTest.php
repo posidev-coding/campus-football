@@ -160,7 +160,7 @@ describe('panels that render real rows', function () {
          * So the guarantee is held where it can be: any rail panel rendering
          * a game card must load what the card reads.
          */
-        $cardRelations = ['homeTeam', 'awayTeam', 'venue', 'odds', 'predictor'];
+        $cardRelations = ['homeTeam', 'awayTeam', 'venue', 'odds'];
         $violations = [];
 
         foreach (glob(resource_path('views/components/rail/*.blade.php')) as $path) {

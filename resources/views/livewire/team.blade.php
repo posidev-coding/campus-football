@@ -303,7 +303,6 @@ new class extends Component
                 // preventLazyLoading cannot see — without this it was a
                 // silent query per schedule card on the default tab.
                 'odds',
-                'predictor',
             ])
             ->whereIn('season_id', $seasonIds)
             ->where(fn ($q) => $q->where('home_team_id', $this->team->id)->orWhere('away_team_id', $this->team->id))
