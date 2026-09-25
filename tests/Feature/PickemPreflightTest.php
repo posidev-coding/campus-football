@@ -2,13 +2,20 @@
 
 use App\Actions\PublishSlate;
 use App\Enums\ContestMode;
+use App\Enums\LobbyFlavor;
 use App\Models\Game;
 use App\Models\Group;
+use App\Models\GroupMember;
+use App\Models\Slate;
 use App\Models\User;
+use App\Models\Week;
 use App\Support\Cadence;
+use App\Support\LobbyCatalog;
 use App\Support\PickemPreflight;
+use Carbon\CarbonImmutable;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Laravel\Pennant\Feature;
 
@@ -26,6 +33,56 @@ use Laravel\Pennant\Feature;
 function preflight(): array
 {
     return collect(app(PickemPreflight::class)->checks())->keyBy('key')->all();
+}
+
+/**
+ * Sixteen lined games on Sat Sep 5 — a card the specialty shelf can stock —
+ * and the flavors that card can seat, in case order.
+ *
+ * @return array{0: Week, 1: CarbonImmutable, 2: Collection<int, LobbyFlavor>}
+ */
+function preflightSpecialtyCard(): array
+{
+    [$season, $week] = pickemSeasonWeek();
+
+    foreach (range(1, 16) as $i) {
+        $game = pickemGame($season, $week);
+        pickemOdd($game);
+        $game->predictor()->create(['matchup_quality' => 95 - $i]);
+    }
+
+    $saturday = Cadence::activeSaturday($week);
+
+    $seatable = collect(LobbyFlavor::cases())
+        ->filter(fn (LobbyFlavor $flavor) => LobbyCatalog::resolve($flavor->mode(), $flavor, $week, $saturday) !== null)
+        ->values();
+
+    return [$week, $saturday, $seatable];
+}
+
+/**
+ * Every flavor had a room on each of the DEMAND_SATURDAYS before this one
+ * and nobody took it — except $taken, which seated somebody last Saturday.
+ * That rests every flavor but $taken and the rotation's turn.
+ */
+function preflightTakeUp(Week $week, CarbonImmutable $saturday, LobbyFlavor $taken): void
+{
+    foreach (range(1, LobbyCatalog::DEMAND_SATURDAYS) as $back) {
+        foreach (LobbyFlavor::cases() as $flavor) {
+            $room = Group::factory()->room($week->id)->create(['flavor' => $flavor->value]);
+            $contest = $room->contests()->create(['season_year' => 2026, 'mode' => $flavor->mode(), 'settings' => $flavor->settings()]);
+
+            Slate::factory()->create([
+                'contest_id' => $contest->id, 'week_id' => $week->id,
+                'saturday' => $saturday->subWeeks($back)->toDateString(),
+                'status' => Slate::SETTLED, 'settled_at' => now(),
+            ]);
+
+            if ($flavor === $taken && $back === 1) {
+                GroupMember::factory()->create(['group_id' => $room->id]);
+            }
+        }
+    }
 }
 
 it('fails the calendar check rather than inventing a week', function () {
@@ -205,6 +262,55 @@ it('never calls an empty shelf healthy — the rooms and flavors rows tell the l
         // And the row that was already right stays right.
         ->and($checks['lines']['status'])->toBe(PickemPreflight::FAIL)
         ->and($checks['lines']['detail'])->toContain('4 lined on Sat Sep 5');
+});
+
+it('counts only the shelf in its fraction, and names a room still open for a flavor that has since rested', function () {
+    /*
+     * CFB-104. Sat Sep 26 in production: all ten specialty rooms were
+     * stocked on the 23rd, CFB-100's take-up gate merged on the 24th, and
+     * four of those flavors went to rest with their rooms already open. The
+     * row read "10 of 6 possible specialty rooms stocked" — every open room
+     * over the shelf. Same order here: stock first, then the history that
+     * rests them.
+     */
+    [$week, $saturday, $seatable] = preflightSpecialtyCard();
+
+    $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+    $taken = $seatable->first();
+    preflightTakeUp($week, $saturday, $taken);
+
+    $offered = collect(LobbyCatalog::offeredFlavors($saturday));
+    $onShelf = $seatable->filter(fn (LobbyFlavor $flavor) => $offered->contains($flavor));
+    $rested = $seatable->reject(fn (LobbyFlavor $flavor) => $offered->contains($flavor));
+
+    // The shape under test has to exist, or every assertion below is hollow.
+    expect($onShelf)->toContain($taken)
+        ->and($rested)->not->toBeEmpty();
+
+    $flavors = preflight()['flavors'];
+
+    expect($flavors['detail'])->toStartWith($onShelf->count().' of '.$onShelf->count().' possible specialty rooms stocked.')
+        ->and($flavors['detail'])->toContain(' Resting but still open: '.$rested->map->label()->implode(', ').'.')
+        // A reporting fix, not a verdict: everything the shelf offers is stocked.
+        ->and($flavors['status'])->toBe(PickemPreflight::OK);
+});
+
+it('leaves the still-open clause out when nothing is open off the shelf, rather than printing a zero', function () {
+    [$week, $saturday, $seatable] = preflightSpecialtyCard();
+
+    // The history first this time, so the sweep only ever stocks the shelf.
+    preflightTakeUp($week, $saturday, $seatable->first());
+
+    $this->artisan('pickem:open-lobbies')->assertSuccessful();
+
+    $flavors = preflight()['flavors'];
+
+    expect($flavors['status'])->toBe(PickemPreflight::OK)
+        // Flavors are resting, so that clause stays...
+        ->and($flavors['detail'])->toContain('resting (no take-up in')
+        // ...and the one about rooms left open is absent, not zero.
+        ->and($flavors['detail'])->not->toContain('still open');
 });
 
 it('reports the flag as closed, and never resolves Pennant to find out', function () {

@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Enums\ContestMode;
+use App\Enums\LobbyFlavor;
 use App\Models\Game;
 use App\Models\Group;
 use App\Models\Slate;
@@ -246,9 +247,20 @@ class PickemPreflight
             );
         }
 
-        $detail = $stocked->unique()->count().' of '.$possible->count().' possible specialty rooms stocked.'
+        // Both halves of the fraction read off the shelf. A room opened before
+        // its flavor went to rest is not one of this Saturday's possible
+        // rooms, so it is named on its own instead (CFB-104) — it is the one
+        // sign that the take-up gate has not reached this Saturday yet.
+        $offered = $specialties->map(fn (array $entry) => $entry['flavor']->value);
+
+        $openWhileResting = collect(LobbyFlavor::cases())
+            ->filter(fn (LobbyFlavor $flavor) => $stocked->contains($flavor->value) && ! $offered->contains($flavor->value))
+            ->map(fn (LobbyFlavor $flavor) => $flavor->label());
+
+        $detail = $stocked->unique()->intersect($offered)->count().' of '.$possible->count().' possible specialty rooms stocked.'
             .($skipped->isEmpty() ? '' : ' Skipped: '.$skipped->implode(', ').' (not enough games).')
-            .($resting === 0 ? '' : ' '.$resting.' resting (no take-up in '.LobbyCatalog::DEMAND_SATURDAYS.' Saturdays).');
+            .($resting === 0 ? '' : ' '.$resting.' resting (no take-up in '.LobbyCatalog::DEMAND_SATURDAYS.' Saturdays).')
+            .($openWhileResting->isEmpty() ? '' : ' Resting but still open: '.$openWhileResting->implode(', ').'.');
 
         return $missing->isEmpty()
             ? $this->row('flavors', 'Specialty rooms', self::OK, $detail)
