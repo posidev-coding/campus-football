@@ -390,6 +390,7 @@ new class extends Component
                 'awayTeam:'.self::TEAM_COLUMNS,
                 'venue:id,name',
                 'odds',
+                'predictor',
             ])
             ->where('week_id', $week->id)
             ->when($ranked !== [], fn ($q) => $q->where(fn ($w) => $w

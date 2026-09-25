@@ -406,6 +406,9 @@ new class extends Component
                 'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'venue:id,name',
                 'odds',
+                // The card's heat ring. Lazy loading is disabled, and the
+                // card's fallback is a query per card.
+                'predictor',
             ])
             ->where('week_id', $this->week)
             ->when($this->bracket === 'cfp', fn ($q) => $q->playoff())

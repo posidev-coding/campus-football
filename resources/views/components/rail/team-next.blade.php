@@ -26,7 +26,7 @@
          * 500 rather than a blank line.
          */
         $columns = 'id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark';
-        $with = ['homeTeam:'.$columns, 'awayTeam:'.$columns, 'venue:id,name', 'odds'];
+        $with = ['homeTeam:'.$columns, 'awayTeam:'.$columns, 'venue:id,name', 'odds', 'predictor'];
 
         $isTeam = fn ($q) => $q->where('home_team_id', $team->id)->orWhere('away_team_id', $team->id);
 

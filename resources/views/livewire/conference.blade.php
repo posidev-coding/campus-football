@@ -95,6 +95,7 @@ new class extends Component
                 'awayTeam:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark',
                 'venue:id,name',
                 'odds',
+                'predictor',
             ])
             ->whereIn('season_id', $seasonIds)
             ->where('conference_game', true)
