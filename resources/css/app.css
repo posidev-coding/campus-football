@@ -328,11 +328,21 @@
 
 /* Two-team chart marks — the matchup donut, the comparison bars. Light mode
    draws in team colors, pair-resolved by TeamPalette::chartColors so a pale
-   brand cannot vanish and two red teams cannot merge; the page sets the two
-   custom properties inline. Dark mode un-brands to neutral-vs-accent, the
-   same rule as every branded surface — and color is never the only
-   distinguisher, since each mark carries its team's mark or abbreviation. */
+   brand cannot vanish and two red teams cannot merge. Dark mode un-brands to
+   neutral-vs-accent, the same rule as every branded surface — and color is
+   never the only distinguisher, since each mark carries its team's mark or
+   abbreviation.
+
+   The page sets the BRAND pair inline, under its own names, and this utility
+   maps them onto the names the marks read. It cannot be the same name: an
+   inline declaration beats every stylesheet rule, so while the page set
+   --chart-away itself the dark block below never won, and Bucknell's navy
+   drew on the near-black card at roughly 1.1:1. team-accent escapes the same
+   trap by gating the PROPERTY it sets rather than the variable. */
 @utility chart-pair {
+    --chart-away: var(--chart-away-brand);
+    --chart-home: var(--chart-home-brand);
+
     .dark & {
         --chart-away: var(--color-zinc-400);
         --chart-home: var(--color-blue-400);

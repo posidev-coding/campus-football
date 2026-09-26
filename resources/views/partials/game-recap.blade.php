@@ -11,7 +11,7 @@
 
 <div
     class="chart-pair flex flex-col gap-4"
-    style="--chart-away: {{ $this->chartColors[0] }}; --chart-home: {{ $this->chartColors[1] }}"
+    style="--chart-away-brand: {{ $this->chartColors[0] }}; --chart-home-brand: {{ $this->chartColors[1] }}"
 >
     @if ($recap)
         <x-article-card :article="$recap" />
