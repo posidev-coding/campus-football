@@ -44,18 +44,6 @@
     $event = $game->note;
 
     $broadcast = collect($game->broadcasts ?? [])->flatten()->filter()->first();
-
-    /*
-     * Upcoming games only. The heat is a PRE-GAME read, and once a game kicks
-     * off the space it sits in belongs to the score.
-     *
-     * Read like the odds strip reads its line: the eager load where a caller
-     * made one, a query where it did not — lazy loading is disabled, so a bare
-     * `$game->predictor` on a surface that forgot the relation is a 500.
-     */
-    $heat = ! $live && ! $final
-        ? App\Enums\MatchupHeat::score($game->relationLoaded('predictor') ? $game->predictor : $game->predictor()->first())
-        : null;
 @endphp
 
 {{--
@@ -122,7 +110,7 @@
         on the Game screen itself. Everything above the overlay is
         `pointer-events-none` so every tap falls through to the anchor.
     --}}
-    <div class="relative flex items-center gap-3 px-3 py-2.5">
+    <div class="relative flex flex-col gap-1.5 px-3 py-2.5">
         <a
             href="{{ route('game', $game) }}"
             wire:navigate
@@ -130,49 +118,38 @@
             aria-label="{{ $game->short_name ?? $game->name }}"
         ></a>
 
-        <div class="pointer-events-none flex min-w-0 flex-1 flex-col gap-1.5">
-            @if ($event)
-                <p class="pointer-events-none relative z-10 truncate text-micro text-zinc-500">{{ $event }}</p>
-            @endif
-
-            @foreach ($sides as $side)
-                @php $lost = $final && $winner !== null && $winner !== $side['team']?->id; @endphp
-
-                <div class="pointer-events-none relative z-10 flex items-center gap-2">
-                    {{-- Place only, no nickname. A card is scanned, not read: the
-                         reader is looking for "North Carolina", and "Tar Heels" is
-                         nine characters of decoration in front of the next team's
-                         name. --}}
-                    <x-team-link
-                        :team="$side['team']"
-                        :rank="$side['rank']"
-                        :record="$side['record']"
-                        :muted="$lost"
-                        :link="false"
-                        label="location"
-                        class="flex-1"
-                    />
-
-                    @if ($final || $live)
-                        <span @class([
-                            'tabular pointer-events-none w-7 shrink-0 text-right text-sm tracking-tight',
-                            'font-bold' => $final && $winner === $side['team']?->id,
-                            'font-semibold' => ! $final || $winner !== $side['team']?->id,
-                            'text-zinc-400' => $lost,
-                        ])>
-                            {{ $side['score'] }}
-                        </span>
-                    @endif
-                </div>
-            @endforeach
-        </div>
-
-        {{-- In the score column's whitespace, centered across both rows.
-             Nothing at all when ESPN has not modelled the game — an
-             unmodelled matchup is not a cold one. --}}
-        @if ($heat !== null)
-            <x-matchup-heat :score="$heat" class="pointer-events-none relative z-10" />
+        @if ($event)
+            <p class="pointer-events-none relative z-10 truncate text-micro text-zinc-500">{{ $event }}</p>
         @endif
+
+        @foreach ($sides as $side)
+            @php $lost = $final && $winner !== null && $winner !== $side['team']?->id; @endphp
+
+            <div class="pointer-events-none relative z-10 flex items-center gap-2">
+                {{-- Place only, no nickname. A card is scanned, not read: the
+                     reader is looking for "North Carolina", and "Tar Heels" is
+                     nine characters of decoration in front of the next team's
+                     name. --}}
+                <x-team-link
+                    :team="$side['team']"
+                    :rank="$side['rank']"
+                    :record="$side['record']"
+                    :muted="$lost"
+                    :link="false"
+                    label="location"
+                    class="flex-1"
+                />
+
+                <span @class([
+                    'tabular pointer-events-none w-7 shrink-0 text-right text-sm tracking-tight',
+                    'font-bold' => $final && $winner === $side['team']?->id,
+                    'font-semibold' => ! $final || $winner !== $side['team']?->id,
+                    'text-zinc-400' => $lost,
+                ])>
+                    {{ $final || $live ? $side['score'] : '' }}
+                </span>
+            </div>
+        @endforeach
     </div>
 
     @if ($odds && ! $final)

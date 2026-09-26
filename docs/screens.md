@@ -572,26 +572,6 @@ the two-up card's ~144px name column.
 `location` must be in every constrained eager load feeding a game card
 (scoreboard, home, team, conference, game) — the usual missing-column trap.
 
-## A game card's heat ring
-
-An upcoming card carries a small donut (`x-matchup-heat`) in the space its
-score column leaves: fill is the `App\Enums\MatchupHeat` score, color is the
-tier, and only the two ends carry an icon — a flame at 80+, a moon under 30.
-It leaves when the game kicks off, because that space is the score's, and it
-never renders for a game ESPN has not modelled: no heat is not a cold game.
-
-The score is the geometric mean of ESPN's `matchup_quality` (how good the
-teams are) and a closeness curve on its win projection, `1 − (edge / 50)²`.
-Quality alone lit up cupcakes (ECU at Alabama, 27.5 points, rated 72.5 beside
-SMU–FSU's 74.4); a STRAIGHT closeness line was too hard on ordinary favorites
-(Texas at Tennessee, Week 4's strongest matchup on a 4.5-point line, scored 77
-beside two coin flips at 92). The curve scores it 91. The enum holds the
-measurements; the thresholds are a first calibration.
-
-`predictor` joins `venue` and `odds` in every eager load feeding a card.
-`MatchupHeatTest` sweeps for it; the card falls back to a query per card
-rather than a 500, the odds strip's pattern.
-
 ## The pin mark, and where it still lives
 
 Bootstrap's `pin-angle-fill` in blue marks the team a user ranked FIRST on the

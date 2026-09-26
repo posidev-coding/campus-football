@@ -43,16 +43,16 @@
      * placeName(), and omitting the column makes every team quietly fall back
      * to its display name — which reads as a design choice, not a bug.
      *
-     * `venue`, `odds` and `predictor` are not optional either, for a blunter
-     * reason: lazy loading is disabled app-wide, so a relation the card reads
-     * and this query does not load is a 500, not a missing line.
+     * `venue` and `odds` are not optional either, for a blunter reason: lazy
+     * loading is disabled app-wide, so a relation the card reads and this
+     * query does not load is a 500, not a missing line.
      */
     $columns = 'id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark';
 
     $games = $ids === []
         ? collect()
         : Game::query()
-            ->with(['homeTeam:'.$columns, 'awayTeam:'.$columns, 'venue:id,name', 'odds', 'predictor'])
+            ->with(['homeTeam:'.$columns, 'awayTeam:'.$columns, 'venue:id,name', 'odds'])
             ->whereIn('id', $ids)
             ->orderBy('kickoff_at')
             ->get();
