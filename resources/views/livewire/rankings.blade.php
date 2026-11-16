@@ -5,8 +5,8 @@ use App\Models\Ranking;
 use App\Models\Season;
 use App\Models\Week;
 use App\Services\CfbCalendar;
+use App\Support\Remember;
 use App\Support\Scope;
-use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -168,7 +168,7 @@ new class extends Component
     #[Computed]
     public function publishedPolls(): array
     {
-        return Cache::remember(
+        return Remember::filled(
             'rankings:published-polls',
             3600,
             fn () => Ranking::query()->distinct()->pluck('poll')->all()
@@ -220,7 +220,7 @@ new class extends Component
     #[Computed]
     public function years(): array
     {
-        return Cache::remember(
+        return Remember::filled(
             "rankings:years:{$this->poll}",
             3600,
             fn () => Season::query()

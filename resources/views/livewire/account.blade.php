@@ -770,6 +770,13 @@ new class extends Component
                     this.denied = window.cfbPush.permission() === 'denied';
                     this.on = await window.cfbPush.subscribed();
 
+                    {{-- Asked again AFTER the await: registration can fail
+                         while it is pending, and then there is no switch
+                         to show rather than one stuck off. --}}
+                    this.supported = window.cfbPush.supported();
+
+                    if (! this.supported) return;
+
                     this.$watch('on', (value) => this.apply(value));
                 },
 
@@ -792,6 +799,7 @@ new class extends Component
                         await window.cfbPush.disable(@js(route('push.destroy')));
                     }
 
+                    this.supported = window.cfbPush.supported();
                     this.busy = false;
                 },
             }"

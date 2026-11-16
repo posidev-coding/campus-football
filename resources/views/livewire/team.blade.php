@@ -14,7 +14,7 @@ use App\Models\TeamSeasonStat;
 use App\Services\CfbCalendar;
 use App\Support\AutomatedAgents;
 use App\Support\RecruitingClasses;
-use Illuminate\Support\Facades\Cache;
+use App\Support\Remember;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -275,14 +275,10 @@ new class extends Component
     public function news()
     {
         if (AutomatedAgents::isPerson(request())) {
-            Cache::remember(
+            Remember::oncePer(
                 "team:news:dispatched:{$this->team->id}",
                 1800,
-                function () {
-                    SyncTeamNews::dispatch($this->team->id);
-
-                    return true;
-                }
+                fn () => SyncTeamNews::dispatch($this->team->id),
             );
         }
 

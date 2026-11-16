@@ -14,8 +14,11 @@ use App\Models\GameSummary;
 use App\Models\GameTeamStat;
 use App\Models\Team;
 use App\Services\Espn\EspnClient;
+use App\Support\Deadlocks;
+use Illuminate\Database\Eloquent\Casts\Json;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use JsonException;
 
 /**
  * One game's box score, scoring summary and drives.
@@ -53,6 +56,9 @@ class SyncGameSummary
 {
     /** Crash ceiling only — the lock is released in a finally. */
     private const IN_FLIGHT_SECONDS = 60;
+
+    /** Rows per upsert statement, comfortably inside max_allowed_packet. */
+    private const PLAYER_STAT_CHUNK = 500;
 
     public function __construct(private EspnClient $espn, private SyncNews $news) {}
 
@@ -333,9 +339,25 @@ class SyncGameSummary
      * genuinely changes, and only then — writes are not free on scale-to-zero
      * MySQL, and the usual pass changes nothing.
      *
+     * The loser of that race takes a deadlock rather than a unique violation,
+     * after this job has already spent its ESPN request, so the pair is
+     * retried on SQLSTATE 40001 and nothing else — the same retry the
+     * `article_team` write uses, from the one place both call. Both statements
+     * are idempotent, which is what makes a second attempt safe.
+     *
      * @param  array<int, array{role: string}>  $links
      */
     private function storeArticleLinks(Game $game, array $links): void
+    {
+        Deadlocks::retry(fn () => $this->writeArticleLinks($game, $links));
+    }
+
+    /**
+     * The write itself: insert what is missing, correct a role that changed.
+     *
+     * @param  array<int, array{role: string}>  $links
+     */
+    private function writeArticleLinks(Game $game, array $links): void
     {
         $now = now();
 
@@ -499,10 +521,20 @@ class SyncGameSummary
      * naming each position, so the two are zipped into a keyed map here and
      * every read downstream is by name. `labels` carries the short column
      * headings and preserves display order.
+     *
+     * Written as a batch, not a row at a time. A box score is a few hundred
+     * athlete-category lines, and `updateOrCreate()` per line made one game a
+     * few hundred round trips — FetchGameSummary was the slowest job in the
+     * window at up to 2.4s. Now the game's existing lines are read ONCE, and
+     * only the lines that are new or different are upserted, in chunks that
+     * stay well under max_allowed_packet. Unchanged lines are not written at
+     * all, so `updated_at` still means what updateOrCreate made it mean.
      */
     private function storePlayerStats(Game $game, array $body): void
     {
         $seasonYear = $game->season?->year;
+        $athletes = [];
+        $lines = [];
 
         foreach ($body['boxscore']['players'] ?? [] as $side) {
             $teamId = (int) data_get($side, 'team.id');
@@ -528,31 +560,132 @@ class SyncGameSummary
                         continue;
                     }
 
-                    $athleteId = $this->ensureAthlete($athlete, $teamId, $seasonYear);
+                    // Once per athlete, not once per category: a quarterback
+                    // who also ran is the same row both times.
+                    $payloadId = (int) ($athlete['id'] ?? 0);
+                    $athleteId = array_key_exists($payloadId, $athletes)
+                        ? $athletes[$payloadId]
+                        : $athletes[$payloadId] = $this->ensureAthlete($athlete, $teamId, $seasonYear);
 
                     if ($athleteId === null) {
                         continue;
                     }
 
-                    AthleteGameStat::updateOrCreate(
-                        ['athlete_id' => $athleteId, 'game_id' => $game->id, 'category' => $name],
-                        [
-                            'team_id' => $teamId,
-                            // Zipped by name, never read by position.
-                            'stats' => array_combine(
-                                array_slice($keys, 0, count($values)),
-                                $values
-                            ),
-                            'display_stats' => array_map(
-                                fn ($key, $label) => ['name' => $key, 'label' => $label],
-                                array_slice($keys, 0, count($labels)),
-                                $labels
-                            ),
-                        ]
-                    );
+                    // Keyed by the unique index, so a line ESPN repeats
+                    // resolves last-wins exactly as successive
+                    // updateOrCreate() calls did.
+                    $lines["{$athleteId}|{$name}"] = [
+                        'athlete_id' => $athleteId,
+                        'category' => $name,
+                        'team_id' => $teamId,
+                        // Zipped by name, never read by position.
+                        'stats' => array_combine(
+                            array_slice($keys, 0, count($values)),
+                            $values
+                        ),
+                        'display_stats' => array_map(
+                            fn ($key, $label) => ['name' => $key, 'label' => $label],
+                            array_slice($keys, 0, count($labels)),
+                            $labels
+                        ),
+                    ];
                 }
             }
         }
+
+        $this->writePlayerStats($game, $lines);
+    }
+
+    /**
+     * Upsert the lines that differ from what is stored.
+     *
+     * `upsert()` bypasses Eloquent's casts, so `stats` and `display_stats`
+     * are encoded here through the same {@see Json} encoder the model's
+     * `array` cast uses, and both timestamps are stamped explicitly — one
+     * instant for the whole game, whichever chunk a line lands in.
+     *
+     * @param  array<string, array{athlete_id: int, category: string, team_id: int, stats: array<string, mixed>, display_stats: list<array{name: mixed, label: mixed}>}>  $lines
+     */
+    private function writePlayerStats(Game $game, array $lines): void
+    {
+        if ($lines === []) {
+            return;
+        }
+
+        $stored = AthleteGameStat::query()
+            ->where('game_id', $game->id)
+            ->get(['athlete_id', 'category', 'team_id', 'stats', 'display_stats'])
+            ->keyBy(fn (AthleteGameStat $row) => "{$row->athlete_id}|{$row->category}");
+
+        $now = now();
+        $rows = [];
+
+        foreach ($lines as $key => $line) {
+            $existing = $stored->get($key);
+
+            if ($existing !== null
+                && (int) $existing->team_id === $line['team_id']
+                && $this->canonical($existing->stats) === $this->canonical($line['stats'])
+                && $this->canonical($existing->display_stats) === $this->canonical($line['display_stats'])) {
+                continue;
+            }
+
+            $rows[] = [
+                'athlete_id' => $line['athlete_id'],
+                'game_id' => $game->id,
+                'category' => $line['category'],
+                'team_id' => $line['team_id'],
+                'stats' => $this->encodeJson($line['stats']),
+                'display_stats' => $this->encodeJson($line['display_stats']),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        foreach (array_chunk($rows, self::PLAYER_STAT_CHUNK) as $chunk) {
+            AthleteGameStat::upsert(
+                $chunk,
+                ['athlete_id', 'game_id', 'category'],
+                ['team_id', 'stats', 'display_stats']
+            );
+        }
+    }
+
+    /**
+     * A JSON value in a comparable form.
+     *
+     * MySQL does not preserve JSON object key order, so a stored map comes
+     * back reordered and a plain `===` against the payload would call every
+     * line changed. Lists keep their order — `display_stats` order is data.
+     */
+    private function canonical(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        $value = array_map(fn ($item) => $this->canonical($item), $value);
+
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Encode exactly as the model's `array` cast would, and refuse the way it
+     * would: writing `false` would store a blank line where a box score was.
+     */
+    private function encodeJson(array $value): string
+    {
+        $encoded = Json::encode($value);
+
+        if (! is_string($encoded)) {
+            throw new JsonException('Unencodable player stat line: '.json_last_error_msg());
+        }
+
+        return $encoded;
     }
 
     /**

@@ -2,7 +2,6 @@
 
 namespace App\Support;
 
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -46,7 +45,7 @@ class RecruitingClasses
      */
     public static function forClass(int $class): array
     {
-        return Cache::remember("recruiting:classes:{$class}", self::TTL, fn () => DB::query()
+        return Remember::orSource("recruiting:classes:{$class}", self::TTL, fn () => DB::query()
             ->fromSub(
                 DB::table('recruits')
                     ->where('recruiting_class', $class)

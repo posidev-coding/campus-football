@@ -824,7 +824,7 @@ describe('the news fetch (CFB-132)', function () {
 
         $this->guard = 'team:news:dispatched:61';
 
-        $article = Article::create(['espn_id' => 7001, 'headline' => 'Dawgs land a five-star', 'published_at' => now()]);
+        $article = Article::create(['espn_id' => 7001, 'headline' => 'A five-star commits on signing day', 'published_at' => now()]);
         $article->teams()->attach(61);
     });
 
@@ -833,7 +833,7 @@ describe('the news fetch (CFB-132)', function () {
             ->withHeaders(['User-Agent' => $agent])
             ->test('team', ['team' => $this->team])
             ->assertSet('tab', 'news')
-            ->assertSee('Dawgs land a five-star');
+            ->assertSee('A five-star commits on signing day');
 
         Queue::assertNotPushed(SyncTeamNews::class);
 

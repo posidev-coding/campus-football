@@ -48,6 +48,75 @@ window.addEventListener('appinstalled', () => {
 });
 
 /*
+ * The service worker, registered on load and HELD.
+ *
+ * Registration rejects for reasons that are not code defects — Safari private
+ * browsing, a content blocker, a 404 or a parse error on /sw.js — so this is
+ * not an exception. It is still worth knowing: no service worker means no push
+ * subscription and no offline shell on that device.
+ *
+ * Left bare it was the one promise in this file with no rejection handler, and
+ * it reported itself through the unhandledrejection listener as the useless
+ * single word "Rejected" — burning two of the five reports a page is allowed
+ * before a real bug can get a word in. Swallowing it would have traded a
+ * useless signal for no signal; it is named instead.
+ *
+ * KEPT, not fired and forgotten, because it is the only promise that can say
+ * no. `navigator.serviceWorker.ready` resolves once a registration is active
+ * and otherwise NEVER SETTLES — it does not reject — so every cfbPush method
+ * that awaited it sat forever on exactly the devices where registration had
+ * failed, the try in enable() could not see it, and push-banner's turnOn()
+ * left `busy` true for the rest of the session (CFB-118). They await this
+ * instead, through pushRegistration() below.
+ */
+const serviceWorkerRegistration = 'serviceWorker' in navigator
+    ? new Promise((resolve, reject) => {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').then(resolve, (error) => {
+                reportFailure('service-worker registration failed', error);
+                /* Said the moment it is known, so a control that renders
+                 * after this never offers push at all — and never spends the
+                 * one permission prompt on a device that cannot use it. */
+                window.cfbPush.unavailable = true;
+                reject(error);
+            });
+        });
+    })
+    : null;
+
+/* Reported above already. The awaiting callers handle their own copy of the
+ * rejection; this one only keeps it from reaching the window listener a
+ * second time as the bare "Rejected". */
+serviceWorkerRegistration?.catch(() => {});
+
+/*
+ * A registration that has an ACTIVE worker, or null when it never will.
+ *
+ * Registration resolving is not the end of it: the worker it installed can
+ * still fail its install and go `redundant`, and then `ready` hangs exactly
+ * the way it does when registration rejects. So an installing worker is
+ * watched to the end, and `redundant` is the answer no — which is a real
+ * answer, not a timeout guessed at.
+ */
+function activated(registration) {
+    if (registration.active) return Promise.resolve(registration);
+
+    const worker = registration.installing ?? registration.waiting;
+
+    if (!worker) return navigator.serviceWorker.ready;
+
+    return new Promise((resolve, reject) => {
+        worker.addEventListener('statechange', () => {
+            if (worker.state === 'activated') {
+                resolve(registration);
+            } else if (worker.state === 'redundant') {
+                reject(null);
+            }
+        });
+    });
+}
+
+/*
  * Web push, the client half. Lives here beside the install prompt for the
  * same reason: two Blade islands (the Account switch, Home's nudge) share
  * one subscribe/unsubscribe machine, and duplicating key-decoding and
@@ -58,18 +127,63 @@ window.addEventListener('appinstalled', () => {
  * only comes back through OS settings.
  */
 window.cfbPush = {
+    /* True once this device has said it has no service worker and will not
+     * get one this page — registration rejected, or the worker it installed
+     * went redundant. Never set on a guess: until then the APIs are the only
+     * evidence there is. */
+    unavailable: false,
+
+    /* Memoized, so the answer is asked for once and every caller hears it. */
+    pending: null,
+
     supported() {
-        return 'Notification' in window && 'PushManager' in window && 'serviceWorker' in navigator;
+        return !this.unavailable
+            && 'Notification' in window && 'PushManager' in window && 'serviceWorker' in navigator;
+    },
+
+    /* The active registration, or null — never a promise that hangs. Null
+     * flips supported() to false, so the controls render the browser's real
+     * answer (no push here) rather than a spinner over a button that cannot
+     * work. */
+    pushRegistration() {
+        this.pending ??= (async () => {
+            let registration;
+
+            try {
+                registration = await serviceWorkerRegistration;
+            } catch {
+                /* Already named, where it was registered. */
+                this.unavailable = true;
+
+                return null;
+            }
+
+            try {
+                return await activated(registration);
+            } catch (error) {
+                reportFailure('service-worker install failed', error);
+                this.unavailable = true;
+
+                return null;
+            }
+        })();
+
+        return this.pending;
     },
 
     permission() {
         return this.supported() ? Notification.permission : null;
     },
 
+    /* False with no registration is the truth rather than a default: a push
+     * subscription lives ON a registration, so a device without one has none.
+     * Callers re-read supported() afterwards to render the no-push state. */
     async subscribed() {
         if (!this.supported()) return false;
 
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await this.pushRegistration();
+
+        if (registration === null) return false;
 
         return (await registration.pushManager.getSubscription()) !== null;
     },
@@ -92,7 +206,9 @@ window.cfbPush = {
 
             if (permission !== 'granted') return permission;
 
-            const registration = await navigator.serviceWorker.ready;
+            const registration = await this.pushRegistration();
+
+            if (registration === null) return 'error';
 
             const subscription = await registration.pushManager.subscribe({
                 userVisibleOnly: true,
@@ -122,7 +238,10 @@ window.cfbPush = {
     async disable(destroyUrl) {
         if (!this.supported()) return;
 
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await this.pushRegistration();
+
+        if (registration === null) return;
+
         const subscription = await registration.pushManager.getSubscription();
 
         if (!subscription) return;
@@ -307,13 +426,36 @@ window.addEventListener('error', (event) => {
  * with it now, through the same failureMessage() the service-worker path uses
  * — and under the same contract, which is that neither half is ever invented.
  *
- * The label is what the event IS, not a guess at what failed. A caller who
- * knows better should be calling window.cfbErrors.failure() with a real one;
- * this report is deliberately, unmistakably the anonymous one.
+ * A rejection that came out of a LIVEWIRE CALL says which call, through
+ * livewireRejection() below. That was most of what still arrived anonymous:
+ * Livewire rejects a failed call with a bare `{ status, body, json, errors }`,
+ * which carries no name, no message and no stack, so the report was the label
+ * alone, from /groups/52 and /scoreboard, with nothing to chase (CFB-108).
+ *
+ * Otherwise the label is what the event IS, not a guess at what failed. A
+ * caller who knows better should be calling window.cfbErrors.failure() with a
+ * real one; this report is deliberately, unmistakably the anonymous one.
  */
 window.addEventListener('unhandledrejection', (event) => {
     try {
         const reason = event.reason;
+        const livewire = livewireRejection(event);
+
+        if (livewire) {
+            window.cfbErrors.report({
+                kind: 'unhandledrejection',
+                message: failureMessage(`unhandled rejection from ${livewire.label}`, livewire.detail),
+                /* The runtime that made and rejected the promise. The
+                 * reason has no stack to mine, and the call it names is in
+                 * the message. */
+                source: livewireScriptUrl(),
+                line: null,
+                col: null,
+                stack: livewire.stack,
+            });
+
+            return;
+        }
 
         window.cfbErrors.report({
             kind: 'unhandledrejection',
@@ -328,6 +470,151 @@ window.addEventListener('unhandledrejection', (event) => {
         });
     } catch { /* never let the reporter be the bug */ }
 });
+
+/*
+ * WHICH LIVEWIRE CALL FAILED, kept for the moment its promise rejects.
+ *
+ * `interceptAction` is Livewire 4's per-call seam, and its three failure
+ * callbacks run BEFORE the call's promise is rejected — so by the time the
+ * window hears an unhandled rejection, the outcome is already here:
+ *
+ *   - onError:   the server answered, badly. The status is the fact.
+ *   - onFailure: the request never got an answer. The fetch's own error is
+ *                the fact — Safari's "TypeError: Load failed", now with the
+ *                component and method beside it.
+ *   - onCancel:  superseded or navigated away from. Said as such.
+ *
+ * Kept by ACTION (exact, for the promise Livewire handed out) and briefly in
+ * a list (for a promise derived from it, which no longer carries the action).
+ * Only the component's registered name and the method name are kept — never
+ * params, never the payload, never anything typed.
+ */
+const livewireOutcomes = new WeakMap();
+let livewireRecent = [];
+
+/* Long enough for the rejection to be noticed and its event dispatched, and
+ * no longer: past it, a failure is old news rather than the cause. */
+const LIVEWIRE_RECENT_MS = 2000;
+
+document.addEventListener('livewire:init', () => {
+    try {
+        const livewire = window.Livewire;
+
+        if (typeof livewire?.interceptAction !== 'function') return;
+
+        livewire.interceptAction(({ action, onError, onFailure, onCancel }) => {
+            const record = (outcome) => {
+                try {
+                    const failed = {
+                        component: typeof action?.component?.name === 'string' ? action.component.name : null,
+                        method: typeof action?.name === 'string' ? action.name : null,
+                        ...outcome,
+                        at: Date.now(),
+                    };
+
+                    livewireOutcomes.set(action, failed);
+
+                    livewireRecent = livewireRecent
+                        .filter((entry) => failed.at - entry.at < LIVEWIRE_RECENT_MS)
+                        .concat(failed);
+                } catch { /* never let the reporter be the bug */ }
+            };
+
+            onError(({ response }) => record({ status: Number.isInteger(response?.status) ? response.status : null }));
+            onFailure(({ error }) => record({ error: error ?? null }));
+            onCancel(() => record({ cancelled: true }));
+        });
+    } catch { /* never let the reporter be the bug */ }
+});
+
+/*
+ * The Livewire call behind a rejection, or null when it was not one.
+ *
+ * EXACT when the unhandled promise is the one Livewire handed out: it carries
+ * its action as `_livewireAction`. That is an Alpine `$wire.save()` with no
+ * catch, which is what an `x-on` or `x-init` leaves.
+ *
+ * BY SHAPE when it is not — `await $wire.save()` inside an async method
+ * rejects that METHOD's promise, with Livewire's reason but not its action.
+ * The reason's exact `{ status, body, json, errors }` shape says it was a
+ * Livewire call; the calls that failed with the same status in the last two
+ * seconds say which. When nothing matches, it says it was a Livewire call
+ * and no more, rather than guessing one.
+ */
+function livewireRejection(event) {
+    const action = event?.promise?._livewireAction;
+
+    if (action) {
+        const failed = livewireOutcomes.get(action) ?? {
+            component: typeof action.component?.name === 'string' ? action.component.name : null,
+            method: typeof action.name === 'string' ? action.name : null,
+        };
+
+        return describeLivewireFailures([failed], event.reason);
+    }
+
+    if (!isLivewireReason(event?.reason)) return null;
+
+    const now = Date.now();
+    const status = Number.isInteger(event.reason.status) ? event.reason.status : null;
+
+    const matching = livewireRecent.filter((entry) => now - entry.at < LIVEWIRE_RECENT_MS
+        && (entry.status ?? null) === status);
+
+    return describeLivewireFailures(matching, event.reason);
+}
+
+/* Livewire's own rejection reason, and nothing else that happens to have a
+ * `status`: exactly these four keys, which is what every failed call
+ * rejects with in Livewire 4 (dist/livewire.js, rejectActionPromises). */
+function isLivewireReason(reason) {
+    if (!reason || typeof reason !== 'object') return false;
+
+    const keys = Object.keys(reason).sort().join(',');
+
+    return keys === 'body,errors,json,status';
+}
+
+/* "search-panel.ask()" — or, with no call to name, "a Livewire call". */
+function describeLivewireFailures(failures, reason) {
+    const calls = [...new Set(failures
+        .filter((failed) => failed.component || failed.method)
+        .map((failed) => `${failed.component ?? 'an unnamed component'}.${failed.method ?? 'an unnamed method'}()`))];
+
+    const label = calls.length ? calls.join(', ') : 'a Livewire call';
+
+    /* What the outcome actually was. The first failure that knows wins; a
+     * status on the reason itself is the server's own answer and is used
+     * when no recorded outcome has one. */
+    const known = failures.find((failed) => failed.error || failed.status || failed.cancelled);
+
+    let detail = null;
+
+    if (known?.error) {
+        detail = rejectionDetail(known.error);
+    } else if (known?.status) {
+        detail = { message: `HTTP ${known.status}` };
+    } else if (known?.cancelled) {
+        detail = { message: 'cancelled' };
+    } else if (Number.isInteger(reason?.status)) {
+        detail = { message: `HTTP ${reason.status}` };
+    }
+
+    const stack = known?.error?.stack ? String(known.error.stack) : null;
+
+    return { label, detail, stack };
+}
+
+/* Livewire injects its runtime with the update URI on the tag, which is the
+ * one marker that says THIS script is Livewire rather than anything else
+ * with "livewire" in its path. */
+function livewireScriptUrl() {
+    try {
+        return document.querySelector('script[data-update-uri]')?.src || null;
+    } catch {
+        return null;
+    }
+}
 
 /*
  * A rejection we catch ourselves, named — reported in the same shape the
@@ -499,20 +786,6 @@ function rejectionDetail(reason) {
 }
 
 /*
- * Registration rejects for reasons that are not code defects — Safari private
- * browsing, a content blocker, a 404 or a parse error on /sw.js — so this is
- * not an exception. It is still worth knowing: no service worker means no push
- * subscription and no offline shell on that device, and the push banner will
- * go on pitching notifications regardless, because supported() only asks
- * whether the APIs exist.
- *
- * Left bare it was the one promise in this file with no rejection handler, and
- * it reported itself through the listener above as the useless single word
- * "Rejected" — burning two of the five reports a page is allowed before a real
- * bug can get a word in. Swallowing it would have traded a useless signal for
- * no signal; it is named instead.
- */
-/*
  * THE UPLOAD FAILURE NOBODY WAS HOLDING.
  *
  * Livewire's UploadManager calls `$wire.call('_startUpload', ..)` and DISCARDS
@@ -556,11 +829,3 @@ document.addEventListener('livewire:init', () => {
         });
     });
 });
-
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((error) => {
-            reportFailure('service-worker registration failed', error);
-        });
-    });
-}

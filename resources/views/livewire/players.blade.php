@@ -2,10 +2,10 @@
 
 use App\Models\AthleteTeamSeason;
 use App\Models\Position;
+use App\Support\Remember;
 use App\Support\Scope;
 use App\Support\Search;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -178,7 +178,7 @@ new class extends Component
     #[Computed]
     public function year(): int
     {
-        return Cache::remember(
+        return Remember::orSource(
             'players:roster-year',
             3600,
             fn () => (int) (AthleteTeamSeason::max('season_year')
@@ -210,7 +210,7 @@ new class extends Component
     #[Computed]
     public function positions(): array
     {
-        return Cache::remember("players:positions:{$this->year}", 3600, function () {
+        return Remember::orSource("players:positions:{$this->year}", 3600, function () {
             $season = AthleteTeamSeason::where('season_year', $this->year);
 
             $total = (clone $season)->count();
@@ -340,7 +340,7 @@ new class extends Component
          * athletes re-ran on every one. The tuple key means a filter
          * change is simply a different key — no invalidation to forget.
          */
-        return Cache::remember(
+        return Remember::orSource(
             'players:total:'.md5(implode('|', [$this->q, $this->scope, $this->position, $this->year])),
             300,
             fn () => $this->filtered()->count(),
