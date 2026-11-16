@@ -1,2 +1,25 @@
+# Campus Football
+#
+# The detail screens below are ESPN data we republish, and each one can arm an
+# ESPN request when it is opened. They have no search value of their own, and
+# crawlers were nearly the only readers they had. The indexes (/players, /news),
+# the scoreboard, standings, rankings and team pages stay open.
+#
+# This file is advisory. The ESPN fetches behind these screens are also gated on
+# the user-agent (App\Support\AutomatedAgents), which is what holds against a
+# crawler that ignores this file.
+
 User-agent: *
+Crawl-delay: 10
+Disallow: /players/
+Disallow: /games/
+Disallow: /news/
+
+# Link previews are fetched when a person shares a link, so they are not held
+# to the rules above. Without this group, a shared game or article loses its card.
+User-agent: Twitterbot
+User-agent: LinkedInBot
+User-agent: Slackbot
+User-agent: Discordbot
+User-agent: facebookexternalhit
 Disallow:
