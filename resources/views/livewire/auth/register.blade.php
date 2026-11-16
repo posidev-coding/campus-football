@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ContentRating;
+use App\Livewire\Concerns\CountsSignupFunnel;
 use App\Models\Group;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
@@ -14,6 +15,8 @@ use Livewire\Component;
 
 new #[Layout('components.layouts.auth')] class extends Component
 {
+    use CountsSignupFunnel;
+
     public string $first_name = '';
 
     public string $last_name = '';
@@ -30,6 +33,24 @@ new #[Layout('components.layouts.auth')] class extends Component
      * has to research before they can sign up.
      */
     public string $content_rating = 'pg13';
+
+    /**
+     * The other signup door, counted onto the same funnel as the wizard.
+     *
+     * Loading this form is pressing a front door — somebody followed Sign up
+     * or an invite here, and nothing renders it on a page they came to for
+     * something else, which is what made the wizard's mount() a traffic
+     * number. And it opens ON the email and password, so arriving is also
+     * reaching the credentials. Without both, a week whose one signup came
+     * through here read opened 0, credentials 0, registered 1 (CFB-110).
+     *
+     * mount() runs on the GET alone, never on the submit round trip.
+     */
+    public function mount(): void
+    {
+        $this->countSignupOpened();
+        $this->countCredentialsReached();
+    }
 
     /**
      * The group an invite link is walking this account into, read off the
