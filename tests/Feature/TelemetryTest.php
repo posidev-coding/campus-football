@@ -16,6 +16,7 @@ use App\Models\UserDay;
 use App\Models\UxEvent;
 use App\Models\WorkbookItem;
 use App\Support\OpsReport;
+use App\Support\TelemetrySnapshot;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -269,8 +270,8 @@ describe('what it reports', function () {
             ->and($client[0]['reports'])->toBe(4_000)
             // Width and standalone are the first two triage questions on a
             // product designed at 390px and installed as a PWA.
-            ->and($client[0]['viewport'])->toBe(390)
-            ->and($client[0]['standalone'])->toBeTrue();
+            ->and($client[0]['viewports'])->toBe([390])
+            ->and($client[0]['standalone'])->toBe([true]);
     });
 
     it('adds today to the persisted funnel, so the two halves agree', function () {
@@ -602,7 +603,10 @@ describe('a browser error against the traffic that produced it', function () {
             'path' => "/groups/{$group->id}",
         ]);
 
-        expect(telemetry()['errors']['client'][0]['route'])->toBe('pickem.group');
+        $row = telemetry()['errors']['client'][0];
+
+        expect($row['routes'])->toBe([['route' => 'pickem.group', 'views_24h' => null]])
+            ->and(json_encode($row))->not->toContain("/groups/{$group->id}");
     });
 
     it('reports no views rather than zero views when nothing was counted', function () {
@@ -642,8 +646,92 @@ describe('a browser error against the traffic that produced it', function () {
 
         $row = telemetry()['errors']['client'][0];
 
-        expect($row['route'])->toBeNull()
+        expect($row['routes'])->toBe([['route' => null, 'views_24h' => null]])
             ->and($row['views_24h'])->toBeNull();
+    });
+});
+
+describe('a browser error grouped by fault', function () {
+    /** One five-minute window's row, as RecordClientError writes it. */
+    function faultRow(string $fingerprint, string $path, array $overrides = []): ClientError
+    {
+        return ClientError::create([
+            'fingerprint' => $fingerprint, 'kind' => 'error',
+            'message' => 'Cannot read properties of null', 'source' => '/build/assets/app-*.js', 'line' => 12,
+            'reports' => 1, 'path' => $path, ...$overrides,
+        ]);
+    }
+
+    it('folds one fault seen from several screens into one row', function () {
+        /*
+         * RecordClientError writes a row per fingerprint per five-minute
+         * window, so one bug read all day from three screens was a row per
+         * window and read as several bugs (CFB-136).
+         */
+        $fault = str_repeat('a', 40);
+        $group = Group::factory()->create();
+
+        ActivityEvent::factory()->count(5)->create(['route' => 'scoreboard', 'occurred_at' => now()->subHour()]);
+        ActivityEvent::factory()->count(2)->create(['route' => 'pickem.group', 'occurred_at' => now()->subHour()]);
+
+        faultRow($fault, '/scoreboard', ['reports' => 10, 'viewport' => 390, 'standalone' => true]);
+        faultRow($fault, "/groups/{$group->id}", ['reports' => 4, 'viewport' => 1280, 'standalone' => false]);
+        faultRow($fault, '/scoreboard', ['reports' => 1, 'viewport' => null, 'standalone' => true]);
+        faultRow(str_repeat('b', 40), '/scoreboard', ['message' => 'another bug entirely', 'reports' => 2]);
+
+        $client = telemetry()['errors']['client'];
+
+        expect($client)->toHaveCount(2)
+            ->and($client[0]['fingerprint'])->toBe($fault)
+            ->and($client[0]['reports'])->toBe(15)
+            ->and($client[0]['windows'])->toBe(3)
+            ->and($client[0]['routes'])->toBe([
+                ['route' => 'pickem.group', 'views_24h' => 2],
+                ['route' => 'scoreboard', 'views_24h' => 5],
+            ])
+            ->and($client[0]['views_24h'])->toBe(7)
+            // The installed 390px break stays visible beside the desktop one,
+            // and "width not reported" stays its own answer.
+            ->and($client[0]['viewports'])->toBe([390, 1280, null])
+            ->and($client[0]['standalone'])->toBe([false, true])
+            ->and($client[1]['reports'])->toBe(2)
+            // No path in the row: it carries an id.
+            ->and(json_encode($client))->not->toContain("/groups/{$group->id}");
+    });
+
+    it('keeps the fault\'s views null when any of its screens has no denominator', function () {
+        // A sum missing one of its screens is a partly measured number. The
+        // per-route counts stay, so the measured half is still readable.
+        $fault = str_repeat('c', 40);
+
+        ActivityEvent::factory()->count(5)->create(['route' => 'scoreboard', 'occurred_at' => now()->subHour()]);
+
+        faultRow($fault, '/scoreboard', ['reports' => 3]);
+        faultRow($fault, '/a-screen-that-shipped-and-left', ['reports' => 3]);
+
+        $row = telemetry()['errors']['client'][0];
+
+        expect($row['routes'])->toBe([
+            ['route' => 'scoreboard', 'views_24h' => 5],
+            ['route' => null, 'views_24h' => null],
+        ])->and($row['views_24h'])->toBeNull();
+    });
+
+    it('reads each route\'s traffic once for the whole set, not twice per row', function () {
+        foreach (range(1, 12) as $i) {
+            faultRow(str_pad((string) $i, 40, 'f'), '/scoreboard');
+        }
+
+        $snapshot = app(TelemetrySnapshot::class);
+        $method = (new ReflectionClass($snapshot))->getMethod('clientErrors');
+
+        DB::enableQueryLog();
+        $method->invoke($snapshot);
+        $queries = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        // The groups, their rows, and one grouped traffic read.
+        expect($queries)->toBe(3);
     });
 });
 

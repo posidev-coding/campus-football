@@ -1245,16 +1245,32 @@ class AnalyticsCatalog
      */
     public function routeViews(?string $route, int $hours): ?int
     {
-        if ($route === null) {
-            return null;
+        return $route === null ? null : $this->routesViews([$route], $hours)[$route];
+    }
+
+    /**
+     * {@see routeViews()} for many routes in one grouped read, keyed by route.
+     * Same rule: a route with no rows is null, never 0.
+     *
+     * @param  list<string>  $routes
+     * @return array<string, ?int>
+     */
+    public function routesViews(array $routes, int $hours): array
+    {
+        if ($routes === []) {
+            return [];
         }
 
-        $views = ActivityEvent::query()
-            ->where('route', $route)
+        $counts = ActivityEvent::query()
+            ->whereIn('route', $routes)
             ->where('occurred_at', '>=', now()->subHours($hours))
-            ->count();
+            ->groupBy('route')
+            ->selectRaw('route, count(*) as views')
+            ->pluck('views', 'route');
 
-        return $views > 0 ? $views : null;
+        return collect($routes)
+            ->mapWithKeys(fn (string $route): array => [$route => isset($counts[$route]) ? (int) $counts[$route] : null])
+            ->all();
     }
 
     /**
