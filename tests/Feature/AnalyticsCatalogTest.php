@@ -37,6 +37,34 @@ function catalog(): AnalyticsCatalog
     return app(AnalyticsCatalog::class);
 }
 
+/** Ten actives on 2026-09-03, the first `$readers` of them with the talk bit. */
+function talkReaders(int $readers): void
+{
+    foreach (User::factory()->count(10)->create() as $i => $user) {
+        UserDay::factory()->create([
+            'user_id' => $user->id, 'day' => '2026-09-03',
+            'features' => $i < $readers ? ActivityFeature::ReadTalk->value : 0,
+        ]);
+    }
+}
+
+/**
+ * The first Talk tab switch ever recorded, on `$day` — and, unless the rollup
+ * has not reached it yet, the bit it folds into for that person on that day.
+ */
+function firstTalkSwitch(string $day, bool $folded = true): void
+{
+    $event = ActivityEvent::factory()->create([
+        'kind' => ActivityKind::TalkRead, 'facet' => 'talk', 'occurred_at' => $day.' 16:00:00',
+    ]);
+
+    if ($folded) {
+        UserDay::factory()->create([
+            'user_id' => $event->user_id, 'day' => $day, 'features' => ActivityFeature::ReadTalk->value,
+        ]);
+    }
+}
+
 describe('traffic', function () {
     it('counts software apart from guests, and says how much of guest is one request', function () {
         /*
@@ -201,26 +229,57 @@ describe('adoption', function () {
          * left a row at all. Until it has, the facet is uninstrumented — a
          * null the advisor skips — even with a `?view=talk` load in the week.
          */
-        $present = User::factory()->count(10)->create();
-
-        foreach ($present as $i => $user) {
-            UserDay::factory()->create([
-                'user_id' => $user->id, 'day' => '2026-09-03',
-                'features' => $i < 3 ? ActivityFeature::ReadTalk->value : 0,
-            ]);
-        }
+        talkReaders(3);
 
         $before = catalog()->adoption(AnalyticsWindow::of(7))['features'];
 
-        expect($before['read_talk'])->toBe(['users' => null, 'share' => null])
+        expect($before['read_talk'])->toBe(['users' => null, 'share' => null, 'since' => null])
             // Only the uninstrumented facet: a posted talk is a truth-table
             // fact and its 0 is a real zero.
             ->and($before['talked'])->toBe(['users' => 0, 'share' => 0.0]);
 
-        ActivityEvent::factory()->create(['kind' => ActivityKind::TalkRead, 'facet' => 'talk']);
+        // Counting since before the window opened (2026-08-30), and folded.
+        firstTalkSwitch('2026-08-29');
 
         expect(catalog()->adoption(AnalyticsWindow::of(7))['features']['read_talk'])
-            ->toBe(['users' => 3, 'share' => 0.3]);
+            ->toBe(['users' => 3, 'share' => 0.3, 'since' => '2026-08-29']);
+    });
+
+    it('withholds read_talk for a window that opens before the switch was counted', function () {
+        /*
+         * Shipped mid-window. Three readers on the 3rd is a real count of the
+         * days since the 2nd and an unknown for the four before it, so a
+         * share over all seven reads low for a reason nobody can see — the
+         * `funnel_since` mistake. The day it started is still published.
+         */
+        talkReaders(3);
+        firstTalkSwitch('2026-09-02');
+
+        expect(catalog()->adoption(AnalyticsWindow::of(7))['features']['read_talk'])
+            ->toBe(['users' => null, 'share' => null, 'since' => '2026-09-02']);
+    });
+
+    it('reads read_talk once the window opens on or after the first counted day', function () {
+        talkReaders(3);
+        // The window's own first day: 2026-08-30 is counted whole, and the
+        // switcher is in it — an eleventh active and a fourth reader.
+        firstTalkSwitch('2026-08-30');
+
+        expect(catalog()->adoption(AnalyticsWindow::of(7))['features']['read_talk'])
+            ->toBe(['users' => 4, 'share' => 0.364, 'since' => '2026-08-30']);
+    });
+
+    it('keeps read_talk null while the first switch is recorded but not yet folded', function () {
+        /*
+         * The raw row lands before the rollup sets the bit. Read off the raw
+         * row alone, the gap publishes a share near zero for however long the
+         * fold takes; the first switch counts once its person carries it.
+         */
+        talkReaders(3);
+        firstTalkSwitch('2026-08-29', folded: false);
+
+        expect(catalog()->adoption(AnalyticsWindow::of(7))['features']['read_talk'])
+            ->toBe(['users' => null, 'share' => null, 'since' => null]);
     });
 
     it('withholds every share when the week is under the floor', function () {
