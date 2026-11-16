@@ -47,7 +47,7 @@ class TelemetryCommand extends Command
         }
 
         $this->newLine();
-        $this->line('  <fg=gray>Funnel · 7d</>');
+        $this->line("  <fg=gray>Funnel · {$snapshot['funnel_window_days']}d since {$snapshot['funnel_window_since']}</>");
 
         // The date is the denominator: a signal counting since this morning
         // has no seven-day number, whatever the column beside it says.
