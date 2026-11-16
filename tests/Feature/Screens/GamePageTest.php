@@ -584,6 +584,28 @@ describe('around the league', function () {
             ->and(collect($slate)->pluck('games')->flatten(1)->pluck('id')->duplicates())->toBeEmpty();
     });
 
+    it('lists a game whose broadcasts hold no usable first name', function (array $broadcasts, ?string $seen) {
+        // `broadcasts[0]` was read raw: a null element, or a decoded array
+        // with no key 0, reached x-network-logo and took the screen down.
+        $other = Game::factory()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'completed' => false, 'status' => 'pre',
+            'kickoff_at' => $this->game->kickoff_at,
+            'broadcasts' => $broadcasts,
+        ]);
+        TeamSeason::create(['team_id' => $other->home_team_id, 'season_year' => 2025, 'classification' => 'FBS']);
+
+        $component = Livewire::test('game', ['game' => $this->game])
+            ->set('sheetOpen', true)
+            ->assertOk()
+            ->assertSeeHtml('wire:key="lgg-'.$other->id.'"');
+
+        $seen === null ? $component->assertDontSeeHtml('alt="ESPN"') : $component->assertSee($seen);
+    })->with([
+        'a null first entry' => [[null], null],
+        'no key 0' => [[1 => 'ESPN'], 'ESPN'],
+    ]);
+
     it('costs nothing while closed', function () {
         $component = Livewire::test('game', ['game' => $this->game]);
 
@@ -798,6 +820,30 @@ describe('the game information card', function () {
             ->assertSeeHtml('alt="ESPN"')
             ->assertSee('FOX')
             ->assertDontSeeHtml('alt="FOX"');
+    });
+
+    it('skips a broadcast entry that is not a network name rather than 500ing', function (array $broadcasts, array $seen) {
+        // The column is whatever ESPN put in names[]; a null or nested entry
+        // once reached x-network-logo raw and threw a TypeError.
+        $this->game->update(['broadcasts' => $broadcasts]);
+
+        $component = Livewire::test('game', ['game' => $this->game->fresh()])->assertOk();
+
+        foreach ($seen as $name) {
+            $component->assertSee($name);
+        }
+    })->with([
+        'a null entry beside a name' => [[null, 'ESPN'], ['Where to Watch', 'ESPN']],
+        'a nested names array' => [[['ESPN']], ['Where to Watch', 'ESPN']],
+    ]);
+
+    it('drops Where to Watch when no entry is a network name', function () {
+        // An empty panel is a placeholder by another name.
+        $this->game->update(['broadcasts' => [null, '']]);
+
+        $this->get(route('game', $this->game))
+            ->assertOk()
+            ->assertDontSee('Where to Watch');
     });
 
     it('renders without a venue photo, which two in five venues lack', function () {

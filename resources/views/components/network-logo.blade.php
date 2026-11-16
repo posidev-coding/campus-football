@@ -13,6 +13,11 @@
     `darkLogo` of "" — the red wordmark serves both surfaces). The marks are
     WIDE (the wordmark is 4:1), so `size` is a HEIGHT and the width follows;
     `alt` carries the name so a screen reader still hears "ESPN".
+
+    Anything that is not a usable name renders NOTHING — no empty chip, no
+    placeholder label. Callers read names through Networks::names(), and this
+    guard is the backstop for the next one that forgets: `mark()` stays a
+    strict string, so a null that got this far would otherwise be a 500.
 --}}
 @props([
     /** The short name as `games.broadcasts` stores it — "ESPN", "SEC Network". */
@@ -22,7 +27,8 @@
 ])
 
 @php
-    $mark = App\Support\Networks::mark($network);
+    $named = is_string($network) && trim($network) !== '';
+    $mark = $named ? App\Support\Networks::mark($network) : null;
 
     $height = match ($size) {
         'xs' => 'h-3.5',
@@ -32,7 +38,8 @@
     };
 @endphp
 
-@if ($mark === null)
+@if (! $named)
+@elseif ($mark === null)
     <span {{ $attributes }}>{{ $network }}</span>
 @else
     <img

@@ -926,9 +926,6 @@ class SyncGames
     }
 
     /**
-     * @return list<string>|null
-     */
-    /**
      * The event's own name, where it has one.
      *
      * Only postseason games carry this, and that is exactly what makes it
@@ -944,13 +941,25 @@ class SyncGames
         return is_string($headline) && $headline !== '' ? $headline : null;
     }
 
+    /**
+     * The networks ESPN named, as the plain strings `x-network-logo` takes.
+     *
+     * Whatever else `names[]` holds — a null, a blank, a nested array — is
+     * ESPN naming nothing, so it is skipped rather than written through to
+     * take the game screen down. Nothing survives, nothing is stored: null,
+     * never a stand-in label.
+     *
+     * @return list<string>|null
+     */
     private function broadcasts(array $competition): ?array
     {
         $names = [];
 
         foreach ($competition['broadcasts'] ?? [] as $broadcast) {
             foreach ($broadcast['names'] ?? [] as $name) {
-                $names[] = $name;
+                if (is_string($name) && trim($name) !== '') {
+                    $names[] = $name;
+                }
             }
         }
 

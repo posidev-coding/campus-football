@@ -15,6 +15,7 @@
 @php
     $kickoff = $game->kickoff_at->setTimezone(config('cfb.timezone'));
     $venue = $game->venue;
+    $networks = App\Support\Networks::names($game->broadcasts);
 @endphp
 
 <div {{ $attributes->class(['flex flex-col rounded-lg border border-zinc-200 dark:border-zinc-800']) }}>
@@ -60,7 +61,9 @@
         @endif
     @endif
 
-    @if ($game->broadcasts)
+    {{-- Tested on the names that survive, not the raw column, or a column
+         of nulls would open the panel with no chips in it. --}}
+    @if ($networks !== [])
         <div class="flex items-center gap-3 border-t border-zinc-100 px-3 py-2.5 dark:border-zinc-800/60">
             <flux:icon.tv variant="mini" class="shrink-0 text-zinc-400" />
 
@@ -70,7 +73,7 @@
                 <div class="flex flex-wrap gap-1">
                     {{-- A chip per network: its mark where we hold one, its
                          name where ESPN ships none — x-network-logo decides. --}}
-                    @foreach ($game->broadcasts as $network)
+                    @foreach ($networks as $network)
                         <span class="inline-flex items-center rounded border border-zinc-200 px-1.5 py-0.5 text-micro font-medium text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
                             <x-network-logo :network="$network" size="sm" />
                         </span>
