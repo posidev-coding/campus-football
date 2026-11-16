@@ -213,12 +213,12 @@ describe('routes', function () {
 
         // Past the line but not pruned yet: it must not count either.
         ActivityEvent::factory()->create(['route' => 'rankings', 'occurred_at' => '2026-09-10 16:00:00']);
-        ActivityEvent::factory()->create(['route' => 'rankings', 'occurred_at' => '2026-10-01 16:00:00']);
+        ActivityEvent::factory()->count(AnalyticsCatalog::QUIET_VIEWS)->create(['route' => 'rankings', 'occurred_at' => '2026-10-01 16:00:00']);
 
         $long = catalog()->routes(AnalyticsWindow::of(90));
 
         expect($long['since'])->toBe('2026-09-21')
-            ->and(collect($long['top'])->firstWhere('route', 'rankings')['views'])->toBe(1)
+            ->and(collect($long['top'])->firstWhere('route', 'rankings')['views'])->toBe(AnalyticsCatalog::QUIET_VIEWS)
             ->and($long['quiet'])->toBeNull();
 
         // Twenty-eight days fit inside thirty, so that window is whole.
@@ -317,6 +317,72 @@ describe('quiet screens', function () {
         ]);
 
         expect(catalog()->routes(AnalyticsWindow::of(28))['quiet'])->toBeNull();
+    });
+});
+
+describe('top and quiet', function () {
+    beforeEach(function () {
+        // A rollup a month old, so the 28-day window is covered and quiet is
+        // published rather than withheld.
+        PageViewDaily::factory()->create(['day' => '2026-08-01', 'route' => 'home']);
+    });
+
+    $views = fn (string $route, int $count, string $at = '2026-09-04 16:00:00') => ActivityEvent::factory()
+        ->count($count)->create(['route' => $route, 'occurred_at' => $at]);
+
+    it('never names the same route in both lists', function () use ($views) {
+        /*
+         * CFB-117. Top was the twenty busiest routes and quiet every screen
+         * under five, so with twenty routes carrying any traffic, ten were
+         * at once among the most read and ones nobody opens.
+         */
+        $views('scoreboard', 12);
+        $views('team', AnalyticsCatalog::QUIET_VIEWS);
+        $views('rankings', AnalyticsCatalog::QUIET_VIEWS - 1);
+        $views('stats', 1);
+
+        $routes = catalog()->routes(AnalyticsWindow::of(28));
+        $top = collect($routes['top'])->pluck('route');
+        $quiet = collect($routes['quiet'])->pluck('route');
+
+        expect($top->intersect($quiet))->toBeEmpty()
+            ->and($top->all())->toBe(['scoreboard', 'team'])
+            ->and($quiet)->toContain('rankings')
+            ->and($quiet)->toContain('stats');
+    });
+
+    it('returns a short top short, and caps a long one', function () use ($views) {
+        $views('scoreboard', 7);
+        $views('rankings', 2);
+
+        $short = catalog()->routes(AnalyticsWindow::of(28));
+
+        // One route cleared the line: one row, not twenty, and no zeros.
+        expect($short['top'])->toBe([['route' => 'scoreboard', 'views' => 7, 'visitors' => 7]])
+            ->and($short['top_eligible'])->toBe(1)
+            ->and($short['top_min_views'])->toBe(AnalyticsCatalog::QUIET_VIEWS);
+
+        foreach (range(1, AnalyticsCatalog::TOP_ROUTES + 2) as $n) {
+            $views("route-{$n}", AnalyticsCatalog::QUIET_VIEWS);
+        }
+
+        $long = catalog()->routes(AnalyticsWindow::of(28));
+
+        expect($long['top'])->toHaveCount(AnalyticsCatalog::TOP_ROUTES)
+            ->and($long['top_eligible'])->toBe(AnalyticsCatalog::TOP_ROUTES + 3);
+    });
+
+    it('applies the line to views inside the window since reports', function () use ($views) {
+        // The window opens Aug 9. Views the day before do not lift a screen
+        // out of quiet or into top.
+        $views('rankings', AnalyticsCatalog::QUIET_VIEWS - 1, '2026-08-09 16:00:00');
+        $views('rankings', 3, '2026-08-08 16:00:00');
+
+        $routes = catalog()->routes(AnalyticsWindow::of(28));
+
+        expect($routes['since'])->toBe('2026-08-09')
+            ->and(collect($routes['quiet'])->firstWhere('route', 'rankings')['views'])->toBe(AnalyticsCatalog::QUIET_VIEWS - 1)
+            ->and(collect($routes['top'])->pluck('route'))->not->toContain('rankings');
     });
 });
 

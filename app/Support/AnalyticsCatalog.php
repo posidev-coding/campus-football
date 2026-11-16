@@ -12,6 +12,7 @@ use App\Models\PageViewDaily;
 use App\Models\UserDay;
 use App\Models\UxEvent;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -68,8 +69,15 @@ class AnalyticsCatalog
     /** How long a cohort must have existed before its activation can be read. */
     public const MATURITY_DAYS = 7;
 
-    /** Views under five over the window makes a screen quiet. */
+    /**
+     * Views under five over the window makes a screen quiet, and five member
+     * views is what it takes to be ranked in `top`: one line, so the two
+     * lists cannot both name a route.
+     */
     public const QUIET_VIEWS = 5;
+
+    /** The most routes `top` lists. A cap, never a length to fill. */
+    public const TOP_ROUTES = 20;
 
     /**
      * Whose page views rank `routes.top`: members, because "which screens do
@@ -878,14 +886,9 @@ class AnalyticsCatalog
     {
         $window ??= AnalyticsWindow::of(28);
 
-        $held = $this->firstWholeRawDay();
-        $from = max($window->fromDate(), $held);
-        $since = $window->sinceDate() === null ? null : max($window->sinceDate(), $held);
+        [$from, $since] = $this->routeSpan($window);
 
-        $pageViews = fn (array $audience) => ActivityEvent::query()
-            ->whereBetween('day', [$from, $window->toDate()])
-            ->where('kind', ActivityKind::PageView->value)
-            ->whereIn('audience', array_values($audience));
+        $pageViews = fn (array $audience) => $this->routePageViews($window, $from, $audience);
 
         $views = $this->keyed(
             $pageViews(self::TOP_AUDIENCE)
@@ -929,7 +932,19 @@ class AnalyticsCatalog
             return ['route' => $route, 'views' => $opened[$audience][$route] ?? 0, 'audience' => $audience];
         };
 
-        $top = collect($views)->sortDesc()->take(20)
+        /*
+         * DISJOINT FROM `quiet` BY DEFINITION (CFB-117). Top was the twenty
+         * busiest routes and quiet was every screen under five views, so with
+         * twenty routes carrying any traffic at all half of top was also
+         * quiet. A route now ranks only at QUIET_VIEWS member views or more.
+         * Members are part of quiet's audience, so a ranked route has at
+         * least that many there too and cannot be quiet. That holds even
+         * while quiet is withheld. Short when few routes clear the line,
+         * never padded, and never a route at 0.
+         */
+        $ranked = collect($views)->filter(fn (int $count): bool => $count >= self::QUIET_VIEWS);
+
+        $top = $ranked->sortDesc()->take(self::TOP_ROUTES)
             ->map(fn (int $count, string $route): array => [
                 'route' => $route,
                 'views' => $count,
@@ -942,6 +957,11 @@ class AnalyticsCatalog
             'window_days' => $window->days,
             'since' => $since,
             'top_audience' => array_keys(self::TOP_AUDIENCE),
+            // How many routes cleared the line. When that is no more than
+            // TOP_ROUTES, `top` is every route with real traffic rather than
+            // a cut of the busiest, and its order is not a finding.
+            'top_min_views' => self::QUIET_VIEWS,
+            'top_eligible' => $ranked->count(),
             'top' => $top,
             'quiet_audience' => array_keys(self::QUIET_AUDIENCE),
             'quiet_signed_out' => $signedOut,
@@ -954,6 +974,68 @@ class AnalyticsCatalog
                     ->all()
                 : null,
         ];
+    }
+
+    /**
+     * Where members' attention goes, every route with a view, for the treemap.
+     *
+     * NOT `routes.top`. Top only ranks routes at QUIET_VIEWS or more so it
+     * cannot share a route with `quiet` (CFB-117), and at pilot scale that
+     * line can leave it empty. The treemap's point is the proportion, slivers
+     * included, so it reads the same member page views over the same span
+     * as `routes()`, ranked and capped at TOP_ROUTES but with no floor.
+     *
+     * @return array{since: ?string, routes: list<array{route: string, views: int}>}
+     */
+    public function attention(?AnalyticsWindow $window = null): array
+    {
+        $window ??= AnalyticsWindow::of(28);
+
+        [$from, $since] = $this->routeSpan($window);
+
+        $views = $this->keyed(
+            $this->routePageViews($window, $from, self::TOP_AUDIENCE)
+                ->groupBy('route')
+                ->selectRaw('route as k, count(*) as v'),
+        );
+
+        return [
+            'since' => $since,
+            'routes' => collect($views)->sortDesc()->take(self::TOP_ROUTES)
+                ->map(fn (int $count, string $route): array => ['route' => $route, 'views' => $count])
+                ->values()
+                ->all(),
+        ];
+    }
+
+    /**
+     * The span route counts cover: the window, cut where the raw stream
+     * stops holding whole days. `since` moves with it (CFB-109).
+     *
+     * @return array{0: string, 1: ?string}
+     */
+    private function routeSpan(AnalyticsWindow $window): array
+    {
+        $held = $this->firstWholeRawDay();
+
+        return [
+            max($window->fromDate(), $held),
+            $window->sinceDate() === null ? null : max($window->sinceDate(), $held),
+        ];
+    }
+
+    /**
+     * Page-view rows for one audience from `$from` to the window's end.
+     *
+     * @param  array<string, int>  $audience
+     * @return Builder<ActivityEvent>
+     */
+    private function routePageViews(AnalyticsWindow $window, string $from, array $audience): Builder
+    {
+        return ActivityEvent::query()
+            ->whereBetween('day', [$from, $window->toDate()])
+            ->where('kind', ActivityKind::PageView->value)
+            ->whereIn('audience', array_values($audience));
     }
 
     // -------------------------------------------------------- 8. devices
