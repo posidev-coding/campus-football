@@ -10,7 +10,9 @@ use App\Support\Networks;
 use App\Support\PickemPulse;
 use App\Support\Release;
 use App\Support\TeamGlance;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 require_once __DIR__.'/PickemFixtures.php';
@@ -63,3 +65,45 @@ pest()->extend(TestCase::class)
         Release::flush();
     })
     ->in('Feature');
+
+/**
+ * A deadlock on the first write against a table, once — the shape MySQL
+ * hands back to the loser of a lock cycle.
+ *
+ * Shared, because every writer that calls `App\Support\Deadlocks::retry()`
+ * proves it the same way — the article pivots in NewsSyncTest and the
+ * box-score transaction in FetchGameSummaryJobTest.
+ *
+ * `errorInfo` AND the code, because Laravel's QueryException copies both off
+ * the PDOException underneath it: a fake that set only one would pass a
+ * check that read the other, which is how a retry test proves nothing.
+ */
+function deadlockOnce(string $table, string $sqlstate = '40001'): void
+{
+    $fired = false;
+
+    DB::beforeExecuting(function (string $sql) use ($table, $sqlstate, &$fired) {
+        if ($fired || ! str_contains($sql, $table)) {
+            return;
+        }
+
+        if (! str_starts_with(strtolower(ltrim($sql)), 'insert')) {
+            return;
+        }
+
+        $fired = true;
+
+        $previous = new class($sqlstate) extends PDOException
+        {
+            public function __construct(string $sqlstate)
+            {
+                parent::__construct("SQLSTATE[{$sqlstate}]: Deadlock found when trying to get lock");
+
+                $this->code = $sqlstate;
+                $this->errorInfo = [$sqlstate, 1213, 'Deadlock found when trying to get lock'];
+            }
+        };
+
+        throw new QueryException('mysql', $sql, [], $previous);
+    });
+}

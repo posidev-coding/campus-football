@@ -145,7 +145,14 @@ class SyncGameSummary
         $playsHash = md5(json_encode($body['scoringPlays'] ?? []));
         $previousHash = GameSummary::whereKey($game->id)->value('scoring_plays_hash');
 
-        DB::transaction(function () use ($game, $body, $isFinal, $playsHash, $previousHash) {
+        // The retry wraps the TRANSACTION, never a statement inside it: MySQL
+        // rolls the whole unit back on a deadlock, so the box score is tried
+        // again whole. Saturday 2026-11-14 a scoring-play INSERT lost a lock
+        // cycle here and threw the game's entire box score away until the
+        // job's own retry re-spent the ESPN request. Every write in it is
+        // idempotent — updateOrCreate, and the hash-gated delete-and-recreate —
+        // and the hash still lands in the same unit as the plays it describes.
+        Deadlocks::retry(fn () => DB::transaction(function () use ($game, $body, $isFinal, $playsHash, $previousHash) {
             $this->storeTeamStats($game, $body);
 
             if ($playsHash !== $previousHash) {
@@ -175,7 +182,7 @@ class SyncGameSummary
                 ['game_id' => $game->id],
                 ['drives' => data_get($body, 'drives.previous')]
             );
-        });
+        }));
 
         // Outside the transaction, and BEFORE the articles: a stuck game is
         // the reason this payload keeps being fetched at all, and unsticking
