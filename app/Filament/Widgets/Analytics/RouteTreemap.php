@@ -38,19 +38,23 @@ class RouteTreemap extends ApexChartWidget
 
     protected ?string $pollingInterval = null;
 
+    /**
+     * The section's own `since`, not the window's: route counts come off the
+     * raw stream, which keeps thirty days, so a 90-day range starts where
+     * that table does and the label has to say so.
+     */
     protected function getSubheading(): ?string
     {
-        $window = AnalyticsWindow::from($this->pageFilters ?? []);
+        $since = $this->catalogRoutes()['since'];
 
-        return $window->sinceDate() === null
+        return $since === null
             ? 'No data yet'
-            : 'Member views since '.$window->sinceDate();
+            : 'Member views since '.$since;
     }
 
     protected function getOptions(): array
     {
-        $window = AnalyticsWindow::from($this->pageFilters ?? []);
-        $routes = app(AnalyticsCatalog::class)->routes($window);
+        $routes = $this->catalogRoutes();
 
         return [
             'chart' => ['type' => 'treemap', 'height' => 300, 'toolbar' => ['show' => false]],
@@ -66,5 +70,11 @@ class RouteTreemap extends ApexChartWidget
             'plotOptions' => ['treemap' => ['distributed' => false, 'enableShades' => true]],
             'noData' => ['text' => 'No data yet'],
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function catalogRoutes(): array
+    {
+        return app(AnalyticsCatalog::class)->routes(AnalyticsWindow::from($this->pageFilters ?? []));
     }
 }

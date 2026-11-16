@@ -170,6 +170,63 @@ describe('traffic', function () {
     });
 });
 
+describe('routes', function () {
+    it('counts a route\'s views and visitors off the same rows while the rollup is behind', function () {
+        /*
+         * CFB-109. `views` came off the rollup and `visitors` off the raw
+         * stream, so while the hourly pass had not reached today one row of
+         * `top` described two spans: yesterday's views beside today's
+         * readers. Both now count the raw page views.
+         */
+        [$a, $b, $c] = User::factory()->count(3)->create();
+
+        ActivityEvent::factory()->count(2)->create(['user_id' => $a->id, 'route' => 'rankings', 'occurred_at' => '2026-09-04 16:00:00']);
+        ActivityEvent::factory()->create(['user_id' => $b->id, 'route' => 'rankings', 'occurred_at' => '2026-09-04 17:00:00']);
+
+        // Rolled through yesterday, and no further.
+        app(ActivityRollup::class)->day(CarbonImmutable::parse('2026-09-04', config('cfb.timezone')));
+
+        // Today, drained but not rolled.
+        ActivityEvent::factory()->count(2)->create(['user_id' => $c->id, 'route' => 'rankings', 'occurred_at' => '2026-09-05 14:00:00']);
+
+        // An action on the screen is not a read of it.
+        ActivityEvent::factory()->action(ActivityKind::Searched)->create(['route' => 'rankings', 'occurred_at' => '2026-09-05 14:05:00']);
+
+        $row = collect(catalog()->routes(AnalyticsWindow::of(28))['top'])->firstWhere('route', 'rankings');
+
+        expect($row['views'])->toBe(5)
+            ->and($row['visitors'])->toBe(3);
+    });
+
+    it('starts a long window where the raw table still holds whole days, and withholds quiet', function () {
+        /*
+         * The raw table keeps thirty days, so a 90-day ask counts thirty and
+         * `since` has to say so, as traffic() does. And a screen is not quiet
+         * over ninety days on a third of the evidence, however long the
+         * rollup reaches back.
+         */
+        PageViewDaily::factory()->create(['day' => '2026-06-01', 'route' => 'home']);
+
+        $this->travelTo('2026-10-20 12:00:00');
+
+        // Past the line but not pruned yet: it must not count either.
+        ActivityEvent::factory()->create(['route' => 'rankings', 'occurred_at' => '2026-09-10 16:00:00']);
+        ActivityEvent::factory()->create(['route' => 'rankings', 'occurred_at' => '2026-10-01 16:00:00']);
+
+        $long = catalog()->routes(AnalyticsWindow::of(90));
+
+        expect($long['since'])->toBe('2026-09-21')
+            ->and(collect($long['top'])->firstWhere('route', 'rankings')['views'])->toBe(1)
+            ->and($long['quiet'])->toBeNull();
+
+        // Twenty-eight days fit inside thirty, so that window is whole.
+        $month = catalog()->routes(AnalyticsWindow::of(28));
+
+        expect($month['since'])->toBe('2026-09-23')
+            ->and($month['quiet'])->not->toBeNull();
+    });
+});
+
 describe('adoption', function () {
     it('divides each feature by the people who were here, not by everybody', function () {
         // "Do the people who are here use this" is a different question from

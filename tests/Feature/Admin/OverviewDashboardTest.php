@@ -157,15 +157,26 @@ describe('the traffic chart', function () {
 
 describe('the route treemap', function () {
     it('ranks screens through the catalog, so the panel and the payload agree', function () {
-        PageViewDaily::factory()->create([
-            'day' => '2026-09-04', 'route' => 'scoreboard',
-            'audience' => ActivityEvent::MEMBER, 'views' => 9,
+        // Off the raw page views, like every route count (CFB-109).
+        ActivityEvent::factory()->count(9)->create([
+            'route' => 'scoreboard', 'occurred_at' => '2026-09-04 16:00:00',
         ]);
 
         $chart = renderDeferred(RouteTreemap::class, ['window' => 28]);
 
         expect($chart->instance()->options['series'][0]['data'][0])
             ->toBe(['x' => 'scoreboard', 'y' => 9]);
+    });
+
+    it('labels a long range from where the raw table starts, not the range', function () {
+        // Route counts are raw page views, kept thirty days, so a 90-day
+        // treemap is thirty days of screens and must not say ninety (CFB-109).
+        PageViewDaily::factory()->create(['day' => '2026-06-01']);
+
+        $this->travelTo('2026-10-20 12:00:00');
+
+        renderDeferred(RouteTreemap::class, ['range' => '90d'])
+            ->assertSee('Member views since 2026-09-21');
     });
 
     it('says no data yet on an empty rollup', function () {
