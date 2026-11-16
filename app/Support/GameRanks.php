@@ -7,7 +7,6 @@ use App\Models\Game;
 use App\Models\Ranking;
 use App\Models\Season;
 use App\Models\Week;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * A team's ranking as it stood when a game was played.
@@ -144,7 +143,7 @@ class GameRanks
      */
     private static function releases(int $year): array
     {
-        return self::$memo["releases:{$year}"] ??= Cache::remember(
+        return self::$memo["releases:{$year}"] ??= Remember::orSource(
             "gameranks:releases:{$year}",
             self::CACHE_SECONDS,
             function () use ($year) {
@@ -217,7 +216,7 @@ class GameRanks
      */
     private static function ranks(int $weekId, string $poll): array
     {
-        return self::$memo["ranks:{$weekId}:{$poll}"] ??= Cache::remember(
+        return self::$memo["ranks:{$weekId}:{$poll}"] ??= Remember::orSource(
             "gameranks:{$weekId}:{$poll}",
             self::CACHE_SECONDS,
             fn () => Ranking::query()
@@ -241,7 +240,7 @@ class GameRanks
      */
     private static function seasonYears(): array
     {
-        return self::$memo['seasons'] ??= Cache::remember(
+        return self::$memo['seasons'] ??= Remember::orSource(
             'gameranks:seasons',
             self::CACHE_SECONDS,
             fn () => Season::pluck('year', 'id')->map(fn ($y) => (int) $y)->all()

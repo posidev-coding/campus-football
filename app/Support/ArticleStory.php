@@ -7,7 +7,6 @@ use App\Models\Team;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * Turns ESPN's stored story markup into HTML this app is willing to render.
@@ -371,9 +370,9 @@ class ArticleStory
             return '';
         }
 
-        return Cache::remember(
+        return Remember::orSource(
             "article:story:{$articleId}:".($version ?? crc32($story)),
-            now()->addDay(),
+            86400,
             fn () => self::render($story, $images)
         );
     }

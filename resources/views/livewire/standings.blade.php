@@ -6,7 +6,6 @@ use App\Models\Standing;
 use App\Services\CfbCalendar;
 use App\Support\Remember;
 use App\Support\Scope;
-use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -123,7 +122,7 @@ new class extends Component
             return $this->scope;
         }
 
-        $classification = Cache::remember(
+        $classification = Remember::orSource(
             "standings:division:{$this->year}:{$this->scope}",
             3600,
             fn () => ConferenceSeason::where('season_year', $this->year)
@@ -147,7 +146,7 @@ new class extends Component
         // and a stale entry from before the change fatalled the live page
         // while every test passed on its fresh array cache. A shape change
         // gets a new key, never a coordinated cache:clear.
-        return Cache::remember(
+        return Remember::orSource(
             "standings:conferences:v2:{$this->year}:{$this->division}",
             3600,
             fn () => Conference::query()

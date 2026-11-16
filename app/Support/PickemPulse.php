@@ -475,7 +475,7 @@ class PickemPulse
 
         // Private groups carry no themed filter, so one count answers for
         // all of them — the same once-per-screen rule My Picks follows.
-        $viable = Cache::remember(
+        $viable = Remember::orSource(
             'pickem-pulse:viable:'.$state['saturday']->toDateString(),
             300,
             fn () => app(SuggestSlate::class)->viableCount($first['contest'], $state['week'], $state['saturday']),
