@@ -71,6 +71,36 @@ class AnalyticsCatalog
     /** Views under five over the window makes a screen quiet. */
     public const QUIET_VIEWS = 5;
 
+    /**
+     * Whose page views rank `routes.top`: members, because "which screens do
+     * our people read" is a question about readers, and at pilot scale the
+     * staff row would answer it with the founder's own browsing.
+     *
+     * @var array<string, int>
+     */
+    public const TOP_AUDIENCE = ['member' => ActivityEvent::MEMBER];
+
+    /**
+     * Whose page views keep a screen out of `routes.quiet`: members, the same
+     * readers `top` ranks. Guests do not count on a screen a member can open,
+     * because a crawler posing as a browser lands in GUEST, and five
+     * cookieless hits on Rankings would hide that members never read it.
+     *
+     * @var array<string, int>
+     */
+    public const QUIET_AUDIENCE = ['member' => ActivityEvent::MEMBER];
+
+    /**
+     * Whose page views keep a SIGNED-OUT screen out of `routes.quiet`. Login,
+     * register and the password screens sit behind the `guest` middleware,
+     * so no member can open them and a member-only count read them at 0
+     * forever (CFB-115). Those screens, and only those, count guests.
+     * Automated and staff stay out everywhere.
+     *
+     * @var array<string, int>
+     */
+    public const SIGNED_OUT_AUDIENCE = ['guest' => ActivityEvent::GUEST];
+
     /** Cohorts reported, and the retention grid's width. */
     public const COHORT_WEEKS = 8;
 
@@ -813,9 +843,14 @@ class AnalyticsCatalog
     /**
      * Route popularity, and the screens nobody opens (question 7).
      *
-     * Members only and staff excluded, because "does anybody open Rankings" is
-     * a question about readers, and at pilot scale the staff row would answer
-     * it with the founder's own browsing.
+     * Staff excluded from both lists, because at pilot scale the staff row
+     * would answer either one with the founder's own browsing. `top` counts
+     * members ({@see TOP_AUDIENCE}), and so does `quiet` ({@see QUIET_AUDIENCE})
+     * on every screen a member can open. A screen behind the `guest`
+     * middleware can only be opened signed out, so `quiet` judges those few
+     * by guest views instead ({@see SIGNED_OUT_AUDIENCE}), and names them in
+     * `quiet_signed_out`. Each quiet row carries the audience it was counted
+     * over, so no count reaches a reader without its population.
      *
      * `quiet` IS NULL UNTIL THE WINDOW IS COVERED, and that is the whole
      * safety of this section. A screen looks dead for exactly the same reason
@@ -847,13 +882,13 @@ class AnalyticsCatalog
         $from = max($window->fromDate(), $held);
         $since = $window->sinceDate() === null ? null : max($window->sinceDate(), $held);
 
-        $pageViews = fn () => ActivityEvent::query()
+        $pageViews = fn (array $audience) => ActivityEvent::query()
             ->whereBetween('day', [$from, $window->toDate()])
             ->where('kind', ActivityKind::PageView->value)
-            ->where('audience', ActivityEvent::MEMBER);
+            ->whereIn('audience', array_values($audience));
 
         $views = $this->keyed(
-            $pageViews()
+            $pageViews(self::TOP_AUDIENCE)
                 ->groupBy('route')
                 ->selectRaw('route as k, count(*) as v'),
         );
@@ -863,10 +898,36 @@ class AnalyticsCatalog
         // screen, over the same rows as its views, so a route never has a
         // reader without a view.
         $visitors = $this->keyed(
-            $pageViews()
+            $pageViews(self::TOP_AUDIENCE)
                 ->groupBy('route')
                 ->selectRaw('route as k, count(distinct user_id) as v'),
         );
+
+        // Each screen is judged by the only people who can open it: members,
+        // or guests on the handful behind the `guest` middleware.
+        $signedOut = $this->signedOutRoutes();
+
+        $opened = [
+            'member' => $this->keyed(
+                $pageViews(self::QUIET_AUDIENCE)
+                    ->groupBy('route')
+                    ->selectRaw('route as k, count(*) as v'),
+            ),
+            'guest' => $signedOut === [] ? [] : $this->keyed(
+                $pageViews(self::SIGNED_OUT_AUDIENCE)
+                    ->whereIn('route', $signedOut)
+                    ->groupBy('route')
+                    ->selectRaw('route as k, count(*) as v'),
+            ),
+        ];
+
+        $quietRow = function (string $route) use ($opened, $signedOut): array {
+            $audience = in_array($route, $signedOut, true)
+                ? array_key_first(self::SIGNED_OUT_AUDIENCE)
+                : array_key_first(self::QUIET_AUDIENCE);
+
+            return ['route' => $route, 'views' => $opened[$audience][$route] ?? 0, 'audience' => $audience];
+        };
 
         $top = collect($views)->sortDesc()->take(20)
             ->map(fn (int $count, string $route): array => [
@@ -880,11 +941,14 @@ class AnalyticsCatalog
         return [
             'window_days' => $window->days,
             'since' => $since,
+            'top_audience' => array_keys(self::TOP_AUDIENCE),
             'top' => $top,
+            'quiet_audience' => array_keys(self::QUIET_AUDIENCE),
+            'quiet_signed_out' => $signedOut,
             'quiet' => $window->covered && $from === $window->fromDate()
                 ? collect($this->screenRoutes())
-                    ->filter(fn (string $route): bool => ($views[$route] ?? 0) < self::QUIET_VIEWS)
-                    ->map(fn (string $route): array => ['route' => $route, 'views' => $views[$route] ?? 0])
+                    ->map($quietRow)
+                    ->filter(fn (array $row): bool => $row['views'] < self::QUIET_VIEWS)
                     ->sortBy('views')
                     ->values()
                     ->all()
@@ -1282,6 +1346,23 @@ class AnalyticsCatalog
                 && RecordPageView::isScreenRoute($name))
             ->keys()
             ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * The screens only a signed-out visitor can open: those behind the
+     * `guest` middleware, read off the route table rather than listed by
+     * hand, so a new signed-out screen is judged by guests the day it ships.
+     *
+     * @return list<string>
+     */
+    private function signedOutRoutes(): array
+    {
+        return collect($this->screenRoutes())
+            ->filter(fn (string $name): bool => collect(Route::getRoutes()->getByName($name)->gatherMiddleware())
+                ->contains(fn ($middleware): bool => $middleware === 'guest'
+                    || (is_string($middleware) && str_starts_with($middleware, 'guest:'))))
             ->values()
             ->all();
     }

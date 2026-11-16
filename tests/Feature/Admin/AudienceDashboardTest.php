@@ -295,7 +295,7 @@ describe('the quiet screens', function () {
             // The description, not the absence of the empty state: Filament
             // renders an empty-state heading into the DOM whether or not it
             // is showing, so assertDontSee on it passes for the wrong reason.
-            ->assertSee('Under '.AnalyticsCatalog::QUIET_VIEWS.' member views in 28 days');
+            ->assertSee('Under '.AnalyticsCatalog::QUIET_VIEWS.' member views in 28 days, guest views on signed-out screens');
     });
 });
 
