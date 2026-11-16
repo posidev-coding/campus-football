@@ -7,10 +7,13 @@ use App\Models\GameSummary;
 use App\Models\Season;
 use App\Models\Team;
 use App\Models\Week;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Testing\Fakes\QueueFake;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 /**
  * A queue fake whose store stalls for the listed games: push() throws for
@@ -124,32 +127,68 @@ it('dispatches individually, never as a batch', function () {
     Bus::assertNothingBatched();
 });
 
-it('isolates each dispatch, so one stalled push costs one game and not the slate', function () {
+it('tries every game, then fails the run naming the one whose push stalled', function () {
     // A dispatch is a write to the queue store. Inside a bare each() a throw
-    // on game two of three dropped game three as well, and the command died.
+    // on game two of three dropped game three as well. Now every game is tried
+    // first, and only then does the run fail, the same as SyncGames after a
+    // partial pass, so a game that stalls every tick is not hidden behind a
+    // run marked complete.
     [$first, $stalled, $last] = collect(range(1, 3))
         ->map(fn () => ($this->makeGame)(['completed' => false, 'status' => 'in']))
         ->all();
 
     stallQueueFor([$stalled->id]);
 
-    $this->artisan('cfb:summaries:live')
-        ->expectsOutputToContain('Queued 2')
-        ->assertSuccessful();
+    expect(fn () => $this->artisan('cfb:summaries:live')->run())
+        ->toThrow(RuntimeException::class, '1 of 3 live summary dispatches failed (2 queued)');
 
     Queue::assertPushed(FetchGameSummary::class, 2);
     Queue::assertPushed(FetchGameSummary::class, fn (FetchGameSummary $job) => $job->gameId === $first->id);
     Queue::assertPushed(FetchGameSummary::class, fn (FetchGameSummary $job) => $job->gameId === $last->id);
     Queue::assertNotPushed(FetchGameSummary::class, fn (FetchGameSummary $job) => $job->gameId === $stalled->id);
 
-    // The failure is on the ledger, not just a console line that vanishes
-    // with the process — and the run still completed, because it did its job.
     $run = FeedRun::latestFor('summaries:live');
 
-    expect($run->status)->toBe(FeedRun::COMPLETE)
-        ->and($run->records)->toBe(2)
-        ->and($run->error)->toContain('1 of 3')
+    expect($run->status)->toBe(FeedRun::FAILED)
         ->and($run->error)->toContain("game {$stalled->id}: Queue store stalled");
+});
+
+it('exits non-zero from the console when a dispatch failed', function () {
+    // The scheduler and the Cloud dashboard read the process exit code, which
+    // the console kernel derives from the thrown exception. Driven through the
+    // kernel itself, because the test helper rethrows instead of exiting.
+    $stalled = ($this->makeGame)(['completed' => false, 'status' => 'in']);
+    $other = ($this->makeGame)(['completed' => false, 'status' => 'in']);
+
+    stallQueueFor([$stalled->id]);
+
+    $exitCode = $this->app->make(Kernel::class)->handle(
+        new ArrayInput(['command' => 'cfb:summaries:live']),
+        new BufferedOutput,
+    );
+
+    expect($exitCode)->not->toBe(0);
+
+    Queue::assertPushed(FetchGameSummary::class, fn (FetchGameSummary $job) => $job->gameId === $other->id);
+});
+
+it('releases the unique lock a failed push took, so the next tick queues the game', function () {
+    // PendingDispatch takes the ShouldBeUnique lock (300s) before it pushes.
+    // Left held, the next two ticks would skip the game as already queued.
+    $stalled = ($this->makeGame)(['completed' => false, 'status' => 'in']);
+
+    stallQueueFor([$stalled->id]);
+
+    expect(fn () => $this->artisan('cfb:summaries:live')->run())->toThrow(RuntimeException::class);
+
+    // The store recovers by the next tick.
+    Queue::fake();
+
+    $this->artisan('cfb:summaries:live')
+        ->expectsOutputToContain('Queued 1')
+        ->assertSuccessful();
+
+    Queue::assertPushed(FetchGameSummary::class, fn (FetchGameSummary $job) => $job->gameId === $stalled->id);
 });
 
 it('reports every failed dispatch to the exception handler', function () {
@@ -166,19 +205,19 @@ it('reports every failed dispatch to the exception handler', function () {
 
     stallQueueFor([$stalled->id]);
 
-    $this->artisan('cfb:summaries:live')->assertSuccessful();
+    expect(fn () => $this->artisan('cfb:summaries:live')->run())->toThrow(RuntimeException::class);
 
     expect($reported)->toBe(["Queue store stalled on game {$stalled->id}"]);
 });
 
-it('fails the run when live games were due and not one dispatch landed', function () {
+it('fails the run when every dispatch failed', function () {
     $games = collect(range(1, 2))
         ->map(fn () => ($this->makeGame)(['completed' => false, 'status' => 'in']));
 
     stallQueueFor($games->pluck('id')->all());
 
     expect(fn () => $this->artisan('cfb:summaries:live')->run())
-        ->toThrow(RuntimeException::class, 'No live summary refresh could be queued (2 failed)');
+        ->toThrow(RuntimeException::class, '2 of 2 live summary dispatches failed (0 queued)');
 
     Queue::assertNothingPushed();
 
@@ -189,7 +228,7 @@ it('fails the run when live games were due and not one dispatch landed', functio
         ->and($run->error)->toContain("game {$games[1]->id}");
 });
 
-it('records a clean run with no error text', function () {
+it('records a clean run as complete', function () {
     Queue::fake();
 
     ($this->makeGame)(['completed' => false, 'status' => 'in']);
