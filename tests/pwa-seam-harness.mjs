@@ -105,9 +105,17 @@ globalThis.fetch = (url, options) => {
     return Promise.resolve({ ok: true });
 };
 
+/* Counted, because the prompt is single-use: spending it on a device that
+ * has no service worker is a cost even when nothing hangs. */
+let permissionAsked = 0;
+
 globalThis.Notification = {
     permission: 'default',
-    requestPermission: () => Promise.resolve('granted'),
+    requestPermission: () => {
+        permissionAsked++;
+
+        return Promise.resolve('granted');
+    },
 };
 
 globalThis.PushManager = { supportedContentEncodings: ['aes128gcm'] };
@@ -123,9 +131,33 @@ const pushManager = {
 };
 
 const serviceWorker = {
-    register: () => Promise.resolve({}),
+    register: () => Promise.resolve({ active: {}, pushManager }),
     ready: Promise.resolve({ pushManager }),
 };
+
+/* What `ready` does in a browser whose registration failed: nothing, ever.
+ * It does not reject. Every scenario where registration fails gets this one,
+ * because a stub that resolved would hide the hang being tested for. */
+const never = new Promise(() => {});
+
+/* A worker mid-install, which the scenario then sends to `activated` or
+ * `redundant` — the one fork registration resolving does not settle. */
+function installingWorker() {
+    const handlers = [];
+
+    return {
+        state: 'installing',
+        addEventListener: (name, handler) => {
+            if (name === 'statechange') handlers.push(handler);
+        },
+        become(state) {
+            this.state = state;
+            handlers.forEach((handler) => handler());
+        },
+    };
+}
+
+let installing = null;
 
 switch (scenario) {
     case 'sw-named':
@@ -142,6 +174,24 @@ switch (scenario) {
         break;
 
     case 'sw-ok':
+        break;
+
+    case 'push-registration-rejects':
+    case 'push-registration-rejects-midflight':
+    case 'subscribed-registration-rejects':
+    case 'disable-registration-rejects':
+        serviceWorker.register = () => Promise.reject(new Error('Rejected'));
+        serviceWorker.ready = never;
+        break;
+
+    case 'subscribed-install-redundant':
+    case 'subscribed-install-activates':
+        installing = installingWorker();
+        serviceWorker.register = () => Promise.resolve({ active: null, installing, waiting: null, pushManager });
+        serviceWorker.ready = never;
+        break;
+
+    case 'subscribed-ok':
         break;
 
     case 'push-permission-rejects':
@@ -280,8 +330,50 @@ const rejectionReasons = {
     'rejection-nothing': undefined,
 };
 
-if (scenario.startsWith('push-')) {
-    result = await window.cfbPush.enable('dGVzdA', '/push/subscriptions');
+/*
+ * Every push scenario is RACED against a deadline, because the bug is a
+ * promise that never settles — and an unsettled top-level await in node just
+ * exits, which would read as a crash rather than as the hang it is. 'hung'
+ * is the answer the tests assert against.
+ */
+function settled(promise) {
+    return Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve('hung'), 250))]);
+}
+
+function fireLoad() {
+    for (const handler of listeners.load ?? []) {
+        handler();
+    }
+}
+
+if (scenario === 'push-registration-rejects-midflight') {
+    /* The tap lands while registration is still in flight — the window in
+     * which `supported()` cannot yet know — and THEN it fails. */
+    const pending = window.cfbPush.enable('dGVzdA', '/push/subscriptions');
+
+    fireLoad();
+
+    result = await settled(pending);
+} else if (scenario.startsWith('push-')) {
+    fireLoad();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    result = await settled(window.cfbPush.enable('dGVzdA', '/push/subscriptions'));
+} else if (scenario.startsWith('subscribed-')) {
+    /* The Account switch's init(), which runs before `load` has fired. */
+    const pending = window.cfbPush.subscribed();
+
+    fireLoad();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    if (scenario === 'subscribed-install-redundant') installing.become('redundant');
+    if (scenario === 'subscribed-install-activates') installing.become('activated');
+
+    result = await settled(pending);
+} else if (scenario === 'disable-registration-rejects') {
+    fireLoad();
+
+    result = await settled(window.cfbPush.disable('/push/subscriptions').then(() => 'done'));
 } else if (scenario in assetEvents) {
     for (const handler of listeners.error ?? []) {
         handler(assetEvents[scenario]);
@@ -395,4 +487,12 @@ for (let tick = 0; tick < 2; tick++) {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-console.log(JSON.stringify({ posts, result, knocks, rethrown, sw }));
+console.log(JSON.stringify({
+    posts,
+    result,
+    knocks,
+    rethrown,
+    sw,
+    supported: window.cfbPush?.supported() ?? null,
+    permissionAsked,
+}));

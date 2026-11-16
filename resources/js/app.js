@@ -48,6 +48,75 @@ window.addEventListener('appinstalled', () => {
 });
 
 /*
+ * The service worker, registered on load and HELD.
+ *
+ * Registration rejects for reasons that are not code defects — Safari private
+ * browsing, a content blocker, a 404 or a parse error on /sw.js — so this is
+ * not an exception. It is still worth knowing: no service worker means no push
+ * subscription and no offline shell on that device.
+ *
+ * Left bare it was the one promise in this file with no rejection handler, and
+ * it reported itself through the unhandledrejection listener as the useless
+ * single word "Rejected" — burning two of the five reports a page is allowed
+ * before a real bug can get a word in. Swallowing it would have traded a
+ * useless signal for no signal; it is named instead.
+ *
+ * KEPT, not fired and forgotten, because it is the only promise that can say
+ * no. `navigator.serviceWorker.ready` resolves once a registration is active
+ * and otherwise NEVER SETTLES — it does not reject — so every cfbPush method
+ * that awaited it sat forever on exactly the devices where registration had
+ * failed, the try in enable() could not see it, and push-banner's turnOn()
+ * left `busy` true for the rest of the session (CFB-118). They await this
+ * instead, through pushRegistration() below.
+ */
+const serviceWorkerRegistration = 'serviceWorker' in navigator
+    ? new Promise((resolve, reject) => {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').then(resolve, (error) => {
+                reportFailure('service-worker registration failed', error);
+                /* Said the moment it is known, so a control that renders
+                 * after this never offers push at all — and never spends the
+                 * one permission prompt on a device that cannot use it. */
+                window.cfbPush.unavailable = true;
+                reject(error);
+            });
+        });
+    })
+    : null;
+
+/* Reported above already. The awaiting callers handle their own copy of the
+ * rejection; this one only keeps it from reaching the window listener a
+ * second time as the bare "Rejected". */
+serviceWorkerRegistration?.catch(() => {});
+
+/*
+ * A registration that has an ACTIVE worker, or null when it never will.
+ *
+ * Registration resolving is not the end of it: the worker it installed can
+ * still fail its install and go `redundant`, and then `ready` hangs exactly
+ * the way it does when registration rejects. So an installing worker is
+ * watched to the end, and `redundant` is the answer no — which is a real
+ * answer, not a timeout guessed at.
+ */
+function activated(registration) {
+    if (registration.active) return Promise.resolve(registration);
+
+    const worker = registration.installing ?? registration.waiting;
+
+    if (!worker) return navigator.serviceWorker.ready;
+
+    return new Promise((resolve, reject) => {
+        worker.addEventListener('statechange', () => {
+            if (worker.state === 'activated') {
+                resolve(registration);
+            } else if (worker.state === 'redundant') {
+                reject(null);
+            }
+        });
+    });
+}
+
+/*
  * Web push, the client half. Lives here beside the install prompt for the
  * same reason: two Blade islands (the Account switch, Home's nudge) share
  * one subscribe/unsubscribe machine, and duplicating key-decoding and
@@ -58,18 +127,63 @@ window.addEventListener('appinstalled', () => {
  * only comes back through OS settings.
  */
 window.cfbPush = {
+    /* True once this device has said it has no service worker and will not
+     * get one this page — registration rejected, or the worker it installed
+     * went redundant. Never set on a guess: until then the APIs are the only
+     * evidence there is. */
+    unavailable: false,
+
+    /* Memoized, so the answer is asked for once and every caller hears it. */
+    pending: null,
+
     supported() {
-        return 'Notification' in window && 'PushManager' in window && 'serviceWorker' in navigator;
+        return !this.unavailable
+            && 'Notification' in window && 'PushManager' in window && 'serviceWorker' in navigator;
+    },
+
+    /* The active registration, or null — never a promise that hangs. Null
+     * flips supported() to false, so the controls render the browser's real
+     * answer (no push here) rather than a spinner over a button that cannot
+     * work. */
+    pushRegistration() {
+        this.pending ??= (async () => {
+            let registration;
+
+            try {
+                registration = await serviceWorkerRegistration;
+            } catch {
+                /* Already named, where it was registered. */
+                this.unavailable = true;
+
+                return null;
+            }
+
+            try {
+                return await activated(registration);
+            } catch (error) {
+                reportFailure('service-worker install failed', error);
+                this.unavailable = true;
+
+                return null;
+            }
+        })();
+
+        return this.pending;
     },
 
     permission() {
         return this.supported() ? Notification.permission : null;
     },
 
+    /* False with no registration is the truth rather than a default: a push
+     * subscription lives ON a registration, so a device without one has none.
+     * Callers re-read supported() afterwards to render the no-push state. */
     async subscribed() {
         if (!this.supported()) return false;
 
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await this.pushRegistration();
+
+        if (registration === null) return false;
 
         return (await registration.pushManager.getSubscription()) !== null;
     },
@@ -92,7 +206,9 @@ window.cfbPush = {
 
             if (permission !== 'granted') return permission;
 
-            const registration = await navigator.serviceWorker.ready;
+            const registration = await this.pushRegistration();
+
+            if (registration === null) return 'error';
 
             const subscription = await registration.pushManager.subscribe({
                 userVisibleOnly: true,
@@ -122,7 +238,10 @@ window.cfbPush = {
     async disable(destroyUrl) {
         if (!this.supported()) return;
 
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await this.pushRegistration();
+
+        if (registration === null) return;
+
         const subscription = await registration.pushManager.getSubscription();
 
         if (!subscription) return;
@@ -499,20 +618,6 @@ function rejectionDetail(reason) {
 }
 
 /*
- * Registration rejects for reasons that are not code defects — Safari private
- * browsing, a content blocker, a 404 or a parse error on /sw.js — so this is
- * not an exception. It is still worth knowing: no service worker means no push
- * subscription and no offline shell on that device, and the push banner will
- * go on pitching notifications regardless, because supported() only asks
- * whether the APIs exist.
- *
- * Left bare it was the one promise in this file with no rejection handler, and
- * it reported itself through the listener above as the useless single word
- * "Rejected" — burning two of the five reports a page is allowed before a real
- * bug can get a word in. Swallowing it would have traded a useless signal for
- * no signal; it is named instead.
- */
-/*
  * THE UPLOAD FAILURE NOBODY WAS HOLDING.
  *
  * Livewire's UploadManager calls `$wire.call('_startUpload', ..)` and DISCARDS
@@ -556,11 +661,3 @@ document.addEventListener('livewire:init', () => {
         });
     });
 });
-
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((error) => {
-            reportFailure('service-worker registration failed', error);
-        });
-    });
-}
