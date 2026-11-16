@@ -685,8 +685,8 @@ once it is not.
 - **`VERSION`** — the stamp. `config('cfb.version_file')` names it, so
   `ReleaseTest` can point `Release` at a fixture.
 - **`.github/workflows/release.yml`** — runs on every push to `main`,
-  serialized (`concurrency: release`, so two merges seconds apart cannot race
-  for one number), and asks one question: is `v<VERSION>` already a tag?
+  serialized (`concurrency: release`, so two RUNS never race for one number),
+  and asks one question: is `v<VERSION>` already a tag?
   - No → a pull request chose it. Tag `HEAD` as-is.
   - Yes → bump with the script, commit `Release vX`, tag that commit.
   - Either way, `gh release create --generate-notes` writes the GitHub
@@ -694,6 +694,19 @@ once it is not.
     `LARAVEL_CLOUD_DEPLOY_HOOK` secret exists, POSTs Cloud's deploy hook with
     `commit_hash=` the tagged commit.
   - A re-run on a commit that already carries its tag does nothing.
+- **`.github/scripts/push-release.sh`** — the push and the tag. Concurrency
+  serializes runs, NOT merges: a merge landing between checkout and push
+  moves `main`, and a bare `git push origin HEAD:main` was rejected and died
+  before tagging — 9 of 21 runs on 2026-11-16. The script fetches `main`,
+  rebases the one Release commit onto it and retries (five attempts), then
+  tags the commit that actually landed. Two clean exits tag nothing: a rebase
+  that conflicts on `VERSION` (a later pull request chose a number — the next
+  run tags it), and a bump `main` already carries (an earlier run released
+  it). It writes `released=true|false` to `$GITHUB_OUTPUT`, and the notes and
+  deploy steps run only on `true`, because `gh release create` on a missing
+  tag would mint one at `main`'s tip. Never `--force`: a tag that already
+  exists fails the run rather than moving. `ReleaseTest` drives every branch
+  against a throwaway bare repository.
 - **`.github/scripts/next-version.sh`** — the only place a number is
   computed. Pre-release → last number +1; release → patch +1; anything else
   exits non-zero and prints nothing. `ReleaseTest` drives it through
