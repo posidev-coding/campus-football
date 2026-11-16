@@ -17,6 +17,7 @@ use App\Models\UserDay;
 use App\Models\UxEvent;
 use App\Models\WorkbookItem;
 use App\Support\OpsReport;
+use App\Support\SyncSchedule;
 use App\Support\TelemetrySnapshot;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -810,6 +811,27 @@ describe('a browser error grouped by fault', function () {
 
         // The groups, their rows, and one grouped traffic read.
         expect($queries)->toBe(3);
+    });
+});
+
+describe('the schedule, read once per build', function () {
+    it('hands the ops rows the same read as the schedule section', function () {
+        /*
+         * tasks() is a ledger query per key on the schedule — about thirty —
+         * and both the clickstream ops rows and the schedule section need it.
+         * Reading it twice doubled that on the window's slowest request.
+         */
+        $this->partialMock(SyncSchedule::class, function ($mock) {
+            $mock->shouldReceive('tasks')->once()->passthru();
+        });
+
+        $snapshot = app(TelemetrySnapshot::class)->build();
+
+        // And the ops rows did read it: the drain's row speaks to its
+        // schedule, gated or open, which it only can with the tasks in hand.
+        expect($snapshot['schedule'])->not->toBeEmpty()
+            ->and(collect($snapshot['ops'])->firstWhere('key', 'activity_ingest')['detail'])
+            ->toContain('schedule');
     });
 });
 

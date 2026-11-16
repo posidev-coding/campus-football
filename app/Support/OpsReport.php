@@ -100,11 +100,16 @@ class OpsReport
     private ?array $tasks = null;
 
     /**
+     * Pass `SyncSchedule::tasks()` in when the caller has already read it —
+     * the snapshot does, for its own schedule section, and a second read is a
+     * second ledger walk.
+     *
+     * @param  list<array<string, mixed>>|null  $tasks
      * @return list<array{key: string, label: string, status: string, detail: string, remedy: string|null}>
      */
-    public function checks(): array
+    public function checks(?array $tasks = null): array
     {
-        $this->tasks = null;
+        $this->tasks = $tasks;
 
         return [
             $this->ingest(),
