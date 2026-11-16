@@ -227,7 +227,7 @@ describe('every season-bearing job names its year relatively', function () {
     it('passes a token on every command that takes a year', function () {
         // The steps below all resolve a season. Anything year-bearing that
         // reaches the queue without a token is falling back to config.
-        $needsYear = ['--only=teams', '--only=conferences', '--only=standings',
+        $needsYear = ['--only=teams', '--only=conferences', '--only=standings', '--only=positions',
             '--only=leaders', '--only=injuries', '--tier=season', '--only=rosters'];
 
         $commands = collect(app(Schedule::class)->events())

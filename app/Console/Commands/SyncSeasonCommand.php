@@ -18,6 +18,7 @@ use App\Services\Espn\Sync\SyncRecruiting;
 use App\Services\Espn\Sync\SyncSeason;
 use App\Services\Espn\Sync\SyncStandings;
 use App\Services\Espn\Sync\SyncTeams;
+use App\Support\TeamGlance;
 use Illuminate\Console\Command;
 
 class SyncSeasonCommand extends Command
@@ -26,7 +27,7 @@ class SyncSeasonCommand extends Command
 
     protected $signature = 'cfb:sync
         {--year= : Season year, or current|results|next resolved at run time (defaults to CFB_SEASON)}
-        {--only= : One step: seasons|conferences|teams|games|rankings|rankings-current|predictors|recruiting|injuries|standings|compute|reconcile|leaders|athletes|news}
+        {--only= : One step: seasons|conferences|teams|games|rankings|rankings-current|predictors|recruiting|injuries|standings|compute|reconcile|positions|leaders|athletes|news}
         {--days=10 : With --only=predictors, how far ahead to model}';
 
     protected $description = 'Sync a season of reference data from ESPN';
@@ -37,13 +38,17 @@ class SyncSeasonCommand extends Command
      * before games, and games must exist before predictors (which only fetch
      * for upcoming fixtures) and standings.
      *
+     * `positions` follows `reconcile` because it reads what the three
+     * standings steps just wrote: it re-puts the conference-position map Home,
+     * the team page and search read, so nobody rebuilds it on a request.
+     *
      * `leaders` runs before `athletes` because the athlete resolve pass reads
      * the leaderboard to find out who is missing.
      */
     private const STEPS = [
         'seasons', 'conferences', 'teams', 'games',
         'rankings', 'predictors', 'recruiting', 'injuries',
-        'standings', 'compute', 'reconcile',
+        'standings', 'compute', 'reconcile', 'positions',
         'leaders', 'athletes', 'news',
     ];
 
@@ -123,6 +128,13 @@ class SyncSeasonCommand extends Command
             'standings' => app(SyncStandings::class)->handle($year),
             'compute' => app(ComputeStandings::class)->handle($year),
             'reconcile' => app(ReconcileStandings::class)->handle($year),
+            /*
+             * Zero ESPN requests: one query over the standings already
+             * written. The warm outlives the day, so a HAND-RUN standings,
+             * compute or reconcile step should be followed by this one, or the
+             * screens keep the morning's positions until the next night.
+             */
+            'positions' => count(TeamGlance::warmStandingPositions($year)),
             'leaders' => app(SyncNationalLeaders::class)->season($year),
             'athletes' => app(SyncNationalLeaders::class)->resolveAthletes(),
             // News is a rolling few-day window with no season parameter, so it
@@ -134,6 +146,7 @@ class SyncSeasonCommand extends Command
         $label = match ($step) {
             'reconcile' => $count > 0 ? "{$count} diverged" : 'no divergence',
             'athletes' => "{$count} resolved",
+            'positions' => "{$count} positioned",
             default => "{$count} records",
         };
 

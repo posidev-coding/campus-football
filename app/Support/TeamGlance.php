@@ -32,6 +32,14 @@ class TeamGlance
 {
     private const CACHE_SECONDS = 900;
 
+    /**
+     * How long a writer-side warm lasts: a day and a margin, so one nightly
+     * warm reaches the next and a missed night falls back to the cold read.
+     * A spelled-out constant, never `now()->addDay()->diffInSeconds()` —
+     * negative in Carbon 3.
+     */
+    private const WARM_SECONDS = 26 * 60 * 60;
+
     /** @var array<string, array<int|string, mixed>> */
     private static array $memo = [];
 
@@ -135,48 +143,93 @@ class TeamGlance
         $year ??= self::year();
 
         /*
-         * Key versioned: the shape is the same but the values are not, and a
-         * live entry would keep serving "130th in SEC" past the deploy.
-         *
-         * Cache::remember rather than Remember::filled, deliberately. An empty
-         * map here is the ANSWER — a league where nothing has kicked off has
-         * no standings, and it stays that way for months — not a backfill that
-         * has yet to land, which is the only thing filled() exists for.
+         * Remember::orSource rather than Remember::filled, deliberately. An
+         * empty map here is the ANSWER — a league where nothing has kicked off
+         * has no standings, and it stays that way for months — not a backfill
+         * that has yet to land, which is the only thing filled() exists for.
+         * orSource caches `[]` like Cache::remember did; it only reads the
+         * source instead of 500ing when the store stalls.
          */
-        return self::$memo["positions:{$year}"] ??= Cache::remember(
-            "glance:positions:v3:{$year}",
+        return self::$memo["positions:{$year}"] ??= Remember::orSource(
+            self::positionsKey($year),
             self::CACHE_SECONDS,
-            function () use ($year) {
-                $positions = [];
-
-                Standing::fromEspn()
-                    ->where('season_year', $year)
-                    ->inOwnConference($year)
-                    ->inStandingsOrder()
-                    ->get(['team_id', 'conference_id', 'overall_wins', 'overall_losses', 'overall_ties'])
-                    ->groupBy('conference_id')
-                    ->each(function ($rows) use (&$positions) {
-                        /*
-                         * A conference nobody has played in yet is 0-0 all the
-                         * way down, so the order is whatever fell out of the
-                         * tiebreaks — insertion order, in practice. That is a
-                         * number, not a standing, and "1st in the SEC" in
-                         * August is a worse lie than saying nothing. Judged
-                         * per conference, because divisions do not all open on
-                         * the same weekend.
-                         */
-                        if ($rows->every(fn (Standing $standing) => $standing->gamesPlayed() === 0)) {
-                            return;
-                        }
-
-                        foreach ($rows->values() as $index => $standing) {
-                            $positions[$standing->team_id] = $index + 1;
-                        }
-                    });
-
-                return $positions;
-            },
+            fn (): array => self::computeStandingPositions($year),
         );
+    }
+
+    /**
+     * Recompute the standings-position map and re-put it, from the writer side.
+     *
+     * The read above is a 900-second remember that nothing refreshed,
+     * so every fifteen minutes the first person to open Home or a team page
+     * paid for the whole league's standings on the request path — 2424ms on
+     * Home, measured. Standings only move when `cfb:sync` writes them, once a
+     * night, so the scheduled `positions` step calls this straight after
+     * reconcile and the map is simply there all day.
+     *
+     * `WARM_SECONDS`, not `CACHE_SECONDS`: a warm that expires at 05:00 warms
+     * nothing. It outlives the gap to the next nightly warm, and if a night is
+     * missed the entry ages out and the read falls back to rebuilding it cold
+     * — slower, never wrong.
+     *
+     * An empty map is written as faithfully as a full one. Before kickoff it IS
+     * the answer, and putting it is what keeps the preseason off the request
+     * path too.
+     *
+     * @return array<int, int>
+     */
+    public static function warmStandingPositions(int $year): array
+    {
+        $positions = self::computeStandingPositions($year);
+
+        Cache::put(self::positionsKey($year), $positions, self::WARM_SECONDS);
+
+        return self::$memo["positions:{$year}"] = $positions;
+    }
+
+    /**
+     * Key versioned: the shape is the same but the values are not, and a live
+     * entry would keep serving "130th in SEC" past the deploy.
+     */
+    private static function positionsKey(int $year): string
+    {
+        return "glance:positions:v3:{$year}";
+    }
+
+    /**
+     * One query over the season's standings, walked conference by conference.
+     *
+     * @return array<int, int>
+     */
+    private static function computeStandingPositions(int $year): array
+    {
+        $positions = [];
+
+        Standing::fromEspn()
+            ->where('season_year', $year)
+            ->inOwnConference($year)
+            ->inStandingsOrder()
+            ->get(['team_id', 'conference_id', 'overall_wins', 'overall_losses', 'overall_ties'])
+            ->groupBy('conference_id')
+            ->each(function ($rows) use (&$positions) {
+                /*
+                 * A conference nobody has played in yet is 0-0 all the way
+                 * down, so the order is whatever fell out of the tiebreaks —
+                 * insertion order, in practice. That is a number, not a
+                 * standing, and "1st in the SEC" in August is a worse lie
+                 * than saying nothing. Judged per conference, because
+                 * divisions do not all open on the same weekend.
+                 */
+                if ($rows->every(fn (Standing $standing) => $standing->gamesPlayed() === 0)) {
+                    return;
+                }
+
+                foreach ($rows->values() as $index => $standing) {
+                    $positions[$standing->team_id] = $index + 1;
+                }
+            });
+
+        return $positions;
     }
 
     /**
