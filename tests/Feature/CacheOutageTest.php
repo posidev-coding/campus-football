@@ -117,6 +117,60 @@ describe('Remember::filledOrSource', function () {
     });
 });
 
+describe('Remember::filled, while the cache store is down (CFB-112)', function () {
+    it('reads the source instead of letting the RedisException escape, and says so', function () {
+        Log::spy();
+        breakCacheStore();
+
+        expect(Remember::filled('probe:filled', 60, fn (): array => [2026, 2025]))->toBe([2026, 2025]);
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context) => str_contains($message, 'Cache store unavailable on read')
+                && $context['store'] === 'redis'
+                && $context['key'] === 'probe:filled')
+            ->once();
+    });
+
+    it('returns the computed value when only the fill throws', function () {
+        // A store that answers the read but stalls on the write: the value is
+        // already in hand, so the write failing must not cost the page.
+        Log::spy();
+        Cache::shouldReceive('get')->with('probe:filled')->once()->andReturnNull();
+        Cache::shouldReceive('put')->once()->andThrow(new RedisException('write stalled'));
+
+        expect(Remember::filled('probe:filled', 60, fn (): array => [2026]))->toBe([2026]);
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context) => str_contains($message, 'Cache store unavailable on write')
+                && $context['key'] === 'probe:filled')
+            ->once();
+    });
+
+    it('never masks the source failing, and never stores an empty answer', function () {
+        breakCacheStore();
+
+        expect(fn () => Remember::filled('probe:filled', 60, fn () => throw new RuntimeException('database is down')))
+            ->toThrow(RuntimeException::class, 'database is down');
+
+        // Healthy store again: the guard must not have loosened the rule
+        // filled() exists for. An empty LIST, since a null is uncacheable by
+        // construction and would pass either way.
+        config(['cache.default' => 'array']);
+        $computed = 0;
+        $compute = function () use (&$computed): array {
+            $computed++;
+
+            return [];
+        };
+
+        Remember::filled('probe:filled', 60, $compute);
+        Remember::filled('probe:filled', 60, $compute);
+
+        expect($computed)->toBe(2)
+            ->and(Cache::has('probe:filled'))->toBeFalse();
+    });
+});
+
 describe('Remember::orSource', function () {
     it('never masks the source failing — only the store', function () {
         breakCacheStore();
