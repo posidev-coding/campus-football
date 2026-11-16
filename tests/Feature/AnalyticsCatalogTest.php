@@ -6,6 +6,7 @@ use App\Enums\ViewportBucket;
 use App\Http\Middleware\RecordPageView;
 use App\Models\ActivityEvent;
 use App\Models\Contest;
+use App\Models\FeedRun;
 use App\Models\Game;
 use App\Models\Group;
 use App\Models\PageViewDaily;
@@ -640,6 +641,93 @@ describe('actives', function () {
             ->and($actives)->not->toHaveKey('since')
             ->and($actives)->not->toHaveKey('stickiness_28d')
             ->and($adoption)->not->toHaveKey('wau');
+    });
+});
+
+describe('actives today', function () {
+    /** A completed hourly `--today` pass, started at the given instant. */
+    function todayPass(string $at): void
+    {
+        test()->travelTo($at);
+        FeedRun::begin(ActivityRollup::TODAY_LEDGER, null)->complete(1, 0, 5);
+    }
+
+    it('reads null, not 0, when today has not been rolled — and names the last day that was', function () {
+        /*
+         * 06:11 ET, inside the 03:00-08:00 gap the hourly pass is gated off
+         * for, and the last pass ran on the 4th: today has no rows because
+         * nothing has looked, not because nobody came. A 0 here — or
+         * yesterday's number — is a default written over missing data.
+         */
+        todayPass('2026-09-05 02:00:00'); // Fri Sep 4, 22:00 ET
+
+        foreach (User::factory()->count(3)->create() as $user) {
+            UserDay::factory()->create(['user_id' => $user->id, 'day' => '2026-09-04']);
+        }
+
+        $this->travelTo('2026-09-05 10:11:00'); // Sat Sep 5, 06:11 ET
+
+        $actives = catalog()->actives();
+
+        expect($actives['dau'])->toBeNull()
+            ->and($actives['dau_day'])->toBe('2026-09-05')
+            ->and($actives['dau_as_of'])->toBe('2026-09-04T22:00:00-04:00');
+    });
+
+    it('ignores a pass that failed or is still running', function () {
+        todayPass('2026-09-05 02:00:00');
+
+        $this->travelTo('2026-09-05 13:00:00');
+        FeedRun::begin(ActivityRollup::TODAY_LEDGER, null)->fail('lost the connection', 0, 5);
+        FeedRun::begin(ActivityRollup::TODAY_LEDGER, null);
+
+        $actives = catalog()->actives();
+
+        expect($actives['dau'])->toBeNull()
+            ->and($actives['dau_as_of'])->toBe('2026-09-04T22:00:00-04:00');
+    });
+
+    it('counts today once the hourly pass has rolled it, and says as of when', function () {
+        todayPass('2026-09-05 06:00:00'); // Sat 02:00 ET
+
+        foreach (User::factory()->count(2)->create() as $user) {
+            UserDay::factory()->create(['user_id' => $user->id, 'day' => '2026-09-05']);
+        }
+        UserDay::factory()->create(['user_id' => User::factory(), 'day' => '2026-09-04']);
+
+        $this->travelTo('2026-09-05 10:11:00'); // 06:11 ET, still the gap
+
+        $actives = catalog()->actives();
+
+        expect($actives['dau'])->toBe(2)
+            ->and($actives['dau_day'])->toBe('2026-09-05')
+            ->and($actives['dau_as_of'])->toBe('2026-09-05T02:00:00-04:00');
+    });
+
+    it('reads a rolled day with nobody in it as a real 0', function () {
+        // The ledger, not `user_days`, is what tells "rolled and empty" from
+        // "not rolled": an empty day writes no row either way.
+        todayPass('2026-09-05 13:00:00');
+
+        expect(catalog()->actives()['dau'])->toBe(0);
+    });
+
+    it('carries a bound beside every number in the section', function () {
+        /*
+         * `dau` was the one count here with nothing saying what it covered.
+         * Pin the whole key set, so the next number added has to arrive with
+         * its window or fail here.
+         */
+        $bounds = [
+            'dau' => ['dau_day', 'dau_as_of'],
+            'league_week_actives' => ['league_week_since', 'league_week_days'],
+            'rolling_28d_actives' => ['rolling_28d_since'],
+            'stickiness' => ['stickiness_covered_days'],
+        ];
+
+        $keys = array_keys(catalog()->actives());
+
+        expect($keys)->toEqualCanonicalizing(array_merge(array_keys($bounds), ...array_values($bounds)));
     });
 });
 

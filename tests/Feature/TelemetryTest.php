@@ -534,6 +534,23 @@ describe('the attention sections', function () {
     });
 });
 
+describe('daily actives at the terminal', function () {
+    it('prints no data for a today nothing has rolled, never 0', function () {
+        Artisan::call('cfb:telemetry');
+
+        expect(Artisan::output())->toMatch('/today \(2026-09-05\)\s+no data\s+as of never rolled/');
+    });
+
+    it('prints the count beside the instant it was rolled', function () {
+        FeedRun::begin('activity:rollup:today', null)->complete(1, 0, 5); // 14:00 ET
+        UserDay::factory()->create(['user_id' => User::factory(), 'day' => '2026-09-05']);
+
+        Artisan::call('cfb:telemetry');
+
+        expect(Artisan::output())->toMatch('/today \(2026-09-05\)\s+1\s+as of 2026-09-05T14:00:00-04:00/');
+    });
+});
+
 describe('a browser error against the traffic that produced it', function () {
     it('resolves the path to a route name, so a count can become a rate', function () {
         // The router is asked rather than a regex, and the NAME is what is

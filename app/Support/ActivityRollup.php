@@ -85,6 +85,13 @@ class ActivityRollup
         ['group_invites', 'inviter_id', 'created_at', ActivityFeature::Invited],
     ];
 
+    /**
+     * The ledger key the hourly `--today` pass records under, apart from the
+     * daily pass's `activity:rollup` — and what `audience.actives.dau` reads
+     * to know whether today has been rolled at all.
+     */
+    public const TODAY_LEDGER = 'activity:rollup:today';
+
     /** Rows per upsert statement. */
     private const CHUNK = 500;
 

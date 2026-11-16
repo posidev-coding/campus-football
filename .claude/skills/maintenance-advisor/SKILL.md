@@ -198,6 +198,9 @@ proposes deleting a screen people use.
   `league_week_actives`/`league_week_since` (Tuesday to today, so two days
   wide on a Wednesday) and `rolling_28d_actives`/`rolling_28d_since`, and
   `audience.adoption.rolling_actives` is a rolling count over `window_days`.
+  `dau` is today SO FAR as of `dau_as_of`, and it is null until the hourly
+  rollup has reached `dau_day` — including every pass taken in the 03:00-08:00
+  ET gap before one has run. A null `dau` is not a finding.
   Never compare two numbers without comparing their windows first. A window whose `since` falls inside it is not
   that window's number. Do not file "traffic fell" or "nobody opens this
   screen" until `since` predates the window. A 28-day route count off a
