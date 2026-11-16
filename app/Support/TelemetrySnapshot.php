@@ -169,6 +169,9 @@ class TelemetrySnapshot
                 'cadence' => $task['cadence'],
                 'gated' => $task['gated'],
                 'overdue' => $task['overdue'],
+                // The ledger key is the command's, and several entries run
+                // some commands; their stamps are each entry's own pass.
+                'shared' => $task['shared'],
                 'last_status' => $task['run']?->status,
                 'last_run_at' => $task['run']?->started_at?->toIso8601String(),
             ])

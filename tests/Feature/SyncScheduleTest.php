@@ -1,9 +1,13 @@
 <?php
 
+use App\Actions\RecordActivity;
+use App\Models\FeedRun;
 use App\Models\Game;
 use App\Models\Season;
 use App\Models\Week;
 use App\Services\CfbCalendar;
+use App\Services\Espn\Sync\SyncRecruiting;
+use App\Support\ActivityRollup;
 use App\Support\Cadence;
 use App\Support\SyncSchedule;
 use Carbon\CarbonImmutable;
@@ -566,9 +570,10 @@ describe('the clickstream drain and rollup', function () {
          * A null key renders a permanently grey "untracked" row, which is the
          * one state this panel exists to distinguish from "ran and found
          * nothing" — and for the drain that distinction is the difference
-         * between a dead pipeline and a quiet week. The `--today` entry has
-         * to resolve to the SAME key as the daily one: it is the same command
-         * writing the same ledger.
+         * between a dead pipeline and a quiet week. The `--today` entry
+         * resolves to its OWN key, which the command writes (CFB-124): under
+         * the daily pass's key the hourly row wore the 04:56 stamp all day,
+         * and an hourly pass that had stopped was invisible.
          */
         $tracked = collect(app(SyncSchedule::class)->tasks())
             ->filter(fn (array $task) => str_starts_with($task['name'], 'cfb:activity-'))
@@ -580,7 +585,7 @@ describe('the clickstream drain and rollup', function () {
         expect($tracked)->toBe([
             'cfb:activity-drain => activity:drain',
             'cfb:activity-drain => activity:drain',
-            'cfb:activity-rollup --today => activity:rollup',
+            'cfb:activity-rollup --today => activity:rollup:today',
             'cfb:activity-rollup => activity:rollup',
         ]);
     });
@@ -647,5 +652,181 @@ describe('the followed-team news sweep reports like a command, not a closure', f
 
         expect($keys->get('cfb:newsletter'))->toBe('newsletter')
             ->and($keys->get('cfb:news:followed'))->toBe('news:followed');
+    });
+});
+
+describe('entries that share a command each report their own run', function () {
+    /*
+     * A ledger key belongs to a COMMAND, and the schedule runs some commands
+     * from several entries. Reading `latestFor()` per entry handed every one
+     * of them the same row: the Thursday predictors pass reported complete at
+     * Saturday 08:00, and a Thursday pass that had stopped could never look
+     * overdue (CFB-124). A row with no run of its own reads as none — never as
+     * a sibling's stamp, and never as a default.
+     */
+    $tz = fn (): string => config('cfb.timezone');
+
+    $ran = function (string $command, string $at, ?int $year = null) use ($tz): FeedRun {
+        test()->travelTo(CarbonImmutable::parse($at, $tz()));
+
+        $run = FeedRun::begin($command, $year);
+        $run->complete(1, 1, 1000);
+
+        return $run;
+    };
+
+    $rows = fn (string $name) => collect(app(SyncSchedule::class)->tasks())
+        ->filter(fn (array $task) => $task['name'] === $name)
+        ->values();
+
+    it('gives each predictors pass its own run, not the Saturday one', function () use ($ran, $rows, $tz) {
+        $wednesday = $ran('sync:predictors', '2026-11-11 06:00:04');
+        $thursday = $ran('sync:predictors', '2026-11-12 06:00:06');
+        $saturday = $ran('sync:predictors', '2026-11-14 08:00:09');
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-16 12:00', $tz()));
+
+        $owned = $rows('cfb:sync --only=predictors')
+            ->mapWithKeys(fn (array $task) => [$task['cadence'] => $task['run']?->id]);
+
+        expect($owned->all())->toBe([
+            'Wed 06:00' => $wednesday->id,
+            'Thu 06:00' => $thursday->id,
+            'Sat 08:00' => $saturday->id,
+        ]);
+
+        expect($rows('cfb:sync --only=predictors')->pluck('shared')->unique()->all())->toBe([true])
+            ->and($rows('cfb:sync --only=predictors')->pluck('overdue')->unique()->all())->toBe([false]);
+    });
+
+    it('reads a pass with no run of its own as none, and overdue, never as a sibling', function () use ($ran, $rows, $tz) {
+        // Only Saturday ran. Before CFB-124 all three rows claimed it, so the
+        // Thursday pass read complete at a Saturday timestamp.
+        $saturday = $ran('sync:predictors', '2026-11-14 08:00:09');
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-16 12:00', $tz()));
+
+        $tasks = $rows('cfb:sync --only=predictors')->keyBy('cadence');
+
+        expect($tasks['Sat 08:00']['run']?->id)->toBe($saturday->id)
+            ->and($tasks['Sat 08:00']['overdue'])->toBeFalse()
+            ->and($tasks['Thu 06:00']['run'])->toBeNull()
+            ->and($tasks['Wed 06:00']['run'])->toBeNull()
+            ->and($tasks['Thu 06:00']['overdue'])->toBeTrue()
+            ->and($tasks['Wed 06:00']['overdue'])->toBeTrue();
+
+        // No two rows claim one run as their own.
+        $claimed = $rows('cfb:sync --only=predictors')->pluck('run')->filter()->map->id;
+
+        expect($claimed->count())->toBe($claimed->unique()->count());
+    });
+
+    it('gives a run due for both cadences to the ungated one', function () use ($ran, $rows, $tz) {
+        // 12:00 is due for the hourly in-season news sync AND the six-hourly
+        // off-season one. In June only the six-hourly is on...
+        $june = $ran('sync:news', '2026-06-16 12:00:03');
+
+        $this->travelTo(CarbonImmutable::parse('2026-06-16 12:20', $tz()));
+
+        $tasks = $rows('cfb:sync --only=news')->keyBy('cadence');
+
+        expect($tasks['every 6 hours']['gated'])->toBeFalse()
+            ->and($tasks['every 6 hours']['run']?->id)->toBe($june->id)
+            ->and($tasks['hourly']['gated'])->toBeTrue()
+            ->and($tasks['hourly']['run'])->toBeNull();
+
+        // ...and in November the same tie goes the other way.
+        $noon = $ran('sync:news', '2026-11-16 12:00:03');
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-16 12:20', $tz()));
+
+        $tasks = $rows('cfb:sync --only=news')->keyBy('cadence');
+
+        expect($tasks['hourly']['run']?->id)->toBe($noon->id)
+            ->and($tasks['every 6 hours']['run'])->toBeNull();
+    });
+
+    it('never reports a gated row overdue, run or no run', function () use ($rows, $tz) {
+        // No news run at all. The ungated row is overdue — it has no evidence
+        // of running — and the gated one is not judged, in either half.
+        foreach (['2026-11-16 12:20' => 'every 6 hours', '2026-06-16 12:20' => 'hourly'] as $when => $gatedCadence) {
+            $this->travelTo(CarbonImmutable::parse($when, $tz()));
+
+            $tasks = $rows('cfb:sync --only=news')->keyBy('cadence');
+            $ungatedCadence = $gatedCadence === 'hourly' ? 'every 6 hours' : 'hourly';
+
+            expect($tasks[$gatedCadence]['gated'])->toBeTrue("{$gatedCadence} should be gated at {$when}.")
+                ->and($tasks[$gatedCadence]['overdue'])->toBeFalse("A gated row was reported overdue at {$when}.")
+                ->and($tasks[$ungatedCadence]['overdue'])->toBeTrue("The ungated row has no run at {$when}.");
+        }
+
+        // And across the whole schedule, no row is ever both.
+        $both = collect(app(SyncSchedule::class)->tasks())
+            ->filter(fn (array $task) => $task['gated'] && $task['overdue']);
+
+        expect($both->pluck('name')->all())->toBe([]);
+    });
+
+    it('keeps a single-entry command on its latest run, unmarked', function () use ($ran, $rows, $tz) {
+        // `cfb:coaches --current` has one entry; nothing to deal out.
+        $run = $ran('coaches', '2026-11-10 07:00:02');
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-16 12:00', $tz()));
+
+        $task = $rows('cfb:coaches --current')->sole();
+
+        expect($task['run']?->id)->toBe($run->id)
+            ->and($task['shared'])->toBeFalse();
+    });
+});
+
+describe('a run that does different work gets its own ledger key', function () {
+    it('keys the current and next recruiting classes apart, and the command writes both', function () {
+        Season::factory()->create([
+            'year' => 2025, 'type' => Season::REGULAR,
+            'start_date' => '2025-08-23', 'end_date' => '2025-12-13',
+        ]);
+
+        // No ESPN: the step is mocked, the ledger is what is under test.
+        $this->mock(SyncRecruiting::class)->shouldReceive('handle')->twice()->andReturn(0);
+
+        $this->artisan('cfb:sync', ['--only' => 'recruiting', '--year' => 'current'])->assertSuccessful();
+        $this->artisan('cfb:sync', ['--only' => 'recruiting', '--year' => 'next'])->assertSuccessful();
+
+        expect(FeedRun::latestFor('sync:recruiting')?->season_year)->toBe(2025)
+            ->and(FeedRun::latestFor('sync:recruiting:next')?->season_year)->toBe(2026);
+
+        $tasks = collect(app(SyncSchedule::class)->tasks())
+            ->filter(fn (array $task) => str_starts_with($task['name'], 'cfb:sync --only=recruiting'))
+            ->keyBy('name');
+
+        expect($tasks['cfb:sync --only=recruiting --year=current']['tracked'])->toBe('sync:recruiting')
+            ->and($tasks['cfb:sync --only=recruiting --year=next']['tracked'])->toBe('sync:recruiting:next')
+            ->and($tasks['cfb:sync --only=recruiting --year=current']['run']?->season_year)->toBe(2025)
+            ->and($tasks['cfb:sync --only=recruiting --year=next']['run']?->season_year)->toBe(2026)
+            ->and($tasks->pluck('shared')->unique()->all())->toBe([false]);
+    });
+
+    it('writes the hourly rollup under its own key, and a repair under the daily', function () {
+        $this->mock(RecordActivity::class)->shouldReceive('drain')->andReturn(0);
+        $this->mock(ActivityRollup::class)->shouldReceive('day')->andReturn(['page_views' => 0, 'user_days' => 0]);
+
+        $this->artisan('cfb:activity-rollup', ['--today' => true])->assertSuccessful();
+
+        expect(FeedRun::latestFor('activity:rollup:today'))->not->toBeNull()
+            ->and(FeedRun::latestFor('activity:rollup'))->toBeNull();
+
+        $this->artisan('cfb:activity-rollup')->assertSuccessful();
+        $this->artisan('cfb:activity-rollup', ['--day' => '2026-09-01', '--today' => true])->assertSuccessful();
+
+        expect(FeedRun::where('command', 'activity:rollup')->count())->toBe(2)
+            ->and(FeedRun::where('command', 'activity:rollup:today')->count())->toBe(1);
+
+        $tasks = collect(app(SyncSchedule::class)->tasks())
+            ->filter(fn (array $task) => str_starts_with($task['name'], 'cfb:activity-rollup'))
+            ->keyBy('name');
+
+        expect($tasks['cfb:activity-rollup --today']['run']?->command)->toBe('activity:rollup:today')
+            ->and($tasks['cfb:activity-rollup']['run']?->command)->toBe('activity:rollup');
     });
 });
