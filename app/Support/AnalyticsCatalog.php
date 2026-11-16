@@ -1227,14 +1227,16 @@ class AnalyticsCatalog
     {
         $current = Cadence::currentSaturday();
         $rows = [];
+        $asOf = [];
 
         foreach ([$current->subWeek(), $current] as $saturday) {
             $state = $this->live->build($saturday, names: false);
 
             foreach ($state['contests'] as $contest) {
-                $kickoff = $contest['first_kickoff'] === null
-                    ? null
-                    : CarbonImmutable::parse($contest['first_kickoff']);
+                $asOf[] = [
+                    $contest['group_id'],
+                    $contest['first_kickoff'] === null ? null : CarbonImmutable::parse($contest['first_kickoff']),
+                ];
 
                 // The floor is applied HERE rather than wherever the rates
                 // are computed, so the phase that adds them cannot ship one
@@ -1245,11 +1247,18 @@ class AnalyticsCatalog
                 $rows[] = [
                     ...$contest,
                     'saturday' => $saturday->toDateString(),
-                    'members' => $this->membersAt($contest['group_id'], $kickoff),
+                    'members' => null,
                     'late_share' => $readable ? $contest['late_share'] ?? null : null,
                     'reminder_lift' => $readable ? $contest['reminder_lift'] ?? null : null,
                 ];
             }
+        }
+
+        // Every row's room, counted in one statement rather than one COUNT a
+        // row — the per-row version made this the slowest read in the
+        // snapshot that reports it (CFB-135).
+        foreach ($this->membersAt($asOf) as $i => $members) {
+            $rows[$i]['members'] = $members;
         }
 
         return $rows;
@@ -1507,17 +1516,53 @@ class AnalyticsCatalog
      * group right now" would answer a question nobody asked with a number that
      * looks exactly like the real one — the substitution this whole layer
      * refuses, in the denominator of the one rate that can earn `high`.
+     *
+     * @param  array<int, array{0: ?int, 1: ?CarbonImmutable}>  $asOf  each row's group and first kickoff
+     * @return array<int, ?int> the room at kickoff, by the same row index
      */
-    private function membersAt(?int $groupId, ?CarbonImmutable $kickoff): ?int
+    private function membersAt(array $asOf): array
     {
-        if ($groupId === null || $kickoff === null) {
-            return null;
+        $counted = array_filter($asOf, fn (array $pair): bool => $pair[0] !== null && $pair[1] !== null);
+
+        $members = array_fill_keys(array_keys($asOf), null);
+
+        if ($counted === []) {
+            return $members;
         }
 
-        return (int) DB::table('group_members')
-            ->where('group_id', $groupId)
-            ->where('created_at', '<=', $kickoff->utc())
-            ->count();
+        /*
+         * ONE ROW PER (group, kickoff) PAIR, LEFT-JOINED. A plain grouped
+         * count over group_members returns no row at all for a group nobody
+         * had joined by kickoff, which reads exactly like a row with no
+         * kickoff — and the two are 0 and null. Driving the join from the
+         * pairs gives every counted row its own result, 0 included, so the
+         * only nulls left are the rows above that had nothing to count at.
+         * Keyed by the row's index rather than by group: two Saturdays can
+         * ask about one group at two different kickoffs.
+         */
+        $pairs = [];
+        $bindings = [];
+
+        foreach ($counted as $i => [$groupId, $kickoff]) {
+            $pairs[] = 'select ? as i, ? as group_id, ? as kickoff';
+            array_push($bindings, $i, $groupId, $kickoff->utc()->toDateTimeString());
+        }
+
+        $counts = DB::table(DB::raw('('.implode(' union all ', $pairs).') as asked'))
+            ->addBinding($bindings, 'from')
+            ->leftJoin('group_members', function ($join): void {
+                $join->on('group_members.group_id', '=', 'asked.group_id')
+                    ->on('group_members.created_at', '<=', 'asked.kickoff');
+            })
+            ->groupBy('asked.i')
+            ->selectRaw('asked.i, count(group_members.group_id) as members')
+            ->pluck('members', 'i');
+
+        foreach (array_keys($counted) as $i) {
+            $members[$i] = (int) $counts[$i];
+        }
+
+        return $members;
     }
 
     /**

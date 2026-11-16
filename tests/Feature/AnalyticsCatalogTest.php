@@ -1079,6 +1079,77 @@ describe("pick'em health", function () {
             ->and($row['members'])->toBeNull();
     });
 
+    it('counts every row\'s room in one statement, keeping a 0 a 0 and a null a null', function () {
+        /*
+         * membersAt was one COUNT per contest row, which made the snapshot the
+         * second-slowest request in the window it reports (CFB-135). Folded
+         * into one statement, the trap is the grouped count's missing row: a
+         * group nobody had joined by kickoff returns nothing, exactly like a
+         * slate with no kickoff — and those are 0 and null.
+         */
+        $current = Cadence::currentSaturday();
+        $last = $current->subWeek();
+
+        // A slate on each Saturday with a kickoff, all in one group: the same
+        // group asked about at two different kickoffs.
+        $group = Group::factory()->create();
+        $contest = Contest::factory()->create(['group_id' => $group->id]);
+        $slates = [];
+
+        foreach ([$last, $current] as $saturday) {
+            $slates[$saturday->toDateString()] = $slate = Slate::factory()->create([
+                'contest_id' => $contest->id, 'saturday' => $saturday->toDateString(),
+            ]);
+            SlateGame::factory()->create([
+                'slate_id' => $slate->id,
+                'game_id' => Game::factory()->create(['kickoff_at' => $saturday->setTime(16, 0)])->id,
+            ]);
+        }
+
+        $join = fn (Group $group, $at) => $group->memberships()
+            ->create(['user_id' => User::factory()->create()->id, 'role' => 'member'])
+            ->forceFill(['created_at' => $at])->save();
+
+        $join($group, $last->subDay());
+        $join($group, $last->addDays(2)); // in the room for this Saturday only
+
+        // Everybody joined after kickoff: a real 0, never a null.
+        $late = Group::factory()->create();
+        $lateSlate = Slate::factory()->create([
+            'contest_id' => Contest::factory()->create(['group_id' => $late->id])->id,
+            'saturday' => $current->toDateString(),
+        ]);
+        SlateGame::factory()->create([
+            'slate_id' => $lateSlate->id,
+            'game_id' => Game::factory()->create(['kickoff_at' => $current->setTime(16, 0)])->id,
+        ]);
+        $join($late, $current->addDays(1));
+
+        // No games, so no kickoff: null, never today's roster of one.
+        $empty = Group::factory()->create();
+        $emptySlate = Slate::factory()->create([
+            'contest_id' => Contest::factory()->create(['group_id' => $empty->id])->id,
+            'saturday' => $current->toDateString(),
+        ]);
+        $join($empty, $last);
+
+        DB::enableQueryLog();
+        $rows = collect(catalog()->pickemHealth())->keyBy('slate_id');
+        $roomCounts = collect(DB::getQueryLog())
+            ->filter(fn (array $query): bool => str_contains($query['query'], 'group_members') && str_contains($query['query'], 'asked'))
+            ->count();
+        DB::disableQueryLog();
+
+        expect($rows[$slates[$last->toDateString()]->id]['members'])->toBe(1)
+            ->and($rows[$slates[$current->toDateString()]->id]['members'])->toBe(2)
+            ->and($rows[$lateSlate->id]['members'])->toBe(0)
+            ->and($rows[$emptySlate->id]['first_kickoff'])->toBeNull()
+            ->and($rows[$emptySlate->id]['members'])->toBeNull()
+            // Four rows, one count.
+            ->and($rows)->toHaveCount(4)
+            ->and($roomCounts)->toBe(1);
+    });
+
     it('withholds a slate rate below the entries floor', function () {
         /*
          * Four entries is not a low late-pick share, it is one person changing
