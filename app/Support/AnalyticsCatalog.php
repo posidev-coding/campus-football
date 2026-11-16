@@ -452,6 +452,16 @@ class AnalyticsCatalog
      * who are here use this" is a different question from "do the people who
      * signed up in March", and only the first one is actionable this week.
      *
+     * `read_talk` is NULL — users and share both — unless the Talk tab switch
+     * was being counted on the window's FIRST day ({@see talkReadSince()}),
+     * and it carries that day as its own `since`. Before CFB-107 the switch
+     * produced no row at all, so a 0 there meant "not instrumented", and it
+     * was read as "nobody reads the talk". A window that opens before the
+     * switch was counted is the same mistake at a smaller size: a share over
+     * days half of whose readers left no trace, low for a reason nobody can
+     * see — the `funnel_since` rule, applied to one facet. No data is null,
+     * and the advisor skips a null.
+     *
      * @return array<string, mixed>
      */
     public function adoption(?AnalyticsWindow $window = null): array
@@ -461,7 +471,16 @@ class AnalyticsCatalog
 
         $features = [];
 
+        $talkSince = $this->talkReadSince();
+        $talkMeasured = $talkSince !== null && $talkSince <= $window->fromDate();
+
         foreach (ActivityFeature::cases() as $feature) {
+            if ($feature === ActivityFeature::ReadTalk && ! $talkMeasured) {
+                $features[$this->snake($feature->name)] = ['users' => null, 'share' => null, 'since' => $talkSince];
+
+                continue;
+            }
+
             $users = (int) UserDay::query()
                 ->whereBetween('day', [$window->fromDate(), $window->toDate()])
                 ->whereRaw('(features & ?) > 0', [$feature->value])
@@ -472,6 +491,10 @@ class AnalyticsCatalog
                 'users' => $users,
                 'share' => $actives >= self::MIN_PEOPLE ? round($users / $actives, 3) : null,
             ];
+
+            if ($feature === ActivityFeature::ReadTalk) {
+                $features[$this->snake($feature->name)]['since'] = $talkSince;
+            }
         }
 
         /*
@@ -1482,6 +1505,55 @@ class AnalyticsCatalog
         }
 
         return $out;
+    }
+
+    /**
+     * The first league day the Talk tab switch was counted on — `read_talk`'s
+     * own `since` — or null while it has not been.
+     *
+     * The page view of a `?view=talk` LOAD has always carried the facet, but
+     * almost nobody arrives that way: the stop is reached by the tab strip,
+     * which `ActivityKind::TalkRead` covers and nothing did before it. So a
+     * window is only a reading of the bit from this day on.
+     *
+     * FOLDED, NOT MERELY RECORDED. The raw row lands minutes after the switch;
+     * the bit lands when the rollup next folds that day — up to a day later
+     * for an evening switch. Until the first switch's own person carries the
+     * bit on its day, the facet is still not counting, or the gap between the
+     * two would publish as a share near zero.
+     *
+     * Read from the raw table, so it is bounded by
+     * {@see ActivityEvent::KEEP_DAYS}: once the first switch is pruned, the
+     * earliest one HELD stands in for it. That can only be later than the
+     * real start, never earlier, so it can withhold a number but never let a
+     * partial one through. A 7- or 28-day window stays readable; a 90-day or
+     * season window that reaches past the raw table reads null — a skip, not
+     * a false zero.
+     *
+     * `kind` has no index of its own. The scan is bounded by the thirty days
+     * the table holds, and it runs per snapshot, not per request.
+     */
+    private function talkReadSince(): ?string
+    {
+        $first = ActivityEvent::query()
+            ->where('kind', ActivityKind::TalkRead->value)
+            ->orderBy('day')
+            ->orderBy('id')
+            ->first(['user_id', 'day']);
+
+        if ($first === null) {
+            return null;
+        }
+
+        $day = substr((string) $first->getRawOriginal('day'), 0, 10);
+
+        $folded = UserDay::query()
+            ->where('user_id', $first->user_id)
+            ->where('day', $day)
+            ->whereRaw('(features & ?) > 0', [ActivityFeature::ReadTalk->value])
+            ->exists();
+
+        return $folded ? $day : null;
     }
 
     /** `ReadTalk` => `read_talk`, so an enum case names its own payload key. */

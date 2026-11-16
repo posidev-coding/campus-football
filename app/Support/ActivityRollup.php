@@ -258,6 +258,7 @@ class ActivityRollup
 
         return $bits | match ($event->kind) {
             ActivityKind::Searched => ActivityFeature::Searched->value,
+            ActivityKind::TalkRead => ActivityFeature::ReadTalk->value,
             ActivityKind::StatAsked, ActivityKind::HelpAsked => ActivityFeature::Asked->value,
             default => 0,
         };

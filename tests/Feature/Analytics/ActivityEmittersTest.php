@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Redis;
 use Livewire\Livewire;
 
 /*
- * The five moments with no truth table, and the one file each of them is
+ * The six moments with no truth table, and the one file each of them is
  * allowed to be emitted from.
  *
  * The sweep below is `UxFunnelTest`'s, generalized to a second vocabulary,
@@ -125,6 +125,13 @@ describe('one emitter per kind', function () {
         ]);
     });
 
+    it('records a talk read from the clubhouse and nowhere else', function () {
+        // The standalone Talk screen and a `?view=talk` load are page views;
+        // the tab switch is the one way in that leaves no GET behind it.
+        expect(emittersOf(ActivityKind::TalkRead))
+            ->toBe(['resources/views/livewire/group.blade.php']);
+    });
+
     it('records a share from nowhere, because no share reaches the server yet', function () {
         /*
          * Not an omission — a decision the enum already wrote down. Every way
@@ -218,6 +225,85 @@ describe('what the emitters actually count', function () {
         $this->actingAs($user)->deleteJson(route('push.destroy'), ['endpoint' => $payload['endpoint']])->assertNoContent();
 
         expect(recordedFacets())->toBe(['push_on', 'push_off']);
+    });
+
+    it('counts a switch to the Talk tab once per clubhouse load, not per toggle', function () {
+        /*
+         * CFB-107: the tab strip is a property change, so the page-view
+         * sensor never sees it and `read_talk` read 0 on the most-read screen
+         * in the app. A reader flipping between the slate and the thread is
+         * one reader, not one per flip.
+         */
+        [$member, $group] = pickemContest();
+
+        Livewire::actingAs($member)
+            ->test('group', ['group' => $group])
+            ->set('view', 'talk')
+            ->set('view', 'slate')
+            ->set('view', 'talk')
+            ->set('view', 'standings')
+            ->set('view', 'talk')
+            ->assertSet('view', 'talk');
+
+        $entry = (array) collect(Redis::connection('pulse')->xRange(RecordActivity::STREAM, '-', '+'))->first();
+
+        expect(recordedKinds())->toBe(['talk_read'])
+            ->and(recordedFacets())->toBe(['talk'])
+            ->and($entry['user_id'])->toBe((string) $member->id)
+            ->and($entry['subject_type'])->toBe('group')
+            ->and($entry['subject_id'])->toBe((string) $group->id);
+    });
+
+    it('counts no talk read for a clubhouse that never shows the talk', function () {
+        [$member, $group] = pickemContest();
+
+        Livewire::actingAs($member)
+            ->test('group', ['group' => $group])
+            ->set('view', 'standings')
+            ->set('view', 'members')
+            ->set('view', 'slate');
+
+        expect(recordedKinds())->toBe([]);
+    });
+
+    it('records a plain clubhouse load as a page view without the talk facet', function () {
+        [$member, $group] = pickemContest();
+
+        $this->actingAs($member)->get(route('pickem.group', $group))->assertOk();
+
+        expect(recordedKinds())->toBe(['page_view'])
+            ->and(recordedFacets())->not->toContain('talk');
+    });
+
+    it('leaves a load that landed on the talk to its page view', function () {
+        /*
+         * `?view=talk` is a GET, and its page view already carries the facet.
+         * Switching away and back on the same load is still that one reading,
+         * so the switch adds nothing.
+         */
+        [$member, $group] = pickemContest();
+
+        Livewire::withQueryParams(['view' => 'talk'])
+            ->actingAs($member)
+            ->test('group', ['group' => $group])
+            ->assertSet('view', 'talk')
+            ->set('view', 'slate')
+            ->set('view', 'talk');
+
+        expect(recordedKinds())->toBe([]);
+    });
+
+    it('counts no talk read for somebody the thread is not open to', function () {
+        // A lobby room's non-member sees no Talk stop; their `talk` folds to
+        // the slate before anything could count it.
+        $room = Group::factory()->lobby()->create();
+
+        Livewire::actingAs(User::factory()->create())
+            ->test('group', ['group' => $room])
+            ->set('view', 'talk')
+            ->assertSet('view', 'slate');
+
+        expect(recordedKinds())->toBe([]);
     });
 
     it('never records a subject on a page view', function () {
