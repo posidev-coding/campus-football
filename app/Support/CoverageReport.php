@@ -392,9 +392,33 @@ class CoverageReport
                 $latest === null => 'no ranking rows at all',
                 $confirmed !== null && $confirmed > $written => "polls last reconciled {$confirmed}, unchanged since {$written}",
                 default => "latest poll rows written {$written}",
-            },
+            }.($latest === null ? '' : $this->pollWeekHeld()),
             remedy: 'cfb:sync --only=rankings-current --year=current',
         );
+    }
+
+    /**
+     * Whether we hold the newest poll week ESPN can have published.
+     *
+     * The age above is measured from the last reconcile, and a reconcile is
+     * not a new poll: the Sunday run re-reads the week we are inside (for the
+     * CFP posted after Tuesday's run) and counts as evidence even when the
+     * week ESPN just released has nothing in it yet. Naming the poll week
+     * keeps a green row from implying a poll we do not have. Reported, not
+     * graded: ESPN skips some weeks entirely (no regular week 1 poll), so its
+     * absence alone is not a failure.
+     */
+    private function pollWeekHeld(): string
+    {
+        $week = $this->calendar->pollWeek();
+
+        if ($week === null) {
+            return '';
+        }
+
+        return Ranking::where('week_id', $week->id)->exists()
+            ? "; {$week->name} poll held"
+            : "; no {$week->name} poll held yet";
     }
 
     /**

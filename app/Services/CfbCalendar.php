@@ -231,6 +231,25 @@ class CfbCalendar
             : (new Week)->newFromBuilder($attributes);
     }
 
+    /**
+     * The week whose polls are the newest ESPN can have published by $at.
+     *
+     * ESPN files a poll under the week it ranks teams FOR, and publishes it the
+     * Sunday before that week opens. Verified live against 2025: "AP Poll Week
+     * 11" is dated Sunday Nov 2 and went up at 22:11Z, while week 11's range
+     * opens Monday Nov 3 at 08:00Z. So from Sunday evening until the new week
+     * opens, the newest poll belongs to the NEXT week, not to the one we are
+     * inside, and a sync asking week() for it re-reads a poll it already holds.
+     *
+     * Hence the week in progress a day from now: the next week from early
+     * Sunday on, and the current one the rest of the time. Null when that
+     * instant falls outside every week, the same as week().
+     */
+    public function pollWeek(?CarbonImmutable $at = null): ?Week
+    {
+        return $this->uncachedWeek(($at ?? $this->now())->addDay());
+    }
+
     private function uncachedWeek(CarbonImmutable $at): ?Week
     {
         $season = $this->seasonContaining($at);
