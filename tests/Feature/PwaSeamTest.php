@@ -396,6 +396,104 @@ describe('turning push on', function () {
     });
 });
 
+describe('push on a device with no service worker', function () {
+    /*
+     * `navigator.serviceWorker.ready` resolves once a registration is active
+     * and otherwise NEVER SETTLES — it does not reject. Every cfbPush method
+     * awaited it, so on exactly the devices where registration failed (which
+     * production reported again from /login, at 1366px) the Account switch
+     * never initialized and push-banner's turnOn() left `busy` true for the
+     * rest of the session, with nothing thrown and nothing reported (CFB-118).
+     *
+     * The harness races every call against a deadline and answers 'hung'
+     * when it loses. Against the old seam every scenario below answers that.
+     */
+    it('answers enable() instead of hanging when registration rejected', function () {
+        $run = pwaSeam('push-registration-rejects');
+
+        expect($run['result'])->toBe('error')
+            ->and($run['result'])->not->toBe('hung')
+            ->and($run['supported'])->toBeFalse();
+    });
+
+    it('never spends the permission prompt on a device it already knows cannot push', function () {
+        // The prompt is single-use. Once registration has failed, supported()
+        // says so before enable() reaches requestPermission.
+        expect(pwaSeam('push-registration-rejects')['permissionAsked'])->toBe(0);
+    });
+
+    it('answers a tap that landed while registration was still in flight', function () {
+        // The window in which supported() cannot know yet: the prompt is
+        // already spent, and the answer still has to come back.
+        $run = pwaSeam('push-registration-rejects-midflight');
+
+        expect($run['result'])->toBe('error')
+            ->and($run['supported'])->toBeFalse();
+    });
+
+    it('resolves subscribed() false rather than hanging, and stops claiming support', function () {
+        // False is the truth here, not a default: a push subscription lives on
+        // a registration, and there is none. supported() going false is what
+        // the Account switch re-reads to hide itself rather than sit off.
+        $run = pwaSeam('subscribed-registration-rejects');
+
+        expect($run['result'])->toBeFalse()
+            ->and($run['supported'])->toBeFalse();
+    });
+
+    it('lets disable() return instead of hanging', function () {
+        expect(pwaSeam('disable-registration-rejects')['result'])->toBe('done');
+    });
+
+    it('reports the registration failure once, under its own name', function () {
+        // Held for the push methods AND reported, without the held copy
+        // reaching the window listener a second time as the bare "Rejected".
+        $reports = pwaSeamReports('subscribed-registration-rejects');
+
+        expect($reports)->toHaveCount(1)
+            ->and($reports[0]['message'])->toBe('service-worker registration failed: Error: Rejected');
+    });
+
+    it('treats an install that went redundant as no service worker, and names it', function () {
+        // Registration resolving is not the end of it: the worker it installed
+        // can fail its install, and then `ready` hangs exactly the same way.
+        $run = pwaSeam('subscribed-install-redundant');
+
+        expect($run['result'])->toBeFalse()
+            ->and($run['supported'])->toBeFalse();
+
+        expect(pwaSeamReports('subscribed-install-redundant'))->sequence(
+            fn ($report) => $report->message->toBe('service-worker install failed'),
+        );
+    });
+
+    it('waits for an installing worker that activates, and reads the real subscription', function () {
+        // Broken back from the two above: the same installing worker, sent the
+        // other way, has to come back subscribed — or "false" up there is just
+        // what this path always says.
+        $run = pwaSeam('subscribed-install-activates');
+
+        expect($run['result'])->toBeTrue()
+            ->and($run['supported'])->toBeTrue();
+
+        expect(pwaSeamReports('subscribed-install-activates'))->toBe([]);
+    });
+
+    it('reads the real subscription on the healthy path', function () {
+        $run = pwaSeam('subscribed-ok');
+
+        expect($run['result'])->toBeTrue()
+            ->and($run['supported'])->toBeTrue();
+    });
+
+    it('sends an install failure the ingest endpoint actually accepts', function () {
+        $this->postJson(route('client-errors.store'), pwaSeamReports('subscribed-install-redundant')[0])
+            ->assertNoContent();
+
+        expect(ClientError::sole()->message)->toBe('service-worker install failed');
+    });
+});
+
 describe('the upload that fails before a byte moves', function () {
     /*
      * Livewire's UploadManager calls $wire.call('_startUpload', ..) and
