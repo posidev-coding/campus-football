@@ -18,6 +18,7 @@ use App\Services\Espn\Sync\SyncRecruiting;
 use App\Services\Espn\Sync\SyncSeason;
 use App\Services\Espn\Sync\SyncStandings;
 use App\Services\Espn\Sync\SyncTeams;
+use App\Support\TeamGlance;
 use Illuminate\Console\Command;
 
 class SyncSeasonCommand extends Command
@@ -30,6 +31,12 @@ class SyncSeasonCommand extends Command
         {--days=10 : With --only=predictors, how far ahead to model}';
 
     protected $description = 'Sync a season of reference data from ESPN';
+
+    /**
+     * The steps that write the `standings` table, each of which re-warms the
+     * conference-position map once its own write has landed.
+     */
+    private const WRITES_STANDINGS = ['standings', 'compute', 'reconcile'];
 
     /**
      * Order matters and is not negotiable: conferences must exist before teams
@@ -146,6 +153,21 @@ class SyncSeasonCommand extends Command
             // same articles.
             'news' => app(SyncNews::class)->general(),
         });
+
+        /*
+         * Warmed by the writer, after the write, never by the clock. The map
+         * Home, the team page and search read lasts a day once warmed, so
+         * whatever writes standings has to refresh it: a nightly run, or a
+         * hand-run repair from Sync Health that used to show within fifteen
+         * minutes and would otherwise wait for the next night. And it runs
+         * only once this step has RETURNED — trackRun rethrows a failure, so
+         * a half-done write never gets pinned, and a standings sync that runs
+         * long is warmed when it finishes rather than at a fixed minute that
+         * might land mid-write. Zero ESPN requests: one query.
+         */
+        if (in_array($step, self::WRITES_STANDINGS, true)) {
+            TeamGlance::warmStandingPositions($year);
+        }
 
         $label = match ($step) {
             'reconcile' => $count > 0 ? "{$count} diverged" : 'no divergence',
