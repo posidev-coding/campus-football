@@ -3,6 +3,7 @@
 use App\Jobs\FetchGameSummary;
 use App\Models\Athlete;
 use App\Models\AthleteGameStat;
+use App\Models\AthleteSeasonStat;
 use App\Models\Conference;
 use App\Models\Game;
 use App\Models\GameDrive;
@@ -14,11 +15,15 @@ use App\Models\Network;
 use App\Models\Season;
 use App\Models\Team;
 use App\Models\TeamSeason;
+use App\Models\TeamSeasonStat;
 use App\Models\User;
 use App\Models\Venue;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGameSummary;
+use App\Services\Stats\AggregateAthleteStats;
 use App\Support\TeamPalette;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -529,6 +534,91 @@ describe('the preview', function () {
             // Sep 7 (ALA hosting) are both in.
             ->and($shown->pluck('id'))->toContain($meetings[5]->id)
             ->and($shown->pluck('id'))->toContain($meetings[6]->id);
+    });
+});
+
+describe('the preview\'s season context, across requests', function () {
+    beforeEach(function () {
+        $this->vols = Team::factory()->create(['id' => 2633, 'location' => 'Tennessee', 'display_name' => 'Tennessee Volunteers']);
+        TeamSeason::create(['team_id' => 2633, 'season_year' => 2025, 'classification' => 'FBS']);
+
+        $this->upcoming = Game::factory()->create([
+            'season_id' => $this->season->id, 'week_id' => $this->week->id,
+            'home_team_id' => 2633, 'away_team_id' => 333,
+            'completed' => false, 'status' => 'pre',
+            'kickoff_at' => '2025-09-27 19:30:00',
+        ]);
+
+        /** Every read of the two season tables one fresh page view makes. */
+        $this->seasonReads = function (): int {
+            $reads = 0;
+            DB::listen(function ($query) use (&$reads) {
+                if (preg_match('/`(team|athlete)_season_stats`/', $query->sql)) {
+                    $reads++;
+                }
+            });
+
+            Livewire::test('game', ['game' => $this->upcoming->fresh()])->assertOk();
+
+            return $reads;
+        };
+    });
+
+    it('reads the comparison and the leaders once, then serves the next page view from the cache', function () {
+        foreach ([2633, 333] as $teamId) {
+            TeamSeasonStat::create([
+                'team_id' => $teamId, 'season_year' => 2025, 'season_type' => Season::REGULAR,
+                'category' => 'scoring', 'stats' => ['totalPointsPerGame' => ['value' => 38.5, 'display' => '38.5']],
+            ]);
+        }
+        $passer = Athlete::factory()->create(['display_name' => 'Joey Aguilar']);
+        AthleteSeasonStat::create([
+            'athlete_id' => $passer->id, 'team_id' => 2633, 'season_year' => 2025,
+            'season_type' => AggregateAthleteStats::FULL_SEASON,
+            'category' => 'passing', 'stats' => ['passingYards' => 3412, 'passingTouchdowns' => 28],
+        ]);
+
+        expect(($this->seasonReads)())->toBeGreaterThan(0);
+
+        // A NEW component, as the next reader gets — a per-request memo
+        // would read both tables again here.
+        expect(($this->seasonReads)())->toBe(0);
+
+        $component = Livewire::test('game', ['game' => $this->upcoming->fresh()]);
+
+        // The athlete is a model resolved per request, never one out of the cache.
+        expect($component->instance()->seasonLeaders['rows'][0]['home']['athlete'])->toBeInstanceOf(Athlete::class)
+            ->and($component->instance()->comparison['rows'][0]['home']['value'])->toBe(38.5);
+
+        $component->assertSee('Joey Aguilar')->assertSee('Points / Game');
+    });
+
+    it('never stores an empty answer, so a pair whose stats have not landed asks again', function () {
+        // Pregame of week 1: no season numbers yet. Cached as anything, the
+        // preview would stay bare for the TTL after the sync lands.
+        $first = ($this->seasonReads)();
+        $second = ($this->seasonReads)();
+
+        $component = Livewire::test('game', ['game' => $this->upcoming->fresh()]);
+
+        expect($first)->toBeGreaterThan(0)
+            ->and($second)->toBe($first)
+            ->and($component->instance()->comparison)->toBe(['year' => null, 'rows' => []])
+            ->and($component->instance()->seasonLeaders)->toBe(['year' => null, 'rows' => []])
+            ->and(Cache::has('game:comparison:v1:333:2633'))->toBeFalse()
+            ->and(Cache::has('game:season-leaders:v1:333:2633'))->toBeFalse();
+    });
+
+    it('keeps a live game\'s score off the cache, read fresh on every poll', function () {
+        $this->upcoming->update(['status' => 'in', 'home_score' => 7, 'away_score' => 3, 'period' => 2, 'clock' => '4:12']);
+
+        $component = Livewire::test('game', ['game' => $this->upcoming->fresh()]);
+        expect($component->instance()->sides[1]['score'])->toBe(7);
+
+        $this->upcoming->update(['home_score' => 14]);
+        $component->call('poll');
+
+        expect($component->instance()->sides[1]['score'])->toBe(14);
     });
 });
 
