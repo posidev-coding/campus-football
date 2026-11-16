@@ -67,7 +67,7 @@ class SyncRankings
     }
 
     /**
-     * The current week's polls only.
+     * The current week's polls, and the next week's once they are out.
      *
      * What the weekly schedule should call. `season()` re-reads all 18 weeks
      * every run — about 126 requests, twice a week, to learn ONE new week of
@@ -75,28 +75,57 @@ class SyncRankings
      * 3 in November is 125 wasted requests and a pointless write pass against a
      * scale-to-zero database.
      *
-     * Falls back to the latest week that has games, so an off-day run still
-     * refreshes something meaningful rather than nothing.
+     * TWO weeks, because the two Sunday-to-Tuesday releases land on opposite
+     * sides of a week boundary (verified live against 2025):
+     *
+     *   AP, Coaches  posted Sunday afternoon, filed under the NEXT week, which
+     *                opens Monday. A run on Sunday evening that asks only for
+     *                the week it is inside re-reads a poll it already holds,
+     *                and the new one waits until Tuesday.
+     *   CFP          posted Tuesday around 22:00-23:00 ET, filed under the
+     *                CURRENT week. The 19:00 Tuesday run is too early for it,
+     *                so the Sunday re-read of the week we are inside is the
+     *                only scheduled pass that ever collects it.
+     *
+     * So: the week we are inside, plus CfbCalendar::pollWeek() when that is a
+     * different week. Six more requests on a Sunday, none on a Tuesday. A poll
+     * week ESPN has not published yet comes back empty and writes nothing; it
+     * is never stood in for by the week before.
+     *
+     * Falls back to the latest week that has games when neither resolves, so
+     * an off-calendar run still refreshes something meaningful rather than
+     * nothing.
      */
     public function current(?int $year = null): int
     {
         $calendar = app(CfbCalendar::class);
         $year ??= $calendar->currentYear();
 
-        $week = $calendar->week();
+        $weeks = collect([$calendar->week(), $calendar->pollWeek()])
+            ->filter()
+            ->unique('id');
 
-        if ($week === null) {
+        if ($weeks->isEmpty()) {
             $weekId = $calendar->defaultWeekId($year);
-            $week = $weekId ? Week::find($weekId) : null;
+            $weeks = collect([$weekId ? Week::find($weekId) : null])->filter();
         }
 
-        if ($week === null) {
-            return 0;
+        $synced = 0;
+
+        foreach ($weeks as $week) {
+            $season = Season::find($week->season_id);
+
+            // A poll week a day ahead can cross into another season's calendar
+            // (December into the postseason, January into next year). Only the
+            // season that was asked for is synced, under its own type.
+            if ($season === null || (int) $season->year !== $year) {
+                continue;
+            }
+
+            $synced += $this->week($year, $week, (int) $season->type);
         }
 
-        $type = Season::whereKey($week->season_id)->value('type') ?? Season::REGULAR;
-
-        return $this->week($year, $week, $type);
+        return $synced;
     }
 
     /**

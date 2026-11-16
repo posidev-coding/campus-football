@@ -252,6 +252,21 @@ A "release" is a (season type, week) pair, not a week number — the preseason
 poll and the final rankings are both "week 1" of their own season type, so a
 selector keyed on number alone collides them.
 
+**A poll is filed under the week it ranks FOR, which is not the week it is
+posted in.** Measured against 2025 (CFB-131):
+
+    AP Week 11     dated Sun 11-02, lastUpdated 11-02 22:11Z   week 11 opens Mon 11-03 08:00Z
+    CFP Week 11    dated Tue 11-04, lastUpdated 11-05 04:16Z   (Tue 23:16 ET)
+    CFP Week 12    dated Tue 11-11, lastUpdated 11-12 03:14Z   (Tue 22:14 ET)
+
+So at the Sunday 19:00 ET run the newest AP and Coaches polls belong to NEXT
+week, and `CfbCalendar::week()` still answers this one. The run used to re-read
+the poll it already held. `CfbCalendar::pollWeek()` is the week in progress a
+day from now, and `SyncRankings::current()` reads it as well as the current week.
+The current-week read stays because the CFP posts after the Tuesday 19:00 run,
+so the following Sunday is the only scheduled pass that collects it. The Tuesday
+run is now a safety net for a late Sunday poll, not the source of the new one.
+
 ## A game card's rank is ESPN's, then ours, and always AS OF KICKOFF
 
 `games.home_rank`/`away_rank` hold ESPN's `curatedRank` and are what a card
