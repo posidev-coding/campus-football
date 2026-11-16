@@ -555,3 +555,87 @@ it('exits non-zero while anything is blocking, and says not to flip', function (
         ->expectsOutputToContain('do not flip the flag yet')
         ->assertExitCode(1);
 });
+
+/**
+ * Sat Sep 5 played out: sixteen lined games, all kicked, and the five
+ * public rooms' slates for it settled.
+ */
+function preflightPlayedCard(): void
+{
+    [$season, $week] = pickemSeasonWeek();
+
+    foreach (range(1, 16) as $i) {
+        pickemOdd(pickemGame($season, $week, ['kickoff_at' => '2026-09-05 19:30:00']));
+    }
+
+    foreach (ContestMode::cases() as $mode) {
+        $room = Group::factory()->room($week->id)->create();
+        $contest = $room->contests()->create(['season_year' => 2026, 'mode' => $mode]);
+
+        Slate::factory()->create([
+            'contest_id' => $contest->id, 'week_id' => $week->id,
+            'saturday' => '2026-09-05', 'status' => Slate::SETTLED, 'settled_at' => now(),
+        ]);
+    }
+}
+
+it('calls a played Saturday closed rather than warning that it cannot be seated', function (string $at) {
+    /*
+     * CFB-141: Cadence keeps Sunday and Monday on the Saturday just played,
+     * so both shelf rows asked whether a finished card could still be
+     * seated, and warned every Sunday and Monday of the season with a
+     * remedy that could do nothing.
+     */
+    preflightPlayedCard();
+
+    $this->travelTo($at);
+
+    $checks = preflight();
+
+    expect($checks['rooms']['status'])->toBe(PickemPreflight::OK)
+        ->and($checks['rooms']['detail'])->toBe('Sat Sep 5 is played; the shelf turns over Tue Sep 8.')
+        ->and($checks['rooms']['remedy'])->toBeNull()
+        ->and($checks['flavors']['status'])->toBe(PickemPreflight::OK)
+        ->and($checks['flavors']['detail'])->toBe('Sat Sep 5 is played; the shelf turns over Tue Sep 8.')
+        ->and($checks['flavors']['remedy'])->toBeNull();
+})->with([
+    'Sunday' => '2026-09-06 16:00:00',
+    'Monday' => '2026-09-07 16:00:00',
+]);
+
+it('keeps a Saturday open while any of its games is still to kick', function () {
+    /*
+     * Played means EVERY kickoff has passed. Mid-afternoon on the Saturday
+     * itself, with the night games still ahead, the card is not closed.
+     */
+    [$season, $week] = pickemSeasonWeek();
+
+    foreach (range(1, 20) as $i) {
+        $game = pickemGame($season, $week, ['kickoff_at' => $i <= 10 ? '2026-09-05 16:00:00' : '2026-09-05 23:30:00']);
+
+        if ($i <= 4) {
+            pickemOdd($game);
+        }
+    }
+
+    $this->travelTo('2026-09-05 20:00:00');
+
+    $checks = preflight();
+
+    expect($checks['rooms']['status'])->toBe(PickemPreflight::WARN)
+        ->and($checks['rooms']['detail'])->toBe('No mode can be seated for Sat Sep 5 — only 4 lined games.')
+        ->and($checks['flavors']['status'])->toBe(PickemPreflight::WARN);
+});
+
+it('still fails a stockable Saturday that has no rooms open for it', function () {
+    // The closed-card exit must not swallow the red line it sits above.
+    $this->travelTo('2026-09-03 16:00:00');
+
+    preflightSpecialtyCard();
+
+    $rooms = preflight()['rooms'];
+
+    expect($rooms['status'])->toBe(PickemPreflight::FAIL)
+        ->and($rooms['detail'])->toStartWith('No open room with a published slate for:')
+        ->and($rooms['remedy'])->toBe('pickem:open-lobbies');
+});
