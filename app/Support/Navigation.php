@@ -47,7 +47,7 @@ class Navigation
      *     icon: string,
      *     route: string,
      *     routes: list<string>,
-     *     sections: list<array{route:string, label:string, routes?:list<string>}>,
+     *     sections: list<array{route:string, label:string, routes?:list<string>, more?:bool}>,
      *     guest: bool
      * }>
      */
@@ -168,6 +168,14 @@ class Navigation
                  * place you had to guess at. They are now one screen with a
                  * Team/Players sub-toggle, and the freed slot went to Players —
                  * a player index, which the app did not have at all.
+                 *
+                 * `more` puts a section behind the strip's More menu rather
+                 * than on its own chip (CFB-134): over 28 days to 2026-11-16
+                 * Standings drew 14 member views and Rankings 4, while the
+                 * Players, Stats and Recruiting indexes drew 1, 1 and 2 —
+                 * unused at this scale, which is not the same as unwanted. The
+                 * menu is on every League screen at every width, so nothing
+                 * became harder to reach than one more tap.
                  */
                 'sections' => [
                     ['route' => 'standings', 'label' => 'Standings'],
@@ -179,9 +187,9 @@ class Navigation
                     // Same idea, and it fixes a real gap: `player` was in the
                     // area's routes but belonged to no section, so a player
                     // page lit League with the whole strip unlit.
-                    ['route' => 'players', 'label' => 'Players', 'routes' => ['players', 'player']],
-                    ['route' => 'stats', 'label' => 'Stats'],
-                    ['route' => 'recruiting', 'label' => 'Recruiting'],
+                    ['route' => 'players', 'label' => 'Players', 'routes' => ['players', 'player'], 'more' => true],
+                    ['route' => 'stats', 'label' => 'Stats', 'more' => true],
+                    ['route' => 'recruiting', 'label' => 'Recruiting', 'more' => true],
                 ],
                 'guest' => true,
             ],

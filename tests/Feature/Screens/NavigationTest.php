@@ -210,6 +210,102 @@ describe('sections', function () {
             ->toContain('Players');
     });
 
+    it('keeps the doors League readers open on the strip and the rest behind More', function () {
+        /*
+         * CFB-134: over 28 days Standings drew 14 member views and Rankings
+         * 4, the Players, Stats and Recruiting indexes 1, 1 and 2. Those
+         * three moved behind one More menu; Teams kept its chip because it
+         * lights every team page.
+         */
+        $sections = collect(collect(Navigation::areas())->firstWhere('key', 'league')['sections']);
+
+        expect($sections->reject(fn (array $s) => $s['more'] ?? false)->pluck('label')->all())
+            ->toBe(['Standings', 'Rankings', 'Teams'])
+            ->and($sections->filter(fn (array $s) => $s['more'] ?? false)->pluck('label')->values()->all())
+            ->toBe(['Players', 'Stats', 'Recruiting']);
+
+        $strip = str($this->get(route('standings'))->assertOk()->content())
+            ->after('aria-label="Sections"')
+            ->before('</nav>');
+
+        // The pinned chips are links of their own; the menu reads "More"
+        // while none of its screens is the current one.
+        expect((string) $strip)->toContain('aria-label="More sections"')
+            ->and($strip->substrCount('aria-current="page"'))->toBe(1);
+    });
+
+    it('lights the More door with the name of the screen behind it', function (string $route, string $label) {
+        /*
+         * No League screen shows a visible heading, because the strip names
+         * it. A screen behind More would be the one exception unless the
+         * menu's trigger says where the reader is — so it reads that label
+         * and wears the current chip, and exactly one thing in the strip is
+         * lit.
+         */
+        $chip = 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100';
+
+        $parameters = $route === 'player'
+            ? [Athlete::create(['id' => 4243, 'slug' => 'menu-player', 'display_name' => 'Menu Player'])]
+            : [];
+
+        $strip = str($this->get(route($route, $parameters))->assertOk()->content())
+            ->after('aria-label="Sections"')
+            ->before('</nav>');
+
+        expect($strip->substrCount($chip))->toBe(1)
+            ->and((string) $strip)->toContain('aria-label="'.$label.', more sections"')
+            ->and((string) $strip)->not->toContain('aria-label="More sections"')
+            ->and(trim(strip_tags((string) $strip->after($chip)->after('>')->before('</span>'))))->toBe($label);
+    })->with([
+        'players' => ['players', 'Players'],
+        'a player page' => ['player', 'Players'],
+        'stats' => ['stats', 'Stats'],
+        'recruiting' => ['recruiting', 'Recruiting'],
+    ]);
+
+    it('reaches every League screen from every League screen, at any width', function () {
+        /*
+         * Demoting a door must not orphan its screen. The strip renders at
+         * every width (nothing in it is gated on `sm`), and every League
+         * section's index is linked from inside it, chip or menu, on every
+         * screen of the area.
+         */
+        $athlete = Athlete::create(['id' => 4244, 'slug' => 'door-player', 'display_name' => 'Door Player']);
+
+        $sections = collect(collect(Navigation::areas())->firstWhere('key', 'league')['sections']);
+
+        $screens = [
+            route('standings'), route('rankings'), route('teams'), route('players'),
+            route('stats'), route('recruiting'), route('team', $this->team), route('player', $athlete),
+        ];
+
+        foreach ($screens as $url) {
+            $html = $this->get($url)->assertOk()->content();
+            $strip = (string) str($html)->after('aria-label="Sections"')->before('</nav>');
+
+            foreach ($sections as $section) {
+                expect(str_contains($strip, 'href="'.route($section['route']).'"'))
+                    ->toBeTrue("{$url} has no door to {$section['route']}.");
+            }
+
+            /*
+             * Nothing between the strip's opening and its menu body may be
+             * hidden at base width — a door that only appears from `sm` up
+             * is no door on a phone. (The menu body itself is a popover,
+             * closed until the trigger opens it, at every width alike.)
+             */
+            preg_match_all('/class="([^"]*)"/', (string) str($strip)->before('<ui-menu'), $classes);
+
+            $gated = collect($classes[1])
+                ->flatMap(fn (string $list) => preg_split('/\s+/', trim($list)))
+                ->filter(fn (string $token) => in_array($token, ['hidden', 'sr-only', 'invisible'], true)
+                    || preg_match('/^max-[a-z0-9]+:(?:hidden|sr-only|invisible)$/', $token) === 1)
+                ->values();
+
+            expect($gated->all())->toBe([], "{$url} hides part of the strip at base width.");
+        }
+    });
+
     it('renders no strip on Scores, which is the only screen in its area', function () {
         /*
          * A strip with one tab is chrome, not navigation. Bowls and the playoff

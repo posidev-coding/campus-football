@@ -27,6 +27,15 @@
      * can read.
      */
     'variant' => 'default',
+    /**
+     * `chip` is the section strip's More door: the trigger wears the strip's
+     * own chip classes, passed in as `triggerClass` so the strip stays the
+     * one file that owns them (including its lg underline). It is the same
+     * navigating menu as the group switcher, never a second dropdown species.
+     */
+    'triggerClass' => '',
+    /** What the trigger says while no item is selected — "More". Null keeps the first item. */
+    'placeholder' => null,
 ])
 
 @php
@@ -44,7 +53,8 @@
      * on a live one), and `href` (the row NAVIGATES instead of setting the
      * property — the group switcher's rows; the same idiom, going somewhere).
      */
-    $current = collect($items)->firstWhere('value', $selected) ?? collect($items)->first();
+    $current = collect($items)->firstWhere('value', $selected)
+        ?? ($placeholder !== null ? ['label' => $placeholder] : collect($items)->first());
 
     // Consecutive items sharing a group render under one heading; null groups
     // render bare. Sequence preserved — the caller owns the order.
@@ -68,7 +78,8 @@
             @if ($label) aria-label="{{ $label }}" @endif
             @class([
                 'group flex items-center transition-colors',
-                'w-fit gap-1 text-sm font-medium' => $variant !== 'hero',
+                'w-fit gap-1 text-sm font-medium' => ! in_array($variant, ['hero', 'chip'], true),
+                'gap-1 '.$triggerClass => $variant === 'chip',
                 '-mx-1 -my-1.5 px-1 py-2 text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100' => $variant === 'default',
                 '-my-1 h-9 shrink-0 rounded-md px-2.5 ring-1 ring-current/50 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current' => $variant === 'accent',
                 'min-w-0 max-w-full gap-1.5 rounded-md text-start text-xl font-bold leading-tight hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current sm:text-2xl' => $variant === 'hero',
