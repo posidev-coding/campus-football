@@ -524,7 +524,7 @@ audience        { actives:   {dau, league_week_actives, league_week_since, leagu
                   cohorts:   [{week, registered, verified, onboarded, reached_picks, picks_home_seen, entered, installed, activated_7d|null}],   // eight weeks
                   retention: [{cohort, size, weeks: [w0..w7 | null]}],
                   saturday_retention: {since, pairs: [{from, to, active|null, retained|null, share|null}]} }
-routes          { window_days: 28, since, top_audience: [member], top_min_views, top_eligible, top: [{route, views, visitors}], quiet_audience: [guest, member], quiet: [{route, views}] | null }
+routes          { window_days: 28, since, top_audience: [member], top_min_views, top_eligible, top: [{route, views, visitors}], quiet_audience: [member], quiet_signed_out: [route], quiet: [{route, views, audience: member|guest}] | null }
 devices         { window_days: 28, since, by_bucket: {unknown, compact, phone, tablet, desktop}, installed_share|null }
 pickem_health   [ LiveState::build(..., names: false) rows for this Saturday and last, plus late_share|null, reminder_lift|null ]
 ```
