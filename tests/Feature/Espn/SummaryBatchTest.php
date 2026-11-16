@@ -11,6 +11,7 @@ use App\Models\Team;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGameSummary;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
@@ -434,6 +435,73 @@ describe('Summaries ESPN cannot answer', function () {
             ->assertSuccessful();
 
         Http::assertSentCount(3);
+    });
+
+    it('records nothing when the fetch refused on the in-flight lock', function () {
+        /*
+         * `SyncGameSummary::handle()` answers false for a refusal too, and a
+         * refusal asked ESPN nothing. Counting it would back off a game on
+         * the strength of a request somebody else was still making.
+         */
+        Cache::lock("espn:summary:{$this->unanswered->id}", 60)->get();
+
+        (new FetchGameSummary($this->unanswered->id, force: true))->handle(app(SyncGameSummary::class));
+
+        Http::assertNothingSent();
+
+        expect($this->unanswered->fresh())
+            ->summary_attempts->toBe(0)
+            ->summary_attempted_at->toBeNull();
+    });
+
+    it('records nothing for a lock refusal on the in-process path either', function () {
+        Cache::lock("espn:summary:{$this->unanswered->id}", 60)->get();
+
+        $this->artisan('cfb:summaries --now --game='.$this->unanswered->id)->assertSuccessful();
+
+        Http::assertNothingSent();
+
+        expect($this->unanswered->fresh()->summary_attempts)->toBe(0);
+    });
+
+    it('does not count a page-view fetch, even when ESPN answers it empty', function () {
+        /*
+         * A game goes final at 23:30 before ESPN has the box score, and five
+         * readers open it. Their fetches are real requests that come back
+         * empty, but they are nobody's deliberate attempt. Counting them would
+         * spend the quick retries before the 05:00 net ever ran, and the game
+         * would wait a week for its box score.
+         */
+        foreach (range(1, 5) as $reader) {
+            (new FetchGameSummary($this->unanswered->id))->handle(app(SyncGameSummary::class));
+            $this->travel(4)->minutes();
+        }
+
+        Http::assertSentCount(5);
+
+        expect($this->unanswered->fresh()->summary_attempts)->toBe(0)
+            ->and(queuedSummaryIds())->toContain($this->unanswered->id);
+    });
+
+    it('counts a burst of forced misses inside one hour as one occasion', function () {
+        // The just-final fetch, then an operator retrying from Sync Health
+        // twice: three real requests, one occasion.
+        $sync = app(SyncGameSummary::class);
+
+        foreach (range(1, 3) as $retry) {
+            (new FetchGameSummary($this->unanswered->id, force: true))->handle($sync);
+            // Past the client's five-minute cache of a miss, so each is a real request.
+            $this->travel(10)->minutes();
+        }
+
+        Http::assertSentCount(3);
+
+        expect($this->unanswered->fresh()->summary_attempts)->toBe(1);
+
+        // And the next morning's net still asks.
+        $this->travel(Game::SUMMARY_QUICK_RETRY_HOURS)->hours();
+
+        expect(queuedSummaryIds())->toContain($this->unanswered->id);
     });
 
     it('records nothing for a live game, which the sweep polls every two minutes', function () {

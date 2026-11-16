@@ -156,11 +156,18 @@ class SyncSummariesCommand extends Command
 
             try {
                 if ($game !== null) {
+                    $requestsBefore = $espn->callCount();
+
                     if ($sync->handle($game)) {
                         $synced++;
                     } else {
                         $empty++;
-                        $game->recordSummaryMiss();
+
+                        // Only when ESPN was actually asked: a lock refusal
+                        // sent nothing. Same rule as FetchGameSummary.
+                        if ($espn->callCount() > $requestsBefore) {
+                            $game->recordSummaryMiss();
+                        }
                     }
                 }
             } catch (\Throwable $e) {

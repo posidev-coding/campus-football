@@ -295,17 +295,31 @@ class Game extends Model
     }
 
     /**
-     * Record that a fetch for this game's summary came back with nothing.
+     * Record that ESPN was asked for this game's summary and answered nothing.
      *
      * The attempt, never a result: no `GameSummary` row is written, because an
      * empty one would tell every screen a box score exists. A query-builder
      * increment rather than a save, so the stamp neither fires model events
      * nor re-indexes the game in Scout.
      *
-     * Completed games only. A live game the sweep polls every two minutes
-     * would otherwise run through the quick attempts before it ever finished.
-     * And nothing is recorded once a summary exists, which also covers a fetch
-     * that refused only because another copy for the game was in flight.
+     * Deciding that ESPN was actually asked is the CALLER's job. A fetch that
+     * refused on the in-flight lock, or was answered from the client's cache,
+     * sent nothing and must not call this. {@see FetchGameSummary::handle()}
+     * and the `--now` path compare the client's request count around the
+     * fetch.
+     *
+     * What this guards itself:
+     *
+     *   - Completed games only. A live game the sweep polls every two
+     *     minutes would otherwise run through the quick attempts before it
+     *     ever finished.
+     *   - Nothing once a summary exists.
+     *   - One count per quick window. The backoff is measured in occasions,
+     *     not requests: a just-final fetch, an operator retry and a re-queued
+     *     job inside the same hour are one occasion, and must not push a game
+     *     ESPN merely hadn't finished onto the weekly clock before the 05:00
+     *     net has tried it once. The window check is in the UPDATE itself, so
+     *     two workers racing cannot both count.
      */
     public function recordSummaryMiss(): void
     {
@@ -313,9 +327,14 @@ class Game extends Model
             return;
         }
 
-        static::query()->whereKey($this->getKey())->increment('summary_attempts', 1, [
-            'summary_attempted_at' => now(),
-        ]);
+        static::query()
+            ->whereKey($this->getKey())
+            ->where(fn (Builder $q) => $q
+                ->whereNull('summary_attempted_at')
+                ->orWhere('summary_attempted_at', '<=', now()->subHours(self::SUMMARY_QUICK_RETRY_HOURS)))
+            ->increment('summary_attempts', 1, [
+                'summary_attempted_at' => now(),
+            ]);
     }
 
     /**
