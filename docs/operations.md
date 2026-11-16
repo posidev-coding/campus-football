@@ -798,8 +798,12 @@ new shipped icon) saves nothing, so until this ran the first reader on each
 size paid for the render. It is idempotent: an unchanged brand writes nothing,
 and every other fingerprint's folder is swept. It runs INLINE, not queued — a
 worker still on the previous release would compute the old fingerprint and
-sweep the new set. Exits non-zero, naming the sizes, when the icon cannot be
-rendered; it never stores a stand-in.
+sweep the new set. It never fails a deploy: a size the icon cannot render, or
+an upload disk that throws, is a warning naming what failed and the exit is 0
+(`--strict` makes it non-zero for a manual run). It never stores a stand-in.
+Trade-off: if Cloud runs it while the previous release still serves, that
+release's readers re-store their old folder on the request path, and it sits
+there until the next run sweeps it.
 
 The pick'em loop's own commands, all DB-only and all safe to dry-run:
 

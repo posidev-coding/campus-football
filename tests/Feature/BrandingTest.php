@@ -361,12 +361,14 @@ describe('the generated artifacts', function () {
         expect($disk->get(Brand::splashPath($w, $h, $dpr)))->toBe('stored-not-rendered');
     });
 
-    it('fails the warm and stores no stand-in when the icon cannot be read', function () {
+    it('warns and lets the deploy go on when the icon cannot be read', function (bool $strict) {
         /*
          * An uploaded icon the bucket no longer holds, and no shipped icon
          * to fall back to: the renderer has nothing to center. A device then
-         * launches without a splash, which is the designed behavior — the
-         * warm says so loudly rather than storing something in its place.
+         * launches without a splash, which is the designed behavior. The warm
+         * names the sizes rather than storing something in their place, and
+         * it does not fail a deploy (a hotfix included) over a launch screen
+         * unless a manual run asks it to.
          */
         Storage::fake(config('cfb.upload_disk'));
         $disk = Storage::disk(config('cfb.upload_disk'));
@@ -375,13 +377,29 @@ describe('the generated artifacts', function () {
         BrandSetting::current();
         BrandSetting::query()->update(['assets' => json_encode(['icon-512' => 'brand/gone.png'])]);
 
-        $this->artisan('cfb:brand:splashes')
+        $this->artisan('cfb:brand:splashes', $strict ? ['--strict' => true] : [])
             ->expectsOutputToContain('wrote 0, 0 of '.count(Brand::SPLASH).' stored')
             ->expectsOutputToContain('Missing: 440x956@3')
-            ->assertFailed();
+            ->assertExitCode($strict ? 1 : 0);
 
         expect($disk->allFiles('brand/splash'))->toBe([]);
-    });
+    })->with(['on deploy' => false, 'with --strict' => true]);
+
+    it('warns and lets the deploy go on when the upload disk throws', function (bool $strict) {
+        /*
+         * A disk that cannot even be built — the shape Laravel Cloud produced
+         * when its bucket credentials missed config:cache. That is reported,
+         * not thrown out of a deploy command.
+         */
+        config([
+            'cfb.upload_disk' => 'unbuildable',
+            'filesystems.disks.unbuildable' => ['driver' => 's3', 'bucket' => null, 'region' => null],
+        ]);
+
+        $this->artisan('cfb:brand:splashes', $strict ? ['--strict' => true] : [])
+            ->expectsOutputToContain('Launch screens not warmed — the upload disk failed')
+            ->assertExitCode($strict ? 1 : 0);
+    })->with(['on deploy' => false, 'with --strict' => true]);
 
     it('refuses a splash size it did not declare', function (string $spec) {
         $this->get("/brand/splash/{$spec}.png")->assertNotFound();
