@@ -712,6 +712,28 @@ describe('actives today', function () {
         expect(catalog()->actives()['dau'])->toBe(0);
     });
 
+    it('says off season that today is not rolled hourly at all, and still reads null', function () {
+        /*
+         * The hourly pass is gated on the schedule's season, so in March no
+         * pass is ever due and `dau` is null all day. That is not a fault,
+         * and the payload has to say so — still without writing a number.
+         */
+        todayPass('2027-01-31 20:00:00'); // Sun Jan 31, 15:00 ET, the last in-season day
+        UserDay::factory()->create(['user_id' => User::factory(), 'day' => '2027-03-10']);
+
+        $this->travelTo('2027-03-10 17:00:00'); // Wed Mar 10, 12:00 ET
+
+        $actives = catalog()->actives();
+
+        expect($actives['dau'])->toBeNull()
+            ->and($actives['dau_hourly'])->toBeFalse()
+            ->and($actives['dau_as_of'])->toBe('2027-01-31T15:00:00-05:00');
+    });
+
+    it('rolls hourly in season', function () {
+        expect(catalog()->actives()['dau_hourly'])->toBeTrue();
+    });
+
     it('carries a bound beside every number in the section', function () {
         /*
          * `dau` was the one count here with nothing saying what it covered.
@@ -719,7 +741,7 @@ describe('actives today', function () {
          * its window or fail here.
          */
         $bounds = [
-            'dau' => ['dau_day', 'dau_as_of'],
+            'dau' => ['dau_day', 'dau_as_of', 'dau_hourly'],
             'league_week_actives' => ['league_week_since', 'league_week_days'],
             'rolling_28d_actives' => ['rolling_28d_since'],
             'stickiness' => ['stickiness_covered_days'],

@@ -5,6 +5,7 @@ use App\Models\ClientError;
 use App\Models\FeedRun;
 use App\Models\StoredNotification;
 use App\Models\User;
+use App\Services\CfbCalendar;
 use Illuminate\Console\Scheduling\Schedule as ScheduleClass;
 use Illuminate\Support\Facades\Schedule;
 
@@ -44,7 +45,7 @@ $tz = config('cfb.timezone');
  * offseason — which on a scale-to-zero database means never letting it sleep.
  * The check is pure PHP, so a guarded tick costs nothing at all.
  */
-$inSeason = fn () => in_array(now($tz)->month, [8, 9, 10, 11, 12, 1], true);
+$inSeason = fn () => CfbCalendar::scheduledInSeason();
 
 /*
  * Its complement, for the entries that keep a REDUCED cadence out of season
@@ -57,7 +58,7 @@ $inSeason = fn () => in_array(now($tz)->month, [8, 9, 10, 11, 12, 1], true);
  * job in the offseason is what stands between this app and months of
  * genuine sleep.
  */
-$offSeason = fn () => ! in_array(now($tz)->month, [8, 9, 10, 11, 12, 1], true);
+$offSeason = fn () => ! CfbCalendar::scheduledInSeason();
 
 /*
  * Tier 1 — in-progress games. One request, and the command returns without

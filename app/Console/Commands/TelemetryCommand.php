@@ -68,12 +68,15 @@ class TelemetryCommand extends Command
         // stickiness of 0.2 off four covered days is not a month's number.
         $this->line('  <fg=gray>Actives · each window says its own since</>');
 
-        // Null until the hourly pass has rolled today; `%6d` would print it as 0.
+        // Null until the hourly pass has rolled today, and all day off
+        // season, when it does not run; `%6d` would print it as 0.
         $this->line(sprintf(
-            '    %-30s %6s   as of %s',
+            '    %-30s %6s   %s',
             "today ({$actives['dau_day']})",
             $actives['dau'] ?? 'no data',
-            $actives['dau_as_of'] ?? 'never rolled',
+            $actives['dau'] === null && ! $actives['dau_hourly']
+                ? 'off season, counted overnight'
+                : 'as of '.($actives['dau_as_of'] ?? 'never rolled'),
         ));
         $this->line(sprintf(
             '    %-30s %6d   since %s',

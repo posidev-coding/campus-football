@@ -12,6 +12,7 @@ use App\Models\FeedRun;
 use App\Models\PageViewDaily;
 use App\Models\UserDay;
 use App\Models\UxEvent;
+use App\Services\CfbCalendar;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -456,6 +457,14 @@ class AnalyticsCatalog
             'dau' => $todayRolled ? $this->distinctPeople($today->toDateString(), $today->toDateString()) : null,
             'dau_day' => $today->toDateString(),
             'dau_as_of' => $rolledAt?->toIso8601String(),
+            /*
+             * Whether the hourly pass runs at all this time of year. It is
+             * gated on the schedule's season, so from February to July `dau`
+             * is null all day, every day — the 04:56 pass folds the day in
+             * overnight instead. Without this a reader cannot tell that from
+             * a pass that stopped.
+             */
+            'dau_hourly' => CfbCalendar::scheduledInSeason(),
             // Tuesday through today, the week the whole product turns over
             // on — see AnalyticsWindow::leagueWeek().
             'league_week_actives' => $this->distinctPeople($week->fromDate(), $week->toDate()),

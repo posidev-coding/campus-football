@@ -8,6 +8,7 @@ use Cron\CronExpression;
 use DateTimeInterface;
 use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Event;
+use Illuminate\Console\Scheduling\EventMutex;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Collection;
@@ -131,11 +132,51 @@ class SyncSchedule
             'event' => $event,
             'name' => $name,
             'tracked' => $this->ledgerKey($name),
-            // The season gates are pure month checks and the overlap mutex is a
-            // cache read, so evaluating the filters is safe — and it is what
-            // stops August flagging every offseason-gated task as overdue.
-            'gated' => ! $event->filtersPass(app()),
+            // The season gates are pure month checks, so evaluating the filters
+            // is safe — and it is what stops August flagging every offseason-
+            // gated task as overdue.
+            'gated' => ! $this->scheduledNow($event),
         ];
+    }
+
+    /**
+     * Whether the entry's OWN filters — its between() window, its season gate,
+     * its when() and skip() — let it run right now, with the overlap mutex left
+     * out.
+     *
+     * `withoutOverlapping()` is a skip() filter too: it rejects while
+     * `mutex->exists()`, so asking `filtersPass()` raw answers "gated" for a
+     * pass that is running, and for a crashed one whose lock has not expired
+     * (five minutes for the drain, thirty for the hourly rollup). That is the
+     * dead pipeline reading as asleep in the daytime — the one state this
+     * report exists to tell apart. A held mutex says something is or was
+     * running, never that the schedule is off, so the read answers with a
+     * mutex that holds nothing and puts the real one straight back.
+     */
+    private function scheduledNow(Event $event): bool
+    {
+        $mutex = $event->mutex;
+
+        $event->mutex = new class implements EventMutex
+        {
+            public function create(Event $event): bool
+            {
+                return true;
+            }
+
+            public function exists(Event $event): bool
+            {
+                return false;
+            }
+
+            public function forget(Event $event): void {}
+        };
+
+        try {
+            return $event->filtersPass(app());
+        } finally {
+            $event->mutex = $mutex;
+        }
     }
 
     /**

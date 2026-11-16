@@ -298,6 +298,36 @@ describe('the clickstream against its own schedule', function () {
             ->and($rows['activity_rollup']['remedy'])->toBe('php artisan cfb:activity-rollup --today');
     });
 
+    it('warns for a pass that crashed holding its overlap lock, rather than calling it gated', function () {
+        /*
+         * withoutOverlapping() is a skip() filter, so a raw filtersPass()
+         * answered "gated" while the lock was held — a pass running, or one
+         * that died inside it before the lock expired. Saturday 14:00 with
+         * the last drain at 11:00 is the dead pipeline whatever the lock says.
+         */
+        $this->travelTo('2026-09-05 15:00:00'); // Sat 11:00 ET
+        completedRun('activity:drain');
+        completedRun(ActivityRollup::TODAY_LEDGER);
+
+        scheduleAt('2026-09-05 18:00:00'); // Sat 14:00 ET
+
+        $locked = collect(app(Schedule::class)->events())
+            ->filter(fn ($event) => str_contains((string) $event->command, 'cfb:activity-'))
+            ->each(fn ($event) => $event->mutex->create($event));
+
+        expect($locked)->toHaveCount(4);
+
+        $rows = collect((new OpsReport)->checks())->keyBy('key');
+
+        expect($rows['activity_ingest']['status'])->toBe(OpsReport::WARN)
+            ->and($rows['activity_ingest']['detail'])->toStartWith('Inside its scheduled window')
+            ->and($rows['activity_rollup']['status'])->toBe(OpsReport::WARN)
+            ->and($rows['activity_rollup']['detail'])->toContain('the hourly pass is inside its scheduled window');
+
+        // The report read past the lock; it did not take it away.
+        $locked->each(fn ($event) => expect($event->mutex->exists($event))->toBeTrue());
+    });
+
     it('stays quiet inside the window while both passes keep up', function () {
         $this->travelTo('2026-09-05 17:55:00');
         completedRun('activity:drain');

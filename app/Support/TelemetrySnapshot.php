@@ -58,6 +58,10 @@ class TelemetrySnapshot
         // midnight must not hand two of them different days.
         $this->funnelWindow = null;
 
+        // Once per build too: the ops rows and the schedule section both read
+        // it, and each read is a ledger query per key on the schedule.
+        $tasks = $this->schedule->tasks();
+
         return [
             'generated_at' => now()->toIso8601String(),
             'window_hours' => OpsReport::HOURS,
@@ -66,10 +70,10 @@ class TelemetrySnapshot
                 'results_year' => $this->calendar->resultsYear(),
                 'phase' => $this->calendar->phase()->value,
             ],
-            'ops' => $this->ops->checks(),
+            'ops' => $this->ops->checks($tasks),
             'coverage' => $this->coverage->checks(),
             'pickem' => $this->preflight->checks(),
-            'schedule' => $this->schedule(),
+            'schedule' => $this->schedule($tasks),
             'errors' => [
                 'commands' => $this->recentFailures('not like'),
                 'jobs' => $this->recentFailures('like'),
@@ -176,11 +180,12 @@ class TelemetrySnapshot
      * back Eloquent instances for the admin table, and serializing one drags
      * every column into the payload.
      *
+     * @param  list<array<string, mixed>>  $tasks
      * @return list<array<string, mixed>>
      */
-    private function schedule(): array
+    private function schedule(array $tasks): array
     {
-        return collect($this->schedule->tasks())
+        return collect($tasks)
             ->map(fn (array $task): array => [
                 'name' => $task['name'],
                 'cadence' => $task['cadence'],
