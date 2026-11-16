@@ -110,11 +110,14 @@ class LeaderQuery
 
                     return [
                         'team_id' => $r->team_id,
-                        'value' => $stat['value'] ?? 0.0,
+                        'value' => $stat['value'],
                         'display' => $stat['display'],
                         'national' => $stat['rank'],
                     ];
                 })
+                // A team with no numeric value for this stat is not on this
+                // board — ranking it at a 0.0 it never had is a fabricated row.
+                ->filter(fn (array $r) => $r['value'] !== null)
                 ->filter(fn (array $r) => $r['display'] !== null)
                 ->sortByDesc('value')
                 ->take($limit)
