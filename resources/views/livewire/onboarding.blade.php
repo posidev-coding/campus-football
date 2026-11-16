@@ -4,6 +4,7 @@ use App\Actions\GrantWalletEntry;
 use App\Actions\RecordUxEvent;
 use App\Enums\ContentRating;
 use App\Enums\UxSignal;
+use App\Livewire\Concerns\CountsSignupFunnel;
 use App\Livewire\Concerns\PicksTeams;
 use App\Models\User;
 use App\Support\Voice;
@@ -34,6 +35,7 @@ use Livewire\Component;
  */
 new class extends Component
 {
+    use CountsSignupFunnel;
     use PicksTeams;
 
     /**
@@ -104,14 +106,7 @@ new class extends Component
     #[Renderless]
     public function begin(): void
     {
-        if (auth()->check()) {
-            return;
-        }
-
-        app(RecordUxEvent::class)->handleOnce(
-            UxSignal::OnboardingOpened,
-            hash('sha256', session()->getId()),
-        );
+        $this->countSignupOpened();
     }
 
     /**
@@ -184,10 +179,12 @@ new class extends Component
      * or at the password rules. This one boundary splits that in two, and two
      * halves is what makes it actionable.
      *
-     * Here and nowhere else: `next()` is the only door into the credentials
-     * pane — `back()` cannot reach it from the picker, which sits past
-     * registration, and `register()` is the only way out of it. UxFunnelTest
-     * sweeps app/ and resources/views/ and fails on a second emitter.
+     * In this wizard, `next()` is the only door into the credentials pane —
+     * `back()` cannot reach it from the picker, which sits past
+     * registration, and `register()` is the only way out of it. The /register
+     * form counts its own arrivals through the same concern
+     * ({@see CountsSignupFunnel}), which is the one emitter UxFunnelTest
+     * allows.
      *
      * Guests only and once per browser per day, on the same session-id hash
      * `begin()` dedupes with, so the pair divides honestly: somebody who
@@ -196,14 +193,7 @@ new class extends Component
      */
     private function reachedCredentials(): void
     {
-        if (auth()->check()) {
-            return;
-        }
-
-        app(RecordUxEvent::class)->handleOnce(
-            UxSignal::OnboardingCredentialsReached,
-            hash('sha256', session()->getId()),
-        );
+        $this->countCredentialsReached();
     }
 
     public function back(): void
@@ -315,7 +305,17 @@ new class extends Component
             key: GrantWalletEntry::REASON_FIRST_TEAM,
         );
 
-        app(RecordUxEvent::class)->handle(UxSignal::OnboardingTeamPicked);
+        /*
+         * The FIRST pass through the moment only, the population
+         * `onboarding_skipped` beside it already counts (CFB-110). A member
+         * who skipped and comes back through the zero-teams CTA to add a team
+         * later is not a second arrival: counted again, one person read as a
+         * skip AND a pick, and the two steps summed past the registrations
+         * above them.
+         */
+        if (! auth()->user()->hasOnboarded()) {
+            app(RecordUxEvent::class)->handle(UxSignal::OnboardingTeamPicked);
+        }
 
         // Following a team IS completing onboarding — the CTA must not return
         // on the next visit to a page that now has their team on it.

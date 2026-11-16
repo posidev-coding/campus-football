@@ -39,29 +39,44 @@ namespace App\Enums;
 enum UxSignal: string
 {
     /**
-     * A guest OPENED the wizard — pressed the front door, deliberately. Not
-     * "the overlay mounted": it mounts on every Home render, and counting
-     * that made this a traffic number wearing a funnel step's name.
+     * A guest OPENED a signup door — pressed the wizard's front door, or
+     * loaded the /register form — once per browser per day, software
+     * excluded. Not "the overlay mounted": it mounts on every Home render,
+     * and counting that made this a traffic number wearing a funnel step's
+     * name. Both doors, through App\Livewire\Concerns\CountsSignupFunnel,
+     * so it counts the population `onboarding_registered` does (CFB-110).
      */
     case OnboardingOpened = 'onboarding_opened';
 
     /**
-     * A guest REACHED the credentials pane — they answered their name and
-     * their register, and the next thing asked of them is an email and a
-     * password. Counted at the step boundary in the wizard's next(), guests
-     * only, once per browser per day on the same session hash
+     * A guest REACHED an email and password form — the wizard's last pane,
+     * at the step boundary in next(), or the /register form, which opens on
+     * it. Guests only, once per browser per day on the same session hash
      * OnboardingOpened uses: backing up to fix a name and coming forward
-     * again is the same arrival, not a second one.
+     * again is the same arrival, not a second one. Every door that counts
+     * this counted OnboardingOpened first, and nobody registers without
+     * reaching it, so opened >= credentials_reached >= registered.
      */
     case OnboardingCredentialsReached = 'onboarding_credentials_reached';
 
-    /** An account was created through the wizard. */
+    /**
+     * An account was created, through ANY door — counted on the Registered
+     * event by App\Listeners\CountRegistration, never by a screen.
+     */
     case OnboardingRegistered = 'onboarding_registered';
 
-    /** The favorite-team moment was completed — the arrival. */
+    /**
+     * A new account completed the favorite-team moment by picking a team —
+     * its first pass only, so a member who skipped and adds a team later is
+     * not counted again.
+     */
     case OnboardingTeamPicked = 'onboarding_team_picked';
 
-    /** The favorite-team moment was skipped. */
+    /**
+     * A new account skipped the favorite-team moment — its first pass only.
+     * With OnboardingTeamPicked, the two ways out of one moment: together
+     * they count the accounts that finished onboarding.
+     */
     case OnboardingSkipped = 'onboarding_skipped';
 
     /** The guided tour ended, whether by finishing it or closing it. */

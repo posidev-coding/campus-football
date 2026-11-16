@@ -5,9 +5,11 @@ use App\Actions\PublishSlate;
 use App\Actions\RecordUxEvent;
 use App\Enums\UxSignal;
 use App\Models\FeedRun;
+use App\Models\Team;
 use App\Models\User;
 use App\Models\UxEvent;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Schema;
 use Livewire\Livewire;
@@ -234,7 +236,12 @@ describe('the flows that emit', function () {
             ->call('register')
             ->assertHasErrors(['email', 'password']);
 
-        expect(funnelCounts())->toBe([]);
+        // The form's own arrival is counted on load (CFB-110) — they did
+        // open the door and see the credentials. The registration is not.
+        expect(funnelCounts())->toBe([
+            'onboarding_opened' => 1,
+            'onboarding_credentials_reached' => 1,
+        ]);
     });
 
     it('emits the registration signal from exactly one place', function () {
@@ -359,7 +366,21 @@ describe('the flows that emit', function () {
             ->values()
             ->all();
 
-        expect($emitters)->toBe(['resources/views/livewire/onboarding.blade.php']);
+        // ONE file, which both signup doors use (CFB-110): the wizard and the
+        // /register form count through the same guards, or the two doors
+        // count two populations again.
+        expect($emitters)->toBe(['app/Livewire/Concerns/CountsSignupFunnel.php']);
+    });
+
+    it('emits the opened signal from exactly one place', function () {
+        $emitters = collect(File::allFiles(base_path('app')))
+            ->merge(File::allFiles(resource_path('views')))
+            ->filter(fn ($file) => str_contains($file->getContents(), 'UxSignal::OnboardingOpened'))
+            ->map(fn ($file) => str_replace(base_path().'/', '', $file->getPathname()))
+            ->values()
+            ->all();
+
+        expect($emitters)->toBe(['app/Livewire/Concerns/CountsSignupFunnel.php']);
     });
 
     it('counts an invite link being opened, by a guest', function () {
@@ -435,5 +456,129 @@ describe('the flows that emit', function () {
         app(MakePick::class)->handle($commissioner, $games[1], $games[1]->game->away_team_id);
 
         expect(funnelCounts()['first_pick_made'] ?? 0)->toBe(1);
+    });
+});
+
+describe('one population, one order', function () {
+    /*
+     * CFB-110: a week read opened 0, credentials 0, registered 1 with every
+     * signal counting the full seven days. The registration came through
+     * /register, which the Registered listener counts and the two steps
+     * above it never did — two counters measuring two populations. Every
+     * door now counts every step, so the order holds by construction.
+     */
+    function onboardingFunnel(): array
+    {
+        $counts = funnelCounts();
+
+        return array_map(fn (string $signal) => $counts[$signal] ?? 0, [
+            'opened' => 'onboarding_opened',
+            'credentials' => 'onboarding_credentials_reached',
+            'registered' => 'onboarding_registered',
+            'team_picked' => 'onboarding_team_picked',
+            'skipped' => 'onboarding_skipped',
+        ]);
+    }
+
+    /** A guest walking the overlay wizard up to and through register(). */
+    function walkTheWizard(): void
+    {
+        Livewire::test('onboarding')
+            ->call('begin')
+            ->set('first_name', 'Dolly')->set('last_name', 'Parton')
+            ->call('next')->assertSet('step', 'rating')
+            ->call('next')->assertSet('step', 'credentials')
+            ->set('email', 'dolly@example.test')
+            ->set('password', 'password-1234')
+            ->set('password_confirmation', 'password-1234')
+            ->call('register')
+            ->assertHasNoErrors();
+    }
+
+    it('moves the five counters in order through the wizard and a team pick', function () {
+        Queue::fake();
+        Team::factory()->create(['id' => 2633]);
+
+        walkTheWizard();
+
+        expect(onboardingFunnel())->toBe(['opened' => 1, 'credentials' => 1, 'registered' => 1, 'team_picked' => 0, 'skipped' => 0]);
+
+        Livewire::actingAs(User::where('email', 'dolly@example.test')->sole())
+            ->test('onboarding')
+            ->call('addTeam', 2633);
+
+        expect(onboardingFunnel())->toBe(['opened' => 1, 'credentials' => 1, 'registered' => 1, 'team_picked' => 1, 'skipped' => 0]);
+    });
+
+    it('still counts the open on the skip path', function () {
+        walkTheWizard();
+
+        Livewire::actingAs(User::where('email', 'dolly@example.test')->sole())
+            ->test('onboarding')
+            ->call('done');
+
+        expect(onboardingFunnel())->toBe(['opened' => 1, 'credentials' => 1, 'registered' => 1, 'team_picked' => 0, 'skipped' => 1]);
+    });
+
+    it('counts the /register door on the same funnel, in the same order', function () {
+        // The case the card was filed on: one signup, through the form, that
+        // skipped the team moment.
+        $this->get(route('register'))->assertOk();
+
+        expect(onboardingFunnel())->toBe(['opened' => 1, 'credentials' => 1, 'registered' => 0, 'team_picked' => 0, 'skipped' => 0]);
+
+        Livewire::test('auth.register')
+            ->set('first_name', 'Dolly')
+            ->set('last_name', 'Parton')
+            ->set('email', 'dolly@example.test')
+            ->set('password', 'password-1234')
+            ->set('password_confirmation', 'password-1234')
+            ->call('register')
+            ->assertHasNoErrors();
+
+        Livewire::actingAs(User::where('email', 'dolly@example.test')->sole())
+            ->test('onboarding')
+            ->call('done');
+
+        expect(onboardingFunnel())->toBe(['opened' => 1, 'credentials' => 1, 'registered' => 1, 'team_picked' => 0, 'skipped' => 1]);
+    });
+
+    it('counts a guest once who opens the wizard and then takes the form instead', function () {
+        // One browser, one session hash, both doors: one arrival.
+        Livewire::test('onboarding')->call('begin');
+        Livewire::test('auth.register');
+        Livewire::test('auth.register');
+
+        expect(onboardingFunnel()['opened'])->toBe(1)
+            ->and(onboardingFunnel()['credentials'])->toBe(1);
+    });
+
+    it('counts no open for software loading the form', function () {
+        // A crawler never runs the wizard's JavaScript, so the form's GET has
+        // to refuse it too, or the two doors count different populations.
+        $this->withHeader('User-Agent', 'Googlebot/2.1 (+http://www.google.com/bot.html)')
+            ->get(route('register'))
+            ->assertOk();
+
+        expect(funnelCounts())->toBe([]);
+    });
+
+    it('counts a team pick once per account, not again when a skipper adds a team later', function () {
+        /*
+         * A member who skipped comes back through the zero-teams CTA and
+         * picks. Counted again, one person read as a skip AND a pick, and
+         * the two ways out of one moment summed past the registrations.
+         */
+        Queue::fake();
+        Team::factory()->create(['id' => 2633]);
+
+        $user = User::factory()->create();
+
+        Livewire::actingAs($user)->test('onboarding')->call('done');
+        Livewire::actingAs($user->fresh())->test('onboarding')->call('addTeam', 2633);
+
+        // The pick landed — this is not passing on a team that was not there.
+        expect($user->followedTeams()->pluck('teams.id')->all())->toBe([2633])
+            ->and(onboardingFunnel())->toBe(['opened' => 0, 'credentials' => 0, 'registered' => 0, 'team_picked' => 0, 'skipped' => 1]);
     });
 });
