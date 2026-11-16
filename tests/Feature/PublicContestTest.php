@@ -13,8 +13,11 @@ use App\Models\Group;
 use App\Models\GroupMember;
 use App\Models\Slate;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Livewire\Livewire;
+
+use function Livewire\invade;
 
 /*
  * TRANSIENT PUBLIC ROOMS: per-mode weekly instances with a seat cap, a
@@ -401,4 +404,74 @@ it('publishes the winner on a settled room\'s wall', function () {
 
     Livewire::actingAs($viewer)->test('group', ['group' => $room->fresh()])
         ->assertSee('@'.$viewer->handle);
+});
+
+/*
+ * THE READER'S SEAT IS NULL FOR AN OUTSIDER (CFB-128). The clubhouse
+ * resolves it once per request; an outsider previewing a room has none,
+ * and every panel that needs one renders its absent state rather than a
+ * member with no points.
+ */
+it('gives an outsider previewing a room no seat, and every seated panel its absent state', function () {
+    [, $week] = publicContestWeek();
+    $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $component = Livewire::actingAs(pickemAdmin())->test('group', ['group' => $room->fresh()]);
+
+    // A null seat is an ANSWER: asked once, never re-asked at each site.
+    $seatLookups = collect(DB::getQueryLog())
+        ->filter(fn (array $query) => preg_match('/from `group_members` where `group_members`.`group_id` = \\? .*`user_id` = \\? limit 1/', $query['query']) === 1)
+        ->count();
+    DB::disableQueryLog();
+
+    expect($seatLookups)->toBe(1)
+        ->and(invade($component->instance())->seat())->toBeNull()
+        ->and($component->instance()->isMember)->toBeFalse()
+        ->and($component->instance()->isCommissioner)->toBeFalse()
+        ->and($component->instance()->youStrip)->toBeNull();
+
+    $component->assertSeeHtml('wire:click="join"')
+        ->assertDontSeeHtml('data-you-strip')
+        ->set('view', 'members')
+        ->assertDontSeeHtml('wire:click="leave"')
+        // The thread is members-only, so the address folds to the slate.
+        ->set('view', 'talk')
+        ->assertSet('view', 'slate');
+});
+
+it('seats the reader on the very render that answers the join', function () {
+    [, $week] = publicContestWeek();
+    $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+    $viewer = pickemAdmin();
+
+    // join() and its render are ONE request: a seat memoized as null
+    // before the write would keep the join door up and the leave button
+    // away until the next round trip.
+    Livewire::actingAs($viewer)->test('group', ['group' => $room->fresh(), 'view' => 'members'])
+        ->assertSeeHtml('wire:click="join"')
+        ->call('join')
+        ->assertHasNoErrors()
+        ->assertDontSeeHtml('wire:click="join"')
+        ->assertSeeHtml('wire:click="leave"');
+});
+
+it('drops the memoized seat when the reader joins', function () {
+    [, $week] = publicContestWeek();
+    $room = app(SpawnPublicContest::class)->handle(ContestMode::Classic, $week);
+    $viewer = pickemAdmin();
+
+    $clubhouse = Livewire::actingAs($viewer)->test('group', ['group' => $room->fresh()])->instance();
+
+    // Read before the write, on the same instance: the memo now holds null.
+    expect(invade($clubhouse)->seat())->toBeNull()
+        ->and($clubhouse->isMember)->toBeFalse();
+
+    $clubhouse->join(app(JoinGroup::class));
+
+    expect(invade($clubhouse)->seat())->toBeInstanceOf(GroupMember::class)
+        ->and(invade($clubhouse)->seat()->user_id)->toBe($viewer->id)
+        ->and($clubhouse->isMember)->toBeTrue();
 });
