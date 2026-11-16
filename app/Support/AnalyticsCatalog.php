@@ -110,6 +110,18 @@ class AnalyticsCatalog
      */
     public const SIGNED_OUT_AUDIENCE = ['guest' => ActivityEvent::GUEST];
 
+    /**
+     * Every audience the sensor records, by name: who {@see devices()}
+     * counts, and says it counts. Kept as a filter as well as a label, so the
+     * two cannot disagree when a fifth audience is added.
+     */
+    public const DEVICE_AUDIENCE = [
+        'guest' => ActivityEvent::GUEST,
+        'member' => ActivityEvent::MEMBER,
+        'staff' => ActivityEvent::STAFF,
+        'automated' => ActivityEvent::AUTOMATED,
+    ];
+
     /** Cohorts reported, and the retention grid's width. */
     public const COHORT_WEEKS = 8;
 
@@ -1104,6 +1116,14 @@ class AnalyticsCatalog
      * real share of views genuinely have no width, and bucketing those as the
      * most likely answer would invent the exact number the bucket measures.
      *
+     * EVERY AUDIENCE, AND IT SAYS SO. `routes` counts members under the same
+     * `window_days` and `since`, and the two put a twenty-six-fold difference
+     * under identical labels (CFB-133): this section's total is mostly the
+     * cookieless crawler fleet, which reports no width and fills `unknown`.
+     * Labelled rather than filtered, because filtering to members would throw
+     * away the one honest reading here — `installed_share`, which a crawler
+     * cannot move, since it has no viewport and sits on neither side of it.
+     *
      * @return array<string, mixed>
      */
     public function devices(?AnalyticsWindow $window = null): array
@@ -1113,6 +1133,7 @@ class AnalyticsCatalog
         $rows = $this->keyed(
             PageViewDaily::query()
                 ->whereBetween('day', [$window->fromDate(), $window->toDate()])
+                ->whereIn('audience', self::DEVICE_AUDIENCE)
                 ->groupBy('viewport_bucket')
                 ->selectRaw('viewport_bucket as k, sum(views) as v'),
         );
@@ -1126,6 +1147,7 @@ class AnalyticsCatalog
         $installed = $this->keyed(
             PageViewDaily::query()
                 ->whereBetween('day', [$window->fromDate(), $window->toDate()])
+                ->whereIn('audience', self::DEVICE_AUDIENCE)
                 ->groupBy('installed')
                 ->selectRaw('installed as k, sum(views) as v'),
         );
@@ -1139,6 +1161,7 @@ class AnalyticsCatalog
         return [
             'window_days' => $window->days,
             'since' => $window->sinceDate(),
+            'audience' => array_keys(self::DEVICE_AUDIENCE),
             'by_bucket' => $byBucket,
             'installed_views' => $standalone,
             'reported_views' => $known,

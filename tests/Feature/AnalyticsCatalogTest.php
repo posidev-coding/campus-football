@@ -938,6 +938,41 @@ describe('devices', function () {
             ->and($devices['installed_share'])->toBe(0.75);
     });
 
+    it('states the audience it counted beside routes\' own, under the same window', function () {
+        /*
+         * devices and routes both said window_days 28 and the same since,
+         * and devices summed 15,313 views while routes summed 590, because
+         * only routes filters to members (CFB-133). Neither number is wrong;
+         * the label was borrowed by two populations. Each now names its own.
+         */
+        $seed = fn (int $audience, int $views, ViewportBucket $bucket) => PageViewDaily::factory()->create([
+            'day' => '2026-09-04', 'route' => 'scoreboard', 'views' => $views,
+            'audience' => $audience, 'viewport_bucket' => $bucket,
+            'installed' => $bucket === ViewportBucket::Unknown ? PageViewDaily::UNKNOWN : PageViewDaily::BROWSER,
+        ]);
+
+        $seed(ActivityEvent::AUTOMATED, 40, ViewportBucket::Unknown);
+        $seed(ActivityEvent::GUEST, 6, ViewportBucket::Phone);
+        $seed(ActivityEvent::MEMBER, 5, ViewportBucket::Compact);
+        $seed(ActivityEvent::STAFF, 2, ViewportBucket::Desktop);
+
+        ActivityEvent::factory()->count(5)->create(['route' => 'scoreboard', 'occurred_at' => '2026-09-04 16:00:00']);
+        ActivityEvent::factory()->guest()->count(6)->create(['route' => 'scoreboard', 'occurred_at' => '2026-09-04 16:00:00']);
+
+        $devices = catalog()->devices(AnalyticsWindow::of(28));
+        $routes = catalog()->routes(AnalyticsWindow::of(28));
+
+        expect($devices['audience'])->toBe(['guest', 'member', 'staff', 'automated'])
+            // Everybody, crawlers included — and the crawlers stay visible
+            // as `unknown` rather than being dealt out to a width.
+            ->and(array_sum($devices['by_bucket']))->toBe(53)
+            ->and($devices['by_bucket']['unknown'])->toBe(40)
+            ->and($devices['installed_share'])->toBe(0.0)
+            ->and($routes['top_audience'])->toBe(['member'])
+            ->and(collect($routes['top'])->firstWhere('route', 'scoreboard')['views'])->toBe(5)
+            ->and($devices['window_days'])->toBe($routes['window_days']);
+    });
+
     it('reports no installed share at all when nothing reported', function () {
         PageViewDaily::factory()->create([
             'day' => '2026-09-04', 'views' => 9, 'installed' => PageViewDaily::UNKNOWN,
