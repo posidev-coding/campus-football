@@ -51,6 +51,15 @@ class Game extends Model
      */
     private const KICKOFF_GRACE_HOURS = 6;
 
+    /** Empty summary fetches retried on the short clock before backing off. */
+    public const SUMMARY_QUICK_ATTEMPTS = 4;
+
+    /** The short clock: under a daily sweep, "try again tomorrow". */
+    public const SUMMARY_QUICK_RETRY_HOURS = 1;
+
+    /** The long clock, for a game ESPN has stopped answering. */
+    public const SUMMARY_SLOW_RETRY_DAYS = 7;
+
     public $incrementing = false;
 
     protected $keyType = 'int';
@@ -87,6 +96,8 @@ class Game extends Model
         return [
             'kickoff_at' => 'datetime',
             'kickoff_alert_sent_at' => 'datetime',
+            'summary_attempted_at' => 'datetime',
+            'summary_attempts' => 'integer',
             'neutral_site' => 'boolean',
             'conference_game' => 'boolean',
             'completed' => 'boolean',
@@ -257,6 +268,73 @@ class Game extends Model
     public function scopeCompleted(Builder $query): Builder
     {
         return $query->where('completed', true);
+    }
+
+    /**
+     * Games whose last empty summary fetch is old enough to be worth another.
+     *
+     * A game ESPN has never answered stays without a summary row, so without
+     * this it matched `cfb:summaries --missing` every night, forever, at one
+     * request each. The first {@see SUMMARY_QUICK_ATTEMPTS} misses retry after
+     * an hour, which with a daily sweep means "next morning" — the just-final
+     * fetch often lands before ESPN has the box score, and the 05:00 net is
+     * what catches it. After that, once a week: ESPN does backfill late, so
+     * this backs off rather than giving up.
+     *
+     * Only constrains games that have MISSED. A game never attempted has a
+     * null stamp and always qualifies.
+     */
+    public function scopeSummaryRetryDue(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q
+            ->whereNull('summary_attempted_at')
+            ->orWhere(fn (Builder $q) => $q
+                ->where('summary_attempts', '<', self::SUMMARY_QUICK_ATTEMPTS)
+                ->where('summary_attempted_at', '<=', now()->subHours(self::SUMMARY_QUICK_RETRY_HOURS)))
+            ->orWhere('summary_attempted_at', '<=', now()->subDays(self::SUMMARY_SLOW_RETRY_DAYS)));
+    }
+
+    /**
+     * Record that ESPN was asked for this game's summary and answered nothing.
+     *
+     * The attempt, never a result: no `GameSummary` row is written, because an
+     * empty one would tell every screen a box score exists. A query-builder
+     * increment rather than a save, so the stamp neither fires model events
+     * nor re-indexes the game in Scout.
+     *
+     * Deciding that ESPN was actually asked is the CALLER's job. A fetch that
+     * refused on the in-flight lock, or was answered from the client's cache,
+     * sent nothing and must not call this. {@see FetchGameSummary::handle()}
+     * and the `--now` path compare the client's request count around the
+     * fetch.
+     *
+     * What this guards itself:
+     *
+     *   - Completed games only. A live game the sweep polls every two
+     *     minutes would otherwise run through the quick attempts before it
+     *     ever finished.
+     *   - Nothing once a summary exists.
+     *   - One count per quick window. The backoff is measured in occasions,
+     *     not requests: a just-final fetch, an operator retry and a re-queued
+     *     job inside the same hour are one occasion, and must not push a game
+     *     ESPN merely hadn't finished onto the weekly clock before the 05:00
+     *     net has tried it once. The window check is in the UPDATE itself, so
+     *     two workers racing cannot both count.
+     */
+    public function recordSummaryMiss(): void
+    {
+        if (! $this->completed || $this->summary()->exists()) {
+            return;
+        }
+
+        static::query()
+            ->whereKey($this->getKey())
+            ->where(fn (Builder $q) => $q
+                ->whereNull('summary_attempted_at')
+                ->orWhere('summary_attempted_at', '<=', now()->subHours(self::SUMMARY_QUICK_RETRY_HOURS)))
+            ->increment('summary_attempts', 1, [
+                'summary_attempted_at' => now(),
+            ]);
     }
 
     /**

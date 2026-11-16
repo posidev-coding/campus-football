@@ -26,8 +26,12 @@ use Illuminate\Support\Facades\Bus;
  * the run, and can be watched and cancelled. Upstream cost is unchanged because
  * EspnClient's throttle is shared through the cache.
  *
- * A final game is fetched exactly once, so `--missing` makes every re-run a
- * resume rather than a restart.
+ * A final game ESPN answers is fetched exactly once, so `--missing` makes every
+ * re-run a resume rather than a restart. A game ESPN does NOT answer never gets
+ * a summary row, and used to match `--missing` on every run, forever, at one
+ * request each — the re-run was only a no-op while every game had an answer.
+ * An empty fetch now records the attempt on the game, never a placeholder
+ * summary, and `--missing` backs off on it ({@see Game::scopeSummaryRetryDue()}).
  */
 class SyncSummariesCommand extends Command
 {
@@ -37,7 +41,7 @@ class SyncSummariesCommand extends Command
         {--year= : Season year (defaults to every season)}
         {--game= : One game id}
         {--limit=2000 : Maximum games this run}
-        {--missing : Only games with no summary stored (default unless --force)}
+        {--missing : Only games with no summary stored, holding off ones ESPN recently answered empty (default unless --force)}
         {--force : Refetch even when a summary already exists}
         {--now : Run in-process instead of queueing (small runs and debugging)}';
 
@@ -152,7 +156,19 @@ class SyncSummariesCommand extends Command
 
             try {
                 if ($game !== null) {
-                    $sync->handle($game) ? $synced++ : $empty++;
+                    $requestsBefore = $espn->callCount();
+
+                    if ($sync->handle($game)) {
+                        $synced++;
+                    } else {
+                        $empty++;
+
+                        // Only when ESPN was actually asked: a lock refusal
+                        // sent nothing. Same rule as FetchGameSummary.
+                        if ($espn->callCount() > $requestsBefore) {
+                            $game->recordSummaryMiss();
+                        }
+                    }
                 }
             } catch (\Throwable $e) {
                 $errors[$gameId] = $e->getMessage();
@@ -212,8 +228,11 @@ class SyncSummariesCommand extends Command
 
         // `--missing` is the default, so this reads the flag that turns it
         // OFF. The pair is rejected in handle(), so the two can never disagree.
+        // A game ESPN came back empty for is held off until its retry is due;
+        // `--force` (and `--game`) ignore that and ask anyway.
         if (! $this->option('force')) {
-            $query->whereNotIn('id', GameSummary::select('game_id'));
+            $query->whereNotIn('id', GameSummary::select('game_id'))
+                ->summaryRetryDue();
         }
 
         return $query->pluck('id');

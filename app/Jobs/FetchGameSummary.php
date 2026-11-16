@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Jobs\Middleware\ThrottleEspn;
 use App\Models\Game;
+use App\Services\Espn\EspnClient;
 use App\Services\Espn\Sync\SyncGameSummary;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -114,6 +115,29 @@ class FetchGameSummary implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $sync->handle($game);
+        $espn = app(EspnClient::class);
+        $requestsBefore = $espn->callCount();
+
+        if ($sync->handle($game)) {
+            return;
+        }
+
+        /*
+         * An empty answer is recorded as an attempt, so `cfb:summaries
+         * --missing` can back off a game ESPN will not answer instead of
+         * paying for it every night. But `false` also means "refused on the
+         * in-flight lock", which asked ESPN nothing, so the client's request
+         * count is what separates a real empty answer from a refusal (and from
+         * a cached one).
+         *
+         * Forced fetches only: the just-final dispatch, the batch and an
+         * operator's retry. Page views and the live sweep are not deliberate
+         * attempts. Five readers opening a just-final game ESPN has not filled
+         * in yet would otherwise spend its quick retries before the 05:00 net
+         * ever ran.
+         */
+        if ($this->force && $espn->callCount() > $requestsBefore) {
+            $game->recordSummaryMiss();
+        }
     }
 }
