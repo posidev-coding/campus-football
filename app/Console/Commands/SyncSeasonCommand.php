@@ -18,6 +18,7 @@ use App\Services\Espn\Sync\SyncRecruiting;
 use App\Services\Espn\Sync\SyncSeason;
 use App\Services\Espn\Sync\SyncStandings;
 use App\Services\Espn\Sync\SyncTeams;
+use App\Support\StandingsScreen;
 use App\Support\TeamGlance;
 use Illuminate\Console\Command;
 
@@ -167,6 +168,11 @@ class SyncSeasonCommand extends Command
          */
         if (in_array($step, self::WRITES_STANDINGS, true)) {
             TeamGlance::warmStandingPositions($year);
+
+            // The standings screen's bare visit, by the same rule (CFB-130).
+            // It warms the season the SCREEN opens on, which the calendar
+            // names, not necessarily the one this step wrote.
+            StandingsScreen::warm(app(CfbCalendar::class));
         }
 
         $label = match ($step) {
