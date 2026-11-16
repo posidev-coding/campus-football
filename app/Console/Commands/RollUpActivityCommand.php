@@ -52,7 +52,7 @@ class RollUpActivityCommand extends Command
          * even when `--today` rides along — `day()` lets `--day` win too.
          */
         $key = $this->option('today') && (string) $this->option('day') === ''
-            ? 'activity:rollup:today'
+            ? ActivityRollup::TODAY_LEDGER
             : 'activity:rollup';
 
         $rows = $this->trackRun($key, null, function () use ($activity, $rollup, $day, &$counts): int {

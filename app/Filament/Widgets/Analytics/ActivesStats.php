@@ -38,10 +38,15 @@ class ActivesStats extends BaseWidget
         $daily = $this->dailyTrend();
 
         return [
-            Stat::make('Daily actives', (string) $actives['dau'])
-                ->description('People who did something today')
+            // Null until the hourly pass has rolled today, and all through
+            // the 03:00-08:00 ET gap it sleeps in — "not rolled" is not
+            // "nobody came", so it never prints as 0.
+            Stat::make('Daily actives', $actives['dau'] === null ? 'no data' : (string) $actives['dau'])
+                ->description($actives['dau'] === null
+                    ? 'Today has not been rolled yet'.($actives['dau_as_of'] === null ? '' : ' — last rolled '.CarbonImmutable::parse($actives['dau_as_of'])->format('D g:i A'))
+                    : 'Today so far, as of '.CarbonImmutable::parse($actives['dau_as_of'])->format('g:i A'))
                 ->chart($daily)
-                ->color('success'),
+                ->color($actives['dau'] === null ? 'gray' : 'success'),
 
             Stat::make('This week\'s actives', (string) $actives['league_week_actives'])
                 ->description('This pick\'em week so far, Tuesday on — '.$actives['league_week_days'].' '.str('day')->plural($actives['league_week_days']))

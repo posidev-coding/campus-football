@@ -6,9 +6,11 @@ use App\Filament\Widgets\Analytics\RouteTreemap;
 use App\Filament\Widgets\Analytics\TodayPickem;
 use App\Filament\Widgets\Analytics\TrafficArea;
 use App\Models\ActivityEvent;
+use App\Models\FeedRun;
 use App\Models\PageViewDaily;
 use App\Models\User;
 use App\Models\UserDay;
+use App\Support\ActivityRollup;
 use App\Support\AnalyticsCatalog;
 use App\Support\AnalyticsWindow;
 use App\Support\Brand;
@@ -95,6 +97,29 @@ describe('actives', function () {
             ->assertOk()
             ->assertSee('100%')
             ->assertDontSee('Too few people to divide yet');
+    });
+});
+
+describe('daily actives', function () {
+    it('says today has not been rolled rather than printing 0', function () {
+        // No hourly `--today` pass has run, so there is no count for today —
+        // the card must not render the absence of a rollup as nobody here.
+        Livewire::actingAs($this->admin)
+            ->test(ActivesStats::class)
+            ->assertOk()
+            ->assertSee('Today has not been rolled yet');
+    });
+
+    it('prints the count once today has been rolled, with the time it covers', function () {
+        FeedRun::begin(ActivityRollup::TODAY_LEDGER, null)->complete(1, 0, 5); // 14:00 ET
+
+        UserDay::factory()->create(['user_id' => User::factory(), 'day' => '2026-09-05']);
+
+        Livewire::actingAs($this->admin)
+            ->test(ActivesStats::class)
+            ->assertOk()
+            ->assertSee('Today so far, as of 2:00 PM')
+            ->assertDontSee('Today has not been rolled yet');
     });
 });
 

@@ -68,7 +68,13 @@ class TelemetryCommand extends Command
         // stickiness of 0.2 off four covered days is not a month's number.
         $this->line('  <fg=gray>Actives · each window says its own since</>');
 
-        $this->line(sprintf('    %-30s %6d', 'today', $actives['dau']));
+        // Null until the hourly pass has rolled today; `%6d` would print it as 0.
+        $this->line(sprintf(
+            '    %-30s %6s   as of %s',
+            "today ({$actives['dau_day']})",
+            $actives['dau'] ?? 'no data',
+            $actives['dau_as_of'] ?? 'never rolled',
+        ));
         $this->line(sprintf(
             '    %-30s %6d   since %s',
             "league week ({$actives['league_week_days']}d)",

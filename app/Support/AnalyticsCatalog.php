@@ -8,6 +8,7 @@ use App\Enums\UxSignal;
 use App\Enums\ViewportBucket;
 use App\Http\Middleware\RecordPageView;
 use App\Models\ActivityEvent;
+use App\Models\FeedRun;
 use App\Models\PageViewDaily;
 use App\Models\UserDay;
 use App\Models\UxEvent;
@@ -424,8 +425,25 @@ class AnalyticsCatalog
          * window's since (CFB-87). The window is in each key now, so a
          * number read out of context still says what it counts.
          */
+        $rolledAt = $this->todayRolledAt();
+        $todayRolled = $rolledAt !== null && $rolledAt->toDateString() === $today->toDateString();
+
         return [
-            'dau' => $this->distinctPeople($today->toDateString(), $today->toDateString()),
+            /*
+             * TODAY SO FAR, AND ONLY ONCE TODAY HAS BEEN ROLLED. `user_days`
+             * holds no row for a day the hourly `--today` pass has not
+             * reached, so before it runs — and all through the 03:00-08:00 ET
+             * gap it is gated off for — counting today read the absence of a
+             * rollup as the absence of people, and reported it as a finished
+             * day (CFB-125). Null is "no data"; the two counts below carry
+             * their windows and are what a reader falls back to. `dau_as_of`
+             * is the instant the pass started (it drains first, so that is
+             * what the count has seen) and it stays set when `dau` is null,
+             * naming the last day a pass DID reach.
+             */
+            'dau' => $todayRolled ? $this->distinctPeople($today->toDateString(), $today->toDateString()) : null,
+            'dau_day' => $today->toDateString(),
+            'dau_as_of' => $rolledAt?->toIso8601String(),
             // Tuesday through today, the week the whole product turns over
             // on — see AnalyticsWindow::leagueWeek().
             'league_week_actives' => $this->distinctPeople($week->fromDate(), $week->toDate()),
@@ -1339,6 +1357,26 @@ class AnalyticsCatalog
         }
 
         return $out;
+    }
+
+    /**
+     * When the newest COMPLETED `--today` rollup started, in league time —
+     * null when one has never finished.
+     *
+     * Read off the ledger rather than off `max(day)` in `user_days`, because a
+     * rolled day with nobody in it writes no row: only the run itself can say
+     * a zero is a zero. A running or failed pass is not a roll.
+     */
+    private function todayRolledAt(): ?CarbonImmutable
+    {
+        $started = FeedRun::query()
+            ->where('command', ActivityRollup::TODAY_LEDGER)
+            ->where('status', FeedRun::COMPLETE)
+            ->max('started_at');
+
+        return $started === null
+            ? null
+            : CarbonImmutable::parse($started, 'UTC')->setTimezone(config('cfb.timezone'));
     }
 
     /** Distinct people with a `user_days` row inside the dates, inclusive. */
