@@ -7,6 +7,8 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -73,5 +75,23 @@ return Application::configure(basePath: dirname(__DIR__))
          */
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->is('ops/*'),
+        );
+
+        /*
+         * A refused write to a #[Locked] property is the CLIENT's fault, so it
+         * answers 403 rather than 500. No browser running this app sends one:
+         * Livewire posts only what changed, and nothing on a page writes a
+         * locked name (SearchLockedPropertiesTest sweeps for that). What does
+         * send them is a signed-out probe posting every property back one at
+         * a time — ten of eleven "exceptions" in a day (CFB-122).
+         *
+         * Mapped, not just rendered, because an HttpException is never
+         * reported: the refusal leaves Pulse's exception count, which was
+         * reading a stranger's probing as an application fault and re-filing
+         * it every pass. The lock itself is untouched and still refuses.
+         */
+        $exceptions->map(
+            CannotUpdateLockedPropertyException::class,
+            fn (CannotUpdateLockedPropertyException $e) => new AccessDeniedHttpException('That cannot be changed from here.', $e),
         );
     })->create();

@@ -4,6 +4,7 @@ use App\Ai\Agents\StatQuestion;
 use App\Models\User;
 use App\Support\PulseExceptions;
 use App\Support\StatAnswer;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 
 /*
@@ -22,9 +23,11 @@ use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyExceptio
  * a probe, not a person. Signed in, the same probe also trips help-sheet's
  * locked `path`, which production never logged.
  *
- * So these tests pin three things: the fingerprint, the real interactions
- * round-tripping cleanly, and the source staying free of any writer of a
- * locked name — the one way a browser COULD start sending these.
+ * So these tests pin four things: the fingerprint, a forged write answered as
+ * the client's fault (403, never reported) rather than ours, the real
+ * interactions round-tripping cleanly, and the source staying free of any
+ * writer of a locked name — the one way a browser COULD start sending these,
+ * and the guard that makes it safe to stop reporting the refusal.
  */
 
 /**
@@ -136,6 +139,47 @@ describe('the production fingerprint', function () {
 
         expect(probeEveryProperty($this->get(route('home'))->assertOk()->getContent()))
             ->toContain('livewire:help-sheet [path]');
+    });
+});
+
+describe('how a forged write is answered', function () {
+    it('is a 403 that never reaches the exception report', function () {
+        $reported = [];
+
+        app(ExceptionHandler::class)->reportable(function (Throwable $e) use (&$reported) {
+            $reported[] = $e::class;
+        });
+
+        $statuses = [];
+
+        foreach (renderedSnapshots($this->get(route('home'))->assertOk()->getContent()) as $snapshot) {
+            $decoded = json_decode($snapshot, true);
+
+            foreach ($decoded['data'] as $property => $value) {
+                $status = $this->withHeader('X-Livewire', '1')->postJson(route('default-livewire.update'), [
+                    'components' => [[
+                        'snapshot' => $snapshot,
+                        'updates' => [$property => dehydratedValue($value)],
+                        'calls' => [],
+                    ]],
+                ])->status();
+
+                $statuses["{$decoded['memo']['name']}.{$property}"] = $status;
+            }
+        }
+
+        // Every locked name is refused as the client's fault…
+        expect(array_keys(array_filter($statuses, fn (int $status) => $status === 403)))->toBe([
+            'search.searchCounted',
+            'search-panel.answer',
+            'search-panel.asked',
+            'search-panel.decline',
+            'search-panel.searchCounted',
+        ])
+            // …every other property still takes its write…
+            ->and(array_unique(array_values(array_filter($statuses, fn (int $status) => $status !== 403))))->toBe([200])
+            // …and none of it is an application fault.
+            ->and($reported)->toBe([]);
     });
 });
 
