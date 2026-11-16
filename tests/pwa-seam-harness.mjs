@@ -61,20 +61,73 @@ const hooks = {};
 const knocks = [];
 let knockResult = () => Promise.resolve();
 
+/* The runtime Livewire injects, as it injects it: the update URI on the tag
+ * is what marks this script as Livewire. */
+const LIVEWIRE_SCRIPT = 'https://campusfootball.test/livewire/livewire.min.js?id=df3a17f2';
+
 globalThis.document = {
-    querySelector: (selector) => ({
-        content: selector.includes('cfb-error-endpoint') ? '/client-errors' : 'test-csrf-token',
-    }),
+    querySelector: (selector) => {
+        if (selector === 'script[data-update-uri]') return { src: LIVEWIRE_SCRIPT };
+
+        return { content: selector.includes('cfb-error-endpoint') ? '/client-errors' : 'test-csrf-token' };
+    },
     addEventListener: (name, handler) => {
         (docListeners[name] ??= []).push(handler);
     },
 };
 
+const actionInterceptors = [];
+
 globalThis.Livewire = {
     hook: (name, callback) => {
         (hooks[name] ??= []).push(callback);
     },
+    /* Livewire 4's per-call seam, with the four callbacks it hands out.
+     * fireLivewireAction() below plays the part of a call that fails. */
+    interceptAction: (callback) => {
+        actionInterceptors.push(callback);
+    },
 };
+
+/*
+ * A Livewire call that fails, the way Livewire 4 fails one: the interceptors'
+ * failure callback runs FIRST, then the action's promise is rejected with the
+ * bare `{ status, body, json, errors }` — the reason that carries no name.
+ * Returns the action promise, tagged as Livewire tags it.
+ */
+function fireLivewireAction({ component, method, params = [] }, outcome) {
+    const action = { component: { name: component }, name: method, params };
+    const callbacks = { error: [], failure: [], cancel: [] };
+
+    for (const interceptor of actionInterceptors) {
+        interceptor({
+            action,
+            onSend: () => {},
+            onSuccess: () => {},
+            onFinish: () => {},
+            onError: (cb) => callbacks.error.push(cb),
+            onFailure: (cb) => callbacks.failure.push(cb),
+            onCancel: (cb) => callbacks.cancel.push(cb),
+        });
+    }
+
+    let reason;
+
+    if (outcome.status) {
+        callbacks.error.forEach((cb) => cb({ response: { status: outcome.status }, body: '<html>', preventDefault: () => {} }));
+        reason = { status: outcome.status, body: '<html>', json: null, errors: null };
+    } else if (outcome.error) {
+        callbacks.failure.forEach((cb) => cb({ error: outcome.error }));
+        reason = { status: null, body: null, json: null, errors: null };
+    } else {
+        callbacks.cancel.forEach((cb) => cb());
+        reason = { status: null, body: null, json: null, errors: null };
+    }
+
+    const promise = { _livewireAction: action };
+
+    return { promise, reason };
+}
 
 /* Alpine's own seam, and the only part of Alpine this reaches: the module
  * registers a handler through it at `alpine:init` and the scenario below
@@ -226,6 +279,12 @@ switch (scenario) {
 
     /* The screen the unnamed report actually landed on, so the path a report
      * carries is asserted rather than assumed. */
+    case 'rejection-livewire-action-http':
+    case 'rejection-livewire-derived-network':
+    case 'rejection-livewire-derived-cancelled':
+    case 'rejection-livewire-unattributed':
+    case 'rejection-livewire-stale':
+    case 'rejection-livewire-no-interceptor':
     case 'rejection-fetch':
     case 'rejection-name-only':
     case 'rejection-anonymous':
@@ -346,7 +405,72 @@ function fireLoad() {
     }
 }
 
-if (scenario === 'push-registration-rejects-midflight') {
+/* A fetch that failed the way Safari fails one, with the browser-shaped
+ * stack a real one would carry. */
+function loadFailed() {
+    const error = new TypeError('Load failed');
+    error.stack = 'sendRequest@https://campusfootball.test/livewire/livewire.min.js?id=df3a17f2:1:2345';
+
+    return error;
+}
+
+function rejectUnhandled(event) {
+    for (const handler of listeners.unhandledrejection ?? []) {
+        handler(event);
+    }
+}
+
+if (scenario.startsWith('rejection-livewire-') && scenario !== 'rejection-livewire-no-interceptor') {
+    for (const handler of docListeners['livewire:init'] ?? []) {
+        handler();
+    }
+
+    if (scenario === 'rejection-livewire-action-http') {
+        /* `x-on:click="$wire.ask()"` with no catch: the unhandled promise IS
+         * the one Livewire handed out. The params are what a user typed, and
+         * they must not travel. */
+        const { promise, reason } = fireLivewireAction(
+            { component: 'search-panel', method: 'ask', params: ['how many sacks does my ex have'] },
+            { status: 500 },
+        );
+
+        rejectUnhandled({ promise, reason });
+    } else if (scenario === 'rejection-livewire-derived-network') {
+        /* `await $wire.save()` inside an async method: the METHOD's promise
+         * rejects, with Livewire's reason but not its action. */
+        const { reason } = fireLivewireAction({ component: 'pages::group', method: 'save' }, { error: loadFailed() });
+
+        rejectUnhandled({ promise: {}, reason });
+    } else if (scenario === 'rejection-livewire-derived-cancelled') {
+        const { reason } = fireLivewireAction({ component: 'scoreboard', method: '$refresh' }, { cancelled: true });
+
+        rejectUnhandled({ promise: {}, reason });
+    } else if (scenario === 'rejection-livewire-unattributed') {
+        /* Livewire's reason with no failure recorded behind it — an HTTP 419
+         * on a call made before the interceptor existed, say. */
+        rejectUnhandled({ promise: {}, reason: { status: 419, body: null, json: null, errors: null } });
+    } else if (scenario === 'rejection-livewire-stale') {
+        /* A call that failed long before this rejection is not its cause. */
+        const realNow = Date.now;
+        const { reason } = fireLivewireAction({ component: 'pages::group', method: 'save' }, { error: loadFailed() });
+
+        Date.now = () => realNow() + 5000;
+
+        rejectUnhandled({ promise: {}, reason });
+
+        Date.now = realNow;
+    }
+} else if (scenario === 'rejection-livewire-no-interceptor') {
+    /* An older or newer Livewire with no interceptAction: the reporter must
+     * still report, by shape, and never throw. */
+    delete globalThis.Livewire.interceptAction;
+
+    for (const handler of docListeners['livewire:init'] ?? []) {
+        handler();
+    }
+
+    rejectUnhandled({ promise: {}, reason: { status: null, body: null, json: null, errors: null } });
+} else if (scenario === 'push-registration-rejects-midflight') {
     /* The tap lands while registration is still in flight — the window in
      * which `supported()` cannot yet know — and THEN it fails. */
     const pending = window.cfbPush.enable('dGVzdA', '/push/subscriptions');
