@@ -14,6 +14,7 @@ use App\Models\GameSummary;
 use App\Models\GameTeamStat;
 use App\Models\Team;
 use App\Services\Espn\EspnClient;
+use App\Support\Deadlocks;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -333,9 +334,25 @@ class SyncGameSummary
      * genuinely changes, and only then — writes are not free on scale-to-zero
      * MySQL, and the usual pass changes nothing.
      *
+     * The loser of that race takes a deadlock rather than a unique violation,
+     * after this job has already spent its ESPN request, so the pair is
+     * retried on SQLSTATE 40001 and nothing else — the same retry the
+     * `article_team` write uses, from the one place both call. Both statements
+     * are idempotent, which is what makes a second attempt safe.
+     *
      * @param  array<int, array{role: string}>  $links
      */
     private function storeArticleLinks(Game $game, array $links): void
+    {
+        Deadlocks::retry(fn () => $this->writeArticleLinks($game, $links));
+    }
+
+    /**
+     * The write itself: insert what is missing, correct a role that changed.
+     *
+     * @param  array<int, array{role: string}>  $links
+     */
+    private function writeArticleLinks(Game $game, array $links): void
     {
         $now = now();
 
