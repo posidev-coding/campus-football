@@ -32,8 +32,9 @@ below ~600px. See below.
               Home · Scores · League · Account. They do not change as you
               move around inside one.
     SECTIONS  the scrolling strip at the top, belonging to the CURRENT area.
-              League shows Standings · Rankings · Teams · Players · Stats ·
-              Recruiting. Home and Scores have none.
+              League shows Standings · Rankings · Teams, with Players ·
+              Stats · Recruiting behind its More menu. Home and Scores have
+              none.
 
 **No screen shows a visible heading.** Recruiting was the last holdout with a
 `flux:heading`; the section strip already names every League screen, so an `h1`
@@ -44,6 +45,17 @@ Team Stats and Player Stats were once two sections, which spent two of six
 slots on one idea and made "stats" a place you had to guess at. They are one
 Stats screen with a Team/Players sub-toggle now, and the freed slot went to
 Players — a player index the app did not have at all.
+
+**A rarely opened section goes behind More, not off the map** (CFB-134). Over
+the 28 days to 2026-11-16, Standings drew 14 member views and Rankings 4, while
+the Players, Stats and Recruiting indexes drew 1, 1 and 2. That is thin data
+from 13 weekly actives: it says these doors go unused at this scale, not that
+the screens are unwanted. A section Navigation marks `more` renders inside one
+navigating `x-filter-menu` (`variant="chip"`) at the end of the strip. It sits
+on every screen in the area, at every width, so the screen is one extra tap
+away and never reachable only above `sm`. On one of those screens the trigger
+reads that screen's name and wears the current chip, so the strip still names
+every screen. Teams kept its chip because it lights every team page.
 
 **A section's `routes` list is what lights it on a detail page.** `player` was
 in the League area's routes but belonged to no section, so a player page lit the
