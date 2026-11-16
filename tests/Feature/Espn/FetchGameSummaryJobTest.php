@@ -10,7 +10,10 @@ use App\Models\Season;
 use App\Models\Team;
 use App\Models\Week;
 use App\Services\Espn\Sync\SyncGameSummary;
+use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 
@@ -178,6 +181,92 @@ describe('the scoring-plays dirty guard', function () {
 
         expect($plays)->toHaveCount(1)
             ->and($plays->first()->text)->toContain('23 Yd');
+    });
+});
+
+describe('a box score that loses a lock cycle', function () {
+    beforeEach(function () {
+        /*
+         * RefreshDatabase holds every test inside a transaction, so the
+         * summary's DB::transaction is NESTED here and top-level in
+         * production. Laravel treats a deadlock at a nested level as fatal to
+         * the outer unit: it throws DeadlockException WITHOUT rolling the
+         * savepoint back, which is right for a real MySQL deadlock and is not
+         * what production's top-level transaction does. There it rolls back
+         * and re-raises the QueryException itself — the detector only matters
+         * at the nested level, or with `$attempts` above one, which this call
+         * never passes. Answering "no" makes this level behave as production's.
+         */
+        app()->instance(ConcurrencyErrorDetector::class, new class implements ConcurrencyErrorDetector
+        {
+            public function causedByConcurrencyError(Throwable $e): bool
+            {
+                return false;
+            }
+        });
+
+        Http::fake(['*' => Http::response([
+            'boxscore' => ['teams' => [], 'players' => []],
+            'scoringPlays' => array_map(fn (array $play) => [
+                'text' => $play[0],
+                'homeScore' => $play[1],
+                'awayScore' => $play[2],
+                'period' => ['number' => 1],
+                'clock' => ['displayValue' => '2:11'],
+                'type' => ['text' => 'Passing Touchdown'],
+                'scoringType' => ['abbreviation' => 'TD'],
+                'team' => ['id' => 61],
+            ], [
+                ['Joe Milton 22 Yd pass', 7, 0],
+                ['Jalen Milroe 4 Yd run', 7, 7],
+                ['Bru McCoy 41 Yd pass', 14, 7],
+            ]),
+        ])]);
+    });
+
+    it('tries the whole box score again after a deadlock and lands every play', function () {
+        /*
+         * Production, Saturday 2026-11-14: a scoring-play INSERT lost a lock
+         * cycle mid-transaction and the throw rolled back the game's whole box
+         * score until the job's own retry paid for the payload again. The
+         * retry wraps the transaction, so the second attempt rewrites from a
+         * clean slate — three plays, not three plus a half-written first pass.
+         * Asserted through the JOB, which is the caller live scoring runs.
+         */
+        deadlockOnce('game_scoring_plays');
+
+        (new FetchGameSummary($this->live->id))->handle(app(SyncGameSummary::class));
+
+        $plays = GameScoringPlay::where('game_id', $this->live->id)->orderBy('sequence')->get();
+
+        expect($plays->pluck('sequence')->all())->toBe([1, 2, 3])
+            ->and($plays->pluck('text')->all())->toBe([
+                'Joe Milton 22 Yd pass', 'Jalen Milroe 4 Yd run', 'Bru McCoy 41 Yd pass',
+            ])
+            // The hash rides in the same unit as the plays it describes.
+            ->and(GameSummary::whereKey($this->live->id)->value('scoring_plays_hash'))->not->toBeNull();
+    });
+
+    it('re-raises a box-score query error that is not a deadlock, unretried', function () {
+        // A missing column must surface on the first attempt, and the
+        // rollback must leave nothing behind — no plays, and no hash claiming
+        // plays that were never stored.
+        deadlockOnce('game_scoring_plays', sqlstate: '42S22');
+
+        $inserts = 0;
+
+        DB::listen(function ($query) use (&$inserts) {
+            if (str_starts_with(strtolower(ltrim($query->sql)), 'insert') && str_contains($query->sql, 'game_scoring_plays')) {
+                $inserts++;
+            }
+        });
+
+        expect(fn () => (new FetchGameSummary($this->live->id))->handle(app(SyncGameSummary::class)))
+            ->toThrow(QueryException::class);
+
+        expect($inserts)->toBe(0)
+            ->and(GameScoringPlay::where('game_id', $this->live->id)->count())->toBe(0)
+            ->and(GameSummary::whereKey($this->live->id)->exists())->toBeFalse();
     });
 });
 

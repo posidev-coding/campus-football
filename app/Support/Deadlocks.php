@@ -16,7 +16,9 @@ use Illuminate\Database\QueryException;
  *
  * It lives here, once, because it was COPIED once: `article_game` borrowed the
  * `article_team` write's shape and left the retry behind. A third pivot calls
- * this rather than growing a third loop.
+ * this rather than growing a third loop, and so does the box-score
+ * transaction in `SyncGameSummary`, whose scoring-play rewrite lost a lock
+ * cycle on Saturday 2026-11-14.
  *
  * Never inside a transaction. MySQL rolls back the WHOLE transaction on 1213,
  * so retrying one statement inside it would replay half a unit of work against
