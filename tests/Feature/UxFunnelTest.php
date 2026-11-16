@@ -4,6 +4,7 @@ use App\Actions\MakePick;
 use App\Actions\PublishSlate;
 use App\Actions\RecordUxEvent;
 use App\Enums\UxSignal;
+use App\Models\ActivityEvent;
 use App\Models\FeedRun;
 use App\Models\User;
 use App\Models\UxEvent;
@@ -100,7 +101,8 @@ describe('the nightly rollup', function () {
 
         $this->artisan('cfb:ux-rollup')->assertSuccessful();
 
-        expect(UxEvent::count())->toBe(0)
+        // Yesterday is stated (a zero for every signal); today never is.
+        expect(UxEvent::where('day', '2026-09-05')->count())->toBe(0)
             ->and(funnelCounts())->toBe(['invite_opened' => 1]);
     });
 
@@ -149,6 +151,82 @@ describe('the nightly rollup', function () {
         expect(array_keys($rows))->toEqualCanonicalizing(array_map(fn (UxSignal $s) => $s->value, UxSignal::cases()))
             ->and($rows['invite_opened'])->toBe(1)
             ->and($rows['onboarding_credentials_reached'])->toBe(0);
+    });
+
+    it('states a day on which nothing fired at all, a zero for every signal', function () {
+        /*
+         * A day enters Redis only when somebody fires a signal, and the
+         * rollup used to walk Redis alone — so the Sunday and Monday after a
+         * slate (2026-11-08 and 2026-11-09), when nobody fired anything, got
+         * no row, and funnel_since slid forward as if all ten signals had
+         * shipped on the Tuesday. Redis is empty here: nothing was counted,
+         * while a page view proves the same Redis was taking writes all along.
+         */
+        ActivityEvent::factory()->create(['occurred_at' => '2026-09-04 16:00:00']);
+
+        $this->artisan('cfb:ux-rollup')->assertSuccessful();
+
+        $rows = UxEvent::where('day', '2026-09-04')->pluck('count', 'signal')->all();
+
+        expect(array_keys($rows))->toEqualCanonicalizing(array_map(fn (UxSignal $s) => $s->value, UxSignal::cases()))
+            ->and(array_unique(array_values($rows)))->toBe([0]);
+    });
+
+    it('states only the day that just finished, and never backfills an older one', function () {
+        // A zero written today for a day no run was there to read would be
+        // an invented measurement. The snapshot reports that day missing —
+        // even when the clickstream could vouch for it.
+        ActivityEvent::factory()->create(['occurred_at' => '2026-09-02 16:00:00']);
+        ActivityEvent::factory()->create(['occurred_at' => '2026-09-04 16:00:00']);
+
+        $this->artisan('cfb:ux-rollup')->assertSuccessful();
+
+        expect(UxEvent::query()->distinct()->pluck('day')->map->toDateString()->all())->toBe(['2026-09-04']);
+    });
+
+    it('never turns a rolled count back into a zero', function () {
+        app(RecordUxEvent::class)->handle(UxSignal::SlateEntered, now()->subDay());
+
+        $this->artisan('cfb:ux-rollup')->assertSuccessful();
+        $this->artisan('cfb:ux-rollup')->assertSuccessful();
+
+        expect(UxEvent::where('signal', 'slate_entered')->sole()->count)->toBe(1)
+            ->and(UxEvent::where('day', '2026-09-04')->count())->toBe(count(UxSignal::cases()));
+    });
+
+    it('writes no zeros when Redis could not be read', function () {
+        // An unreachable store is a failed run on the record, not a day on
+        // which nobody did anything.
+        $this->mock(RecordUxEvent::class)
+            ->shouldReceive('rollUp')
+            ->andThrow(new RuntimeException('Connection refused'));
+
+        expect(fn () => $this->artisan('cfb:ux-rollup')->run())->toThrow(RuntimeException::class);
+
+        expect(UxEvent::count())->toBe(0)
+            ->and(FeedRun::latestFor('ux:rollup')->status)->toBe(FeedRun::FAILED);
+    });
+
+    it('leaves a day missing when the recorder could not write all day', function () {
+        /*
+         * The recorder swallows every failure, so a day-long stall on the
+         * pulse connection leaves the same empty Redis as a quiet day — and
+         * by 04:55 Redis is back and the read succeeds. Ten zeros here would
+         * be a measurement nobody took. The stall drops the clickstream's
+         * writes too, so nothing vouches for the day and it stays absent.
+         */
+        $redis = app('redis');
+        Redis::shouldReceive('connection')->andThrow(new RuntimeException('Connection timed out'));
+
+        app(RecordUxEvent::class)->handle(UxSignal::SlateEntered, now()->subDay());
+        app(RecordUxEvent::class)->handle(UxSignal::FirstPickMade, now()->subDay());
+
+        Redis::swap($redis);
+
+        $this->artisan('cfb:ux-rollup')->assertSuccessful();
+
+        expect(UxEvent::where('day', '2026-09-04')->exists())->toBeFalse()
+            ->and(FeedRun::latestFor('ux:rollup')->status)->toBe(FeedRun::COMPLETE);
     });
 
     it('writes a feed_runs row like every other scheduled command', function () {
