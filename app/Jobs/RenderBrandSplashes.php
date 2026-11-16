@@ -11,7 +11,9 @@ use Illuminate\Foundation\Queue\Queueable;
  * Render the iOS launch-screen set ahead of the readers who would wait on it.
  *
  * Dispatched by BrandSetting when the ink or the icon changes, which are the
- * only two things a launch screen is drawn from. It is not on a clock: a
+ * only two things a launch screen is drawn from. A deploy that moves the
+ * fingerprint in code is `cfb:brand:splashes`' job instead, run inline after
+ * the deploy rather than through this queue. It is not on a clock: a
  * nightly re-render of an unchanged set is the same waste moved off the
  * request path. Fourteen renders is about a second and a half of GD, which is
  * why it does not run inside the admin's save.
