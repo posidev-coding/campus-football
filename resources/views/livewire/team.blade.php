@@ -12,6 +12,7 @@ use App\Models\Team;
 use App\Models\TeamLeader;
 use App\Models\TeamSeasonStat;
 use App\Services\CfbCalendar;
+use App\Support\AutomatedAgents;
 use App\Support\RecruitingClasses;
 use App\Support\Remember;
 use Livewire\Attributes\Computed;
@@ -264,15 +265,22 @@ new class extends Component
      * request — the exact thing that made v3's game and team pages collapse
      * under load. This reads what we have and lets the queue catch up; the job
      * is unique per team, so a busy team page is still one fetch.
+     *
+     * Only a person starts that clock (CFB-132). Crawlers are most of this
+     * screen's traffic. A skipped view reads what we hold and does not stamp
+     * the guard, because a stamp would hold back the next person's fetch for
+     * half an hour.
      */
     #[Computed]
     public function news()
     {
-        Remember::oncePer(
-            "team:news:dispatched:{$this->team->id}",
-            1800,
-            fn () => SyncTeamNews::dispatch($this->team->id),
-        );
+        if (AutomatedAgents::isPerson(request())) {
+            Remember::oncePer(
+                "team:news:dispatched:{$this->team->id}",
+                1800,
+                fn () => SyncTeamNews::dispatch($this->team->id),
+            );
+        }
 
         // `teams` is eager-loaded because the article card renders team chips;
         // lazy loading is disabled app-wide, so omitting it is a hard error
