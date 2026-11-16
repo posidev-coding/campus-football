@@ -71,6 +71,27 @@ class AnalyticsCatalog
     /** Views under five over the window makes a screen quiet. */
     public const QUIET_VIEWS = 5;
 
+    /**
+     * Whose page views rank `routes.top`: members, because "which screens do
+     * our people read" is a question about readers, and at pilot scale the
+     * staff row would answer it with the founder's own browsing.
+     *
+     * @var array<string, int>
+     */
+    public const TOP_AUDIENCE = ['member' => ActivityEvent::MEMBER];
+
+    /**
+     * Whose page views keep a screen out of `routes.quiet`: anybody who is a
+     * person and not the staff. Login, register and the password screens can
+     * only be opened signed out, so a member-only count read them at 0
+     * forever and reported the front door as a screen nobody opens (CFB-115).
+     * Automated stays out, since a crawler opening a door is not somebody
+     * using it.
+     *
+     * @var array<string, int>
+     */
+    public const QUIET_AUDIENCE = ['guest' => ActivityEvent::GUEST, 'member' => ActivityEvent::MEMBER];
+
     /** Cohorts reported, and the retention grid's width. */
     public const COHORT_WEEKS = 8;
 
@@ -813,9 +834,12 @@ class AnalyticsCatalog
     /**
      * Route popularity, and the screens nobody opens (question 7).
      *
-     * Members only and staff excluded, because "does anybody open Rankings" is
-     * a question about readers, and at pilot scale the staff row would answer
-     * it with the founder's own browsing.
+     * Staff excluded from both lists, because at pilot scale the staff row
+     * would answer either one with the founder's own browsing. `top` counts
+     * members ({@see TOP_AUDIENCE}); `quiet` counts guests and members
+     * ({@see QUIET_AUDIENCE}), because a signed-out screen is only ever opened
+     * by a guest. Each list names its audience in the payload beside `since`,
+     * so no count reaches a reader without its population.
      *
      * `quiet` IS NULL UNTIL THE WINDOW IS COVERED, and that is the whole
      * safety of this section. A screen looks dead for exactly the same reason
@@ -847,13 +871,13 @@ class AnalyticsCatalog
         $from = max($window->fromDate(), $held);
         $since = $window->sinceDate() === null ? null : max($window->sinceDate(), $held);
 
-        $pageViews = fn () => ActivityEvent::query()
+        $pageViews = fn (array $audience) => ActivityEvent::query()
             ->whereBetween('day', [$from, $window->toDate()])
             ->where('kind', ActivityKind::PageView->value)
-            ->where('audience', ActivityEvent::MEMBER);
+            ->whereIn('audience', array_values($audience));
 
         $views = $this->keyed(
-            $pageViews()
+            $pageViews(self::TOP_AUDIENCE)
                 ->groupBy('route')
                 ->selectRaw('route as k, count(*) as v'),
         );
@@ -863,9 +887,15 @@ class AnalyticsCatalog
         // screen, over the same rows as its views, so a route never has a
         // reader without a view.
         $visitors = $this->keyed(
-            $pageViews()
+            $pageViews(self::TOP_AUDIENCE)
                 ->groupBy('route')
                 ->selectRaw('route as k, count(distinct user_id) as v'),
+        );
+
+        $opened = $this->keyed(
+            $pageViews(self::QUIET_AUDIENCE)
+                ->groupBy('route')
+                ->selectRaw('route as k, count(*) as v'),
         );
 
         $top = collect($views)->sortDesc()->take(20)
@@ -880,11 +910,13 @@ class AnalyticsCatalog
         return [
             'window_days' => $window->days,
             'since' => $since,
+            'top_audience' => array_keys(self::TOP_AUDIENCE),
             'top' => $top,
+            'quiet_audience' => array_keys(self::QUIET_AUDIENCE),
             'quiet' => $window->covered && $from === $window->fromDate()
                 ? collect($this->screenRoutes())
-                    ->filter(fn (string $route): bool => ($views[$route] ?? 0) < self::QUIET_VIEWS)
-                    ->map(fn (string $route): array => ['route' => $route, 'views' => $views[$route] ?? 0])
+                    ->filter(fn (string $route): bool => ($opened[$route] ?? 0) < self::QUIET_VIEWS)
+                    ->map(fn (string $route): array => ['route' => $route, 'views' => $opened[$route] ?? 0])
                     ->sortBy('views')
                     ->values()
                     ->all()

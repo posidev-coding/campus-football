@@ -227,6 +227,56 @@ describe('routes', function () {
     });
 });
 
+describe('quiet screens', function () {
+    it('counts guests on a screen only a guest can open', function () {
+        /*
+         * CFB-115. Quiet counted members only, so login read 0 for 28 days
+         * in the same payload that put 14 views on it in a day. A signed-out
+         * screen is opened by guests, and they count here. Software and the
+         * staff still do not: a crawler on the door is not somebody using it.
+         */
+        PageViewDaily::factory()->create(['day' => '2026-08-01', 'route' => 'home']);
+
+        ActivityEvent::factory()->guest()->count(AnalyticsCatalog::QUIET_VIEWS)->create([
+            'route' => 'login', 'occurred_at' => '2026-09-04 16:00:00',
+        ]);
+        ActivityEvent::factory()->count(AnalyticsCatalog::QUIET_VIEWS)->create([
+            'user_id' => null, 'visitor' => 'crawler', 'audience' => ActivityEvent::AUTOMATED,
+            'route' => 'register', 'occurred_at' => '2026-09-04 16:00:00',
+        ]);
+        ActivityEvent::factory()->staff()->count(AnalyticsCatalog::QUIET_VIEWS)->create([
+            'route' => 'password.request', 'occurred_at' => '2026-09-04 16:00:00',
+        ]);
+
+        $routes = catalog()->routes(AnalyticsWindow::of(28));
+        $quiet = collect($routes['quiet'])->pluck('views', 'route');
+
+        expect($quiet)->not->toHaveKey('login')
+            ->and($quiet['register'])->toBe(0)
+            ->and($quiet['password.request'])->toBe(0)
+            // Guests open the door; they do not rank the screens members read.
+            ->and(collect($routes['top'])->pluck('route'))->not->toContain('login');
+    });
+
+    it('names the audience each list counted, beside since', function () {
+        $routes = catalog()->routes(AnalyticsWindow::of(28));
+
+        expect($routes)->toHaveKeys(['since', 'top_audience', 'quiet_audience'])
+            ->and($routes['top_audience'])->toBe(['member'])
+            ->and($routes['quiet_audience'])->toBe(['guest', 'member']);
+    });
+
+    it('still withholds quiet on a window the rollup does not cover, guests or not', function () {
+        PageViewDaily::factory()->create(['day' => '2026-09-04', 'route' => 'home']);
+
+        ActivityEvent::factory()->guest()->count(9)->create([
+            'route' => 'login', 'occurred_at' => '2026-09-04 16:00:00',
+        ]);
+
+        expect(catalog()->routes(AnalyticsWindow::of(28))['quiet'])->toBeNull();
+    });
+});
+
 describe('adoption', function () {
     it('divides each feature by the people who were here, not by everybody', function () {
         // "Do the people who are here use this" is a different question from

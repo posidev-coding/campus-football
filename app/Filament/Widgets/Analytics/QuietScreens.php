@@ -72,6 +72,8 @@ class QuietScreens extends BaseWidget
                 .($window->sinceDate() === null ? '' : ' — counting since '.$window->sinceDate());
         }
 
-        return 'Under '.AnalyticsCatalog::QUIET_VIEWS.' member views in 28 days · since '.$window->sinceDate();
+        // The audience off the payload rather than restated here, so the
+        // label cannot name a population the count did not use.
+        return 'Under '.AnalyticsCatalog::QUIET_VIEWS.' '.implode(' and ', $routes['quiet_audience']).' views in 28 days · since '.$routes['since'];
     }
 }
