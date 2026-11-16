@@ -68,8 +68,15 @@ class AnalyticsCatalog
     /** How long a cohort must have existed before its activation can be read. */
     public const MATURITY_DAYS = 7;
 
-    /** Views under five over the window makes a screen quiet. */
+    /**
+     * Views under five over the window makes a screen quiet, and five member
+     * views is what it takes to be ranked in `top`: one line, so the two
+     * lists cannot both name a route.
+     */
     public const QUIET_VIEWS = 5;
+
+    /** The most routes `top` lists. A cap, never a length to fill. */
+    public const TOP_ROUTES = 20;
 
     /**
      * Whose page views rank `routes.top`: members, because "which screens do
@@ -929,7 +936,19 @@ class AnalyticsCatalog
             return ['route' => $route, 'views' => $opened[$audience][$route] ?? 0, 'audience' => $audience];
         };
 
-        $top = collect($views)->sortDesc()->take(20)
+        /*
+         * DISJOINT FROM `quiet` BY DEFINITION (CFB-117). Top was the twenty
+         * busiest routes and quiet was every screen under five views, so with
+         * twenty routes carrying any traffic at all half of top was also
+         * quiet. A route now ranks only at QUIET_VIEWS member views or more.
+         * Members are part of quiet's audience, so a ranked route has at
+         * least that many there too and cannot be quiet. That holds even
+         * while quiet is withheld. Short when few routes clear the line,
+         * never padded, and never a route at 0.
+         */
+        $ranked = collect($views)->filter(fn (int $count): bool => $count >= self::QUIET_VIEWS);
+
+        $top = $ranked->sortDesc()->take(self::TOP_ROUTES)
             ->map(fn (int $count, string $route): array => [
                 'route' => $route,
                 'views' => $count,
@@ -942,6 +961,11 @@ class AnalyticsCatalog
             'window_days' => $window->days,
             'since' => $since,
             'top_audience' => array_keys(self::TOP_AUDIENCE),
+            // How many routes cleared the line. When that is no more than
+            // TOP_ROUTES, `top` is every route with real traffic rather than
+            // a cut of the busiest, and its order is not a finding.
+            'top_min_views' => self::QUIET_VIEWS,
+            'top_eligible' => $ranked->count(),
             'top' => $top,
             'quiet_audience' => array_keys(self::QUIET_AUDIENCE),
             'quiet_signed_out' => $signedOut,
