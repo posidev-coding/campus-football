@@ -2,6 +2,7 @@
 
 use App\Actions\RecordUxEvent;
 use App\Enums\ActivityFeature;
+use App\Enums\ActivityKind;
 use App\Enums\UxSignal;
 use App\Enums\WorkbookStatus;
 use App\Jobs\FetchGameSummary;
@@ -171,7 +172,10 @@ describe('what it reports', function () {
         $slow = telemetry()['performance']['slow_request'];
 
         expect($slow)->toHaveCount(1)
-            ->and($slow[0])->toBe(['what' => 'GET /picks', 'hits' => 5, 'worst' => 1_005]);
+            ->and($slow[0])->toBe([
+                'what' => 'GET /picks', 'hits' => 5, 'worst' => 1_005,
+                'route' => 'pickem.home', 'views_24h' => null, 'views_audience' => 'all',
+            ]);
     });
 
     it('never reports a timestamp in a field measured in milliseconds', function () {
@@ -648,6 +652,80 @@ describe('a browser error against the traffic that produced it', function () {
 
         expect($row['routes'])->toBe([['route' => null, 'views_24h' => null]])
             ->and($row['views_24h'])->toBeNull();
+    });
+});
+
+describe('a slow request against the traffic it is a share of', function () {
+    /** Pulse's own row for one slow request, `$minutesAgo` before now. */
+    function slowRequest(string $method, string $uri, int $minutesAgo = 10, int $ms = 2_000): void
+    {
+        DB::table('pulse_entries')->insert([
+            'timestamp' => now()->subMinutes($minutesAgo)->getTimestamp(),
+            'type' => 'slow_request',
+            'key' => json_encode([$method, $uri, 'Livewire\\Mechanisms\\HandleRequests\\LivewirePageController']),
+            'value' => $ms,
+        ]);
+    }
+
+    it('carries a denominator or an explicit null on every row', function () {
+        /*
+         * "76 slow" for /players/{athlete} could not be turned into a rate:
+         * nothing in the section said out of how many (CFB-139). Each row now
+         * names its route and that route's page views — every audience, as
+         * Pulse counts every request — or says null.
+         */
+        foreach (range(1, 4) as $i) {
+            slowRequest('GET', '/players/{athlete}');
+        }
+        slowRequest('GET', '/scoreboard');
+
+        ActivityEvent::factory()->count(40)->create(['route' => 'player', 'occurred_at' => now()->subHours(2)]);
+        ActivityEvent::factory()->count(3)->create(['route' => 'player', 'audience' => ActivityEvent::AUTOMATED, 'occurred_at' => now()->subHours(2)]);
+        // A search on the same screen is not a second view of it.
+        ActivityEvent::factory()->action(ActivityKind::Searched)->count(5)->create(['route' => 'player', 'occurred_at' => now()->subHours(2)]);
+
+        $slow = collect(telemetry()['performance']['slow_request'])->keyBy('what');
+
+        expect($slow['GET /players/{athlete}'])->toMatchArray([
+            'hits' => 4, 'route' => 'player', 'views_24h' => 43, 'views_audience' => 'all',
+        ])
+            // A screen the raw table holds nothing for has no denominator.
+            ->and($slow['GET /scoreboard'])->toMatchArray(['route' => 'scoreboard', 'views_24h' => null]);
+
+        foreach ($slow as $row) {
+            expect($row)->toHaveKeys(['route', 'views_24h', 'views_audience']);
+        }
+    });
+
+    it('gives a request it cannot map a null, never another route\'s count', function () {
+        // A Livewire update is filed under its page's path as a POST, and an
+        // update is not a view. A URI no route serves any more matches
+        // nothing. Neither may borrow the screen next door's traffic.
+        slowRequest('POST', '/players/4430807');
+        slowRequest('GET', '/players/{player}');
+        slowRequest('GET', '/a-screen-that-shipped-and-left');
+
+        ActivityEvent::factory()->count(40)->create(['route' => 'player', 'occurred_at' => now()->subHour()]);
+
+        foreach (telemetry()['performance']['slow_request'] as $row) {
+            expect($row['route'])->toBeNull()
+                ->and($row['views_24h'])->toBeNull();
+        }
+    });
+
+    it('counts the views over the same 24 hours the slow requests cover', function () {
+        slowRequest('GET', '/scoreboard', minutesAgo: 60);
+
+        // Inside the window, and a day and an hour ago outside it — the same
+        // edge Pulse's own read stops at.
+        ActivityEvent::factory()->count(2)->create(['route' => 'scoreboard', 'occurred_at' => now()->subHours(OpsReport::HOURS)->addMinute()]);
+        ActivityEvent::factory()->count(9)->create(['route' => 'scoreboard', 'occurred_at' => now()->subHours(OpsReport::HOURS + 1)]);
+        slowRequest('GET', '/scoreboard', minutesAgo: (OpsReport::HOURS + 1) * 60);
+
+        $row = telemetry()['performance']['slow_request'][0];
+
+        expect($row['hits'])->toBe(1)
+            ->and($row['views_24h'])->toBe(2);
     });
 });
 

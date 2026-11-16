@@ -38,7 +38,7 @@ identifiers anywhere:
 | `pickem` | Is the product ready to be shown to people |
 | `schedule` | Did each scheduled command run, and is it overdue |
 | `errors` | Recent failures, split into commands, jobs and browser |
-| `performance` | Pulse's heaviest entries, grouped by key with a hit count |
+| `performance` | Pulse's heaviest entries, grouped by key with a hit count. Each `slow_request` row also carries its `route` and that route's page views over the same 24 hours (`views_24h`, `views_audience: all`), or null for both when the request cannot be mapped (a POST, a URI no route serves, a screen the sensor does not count) — no denominator, not zero |
 | `funnel` | Seven days of the nine named UX signals |
 | `funnel_window_days`, `funnel_window_since` | The funnel's window: seven league days, today included, cut exactly as `traffic` and `audience.adoption` are, so their totals compare day for day |
 | `funnel_since` | The first day each `funnel` total covers — a signal added this week reads zero for every day before it shipped |

@@ -4,6 +4,7 @@ namespace App\Support;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -27,8 +28,10 @@ class PerformanceReport
      */
     public const EXCEPTION = 'exception';
 
+    public const SLOW_REQUEST = 'slow_request';
+
     /** Every type reported, in the order a reader wants them. */
-    public const TYPES = ['slow_request', 'slow_query', 'slow_job', 'slow_outgoing_request', self::EXCEPTION];
+    public const TYPES = [self::SLOW_REQUEST, 'slow_query', 'slow_job', 'slow_outgoing_request', self::EXCEPTION];
 
     /**
      * Every type's top entries, keyed by type.
@@ -46,8 +49,74 @@ class PerformanceReport
         }
 
         return collect(self::TYPES)
-            ->mapWithKeys(fn (string $type): array => [$type => $this->top($type)])
+            ->mapWithKeys(fn (string $type): array => [
+                $type => $type === self::SLOW_REQUEST ? $this->slowRequests() : $this->top($type),
+            ])
             ->all();
+    }
+
+    /**
+     * The slow requests, each beside the traffic it is a share of.
+     *
+     * "76 slow" is not readable without "out of how many" (CFB-139), so each
+     * row carries the screen's page views over the SAME 24 hours and the SAME
+     * audience — every one, as Pulse counts every request — and says so in
+     * the row. Never the routes section's 28-day member count: a 24-hour
+     * all-audience numerator over that is worse than no denominator.
+     *
+     * Pulse keys a request by its route URI (`["GET","/players/{athlete}",…]`)
+     * and the clickstream by route NAME, so the join is the route table's own
+     * GET entry for that exact URI — never a guess. Anything else carries a
+     * null route and null views: a POST (every Livewire update is filed under
+     * its page's path, and an update is not a view), a URI no route serves
+     * any more, a route the sensor does not count. Null is "no denominator",
+     * as `errors.client` already means it, and a rate nobody can read is
+     * skipped rather than borrowed from another screen.
+     *
+     * Views are screens rendered — 2xx HTML GETs, navigate hops included —
+     * while Pulse also sees a slow redirect. Read it as a rate of views.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function slowRequests(): array
+    {
+        $rows = $this->top(self::SLOW_REQUEST, withKey: true);
+
+        $routes = array_map(fn (array $row): ?string => self::routeForRequest($row['key']), $rows);
+
+        $views = app(AnalyticsCatalog::class)->routesViews(array_values(array_unique(array_filter($routes))), OpsReport::HOURS);
+
+        return array_map(function (array $row, ?string $route) use ($views): array {
+            unset($row['key']);
+
+            return [
+                ...$row,
+                'route' => $route,
+                'views_24h' => $route === null ? null : $views[$route],
+                'views_audience' => 'all',
+            ];
+        }, $rows, $routes);
+    }
+
+    /**
+     * The GET route a Pulse request key names, by its exact URI — or null.
+     *
+     * Pulse writes the path as `domain + '/' + uri`, so an undomained route's
+     * URI is the path less its leading slash, and the root is `/`.
+     */
+    public static function routeForRequest(string $key): ?string
+    {
+        $parts = json_decode($key, true);
+
+        if (! is_array($parts) || ($parts[0] ?? null) !== 'GET' || ! is_string($parts[1] ?? null)) {
+            return null;
+        }
+
+        $uri = ltrim($parts[1], '/');
+
+        $route = Route::getRoutes()->getRoutesByMethod()['GET'][$uri === '' ? '/' : $uri] ?? null;
+
+        return $route?->getName();
     }
 
     /**
@@ -74,7 +143,7 @@ class PerformanceReport
      *
      * @return list<array<string, mixed>>
      */
-    public function top(string $type): array
+    public function top(string $type, bool $withKey = false): array
     {
         return DB::table('pulse_entries')
             ->where('type', $type)
@@ -87,6 +156,7 @@ class PerformanceReport
             ->selectRaw('`key`, count(*) as hits, max(value) as max_value')
             ->get()
             ->map(fn ($row): array => [
+                ...$withKey ? ['key' => (string) $row->key] : [],
                 'what' => OpsReport::readableKey((string) $row->key),
                 'hits' => (int) $row->hits,
                 ...$type === self::EXCEPTION
