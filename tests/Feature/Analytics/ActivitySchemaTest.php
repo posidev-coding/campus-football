@@ -337,11 +337,14 @@ describe('the vocabulary', function () {
          * A pick, a post, a join, a follow and an invite each already have a
          * row somewhere durable. A second row here would be a second counter
          * that can disagree with the first — and a stream entry can be
-         * trimmed under load where a truth row cannot.
+         * trimmed under load where a truth row cannot. A READ of the talk
+         * has no row anywhere — a post is `conversation_posts`, a read is
+         * nowhere — so the tab switch earns its kind (CFB-107).
          */
         expect(array_map(fn (ActivityKind $k) => $k->value, ActivityKind::cases()))->toBe([
             'page_view',
             'searched',
+            'talk_read',
             'stat_asked',
             'help_asked',
             'notification_toggled',

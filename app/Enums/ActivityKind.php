@@ -3,7 +3,7 @@
 namespace App\Enums;
 
 /**
- * Everything the clickstream may record — a page view, and five moments with
+ * Everything the clickstream may record — a page view, and six moments with
  * no other home.
  *
  * BOUNDED ON PURPOSE, for the reason App\Enums\UxSignal is: free-text event
@@ -22,8 +22,9 @@ namespace App\Enums;
  * action — an action row there would be a second emitter standing beside
  * UxSignal::InviteOpened.
  *
- * So what is left is: a screen somebody read, a search they ran, a question
- * they asked, a notification setting they moved, and a share they tapped.
+ * So what is left is: a screen somebody read, a talk they switched to without
+ * loading it, a search they ran, a question they asked, a notification setting
+ * they moved, and a share they tapped.
  * Nothing else has been asked of the app and left no trace.
  *
  * The emitters land in phase 2 (docs/plans/analytics.md); this enum is the
@@ -45,6 +46,21 @@ enum ActivityKind: string
      * counter that moves on every keystroke measures typing.
      */
     case Searched = 'searched';
+
+    /**
+     * The clubhouse's Talk stop, reached by switching to it on the screen
+     * rather than by loading it (CFB-107).
+     *
+     * The tab strip is a Livewire property change, not a GET, so the page
+     * view sensor never sees it — and `ActivityFeature::ReadTalk` had no
+     * other source, so `read_talk` read 0 on the most-read screen in the
+     * app. A `?view=talk` LOAD is still the page view's, facet `talk`; this
+     * is only the switch, and only the first one per clubhouse load. Not a
+     * second page view: the middleware owns those, and a mount hook was
+     * already ruled out because it counts layout islands, not screens.
+     * Facet: always `talk`. Subject: the group.
+     */
+    case TalkRead = 'talk_read';
 
     /** A stat question, counted after the answer resolves. Facet: why it declined. */
     case StatAsked = 'stat_asked';

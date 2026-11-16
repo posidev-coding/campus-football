@@ -193,6 +193,31 @@ describe('the presence rows', function () {
             ->and(ActivityFeature::Talked->in($features))->toBeFalse();
     });
 
+    it('reads a switch to the Talk tab as reading the talk, and as an action rather than a view', function () {
+        /*
+         * CFB-107: the tab strip is a property change, so the only row a
+         * switch leaves is this action. Without the fold it would sit in
+         * activity_events and the ReadTalk bit would never move.
+         */
+        $reader = User::factory()->create();
+
+        screenView(['user_id' => $reader->id, 'route' => 'pickem.group']);
+        screenView([
+            'user_id' => $reader->id, 'kind' => ActivityKind::TalkRead,
+            'route' => 'default-livewire.update', 'facet' => 'talk',
+        ]);
+
+        rollDay();
+
+        $day = UserDay::sole();
+
+        expect(ActivityFeature::ReadTalk->in($day->features))->toBeTrue()
+            ->and($day->views)->toBe(1)
+            ->and($day->actions)->toBe(1)
+            // Not a screen: page_views_daily holds the clubhouse load alone.
+            ->and(PageViewDaily::pluck('facet')->all())->toBe(['']);
+    });
+
     it('leaves Installed clear for a browser and for a client that never said', function () {
         /*
          * Three states, and only ONE of them is the app. A first load has no

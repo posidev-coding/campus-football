@@ -400,6 +400,12 @@ class AnalyticsCatalog
      * who are here use this" is a different question from "do the people who
      * signed up in March", and only the first one is actionable this week.
      *
+     * `read_talk` is NULL — users and share both — until the Talk tab switch
+     * has been recorded at least once ({@see talkReadCounting()}). Before
+     * CFB-107 the switch produced no row at all, so a 0 there meant "not
+     * instrumented", and it was read as "nobody reads the talk". No data is
+     * null, and the advisor skips a null.
+     *
      * @return array<string, mixed>
      */
     public function adoption(?AnalyticsWindow $window = null): array
@@ -409,7 +415,15 @@ class AnalyticsCatalog
 
         $features = [];
 
+        $talkReadCounting = $this->talkReadCounting();
+
         foreach (ActivityFeature::cases() as $feature) {
+            if ($feature === ActivityFeature::ReadTalk && ! $talkReadCounting) {
+                $features[$this->snake($feature->name)] = ['users' => null, 'share' => null];
+
+                continue;
+            }
+
             $users = (int) UserDay::query()
                 ->whereBetween('day', [$window->fromDate(), $window->toDate()])
                 ->whereRaw('(features & ?) > 0', [$feature->value])
@@ -1288,6 +1302,24 @@ class AnalyticsCatalog
         }
 
         return $out;
+    }
+
+    /**
+     * Has the Talk tab switch ever been recorded — is `read_talk` measuring?
+     *
+     * The page view of a `?view=talk` LOAD has always carried the facet, but
+     * almost nobody arrives that way: the stop is reached by the tab strip,
+     * which `ActivityKind::TalkRead` covers and nothing did before it. So
+     * the bit is only a reading once that kind has a row; until then it is
+     * the instrument's absence, not the readers'.
+     *
+     * Any row, not one inside the window. Bounded by the clickstream's own
+     * {@see ActivityEvent::KEEP_DAYS}: a talk nobody switched to for that
+     * long reads as no data again, which is a skip, never a false zero.
+     */
+    private function talkReadCounting(): bool
+    {
+        return ActivityEvent::query()->where('kind', ActivityKind::TalkRead->value)->exists();
     }
 
     /** `ReadTalk` => `read_talk`, so an enum case names its own payload key. */

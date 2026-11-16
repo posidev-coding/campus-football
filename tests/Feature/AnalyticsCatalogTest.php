@@ -194,6 +194,35 @@ describe('adoption', function () {
             ->and($adoption['features']['picked']['share'])->toBe(0.4);
     });
 
+    it('reports read_talk as no data until the talk tab switch has been recorded', function () {
+        /*
+         * CFB-107. A 0 beside a share of 0 is what got the talk filed as
+         * "nobody reads it", when the tab switch most readers take had never
+         * left a row at all. Until it has, the facet is uninstrumented — a
+         * null the advisor skips — even with a `?view=talk` load in the week.
+         */
+        $present = User::factory()->count(10)->create();
+
+        foreach ($present as $i => $user) {
+            UserDay::factory()->create([
+                'user_id' => $user->id, 'day' => '2026-09-03',
+                'features' => $i < 3 ? ActivityFeature::ReadTalk->value : 0,
+            ]);
+        }
+
+        $before = catalog()->adoption(AnalyticsWindow::of(7))['features'];
+
+        expect($before['read_talk'])->toBe(['users' => null, 'share' => null])
+            // Only the uninstrumented facet: a posted talk is a truth-table
+            // fact and its 0 is a real zero.
+            ->and($before['talked'])->toBe(['users' => 0, 'share' => 0.0]);
+
+        ActivityEvent::factory()->create(['kind' => ActivityKind::TalkRead, 'facet' => 'talk']);
+
+        expect(catalog()->adoption(AnalyticsWindow::of(7))['features']['read_talk'])
+            ->toBe(['users' => 3, 'share' => 0.3]);
+    });
+
     it('withholds every share when the week is under the floor', function () {
         // Nine people, and one of them moves the number eleven points.
         $present = User::factory()->count(9)->create();

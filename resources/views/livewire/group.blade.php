@@ -9,6 +9,7 @@ use App\Actions\RecordActivity;
 use App\Actions\RecordUxEvent;
 use App\Actions\RemoveGroupMember;
 use App\Actions\SetGroupIcon;
+use App\Enums\ActivityKind;
 use App\Enums\ContestMode;
 use App\Enums\UxSignal;
 use App\Exceptions\CannotInvite;
@@ -140,6 +141,18 @@ new class extends Component
      */
     public string $q = '';
 
+    /**
+     * Has this clubhouse load already counted the reader on the Talk stop?
+     *
+     * Locked and public for the reason `RecordsSearches::$searchCounted` is:
+     * a private flag is not hydrated, so every round trip would arrive with
+     * a fresh false and count every toggle. Set in mount() when the load
+     * itself landed on Talk, because that page view already carries the
+     * `talk` facet and a switch away and back is the same reading.
+     */
+    #[Locked]
+    public bool $talkCounted = false;
+
     public function mount(Group $group): void
     {
         $this->group = $group;
@@ -168,8 +181,32 @@ new class extends Component
         // The page-view sensor records this, not the address: a bare URL
         // may be the slate or, past the front door, the standings.
         RecordActivity::showing(request(), $this->view);
+        $this->talkCounted = $this->view === 'talk';
 
         $this->countSlateEntry();
+    }
+
+    /**
+     * The reader switched to the Talk stop on the screen (CFB-107).
+     *
+     * A tab switch is a property change, not a GET, so the page-view sensor
+     * never sees it — and it is the only way most members reach the thread.
+     * Counted once per clubhouse load, never per toggle: the adoption bit is
+     * "did they read the talk today", and a reader flipping between Slate
+     * and Talk is one reader.
+     *
+     * Only after normalizedView(): a non-member's `talk` has already folded
+     * to the slate by here, so a guest never counts as a reader.
+     */
+    private function countTalkRead(): void
+    {
+        if ($this->view !== 'talk' || $this->talkCounted) {
+            return;
+        }
+
+        $this->talkCounted = true;
+
+        app(RecordActivity::class)->action(ActivityKind::TalkRead, request(), 'talk', $this->group);
     }
 
     /**
@@ -232,6 +269,8 @@ new class extends Component
     public function updatedView(string $value): void
     {
         $this->view = $this->normalizedView($value);
+
+        $this->countTalkRead();
     }
 
     /**
