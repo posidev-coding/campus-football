@@ -162,9 +162,11 @@ non-negotiables that most often make a proposal wrong here:
   per-instance flag is false under test, so no feature test in this repository
   can catch a missing eager load. A slow query naming a relation is a real find,
   every time.
-- **`errors.client`** is browser JavaScript, which no server log sees. Check
-  `viewport` and `standalone`: a 390px installed PWA is the primary target, and
-  a break that only happens there is invisible everywhere else.
+- **`errors.client`** is browser JavaScript, which no server log sees. One row
+  is one FAULT (its `fingerprint`), with `reports` summed over the `windows` it
+  fired in. Check `viewports` and `standalone`, which list every width and mode
+  it was seen in: a 390px installed PWA is the primary target, and a break that
+  only happens there is invisible everywhere else.
 - **`ops.pulse_ingest` failing means the MONITOR is down**, not the app. A
   stalled `pulse:work` looks exactly like no traffic, so treat every quiet
   performance section as suspect until that row is green.
@@ -225,7 +227,9 @@ proposes deleting a screen people use.
   (`picks_reminded_at`, `last_call_sent_at`). Never a group name — the payload
   does not carry one. Both rates are null until the phase that computes them
   ships; null is not zero and not a finding.
-- **`errors.client[].route` with `views_24h` turns a count into a rate.** Do
+- **`errors.client[].routes` with `views_24h` turns a count into a rate.** Each
+  route carries its own `views_24h`, and the row's `views_24h` is their sum, or
+  null when any route has none (a partial sum is not a denominator). Do
   not read a rate under 50 views. A bug on a screen ten people opened is still
   a bug, but its evidence is the `reports` count, not a percentage. A
   `views_24h` of null means there is no denominator at all.

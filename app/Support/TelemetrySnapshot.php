@@ -223,40 +223,105 @@ class TelemetrySnapshot
     }
 
     /**
-     * Browser errors, grouped by fingerprint. The one signal no server-side
+     * Browser errors, one row per FAULT. The one signal no server-side
      * monitor produces — and the class of bug a 390px PWA ships silently.
+     *
+     * Grouped on the `fingerprint` RecordClientError already computes (kind,
+     * digit-normalized message, hash-collapsed source, line, column). That
+     * action writes a row per fingerprint per five-minute window, and only
+     * the first path of each window, so one bug seen all day from twenty
+     * screens was twenty rows here and read as twenty bugs (CFB-136). Now
+     * `reports` is summed across the group and `windows` says how many rows
+     * it folded; the screens and widths it was seen on stay as lists rather
+     * than collapsing, because a break that only happens on an installed
+     * 390px PWA is the one this project most needs to see.
+     *
+     * No `path`. A path carries ids, and an invite code riding into the
+     * payload is what the sensor design refuses; each path is resolved to a
+     * route NAME, and an unmatched one is a null route, never the path.
      *
      * @return list<array<string, mixed>>
      */
     private function clientErrors(): array
     {
-        return ClientError::query()
-            ->where('created_at', '>=', now()->subHours(OpsReport::HOURS))
+        $since = now()->subHours(OpsReport::HOURS);
+
+        $groups = ClientError::query()
+            ->where('created_at', '>=', $since)
+            ->groupBy('fingerprint')
+            ->selectRaw('fingerprint, sum(reports) as reports, count(*) as windows, max(created_at) as last_seen_at')
             ->orderByDesc('reports')
+            // A unique key to settle ties, or a frozen clock hands the
+            // advisor a different order on every read.
+            ->orderBy('fingerprint')
             ->limit(20)
-            ->get()
-            ->map(fn (ClientError $error): array => [
-                'kind' => $error->kind,
-                'message' => $error->message,
-                'source' => $error->source,
-                'line' => $error->line,
-                'path' => $error->path,
-                /*
-                 * The path resolved to a route NAME, and the same route's
-                 * traffic in the same window — which is what turns eleven
-                 * errors into a rate. Null when the router matches nothing
-                 * (a path from an old deploy, or one that never existed) and
-                 * null when the raw table holds no views: "zero views, eleven
-                 * errors" is an impossible pair, and the honest report of a
-                 * denominator we do not have is no denominator.
-                 */
-                'route' => $route = $this->analytics->routeFor($error->path),
-                'views_24h' => $this->analytics->routeViews($route, OpsReport::HOURS),
-                'viewport' => $error->viewport,
-                'standalone' => $error->standalone,
-                'reports' => $error->reports,
-            ])
-            ->all();
+            ->get();
+
+        if ($groups->isEmpty()) {
+            return [];
+        }
+
+        // One read for every row of every group, newest first, so the first
+        // row of a group is the text it is reported under.
+        $rows = ClientError::query()
+            ->where('created_at', '>=', $since)
+            ->whereIn('fingerprint', $groups->pluck('fingerprint'))
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->get(['fingerprint', 'kind', 'message', 'source', 'line', 'path', 'viewport', 'standalone'])
+            ->groupBy('fingerprint');
+
+        // The router, once per distinct path; the traffic, once for them all.
+        $routeOf = $rows->flatten()->pluck('path')->unique()
+            ->mapWithKeys(fn (?string $path): array => [(string) $path => $this->analytics->routeFor($path)]);
+
+        $views = $this->analytics->routesViews($routeOf->filter()->unique()->values()->all(), OpsReport::HOURS);
+
+        return $groups->map(function (ClientError $group) use ($rows, $routeOf, $views): array {
+            $members = $rows[$group->fingerprint];
+            $latest = $members->first();
+
+            $routes = $members->map(fn (ClientError $row): ?string => $routeOf[(string) $row->path])
+                ->unique()
+                ->sortBy(fn (?string $route): string => $route ?? "\u{10FFFF}")
+                ->values()
+                ->map(fn (?string $route): array => [
+                    'route' => $route,
+                    /*
+                     * The route's traffic in the same window — which is what
+                     * turns a report count into a rate. Null when the route
+                     * is unknown and null when the raw table holds no views:
+                     * "zero views, eleven errors" is an impossible pair, and
+                     * the honest report of a denominator we do not have is
+                     * no denominator.
+                     */
+                    'views_24h' => $route === null ? null : $views[$route],
+                ]);
+
+            return [
+                'fingerprint' => $group->fingerprint,
+                'kind' => $latest->kind,
+                'message' => $latest->message,
+                'source' => $latest->source,
+                'line' => $latest->line,
+                'reports' => (int) $group->reports,
+                'windows' => (int) $group->windows,
+                'routes' => $routes->all(),
+                // The fault's whole denominator, or none: a sum missing one
+                // of its screens is a partly measured number, and that is
+                // null rather than an undercount.
+                'views_24h' => $routes->contains(fn (array $route): bool => $route['views_24h'] === null)
+                    ? null
+                    : $routes->sum('views_24h'),
+                // Every width and mode it was seen in. A null width is "not
+                // reported", kept as its own answer rather than dropped.
+                'viewports' => $members->pluck('viewport')->unique()
+                    ->sortBy(fn (?int $width): int => $width ?? PHP_INT_MAX)
+                    ->values()->all(),
+                'standalone' => $members->pluck('standalone')->unique()->sort()->values()->all(),
+                'last_seen_at' => CarbonImmutable::parse($group->last_seen_at, 'UTC')->toIso8601String(),
+            ];
+        })->all();
     }
 
     /**
