@@ -6,6 +6,7 @@ use App\Models\Standing;
 use App\Services\CfbCalendar;
 use App\Support\Remember;
 use App\Support\Scope;
+use App\Support\StandingsScreen;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -65,9 +66,9 @@ new class extends Component
         $year = $calendar->scoreboardYear();
 
         $published = Remember::filled(
-            "standings:published:{$year}",
-            3600,
-            fn (): ?bool => Standing::fromEspn()->where('season_year', $year)->exists() ?: null
+            StandingsScreen::publishedKey($year),
+            StandingsScreen::MENU_SECONDS,
+            fn (): ?bool => StandingsScreen::isPublished($year)
         );
 
         return $published ? $year : $calendar->resultsYear();
@@ -98,11 +99,7 @@ new class extends Component
         // Remember::filled, not Cache::remember: standings fill through a
         // seed running long after its command exits, and a request racing it
         // must not pin an empty season menu for a TTL.
-        return Remember::filled('standings:seasons', 3600, fn () => Standing::query()
-            ->distinct()
-            ->orderByDesc('season_year')
-            ->pluck('season_year')
-            ->all());
+        return Remember::filled(StandingsScreen::SEASONS_KEY, StandingsScreen::MENU_SECONDS, fn () => StandingsScreen::seasons());
     }
 
     /**
@@ -142,23 +139,12 @@ new class extends Component
     #[Computed]
     public function conferences(): array
     {
-        // `v2`: the cached shape changed from a list of ids to id+label rows,
-        // and a stale entry from before the change fatalled the live page
-        // while every test passed on its fresh array cache. A shape change
-        // gets a new key, never a coordinated cache:clear.
+        // The key is versioned (see StandingsScreen::conferencesKey), and
+        // the FBS entry is warmed by the standings writers.
         return Remember::orSource(
-            "standings:conferences:v2:{$this->year}:{$this->division}",
-            3600,
-            fn () => Conference::query()
-                ->whereIn('id', ConferenceSeason::where('season_year', $this->year)
-                    ->where('classification', strtoupper($this->division))
-                    ->pluck('conference_id'))
-                ->where('is_conference', true)
-                ->whereIn('id', Standing::fromEspn()->where('season_year', $this->year)->distinct()->pluck('conference_id'))
-                ->orderBy('name')
-                ->get(['id', 'short_name', 'name'])
-                ->map(fn (Conference $c) => ['id' => $c->id, 'label' => $c->short_name ?: $c->name])
-                ->all()
+            StandingsScreen::conferencesKey($this->year, $this->division),
+            StandingsScreen::MENU_SECONDS,
+            fn () => StandingsScreen::conferences($this->year, $this->division)
         );
     }
 
@@ -215,27 +201,15 @@ new class extends Component
          * out unread instead of outliving the fix. v2 is the week-1 seeding
          * fix in Standing::inStandingsOrder. Remember::filled, so a request
          * racing the standings backfill cannot pin empty.
+         *
+         * The FBS entry is put by the standings writers once their write has
+         * landed (StandingsScreen::warm, CFB-130), so a bare visit reads it
+         * warm; any other scope still fills on its first read.
          */
         $cached = Remember::filled(
-            "standings:screen:v2:{$this->year}:{$this->scope}",
-            900,
-            fn () => Standing::query()
-                ->fromEspn()
-                // `location` because the table renders placeName(). Omit it
-                // from a constrained eager load and every team silently
-                // falls back to its display name, which reads as a design
-                // decision rather than a missing column.
-                ->with(['team:id,slug,location,display_name,short_display_name,abbreviation,logo,logo_dark', 'conference:id,name,short_name,abbreviation,logo'])
-                ->where('season_year', $this->year)
-                ->whereIn('conference_id', $conferenceIds)
-                ->inStandingsOrder()
-                ->get()
-                ->map(fn (Standing $s) => [
-                    'standing' => $s->getAttributes(),
-                    'team' => $s->team?->getAttributes(),
-                    'conference' => $s->conference?->getAttributes(),
-                ])
-                ->all(),
+            StandingsScreen::rowsKey($this->year, $this->scope),
+            StandingsScreen::ROWS_SECONDS,
+            fn () => StandingsScreen::rows($this->year, $conferenceIds),
         );
 
         return collect($cached)
