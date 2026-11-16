@@ -48,6 +48,7 @@ describe('the payload', function () {
         expect(array_keys(telemetry()))->toBe([
             'generated_at', 'window_hours', 'season', 'ops', 'coverage',
             'pickem', 'schedule', 'errors', 'performance', 'funnel', 'funnel_since',
+            'funnel_missing_days',
             // The attention sections, after the funnel and before the board:
             // "is the machine alright" is the question that has to be
             // answered before a traffic dip means anything.
@@ -304,6 +305,49 @@ describe('what it reports', function () {
         expect($since['invite_opened'])->toBe('2026-09-01')
             ->and($since['onboarding_credentials_reached'])->toBe('2026-09-03')
             ->and(array_keys($since))->toBe(array_map(fn (UxSignal $s) => $s->value, UxSignal::cases()));
+    });
+
+    it('reports a window day no rollup stated, rather than letting funnel_since slide past it', function () {
+        /*
+         * 2026-11-08 and 2026-11-09 got no row for any signal, and
+         * funnel_since read 2026-11-10 for all ten — indistinguishable from
+         * ten counters shipped that morning. Today is 2026-09-05, so the
+         * window's finished days are 08-29 through 09-04; three are unstated,
+         * one of them in the middle where funnel_since cannot see it at all.
+         */
+        foreach (['2026-08-31', '2026-09-01', '2026-09-03', '2026-09-04'] as $day) {
+            foreach (UxSignal::cases() as $signal) {
+                UxEvent::create(['day' => $day, 'signal' => $signal->value, 'count' => 0]);
+            }
+        }
+
+        $snapshot = telemetry();
+
+        expect($snapshot['funnel_missing_days'])->toBe(['2026-08-29', '2026-08-30', '2026-09-02'])
+            ->and($snapshot['funnel_since']['invite_opened'])->toBe('2026-08-31');
+    });
+
+    it('does not mistake a signal that shipped mid-window for a missing day', function () {
+        // The other signals carry the day; this one simply was not counting
+        // yet, which is what funnel_since is for. Nothing before the window's
+        // floor is asked about either.
+        foreach (['2026-08-29', '2026-08-30', '2026-08-31', '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04'] as $day) {
+            UxEvent::create(['day' => $day, 'signal' => 'invite_opened', 'count' => 1]);
+        }
+
+        UxEvent::create(['day' => '2026-09-04', 'signal' => 'onboarding_credentials_reached', 'count' => 0]);
+
+        expect(telemetry()['funnel_missing_days'])->toBe([]);
+    });
+
+    it('says a missing day out loud at the terminal', function () {
+        foreach (['2026-08-29', '2026-08-30', '2026-08-31', '2026-09-01', '2026-09-03', '2026-09-04'] as $day) {
+            UxEvent::create(['day' => $day, 'signal' => 'invite_opened', 'count' => 1]);
+        }
+
+        Artisan::call('cfb:telemetry');
+
+        expect(Artisan::output())->toContain('no rollup for 2026-09-02');
     });
 
     it('dates a signal with no persisted day to today, which is all its total covers', function () {
