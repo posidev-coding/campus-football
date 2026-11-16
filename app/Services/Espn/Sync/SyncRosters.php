@@ -10,6 +10,7 @@ use App\Models\Position;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Services\Espn\EspnClient;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -31,6 +32,20 @@ use Illuminate\Support\Facades\Log;
  */
 class SyncRosters
 {
+    /**
+     * Every position row, read once per run on first use.
+     *
+     * @var Collection<int, Position>|null
+     */
+    private ?Collection $knownPositions = null;
+
+    /**
+     * Position ids already reconciled against the payload this run.
+     *
+     * @var array<int, true>
+     */
+    private array $reconciledPositions = [];
+
     public function __construct(private EspnClient $espn) {}
 
     /**
@@ -156,6 +171,23 @@ class SyncRosters
         };
     }
 
+    /**
+     * Resolve a roster entry's position, writing the row only when it changed.
+     *
+     * The positions table holds a few dozen rows, and every athlete on a
+     * roster carries one of them inline. Upserting per athlete was a SELECT
+     * plus a conditional write for each of ~120 players a team, all 138 teams:
+     * every SyncTeamSeason in the slow-job log on 2026-11-10, worst 2,471 ms.
+     * So the table is read ONCE per run and each distinct id is reconciled
+     * once; the athletes after it reuse the answer.
+     *
+     * Reconciled, not just looked up: a known row is filled from the payload
+     * and saved only if that dirtied it, so a position ESPN renames is still
+     * picked up. A cache that skipped every known id would silently freeze
+     * the table at whatever ESPN first said. A new id is upserted rather than
+     * inserted, because `SyncRecruiting` writes the same table and may have
+     * created it since this run read it.
+     */
     private function position(?array $position): ?int
     {
         if ($position === null || ! isset($position['id'])) {
@@ -164,17 +196,30 @@ class SyncRosters
 
         $id = (int) $position['id'];
 
-        Position::updateOrCreate(
-            ['id' => $id],
-            [
-                'name' => $position['displayName'] ?? $position['name'] ?? "Position {$id}",
-                'abbreviation' => $position['abbreviation'] ?? null,
-                'slug' => $position['slug'] ?? null,
-                // ESPN nests the parent position but does not always include
-                // its id, so only record it when it is actually there.
-                'parent_id' => isset($position['parent']['id']) ? (int) $position['parent']['id'] : null,
-            ]
-        );
+        if (isset($this->reconciledPositions[$id])) {
+            return $id;
+        }
+
+        $attributes = [
+            'name' => $position['displayName'] ?? $position['name'] ?? "Position {$id}",
+            'abbreviation' => $position['abbreviation'] ?? null,
+            'slug' => $position['slug'] ?? null,
+            // ESPN nests the parent position but does not always include
+            // its id, so only record it when it is actually there.
+            'parent_id' => isset($position['parent']['id']) ? (int) $position['parent']['id'] : null,
+        ];
+
+        $this->knownPositions ??= Position::all()->keyBy('id');
+
+        $known = $this->knownPositions->get($id);
+
+        if ($known === null) {
+            Position::upsert([['id' => $id, ...$attributes]], ['id'], array_keys($attributes));
+        } elseif ($known->fill($attributes)->isDirty()) {
+            $known->save();
+        }
+
+        $this->reconciledPositions[$id] = true;
 
         return $id;
     }
