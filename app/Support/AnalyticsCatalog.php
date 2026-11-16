@@ -1252,6 +1252,11 @@ class AnalyticsCatalog
      * {@see routeViews()} for many routes in one grouped read, keyed by route.
      * Same rule: a route with no rows is null, never 0.
      *
+     * Every audience — guest, member, staff and automated — because the
+     * numerators it is set against (browser errors, Pulse's slow requests)
+     * count everybody too. A member-only denominator under an all-audience
+     * numerator is the CFB-133 mistake in a rate.
+     *
      * @param  list<string>  $routes
      * @return array<string, ?int>
      */
@@ -1263,6 +1268,9 @@ class AnalyticsCatalog
 
         $counts = ActivityEvent::query()
             ->whereIn('route', $routes)
+            // Screens rendered, not every event that names a route: a Talk
+            // tab switch or a search on the same screen is not a second view.
+            ->where('kind', ActivityKind::PageView->value)
             ->where('occurred_at', '>=', now()->subHours($hours))
             ->groupBy('route')
             ->selectRaw('route, count(*) as views')
