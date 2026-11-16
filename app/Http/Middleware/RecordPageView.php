@@ -57,11 +57,27 @@ class RecordPageView
      * no views at all, and cannot check a response it never saw. Without them
      * an SMS webhook is reported as a dead screen and somebody is invited to
      * delete it.
+     *
+     * The same reader is why the rest are here (CFB-121). The two brand PNGs
+     * answer a crawler. The four legacy addresses are 301s that can never
+     * render a screen. The last three are reached only from an email, by a
+     * signed or token link nobody navigates to from inside the app, so their
+     * count says how much mail went out rather than whether the screen works.
+     * Each was read as a dead screen. `password.reset` and the unsubscribe
+     * GET do render HTML, so the sensor stops counting them too. One list,
+     * two readers, is what keeps them agreeing.
+     *
+     * A route added to a page-view group that is not a Livewire page or a
+     * `Route::view` fails RecordPageViewRoutesTest until it is listed here or
+     * allowed there.
      */
     private const SKIP_ROUTES = [
         'manifest', 'favicon', 'apple-touch-icon', 'offline',
         'client-errors.store', 'standalone.seen',
         'sanctum.csrf-cookie', 'webhooks.sms.inbound', 'webhooks.sms.status',
+        'brand.invite-card', 'brand.splash',
+        'picks.groups', 'picks.group', 'picks.build', 'pickem.talk',
+        'newsletter.unsubscribe', 'password.reset', 'verification.verify',
     ];
 
     /**
