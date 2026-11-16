@@ -9,6 +9,7 @@ use App\Models\Group;
 use App\Models\Slate;
 use App\Models\Week;
 use App\Services\CfbCalendar;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -121,6 +122,12 @@ class PickemPreflight
             return $this->row('rooms', 'Open public rooms', self::FAIL, 'No Saturday to stock rooms for.', 'cfb:games --tier=current --year=current');
         }
 
+        // Sunday and Monday still point at the Saturday just played, and a
+        // played card can never be seated — the shelf is closed, not short.
+        if ($this->played($week, $saturday)) {
+            return $this->row('rooms', 'Open public rooms', self::OK, $this->closed($saturday));
+        }
+
         // The red line is the three STANDARD rooms — a specialty room of
         // the same mode must never satisfy a shelf it does not stock.
         $open = Group::query()
@@ -207,6 +214,10 @@ class PickemPreflight
 
         if ($week === null || $saturday === null) {
             return $this->row('flavors', 'Specialty rooms', self::WARN, 'No week to stock the shelf for.');
+        }
+
+        if ($this->played($week, $saturday)) {
+            return $this->row('flavors', 'Specialty rooms', self::OK, $this->closed($saturday));
         }
 
         // This Saturday's shelf, not the whole catalog: a flavor resting for
@@ -564,6 +575,53 @@ class PickemPreflight
             ->filter(fn (Game $game) => $game->inSlateWindow())
             ->filter(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString() === $card)
             ->count();
+    }
+
+    /**
+     * Has every game on this card already kicked off? Asked of the games,
+     * never of the weekday: Cadence keeps Sunday and Monday on the Saturday
+     * just played so results stay attached to it, which is right for the
+     * lobby and wrong for a stocking check. A card with no games on it is
+     * not "played" — that is the shortfall story, and it stays a warning.
+     */
+    private function played(Week $week, CarbonInterface $saturday): bool
+    {
+        $card = $saturday->toDateString();
+
+        $kickoffs = Game::query()
+            ->where('week_id', $week->id)
+            ->whereNotNull('kickoff_at')
+            ->get()
+            ->filter(fn (Game $game) => $game->inSlateWindow())
+            ->filter(fn (Game $game) => $game->kickoff_at->timezone(config('cfb.timezone'))->toDateString() === $card)
+            ->map(fn (Game $game) => $game->kickoff_at);
+
+        return $kickoffs->isNotEmpty()
+            && $kickoffs->every(fn (CarbonInterface $kickoff) => $kickoff->lessThanOrEqualTo(now()));
+    }
+
+    /**
+     * "Sat Nov 14 is played; the shelf turns over Tue Nov 17." The turnover
+     * is read off Cadence (the first day its current Saturday moves past this
+     * card), never a weekday written here. Once the clock has already moved
+     * on, there is no turnover left to name.
+     */
+    private function closed(CarbonInterface $saturday): string
+    {
+        $on = 'Sat '.$saturday->format('M j').' is played';
+        $today = CarbonImmutable::now(config('cfb.timezone'))->startOfDay();
+
+        if (Cadence::currentSaturday($today)->greaterThan($saturday)) {
+            return "{$on}.";
+        }
+
+        $turnover = collect(range(1, 7))
+            ->map(fn (int $days) => $today->addDays($days))
+            ->first(fn (CarbonImmutable $day) => Cadence::currentSaturday($day)->greaterThan($saturday));
+
+        return $turnover === null
+            ? "{$on}."
+            : "{$on}; the shelf turns over {$turnover->format('D M j')}.";
     }
 
     /**
