@@ -43,7 +43,19 @@ class RollUpActivityCommand extends Command
         // By REFERENCE. A closure captures by value, so the counts written
         // inside this one would otherwise be written to a copy and the line
         // below would print two zeroes over a rollup that worked.
-        $rows = $this->trackRun('activity:rollup', null, function () use ($activity, $rollup, $day, &$counts): int {
+        /*
+         * `--today` records under its OWN key. It is a separate schedule entry
+         * on an hourly cadence, and under the daily pass's key the panel showed
+         * the 04:56 run as the hourly one's last run — so an hourly pass that
+         * had stopped was invisible all day. `SyncSchedule::ledgerKey()` reads
+         * the same split. A `--day=` repair is a whole day, so it is the daily
+         * even when `--today` rides along — `day()` lets `--day` win too.
+         */
+        $key = $this->option('today') && (string) $this->option('day') === ''
+            ? 'activity:rollup:today'
+            : 'activity:rollup';
+
+        $rows = $this->trackRun($key, null, function () use ($activity, $rollup, $day, &$counts): int {
             $activity->drain();
 
             $counts = $rollup->day($day);

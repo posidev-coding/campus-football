@@ -41,7 +41,9 @@
 
                 if (result === 'granted') {
                     this.confirmed = true;
-                } else if (result === 'denied') {
+                } else if (result === 'denied' || ! window.cfbPush.supported()) {
+                    {{-- No service worker on this device after all: the
+                         unsupported state, not a button that cannot work. --}}
                     this.askable = false;
                 }
             },

@@ -790,6 +790,21 @@ php artisan cfb:coaches [--missing|--current]     # careers + tenures, 2+2N req/
 php artisan cfb:aggregate                         # season totals, 0 requests
 ```
 
+**`php artisan cfb:brand:splashes` belongs in Cloud's deploy commands.** The
+iOS launch-screen set is stored under a fingerprint of the ink, the icon and
+`Brand::SPLASH_REVISION` — a constant in the code. A BrandSetting save
+re-renders it, but a deploy that moves the fingerprint (a bumped revision, a
+new shipped icon) saves nothing, so until this ran the first reader on each
+size paid for the render. It is idempotent: an unchanged brand writes nothing,
+and every other fingerprint's folder is swept. It runs INLINE, not queued — a
+worker still on the previous release would compute the old fingerprint and
+sweep the new set. It never fails a deploy: a size the icon cannot render, or
+an upload disk that throws, is a warning naming what failed and the exit is 0
+(`--strict` makes it non-zero for a manual run). It never stores a stand-in.
+Trade-off: if Cloud runs it while the previous release still serves, that
+release's readers re-store their old folder on the request path, and it sits
+there until the next run sweeps it.
+
 The pick'em loop's own commands, all DB-only and all safe to dry-run:
 
 ```

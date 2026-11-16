@@ -7,7 +7,6 @@ use App\Models\TeamSeason;
 use App\Support\Remember;
 use App\Support\Scope;
 use App\Support\TeamGlance;
-use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -137,7 +136,7 @@ new class extends Component
     #[Computed]
     public function records()
     {
-        return Cache::remember("teams:records:{$this->year}", 900, fn () => Standing::fromEspn()
+        return Remember::orSource("teams:records:{$this->year}", 900, fn () => Standing::fromEspn()
             ->where('season_year', $this->year)
             ->get(['team_id', 'overall_wins', 'overall_losses', 'overall_ties'])
             ->mapWithKeys(fn (Standing $s) => [$s->team_id => $s->overallRecord()])

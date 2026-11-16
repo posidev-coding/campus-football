@@ -378,4 +378,37 @@ describe('the article_game pivot, through the job that races on it', function ()
         expect($this->game->articles()->pluck('role', 'espn_id')->get(47667165))->toBe('recap')
             ->and($this->game->articles()->count())->toBe(2);
     });
+
+    it('retries a deadlock on the game links and lands them', function () {
+        /*
+         * The same race as `article_team`, one pivot over: two summary jobs
+         * link one national story at once and the loser of the lock cycle is
+         * rolled back — after its job already paid for the 544 KB payload.
+         * Asserted through the JOB, which is the parallel caller.
+         */
+        Http::fake(['*' => Http::response(summaryPayload())]);
+
+        deadlockOnce('article_game');
+
+        (new FetchGameSummary($this->game->id))->handle(app(SyncGameSummary::class));
+
+        $roles = $this->game->articles()->pluck('role', 'espn_id');
+
+        expect($roles->get(47667165))->toBe('recap')
+            ->and($roles->get(49546711))->toBe('related')
+            ->and($this->game->articles()->count())->toBe(2);
+    });
+
+    it('re-raises a game-link query error that is not a deadlock, unretried', function () {
+        // Contention only. A missing column must surface on the first
+        // attempt, not after three seconds of retrying the same bug.
+        Http::fake(['*' => Http::response(summaryPayload())]);
+
+        deadlockOnce('article_game', sqlstate: '42S22');
+
+        expect(fn () => (new FetchGameSummary($this->game->id))->handle(app(SyncGameSummary::class)))
+            ->toThrow(QueryException::class);
+
+        expect($this->game->articles()->count())->toBe(0);
+    });
 });

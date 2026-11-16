@@ -55,6 +55,12 @@ class TelemetryCommand extends Command
             $this->line(sprintf('    %-30s %6d   since %s', $signal, $count, $snapshot['funnel_since'][$signal]));
         }
 
+        // A day no rollup stated narrows every total above without moving
+        // the label, so it is said out loud rather than left to a date.
+        if ($snapshot['funnel_missing_days'] !== []) {
+            $this->line('    <fg=yellow>!</> no rollup for '.implode(', ', $snapshot['funnel_missing_days']).' — the totals leave those days out');
+        }
+
         $actives = $snapshot['audience']['actives'];
 
         $this->newLine();

@@ -308,6 +308,99 @@ describe('the generated artifacts', function () {
         expect($setting->changedSplashInputs())->toBeFalse();
     });
 
+    it('re-renders the set at deploy when the fingerprint moved without a brand save', function () {
+        /*
+         * The deploy case (CFB-114): the fingerprint moves in code — a bumped
+         * SPLASH_REVISION, a new shipped icon — so no BrandSetting save ever
+         * fires the job. The query-builder update stands in for that: the ink
+         * changes and the model hook never hears about it.
+         */
+        Storage::fake(config('cfb.upload_disk'));
+        $disk = Storage::disk(config('cfb.upload_disk'));
+        Queue::fake();
+
+        BrandSetting::current();
+        $this->artisan('cfb:brand:splashes')->assertSuccessful();
+
+        [$w, $h, $dpr] = Brand::SPLASH[0];
+        $old = dirname(Brand::splashPath($w, $h, $dpr));
+
+        BrandSetting::query()->update(['color_ink' => '#101820']);
+
+        $this->artisan('cfb:brand:splashes')
+            ->expectsOutputToContain('wrote '.count(Brand::SPLASH).', '.count(Brand::SPLASH).' of '.count(Brand::SPLASH).' stored')
+            ->assertSuccessful();
+
+        Queue::assertNotPushed(RenderBrandSplashes::class);
+
+        foreach (Brand::SPLASH as [$sw, $sh, $sdpr]) {
+            expect($disk->exists(Brand::splashPath($sw, $sh, $sdpr)))->toBeTrue();
+        }
+
+        expect(dirname(Brand::splashPath($w, $h, $dpr)))->not->toBe($old)
+            ->and($disk->directories('brand/splash'))->toBe([dirname(Brand::splashPath($w, $h, $dpr))])
+            ->and($disk->directories($old))->toBe([])
+            ->and($disk->files($old))->toBe([]);
+    });
+
+    it('writes nothing on a deploy that changed nothing', function () {
+        Storage::fake(config('cfb.upload_disk'));
+        $disk = Storage::disk(config('cfb.upload_disk'));
+
+        $this->artisan('cfb:brand:splashes')->assertSuccessful();
+
+        // Bytes no render could produce: if the second run re-rendered this
+        // size, they would be gone.
+        [$w, $h, $dpr] = Brand::SPLASH[0];
+        $disk->put(Brand::splashPath($w, $h, $dpr), 'stored-not-rendered');
+
+        $this->artisan('cfb:brand:splashes')
+            ->expectsOutputToContain('wrote 0, '.count(Brand::SPLASH).' of '.count(Brand::SPLASH).' stored')
+            ->assertSuccessful();
+
+        expect($disk->get(Brand::splashPath($w, $h, $dpr)))->toBe('stored-not-rendered');
+    });
+
+    it('warns and lets the deploy go on when the icon cannot be read', function (bool $strict) {
+        /*
+         * An uploaded icon the bucket no longer holds, and no shipped icon
+         * to fall back to: the renderer has nothing to center. A device then
+         * launches without a splash, which is the designed behavior. The warm
+         * names the sizes rather than storing something in their place, and
+         * it does not fail a deploy (a hotfix included) over a launch screen
+         * unless a manual run asks it to.
+         */
+        Storage::fake(config('cfb.upload_disk'));
+        $disk = Storage::disk(config('cfb.upload_disk'));
+
+        app()->usePublicPath(sys_get_temp_dir().'/cfb-no-public-'.uniqid());
+        BrandSetting::current();
+        BrandSetting::query()->update(['assets' => json_encode(['icon-512' => 'brand/gone.png'])]);
+
+        $this->artisan('cfb:brand:splashes', $strict ? ['--strict' => true] : [])
+            ->expectsOutputToContain('wrote 0, 0 of '.count(Brand::SPLASH).' stored')
+            ->expectsOutputToContain('Missing: 440x956@3')
+            ->assertExitCode($strict ? 1 : 0);
+
+        expect($disk->allFiles('brand/splash'))->toBe([]);
+    })->with(['on deploy' => false, 'with --strict' => true]);
+
+    it('warns and lets the deploy go on when the upload disk throws', function (bool $strict) {
+        /*
+         * A disk that cannot even be built — the shape Laravel Cloud produced
+         * when its bucket credentials missed config:cache. That is reported,
+         * not thrown out of a deploy command.
+         */
+        config([
+            'cfb.upload_disk' => 'unbuildable',
+            'filesystems.disks.unbuildable' => ['driver' => 's3', 'bucket' => null, 'region' => null],
+        ]);
+
+        $this->artisan('cfb:brand:splashes', $strict ? ['--strict' => true] : [])
+            ->expectsOutputToContain('Launch screens not warmed — the upload disk failed')
+            ->assertExitCode($strict ? 1 : 0);
+    })->with(['on deploy' => false, 'with --strict' => true]);
+
     it('refuses a splash size it did not declare', function (string $spec) {
         $this->get("/brand/splash/{$spec}.png")->assertNotFound();
     })->with(['999x999@3', '440x956@9', '440x956@2', '0x0@2']);

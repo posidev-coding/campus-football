@@ -115,6 +115,7 @@ describe('the read carries no identity', function () {
         expect(array_keys($response->json()))->toBe([
             'generated_at', 'window_hours', 'season', 'ops', 'coverage',
             'pickem', 'schedule', 'errors', 'performance', 'funnel', 'funnel_since',
+            'funnel_missing_days',
             'traffic', 'audience', 'routes', 'devices', 'pickem_health',
             'workbook',
         ]);

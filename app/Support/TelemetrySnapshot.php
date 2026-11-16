@@ -69,6 +69,7 @@ class TelemetrySnapshot
             'performance' => $this->performance->checks(),
             'funnel' => $this->funnel(),
             'funnel_since' => $this->funnelSince(),
+            'funnel_missing_days' => $this->funnelMissingDays(),
             /*
              * The attention sections, appended AFTER the funnel and before the
              * board on purpose: the advisor reads this payload top to bottom,
@@ -169,6 +170,9 @@ class TelemetrySnapshot
                 'cadence' => $task['cadence'],
                 'gated' => $task['gated'],
                 'overdue' => $task['overdue'],
+                // The ledger key is the command's, and several entries run
+                // some commands; their stamps are each entry's own pass.
+                'shared' => $task['shared'],
                 'last_status' => $task['run']?->status,
                 'last_run_at' => $task['run']?->started_at?->toIso8601String(),
             ])
@@ -250,7 +254,7 @@ class TelemetrySnapshot
     private function funnel(): array
     {
         $persisted = UxEvent::query()
-            ->where('day', '>=', now()->timezone(config('cfb.timezone'))->subDays(7)->toDateString())
+            ->where('day', '>=', $this->funnelFloor()->toDateString())
             ->groupBy('signal')
             // BOTH backticked: `signal` and `count` are reserved words in
             // MySQL 8, and an unquoted one is a 1064 rather than a wrong
@@ -283,6 +287,11 @@ class TelemetrySnapshot
      * the window IS the day the deployed code started counting. With no row
      * at all the total is today's Redis count alone, and the date says so.
      *
+     * That reading only holds while every finished day HAS its rows. A day
+     * the rollup never stated moves this date forward exactly as a ship date
+     * would, so it is never read alone: `funnel_missing_days` says which days
+     * of the window are absent.
+     *
      * @return array<string, string> signal => Y-m-d
      */
     private function funnelSince(): array
@@ -290,7 +299,7 @@ class TelemetrySnapshot
         $today = now()->timezone(config('cfb.timezone'));
 
         $first = UxEvent::query()
-            ->where('day', '>=', $today->copy()->subDays(7)->toDateString())
+            ->where('day', '>=', $this->funnelFloor()->toDateString())
             ->groupBy('signal')
             ->selectRaw('`signal`, min(`day`) as first_day')
             ->pluck('first_day', 'signal');
@@ -302,5 +311,65 @@ class TelemetrySnapshot
                     : $today->toDateString(),
             ])
             ->all();
+    }
+
+    /**
+     * Every finished day of the funnel window with no `ux_events` row at all.
+     *
+     * The rollup states every signal for every day it reads, zero included,
+     * so a day with no row for ANY signal is a day nothing measured — not a
+     * quiet day, and not a signal that had yet to ship (that one is absent
+     * for its own signal while the others carry the day). Without this, two
+     * unstated days at the start of the window slid `funnel_since` forward to
+     * 2026-11-10 and read exactly like ten signals that shipped that morning,
+     * which is the confusion `funnel_since` exists to prevent.
+     *
+     * Reported, never filled: a zero written now for a day nobody counted is
+     * an invented measurement. Today is left out, because it is still in
+     * Redis and is never persisted until tomorrow.
+     *
+     * Yesterday is left out too until `cfb:ux-rollup` has STARTED today:
+     * between midnight and the 04:55 run it is not missing, merely not due,
+     * and listing it would have every snapshot taken overnight file a false
+     * ops finding. Any run started today counts, failed included — a run
+     * that failed has had its chance, and its day is a real gap.
+     *
+     * @return list<string> Y-m-d, oldest first
+     */
+    private function funnelMissingDays(): array
+    {
+        $floor = $this->funnelFloor();
+        $today = CarbonImmutable::now(config('cfb.timezone'))->startOfDay();
+        $lastRun = FeedRun::latestFor('ux:rollup')?->started_at;
+        $lastDue = $lastRun !== null && $lastRun->gte($today)
+            ? $today->subDay()
+            : $today->subDays(2);
+
+        $stated = UxEvent::query()
+            ->toBase()
+            ->whereBetween('day', [$floor->toDateString(), $lastDue->toDateString()])
+            ->distinct()
+            ->pluck('day')
+            ->map(fn (mixed $day): string => substr((string) $day, 0, 10))
+            ->flip();
+
+        $missing = [];
+
+        for ($day = $floor; $day->lte($lastDue); $day = $day->addDay()) {
+            if (! $stated->has($day->toDateString())) {
+                $missing[] = $day->toDateString();
+            }
+        }
+
+        return $missing;
+    }
+
+    /**
+     * The first league day the funnel window reads — one floor for the total,
+     * its dates and its gaps, so the three can never describe different days.
+     */
+    private function funnelFloor(): CarbonImmutable
+    {
+        return CarbonImmutable::now(config('cfb.timezone'))->startOfDay()->subDays(7);
     }
 }

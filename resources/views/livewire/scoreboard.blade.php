@@ -4,10 +4,10 @@ use App\Models\Game;
 use App\Models\Team;
 use App\Services\CfbCalendar;
 use App\Support\GameOrder;
+use App\Support\Remember;
 use App\Support\Scope;
 use App\Support\SlateDates;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -456,7 +456,7 @@ new class extends Component
          * sync's own guard stays uncached — a scheduler minute must read
          * the real row.
          */
-        return Cache::remember('scoreboard:has-live', 15, fn () => Game::query()->inProgress()->exists());
+        return Remember::orSource('scoreboard:has-live', 15, fn () => Game::query()->inProgress()->exists());
     }
 }; ?>
 
