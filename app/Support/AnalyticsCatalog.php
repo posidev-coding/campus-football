@@ -317,13 +317,28 @@ class AnalyticsCatalog
          * against 2,996 views (CFB-94). Both come off `activity_events`, the
          * same table as the visitors, so the ratio is not two tables' windows
          * divided into each other.
+         *
+         * AUTOMATED CARRIES THE SAME PAIR (CFB-119). Only a signed-out request
+         * can be automated, so every automated visitor is a session hash, and
+         * a client that keeps no cookie is a new one on each request. 24 views
+         * from 24 visitors is that artifact, not 24 crawlers, and the pair is
+         * what lets a reader see it rather than read a population.
          */
-        $guestViews = $pageViews()
-            ->where('audience', ActivityEvent::GUEST)
+        $viewsPerVisitor = fn (int $audience) => $pageViews()
+            ->where('audience', $audience)
             ->whereNotNull('visitor')
             ->groupBy('visitor')
             ->selectRaw('count(*) as n')
             ->pluck('n');
+
+        $guestViews = $viewsPerVisitor(ActivityEvent::GUEST);
+        $automatedViews = $viewsPerVisitor(ActivityEvent::AUTOMATED);
+
+        // Null with nobody to divide by: no ratio, not a ratio of zero.
+        $ratio = fn (Collection $views): ?float => $views->isEmpty()
+            ? null
+            : round($views->sum() / $views->count(), 2);
+        $oneView = fn (Collection $views): int => $views->filter(fn ($n): bool => (int) $n === 1)->count();
 
         return [
             'window_days' => $window->days,
@@ -344,11 +359,10 @@ class AnalyticsCatalog
                 'staff' => $visitors[ActivityEvent::STAFF] ?? 0,
                 'automated' => $visitors[ActivityEvent::AUTOMATED] ?? 0,
             ],
-            // Null with no guests: no ratio, not a ratio of zero.
-            'guest_views_per_visitor' => $guestViews->isEmpty()
-                ? null
-                : round($guestViews->sum() / $guestViews->count(), 2),
-            'guest_one_view_visitors' => $guestViews->filter(fn ($n): bool => (int) $n === 1)->count(),
+            'guest_views_per_visitor' => $ratio($guestViews),
+            'guest_one_view_visitors' => $oneView($guestViews),
+            'automated_views_per_visitor' => $ratio($automatedViews),
+            'automated_one_view_visitors' => $oneView($automatedViews),
             'since' => $since,
         ];
     }

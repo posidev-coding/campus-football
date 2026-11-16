@@ -164,6 +164,62 @@ describe('traffic', function () {
             ->and($traffic['views']['member'])->toBe(1);
     });
 
+    it('says how much of automated is one request per visitor', function () {
+        /*
+         * CFB-119. 24 automated views from 24 automated visitors: a client
+         * that keeps no cookie is a new visitor on every request, and without
+         * the pair the guest half carries, that read as 24 crawlers.
+         */
+        foreach (range(1, 4) as $n) {
+            ActivityEvent::factory()->create([
+                'user_id' => null, 'visitor' => "unfurl-{$n}", 'audience' => ActivityEvent::AUTOMATED,
+            ]);
+        }
+        ActivityEvent::factory()->count(2)->create([
+            'user_id' => null, 'visitor' => 'monitor', 'audience' => ActivityEvent::AUTOMATED,
+        ]);
+
+        $traffic = catalog()->traffic(AnalyticsWindow::of(7));
+
+        expect($traffic['views']['automated'])->toBe(6)
+            ->and($traffic['visitors']['automated'])->toBe(5)
+            ->and($traffic['automated_views_per_visitor'])->toBe(1.2)
+            ->and($traffic['automated_one_view_visitors'])->toBe(4);
+    });
+
+    it('reads the automated pair off the same rows as the visitors, not the rollup', function () {
+        // Rolled: one automated view yesterday. Not rolled: three today from
+        // three cookieless requests. The pair has to describe all four, as
+        // the visitor count does.
+        ActivityEvent::factory()->create([
+            'user_id' => null, 'visitor' => 'old', 'audience' => ActivityEvent::AUTOMATED,
+            'occurred_at' => '2026-09-04 16:00:00',
+        ]);
+        app(ActivityRollup::class)->day(CarbonImmutable::parse('2026-09-04', config('cfb.timezone')));
+
+        foreach (range(1, 3) as $n) {
+            ActivityEvent::factory()->create([
+                'user_id' => null, 'visitor' => "new-{$n}", 'audience' => ActivityEvent::AUTOMATED,
+                'occurred_at' => '2026-09-05 14:00:00',
+            ]);
+        }
+
+        $traffic = catalog()->traffic(AnalyticsWindow::of(7));
+
+        expect($traffic['visitors']['automated'])->toBe(4)
+            ->and($traffic['automated_one_view_visitors'])->toBe(4)
+            ->and($traffic['automated_views_per_visitor'])->toBe(1.0);
+    });
+
+    it('has no automated ratio with no automated traffic, rather than a ratio of zero', function () {
+        ActivityEvent::factory()->guest()->create();
+
+        $traffic = catalog()->traffic(AnalyticsWindow::of(7));
+
+        expect($traffic['automated_views_per_visitor'])->toBeNull()
+            ->and($traffic['automated_one_view_visitors'])->toBe(0);
+    });
+
     it('has no ratio at all with no guests, rather than a ratio of zero', function () {
         $traffic = catalog()->traffic(AnalyticsWindow::of(7));
 
