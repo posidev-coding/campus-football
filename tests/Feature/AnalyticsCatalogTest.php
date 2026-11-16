@@ -3,6 +3,7 @@
 use App\Enums\ActivityFeature;
 use App\Enums\ActivityKind;
 use App\Enums\ViewportBucket;
+use App\Http\Middleware\RecordPageView;
 use App\Models\ActivityEvent;
 use App\Models\Contest;
 use App\Models\Game;
@@ -18,6 +19,7 @@ use App\Support\AnalyticsCatalog;
 use App\Support\AnalyticsWindow;
 use App\Support\Cadence;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Route;
 
 /*
  * The named questions of the analysis table, asked directly.
@@ -258,12 +260,53 @@ describe('quiet screens', function () {
             ->and(collect($routes['top'])->pluck('route'))->not->toContain('login');
     });
 
-    it('names the audience each list counted, beside since', function () {
+    it('does not let guest views hide a public screen members never open', function () {
+        /*
+         * Guests count on the signed-out screens and nowhere else. A crawler
+         * that poses as a browser lands in GUEST, and guest traffic is mostly
+         * one request per visitor (CFB-94), so five cookieless hits on
+         * Rankings would otherwise erase "members do not read this".
+         */
+        PageViewDaily::factory()->create(['day' => '2026-08-01', 'route' => 'home']);
+
+        ActivityEvent::factory()->guest()->count(AnalyticsCatalog::QUIET_VIEWS)->create([
+            'route' => 'rankings', 'occurred_at' => '2026-09-04 16:00:00',
+        ]);
+
+        $quiet = collect(catalog()->routes(AnalyticsWindow::of(28))['quiet'])->keyBy('route');
+
+        expect($quiet['rankings'])->toBe(['route' => 'rankings', 'views' => 0, 'audience' => 'member']);
+    });
+
+    it('reads the signed-out screens off the guest middleware', function () {
+        /*
+         * Off the route table, not a hand list: every screen behind `guest`
+         * is judged by guests, and no screen a member can open is.
+         */
         $routes = catalog()->routes(AnalyticsWindow::of(28));
 
-        expect($routes)->toHaveKeys(['since', 'top_audience', 'quiet_audience'])
+        $behindGuest = collect(Route::getRoutes()->getRoutesByName())
+            ->filter(fn ($route): bool => in_array('guest', $route->gatherMiddleware(), true))
+            ->keys();
+
+        expect($routes['quiet_signed_out'])->toContain('login', 'register', 'password.request')
+            ->not->toContain('rankings', 'scoreboard', 'privacy', 'home')
+            ->and($behindGuest->diff($routes['quiet_signed_out'])->filter(
+                fn (string $name): bool => RecordPageView::isScreenRoute($name),
+            )->all())->toBe([]);
+    });
+
+    it('names the audience each list counted, beside since', function () {
+        PageViewDaily::factory()->create(['day' => '2026-08-01', 'route' => 'home']);
+
+        $routes = catalog()->routes(AnalyticsWindow::of(28));
+        $quiet = collect($routes['quiet'])->keyBy('route');
+
+        expect($routes)->toHaveKeys(['since', 'top_audience', 'quiet_audience', 'quiet_signed_out'])
             ->and($routes['top_audience'])->toBe(['member'])
-            ->and($routes['quiet_audience'])->toBe(['guest', 'member']);
+            ->and($routes['quiet_audience'])->toBe(['member'])
+            ->and($quiet['login']['audience'])->toBe('guest')
+            ->and($quiet['rankings']['audience'])->toBe('member');
     });
 
     it('still withholds quiet on a window the rollup does not cover, guests or not', function () {

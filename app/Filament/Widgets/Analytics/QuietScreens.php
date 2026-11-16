@@ -74,6 +74,8 @@ class QuietScreens extends BaseWidget
 
         // The audience off the payload rather than restated here, so the
         // label cannot name a population the count did not use.
-        return 'Under '.AnalyticsCatalog::QUIET_VIEWS.' '.implode(' and ', $routes['quiet_audience']).' views in 28 days · since '.$routes['since'];
+        return 'Under '.AnalyticsCatalog::QUIET_VIEWS.' '.implode(' and ', $routes['quiet_audience']).' views in 28 days'
+            .($routes['quiet_signed_out'] === [] ? '' : ', guest views on signed-out screens')
+            .' · since '.$routes['since'];
     }
 }
