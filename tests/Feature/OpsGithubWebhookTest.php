@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\CloseMergedWorkbookItem;
 use App\Enums\WorkbookStatus;
 use App\Http\Middleware\EnsureGithubSignature;
 use App\Models\WorkbookEvent;
@@ -278,5 +279,36 @@ describe('the content type GitHub defaults to', function () {
         mergeAsForm(mergePayload($item->branch, ['merged' => false]))->assertOk();
 
         expect($item->fresh()->status)->toBe(WorkbookStatus::InProgress);
+    });
+});
+
+describe('the close is shared with the reconcile', function () {
+    it('closes the card through CloseMergedWorkbookItem, the Action cfb:workbook:reconcile also calls', function () {
+        /*
+         * The hourly reconcile makes the same move for a delivery GitHub
+         * dropped mid-deploy, so the webhook must go through the same door
+         * rather than a copy of it that can drift.
+         */
+        $item = mergedIssue();
+
+        $this->mock(CloseMergedWorkbookItem::class)
+            ->shouldReceive('handle')
+            ->once()
+            ->with($item->branch)
+            ->andReturn($item);
+
+        merge(mergePayload($item->branch))
+            ->assertOk()
+            ->assertJson(['result' => 'done', 'issue' => $item->reference]);
+    });
+
+    it('answers no_issue when the Action finds no card on that branch', function () {
+        $this->mock(CloseMergedWorkbookItem::class)
+            ->shouldReceive('handle')
+            ->once()
+            ->with('a-branch-nobody-cut')
+            ->andReturnNull();
+
+        merge(mergePayload('a-branch-nobody-cut'))->assertOk()->assertJson(['result' => 'no_issue']);
     });
 });

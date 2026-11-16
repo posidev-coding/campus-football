@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers\Ops;
 
-use App\Actions\MoveWorkbookItem;
-use App\Enums\WorkbookStatus;
-use App\Models\WorkbookItem;
+use App\Actions\CloseMergedWorkbookItem;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -31,6 +29,9 @@ use Illuminate\Http\Request;
  *     no-identity guarantee on the ops reads is one careless line from being
  *     false, and this is the payload that would do it.
  *
+ * The close itself is {@see CloseMergedWorkbookItem}, shared with the hourly
+ * `cfb:workbook:reconcile` that catches a delivery GitHub dropped mid-deploy.
+ *
  * Always 200, even when nothing matched. GitHub retries a non-2xx, and a
  * webhook for a branch this board has never heard of is a normal event rather
  * than a failure.
@@ -48,23 +49,17 @@ class GithubController
             return response()->json(['result' => 'ignored']);
         }
 
-        $item = WorkbookItem::query()->where('branch', $branch)->first();
+        /*
+         * The close itself lives in the Action, because the hourly reconcile
+         * makes the same move for a delivery that never landed and the two
+         * must not drift. Idempotent: GitHub redelivers, and a reconcile pass
+         * may already have closed the card.
+         */
+        $item = app(CloseMergedWorkbookItem::class)->handle($branch);
 
         if ($item === null) {
             return response()->json(['result' => 'no_issue']);
         }
-
-        /*
-         * Idempotent by construction, which matters because GitHub redelivers.
-         * `MoveWorkbookItem` writes an event only when the column actually
-         * changes, so a second delivery moves nothing and says nothing.
-         */
-        app(MoveWorkbookItem::class)->handle(
-            $item->id,
-            WorkbookStatus::Done,
-            actor: WorkbookItem::ACTOR_GITHUB,
-            note: 'Merged.',
-        );
 
         return response()->json(['result' => 'done', 'issue' => $item->reference]);
     }
