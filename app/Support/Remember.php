@@ -135,6 +135,40 @@ class Remember
         return $value;
     }
 
+    /**
+     * Run a side effect at most once per `$ttl` seconds, gated on the store.
+     *
+     * For a render that kicks off a queued fetch (a team's news, an article's
+     * body) so a busy page is one dispatch, not one per reader. The read
+     * helpers above fall back to the source, but this gate has nothing to fall
+     * back to. Running the side effect on every render while the store is
+     * down is the opposite of a gate, and the dispatch would reach the job's
+     * own unique lock on the same store anyway. So a store that throws skips
+     * the side effect with a warning, and the page renders what it already
+     * has. The next render after recovery dispatches.
+     *
+     * @param  Closure(): mixed  $sideEffect
+     * @return bool whether the side effect ran
+     */
+    public static function oncePer(string $key, int $ttl, Closure $sideEffect): bool
+    {
+        try {
+            $claimed = Cache::add($key, true, $ttl);
+        } catch (Throwable $e) {
+            self::storeFailed('gate', $key, $e);
+
+            return false;
+        }
+
+        if (! $claimed) {
+            return false;
+        }
+
+        $sideEffect();
+
+        return true;
+    }
+
     private static function storeFailed(string $operation, string $key, Throwable $e): void
     {
         Log::warning("Cache store unavailable on {$operation}; read the source instead", [

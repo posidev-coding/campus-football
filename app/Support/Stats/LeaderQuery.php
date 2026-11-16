@@ -6,8 +6,8 @@ use App\Models\AthleteSeasonStat;
 use App\Models\Season;
 use App\Models\TeamSeasonStat;
 use App\Services\Stats\AggregateAthleteStats;
+use App\Support\Remember;
 use App\Support\Scope;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * Ranks players and teams WITHIN a scope, from our own derived totals.
@@ -37,7 +37,7 @@ class LeaderQuery
          * the default combo right after writing — so the first Sunday
          * reader lands on a hot board instead of paying ~20 cold queries.
          */
-        return Cache::remember($key, 86400, function () use ($board, $year, $scope, $limit) {
+        return Remember::orSource($key, 86400, function () use ($board, $year, $scope, $limit) {
             $teamIds = Scope::teamIds($scope, $year);
 
             $rows = AthleteSeasonStat::query()
@@ -92,7 +92,7 @@ class LeaderQuery
     {
         $key = "teamstats:{$year}:{$scope}:{$board['category']}:{$board['stat']}:{$limit}";
 
-        return Cache::remember($key, self::CACHE_TTL, function () use ($board, $year, $scope, $limit) {
+        return Remember::orSource($key, self::CACHE_TTL, function () use ($board, $year, $scope, $limit) {
             $teamIds = Scope::teamIds($scope, $year);
 
             $rows = TeamSeasonStat::query()

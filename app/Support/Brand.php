@@ -504,7 +504,7 @@ class Brand
     {
         $version = self::settings()['version'] ?? 0;
 
-        return Cache::remember(
+        return Remember::orSource(
             "brand:invite-card:{$version}:{$hex}",
             self::TTL,
             function () use ($hex): ?string {

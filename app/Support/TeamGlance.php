@@ -9,7 +9,6 @@ use App\Models\Standing;
 use App\Models\Team;
 use App\Models\TeamSeason;
 use App\Services\CfbCalendar;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * The at-a-glance facts about every team, as flat cached maps.
@@ -93,7 +92,7 @@ class TeamGlance
     {
         $year ??= self::year();
 
-        return self::$memo["records:{$year}"] ??= Cache::remember(
+        return self::$memo["records:{$year}"] ??= Remember::orSource(
             "glance:records:{$year}",
             self::CACHE_SECONDS,
             fn () => Standing::fromEspn()
@@ -138,12 +137,12 @@ class TeamGlance
          * Key versioned: the shape is the same but the values are not, and a
          * live entry would keep serving "130th in SEC" past the deploy.
          *
-         * Cache::remember rather than Remember::filled, deliberately. An empty
+         * Remember::orSource rather than Remember::filled, deliberately. An empty
          * map here is the ANSWER — a league where nothing has kicked off has
          * no standings, and it stays that way for months — not a backfill that
          * has yet to land, which is the only thing filled() exists for.
          */
-        return self::$memo["positions:{$year}"] ??= Cache::remember(
+        return self::$memo["positions:{$year}"] ??= Remember::orSource(
             "glance:positions:v3:{$year}",
             self::CACHE_SECONDS,
             function () use ($year) {
@@ -188,7 +187,7 @@ class TeamGlance
     {
         $year ??= self::year();
 
-        return self::$memo["conferences:{$year}"] ??= Cache::remember(
+        return self::$memo["conferences:{$year}"] ??= Remember::orSource(
             "glance:conferences:{$year}",
             self::CACHE_SECONDS,
             function () use ($year) {
@@ -214,7 +213,7 @@ class TeamGlance
     {
         $year ??= self::year();
 
-        return self::$memo["classifications:{$year}"] ??= Cache::remember(
+        return self::$memo["classifications:{$year}"] ??= Remember::orSource(
             "glance:classifications:{$year}",
             self::CACHE_SECONDS,
             fn () => TeamSeason::query()
@@ -268,7 +267,7 @@ class TeamGlance
     {
         $year ??= self::year();
 
-        return self::$memo["sizes:{$year}"] ??= Cache::remember(
+        return self::$memo["sizes:{$year}"] ??= Remember::orSource(
             "glance:sizes:{$year}",
             self::CACHE_SECONDS,
             function () use ($year) {
@@ -314,7 +313,7 @@ class TeamGlance
 
         // Cache key is versioned: the shape gained logo columns, and a stale
         // entry from before that would render rows with no mark at all.
-        return self::$memo["fbs:{$year}"] ??= Cache::remember(
+        return self::$memo["fbs:{$year}"] ??= Remember::orSource(
             "picker:teams:v2:{$year}",
             self::CACHE_SECONDS,
             fn () => Team::query()

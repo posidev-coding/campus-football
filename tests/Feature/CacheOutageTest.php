@@ -2,12 +2,22 @@
 
 use App\Actions\PublishSlate;
 use App\Enums\ContestMode;
+use App\Enums\Poll;
+use App\Jobs\FetchArticleStory;
+use App\Jobs\SyncTeamNews;
+use App\Models\Article;
 use App\Models\BrandSetting;
+use App\Models\Ranking;
+use App\Models\Recruit;
+use App\Models\Team;
 use App\Support\Remember;
 use Illuminate\Redis\RedisManager;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Redis;
+use Livewire\Livewire;
 
 /*
  * A Redis stall mid-render used to 500 every page on the site (CFB-97).
@@ -191,5 +201,121 @@ describe('Remember::orSource', function () {
         expect(Remember::orSource('probe', 60, $compute))->toBeFalse()
             ->and(Remember::orSource('probe', 60, $compute))->toBeFalse()
             ->and($computed)->toBe(1);
+    });
+});
+
+describe('the data screens, while the cache store is down', function () {
+    /*
+     * Each of these screens read the cache through a bare Cache::remember on
+     * the render path, so the next Redis stall was a 500 there even after the
+     * layout's own reads were guarded (CFB-97, CFB-112).
+     */
+    it('renders :dataset from its rows instead of a 500', function (string $route) {
+        Log::spy();
+        breakCacheStore();
+
+        $this->get(route($route))->assertOk();
+
+        // Caught, not hidden: at least one of the screen's own reads warned.
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context) => str_contains($message, 'Cache store unavailable'))
+            ->atLeast()->once();
+    })->with(['scoreboard', 'standings', 'rankings', 'teams', 'players', 'recruiting']);
+
+    it('renders a team page and skips its news dispatch rather than firing one per render', function () {
+        Queue::fake();
+        Log::spy();
+        $team = Team::factory()->create();
+        breakCacheStore();
+
+        $this->get(route('team', ['team' => $team, 'tab' => 'news']))->assertOk();
+
+        Queue::assertNotPushed(SyncTeamNews::class);
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context) => $context['key'] === "team:news:dispatched:{$team->id}")
+            ->once();
+    });
+
+    it('answers an article\'s story request without dispatching, and warns', function () {
+        Queue::fake();
+        Log::spy();
+        $article = Article::factory()->create();
+        $component = Livewire::test('article', ['article' => $article]);
+        breakCacheStore();
+
+        $component->call('requestStory')->assertOk();
+
+        Queue::assertNotPushed(FetchArticleStory::class);
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn (string $message, array $context) => $context['key'] === "article:story:dispatched:{$article->id}")
+            ->once();
+    });
+});
+
+describe('Remember::oncePer', function () {
+    it('runs the side effect once per window on a healthy store', function () {
+        $ran = 0;
+
+        expect(Remember::oncePer('probe:gate', 60, function () use (&$ran) {
+            $ran++;
+        }))->toBeTrue()
+            ->and(Remember::oncePer('probe:gate', 60, function () use (&$ran) {
+                $ran++;
+            }))->toBeFalse()
+            ->and($ran)->toBe(1);
+    });
+});
+
+describe('the season menus, after a backfill lands', function () {
+    /*
+     * The pinned-empty bug Remember::filled exists for: a menu cached [] while
+     * the rows were still draining served no options for the full TTL.
+     */
+    it('heals a rankings year menu cached empty', function () {
+        $ranking = Ranking::factory()->create(['poll' => Poll::Ap->value]);
+        Cache::put('rankings:years:'.Poll::Ap->value, [], 3600);
+        Cache::put('rankings:published-polls', [], 3600);
+
+        $component = Livewire::withQueryParams(['poll' => Poll::Ap->value])->test('rankings');
+
+        expect($component->instance()->publishedPolls)->toBe([Poll::Ap->value])
+            ->and($component->instance()->years)->toBe([$ranking->season->year]);
+    });
+
+    it('heals a recruiting class menu cached empty', function () {
+        Recruit::create([
+            'espn_id' => 256474, 'recruiting_class' => 2026, 'display_name' => 'Lamar Brown',
+            'grade' => 94, 'national_rank' => 1,
+        ]);
+        Cache::put('recruiting:classes', [], 3600);
+
+        expect(Livewire::test('recruiting')->instance()->classes)->toBe([2026]);
+    });
+});
+
+describe('the read-throughs, statically', function () {
+    /*
+     * The outage tests above cover the screens that exist today. A new screen
+     * that reaches for a bare Cache::remember reopens the 500 the moment it
+     * lands, and nothing renders it with the store down. So the sweep is over
+     * the source: every read-through goes through Remember.
+     */
+    it('leaves no bare Cache::remember on a path a render can reach', function () {
+        $offenders = collect(File::allFiles(app_path()))
+            ->merge(File::allFiles(resource_path('views')))
+            ->filter(fn (SplFileInfo $file) => str_ends_with($file->getFilename(), '.php'))
+            ->flatMap(function (SplFileInfo $file) {
+                // Strip comments, so a docblock explaining why a read is NOT
+                // Cache::remember is not itself an offender.
+                $code = preg_replace('#/\*.*?\*/|//[^\n]*#s', '', File::get($file->getPathname()));
+
+                return preg_match('/Cache::(remember|rememberForever|flexible|sear)\(/', $code)
+                    ? [str_replace(base_path().'/', '', $file->getPathname())]
+                    : [];
+            })
+            ->values()
+            ->all();
+
+        expect($offenders)->toBe([]);
     });
 });
