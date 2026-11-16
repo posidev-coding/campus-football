@@ -46,7 +46,8 @@ describe('the payload', function () {
     it('carries every section the advisor needs', function () {
         expect(array_keys(telemetry()))->toBe([
             'generated_at', 'window_hours', 'season', 'ops', 'coverage',
-            'pickem', 'schedule', 'errors', 'performance', 'funnel', 'funnel_since',
+            'pickem', 'schedule', 'errors', 'performance', 'funnel',
+            'funnel_window_days', 'funnel_window_since', 'funnel_since',
             'funnel_missing_days',
             // The attention sections, after the funnel and before the board:
             // "is the machine alright" is the question that has to be
@@ -311,8 +312,9 @@ describe('what it reports', function () {
          * 2026-11-08 and 2026-11-09 got no row for any signal, and
          * funnel_since read 2026-11-10 for all ten — indistinguishable from
          * ten counters shipped that morning. Today is 2026-09-05, so the
-         * window's finished days are 08-29 through 09-04; three are unstated,
+         * window's finished days are 08-30 through 09-04; two are unstated,
          * one of them in the middle where funnel_since cannot see it at all.
+         * 08-29 is unstated too, and outside the seven days, so not asked.
          */
         foreach (['2026-08-31', '2026-09-01', '2026-09-03', '2026-09-04'] as $day) {
             foreach (UxSignal::cases() as $signal) {
@@ -322,8 +324,44 @@ describe('what it reports', function () {
 
         $snapshot = telemetry();
 
-        expect($snapshot['funnel_missing_days'])->toBe(['2026-08-29', '2026-08-30', '2026-09-02'])
+        expect($snapshot['funnel_missing_days'])->toBe(['2026-08-30', '2026-09-02'])
             ->and($snapshot['funnel_since']['invite_opened'])->toBe('2026-08-31');
+    });
+
+    it('reads seven calendar days under its seven-day label, cut as traffic and adoption are', function () {
+        /*
+         * `today - 7` with today inclusive was EIGHT days: on Sep 5 the floor
+         * was Aug 29, a day earlier than traffic and adoption beside it, so
+         * every ratio across the sections had an eight-day numerator (CFB-126).
+         * Covered clickstream from Aug 1, so their `since` is the window's
+         * own floor rather than the sensor's first day.
+         */
+        PageViewDaily::factory()->create(['day' => '2026-08-01']);
+
+        UxEvent::create(['day' => '2026-08-29', 'signal' => 'invite_opened', 'count' => 100]);
+        UxEvent::create(['day' => '2026-08-30', 'signal' => 'invite_opened', 'count' => 3]);
+
+        $snapshot = telemetry();
+
+        expect($snapshot['funnel_window_days'])->toBe(7)
+            ->and($snapshot['funnel_window_since'])->toBe('2026-08-30')
+            ->and($snapshot['funnel_window_since'])->toBe($snapshot['traffic']['since'])
+            ->and($snapshot['funnel_window_since'])->toBe($snapshot['audience']['adoption']['since'])
+            ->and($snapshot['traffic']['window_days'])->toBe($snapshot['funnel_window_days'])
+            // The eighth day's hundred is out of the total, and out of the gaps.
+            ->and($snapshot['funnel']['invite_opened'])->toBe(3)
+            ->and($snapshot['funnel_missing_days'])->not->toContain('2026-08-29');
+    });
+
+    it('keeps funnel_since as each signal\'s own first day, apart from the window floor', function () {
+        // A signal that started counting mid-window says so; the window's
+        // floor does not move with it, and neither borrows the other's day.
+        UxEvent::create(['day' => '2026-09-03', 'signal' => 'onboarding_credentials_reached', 'count' => 0]);
+
+        $snapshot = telemetry();
+
+        expect($snapshot['funnel_since']['onboarding_credentials_reached'])->toBe('2026-09-03')
+            ->and($snapshot['funnel_window_since'])->toBe('2026-08-30');
     });
 
     it('does not mistake a signal that shipped mid-window for a missing day', function () {

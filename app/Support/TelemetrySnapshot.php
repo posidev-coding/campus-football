@@ -36,6 +36,11 @@ use Carbon\CarbonImmutable;
  */
 class TelemetrySnapshot
 {
+    /** The funnel's width in league days, today included. */
+    public const FUNNEL_DAYS = 7;
+
+    private ?AnalyticsWindow $funnelWindow = null;
+
     public function __construct(
         private OpsReport $ops,
         private CoverageReport $coverage,
@@ -49,6 +54,10 @@ class TelemetrySnapshot
     /** @return array<string, mixed> */
     public function build(): array
     {
+        // Once per build: five readers share it, and a snapshot taken across
+        // midnight must not hand two of them different days.
+        $this->funnelWindow = null;
+
         return [
             'generated_at' => now()->toIso8601String(),
             'window_hours' => OpsReport::HOURS,
@@ -68,6 +77,13 @@ class TelemetrySnapshot
             ],
             'performance' => $this->performance->checks(),
             'funnel' => $this->funnel(),
+            /*
+             * The window, stated, so nobody derives it from funnel_since —
+             * which answers a different question: the first day each SIGNAL
+             * counted, where this is the first day the window reads.
+             */
+            'funnel_window_days' => $this->funnelWindow()->days,
+            'funnel_window_since' => $this->funnelWindow()->fromDate(),
             'funnel_since' => $this->funnelSince(),
             'funnel_missing_days' => $this->funnelMissingDays(),
             /*
@@ -365,11 +381,27 @@ class TelemetrySnapshot
     }
 
     /**
+     * The funnel's window: seven league days, today included, through the
+     * same {@see AnalyticsWindow} traffic and adoption are cut by.
+     *
+     * It was `today - 7` open-coded, and with today inclusive that is EIGHT
+     * calendar days under a seven-day label — a day more than the sections
+     * beside it, so every cross-section read (invite_opened against
+     * registrations) divided an eight-day numerator by a seven-day
+     * denominator (CFB-126). One window object is what stops the two
+     * drifting again.
+     */
+    private function funnelWindow(): AnalyticsWindow
+    {
+        return $this->funnelWindow ??= AnalyticsWindow::of(self::FUNNEL_DAYS);
+    }
+
+    /**
      * The first league day the funnel window reads — one floor for the total,
      * its dates and its gaps, so the three can never describe different days.
      */
     private function funnelFloor(): CarbonImmutable
     {
-        return CarbonImmutable::now(config('cfb.timezone'))->startOfDay()->subDays(7);
+        return $this->funnelWindow()->from;
     }
 }
