@@ -32,6 +32,11 @@ class Remember
      * without a coordinated cache:clear — the next request recomputes and,
      * if the data has landed, overwrites the pinned nothing.
      *
+     * Guarded like orSource(): a store that throws is skipped for the closure.
+     * filled() has render-path callers in the Home rails, Standings, Stats and
+     * Teams, and an unguarded read here was still a 500 on the next Redis
+     * stall after CFB-97 moved the layout's own reads over (CFB-112).
+     *
      * @template TValue
      *
      * @param  Closure(): TValue  $compute
@@ -39,19 +44,7 @@ class Remember
      */
     public static function filled(string $key, int $ttl, Closure $compute)
     {
-        $cached = Cache::get($key);
-
-        if ($cached !== null && $cached !== []) {
-            return $cached;
-        }
-
-        $value = $compute();
-
-        if ($value !== null && $value !== []) {
-            Cache::put($key, $value, $ttl);
-        }
-
-        return $value;
+        return self::guarded($key, $ttl, $compute, fn (mixed $value): bool => $value !== null && $value !== []);
     }
 
     /**
@@ -86,12 +79,11 @@ class Remember
     }
 
     /**
-     * filled() with orSource()'s guard: an empty result is still never
-     * served or stored, and a store that throws is skipped for the source.
+     * The same read as filled(), which now carries orSource()'s guard itself.
      *
-     * For a filled() read the layout cannot render without. TeamGlance::year()
-     * sits under the header search on every page. That read has to stay
-     * filled(), or a sync still draining pins "not held" for an hour.
+     * Named for the read the layout cannot render without: TeamGlance::year()
+     * sits under the header search on every page, and has to stay filled() or
+     * a sync still draining pins "not held" for an hour.
      *
      * @template TValue
      *
@@ -100,11 +92,11 @@ class Remember
      */
     public static function filledOrSource(string $key, int $ttl, Closure $compute)
     {
-        return self::guarded($key, $ttl, $compute, fn (mixed $value): bool => $value !== null && $value !== []);
+        return self::filled($key, $ttl, $compute);
     }
 
     /**
-     * The one guarded read-through behind orSource() and filledOrSource().
+     * The one guarded read-through behind filled() and orSource().
      * `$isAnswer` decides both whether a cached value is served and whether
      * a computed one is stored.
      *
@@ -141,6 +133,40 @@ class Remember
         }
 
         return $value;
+    }
+
+    /**
+     * Run a side effect at most once per `$ttl` seconds, gated on the store.
+     *
+     * For a render that kicks off a queued fetch (a team's news, an article's
+     * body) so a busy page is one dispatch, not one per reader. The read
+     * helpers above fall back to the source, but this gate has nothing to fall
+     * back to. Running the side effect on every render while the store is
+     * down is the opposite of a gate, and the dispatch would reach the job's
+     * own unique lock on the same store anyway. So a store that throws skips
+     * the side effect with a warning, and the page renders what it already
+     * has. The next render after recovery dispatches.
+     *
+     * @param  Closure(): mixed  $sideEffect
+     * @return bool whether the side effect ran
+     */
+    public static function oncePer(string $key, int $ttl, Closure $sideEffect): bool
+    {
+        try {
+            $claimed = Cache::add($key, true, $ttl);
+        } catch (Throwable $e) {
+            self::storeFailed('gate', $key, $e);
+
+            return false;
+        }
+
+        if (! $claimed) {
+            return false;
+        }
+
+        $sideEffect();
+
+        return true;
     }
 
     private static function storeFailed(string $operation, string $key, Throwable $e): void

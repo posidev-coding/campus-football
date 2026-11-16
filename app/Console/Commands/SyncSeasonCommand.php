@@ -33,6 +33,12 @@ class SyncSeasonCommand extends Command
     protected $description = 'Sync a season of reference data from ESPN';
 
     /**
+     * The steps that write the `standings` table, each of which re-warms the
+     * conference-position map once its own write has landed.
+     */
+    private const WRITES_STANDINGS = ['standings', 'compute', 'reconcile'];
+
+    /**
      * Order matters and is not negotiable: conferences must exist before teams
      * (teams inherit classification from the conference tree), both must exist
      * before games, and games must exist before predictors (which only fetch
@@ -41,12 +47,6 @@ class SyncSeasonCommand extends Command
      * `leaders` runs before `athletes` because the athlete resolve pass reads
      * the leaderboard to find out who is missing.
      */
-    /**
-     * The steps that write the `standings` table, each of which re-warms the
-     * conference-position map once its own write has landed.
-     */
-    private const WRITES_STANDINGS = ['standings', 'compute', 'reconcile'];
-
     private const STEPS = [
         'seasons', 'conferences', 'teams', 'games',
         'rankings', 'predictors', 'recruiting', 'injuries',
@@ -102,11 +102,27 @@ class SyncSeasonCommand extends Command
         return app(CfbCalendar::class)->resolveYear($option);
     }
 
+    /**
+     * The key this step's feed run is written under.
+     *
+     * `next` reaches the key because it is the one token that names a
+     * DIFFERENT season from every other pass of the same step: recruiting
+     * runs for `current` and for `next` at the same Wednesday minute, and
+     * under one key the schedule panel showed whichever class finished last
+     * as the run of both. `SyncSchedule::ledgerKey()` parses the same suffix
+     * off the schedule entry — change one and change the other, or the row
+     * reads a run that never happens and goes permanently overdue.
+     */
+    private function ledgerKey(string $step): string
+    {
+        return "sync:{$step}".($this->option('year') === 'next' ? ':next' : '');
+    }
+
     private function runStep(string $step, int $year): void
     {
         $started = microtime(true);
 
-        $count = $this->trackRun("sync:{$step}", $year, fn (): int => match ($step) {
+        $count = $this->trackRun($this->ledgerKey($step), $year, fn (): int => match ($step) {
             'seasons' => count(app(SyncSeason::class)->handle($year)),
             'conferences' => app(SyncConferences::class)->handle($year),
             'teams' => app(SyncTeams::class)->handle($year),

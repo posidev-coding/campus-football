@@ -827,26 +827,43 @@ class AnalyticsCatalog
      * rollup, because a screen with no views has no row: absence is the datum,
      * and it cannot be read out of a table that only holds what happened.
      *
+     * BOTH COLUMNS READ THE SAME ROWS, the rule {@see traffic()} set for the
+     * same reason. `views` used to be summed off the rollup while `visitors`
+     * was counted off the raw stream, and the rollup lags the stream by
+     * whatever the drain and the hourly pass have not reached yet, so one row
+     * of `top` described two spans of time (CFB-109). Now both count
+     * page-view rows in `activity_events`, which caps the window at the
+     * thirty days that table keeps. `since` moves up to match, and `quiet`
+     * is withheld unless those rows reach back to the window's first day:
+     * a screen is not quiet over ninety days on thirty days of evidence.
+     *
      * @return array<string, mixed>
      */
     public function routes(?AnalyticsWindow $window = null): array
     {
         $window ??= AnalyticsWindow::of(28);
 
+        $held = $this->firstWholeRawDay();
+        $from = max($window->fromDate(), $held);
+        $since = $window->sinceDate() === null ? null : max($window->sinceDate(), $held);
+
+        $pageViews = fn () => ActivityEvent::query()
+            ->whereBetween('day', [$from, $window->toDate()])
+            ->where('kind', ActivityKind::PageView->value)
+            ->where('audience', ActivityEvent::MEMBER);
+
         $views = $this->keyed(
-            PageViewDaily::query()
-                ->whereBetween('day', [$window->fromDate(), $window->toDate()])
-                ->where('audience', ActivityEvent::MEMBER)
+            $pageViews()
                 ->groupBy('route')
-                ->selectRaw('route as k, sum(views) as v'),
+                ->selectRaw('route as k, count(*) as v'),
         );
 
         // Recomputed, never summed — see traffic() and the daily table's own
-        // note on why `visitors` cannot be added up.
+        // note on why `visitors` cannot be added up. People who read the
+        // screen, over the same rows as its views, so a route never has a
+        // reader without a view.
         $visitors = $this->keyed(
-            ActivityEvent::query()
-                ->whereBetween('day', [$window->fromDate(), $window->toDate()])
-                ->where('audience', ActivityEvent::MEMBER)
+            $pageViews()
                 ->groupBy('route')
                 ->selectRaw('route as k, count(distinct user_id) as v'),
         );
@@ -862,9 +879,9 @@ class AnalyticsCatalog
 
         return [
             'window_days' => $window->days,
-            'since' => $window->sinceDate(),
+            'since' => $since,
             'top' => $top,
-            'quiet' => $window->covered
+            'quiet' => $window->covered && $from === $window->fromDate()
                 ? collect($this->screenRoutes())
                     ->filter(fn (string $route): bool => ($views[$route] ?? 0) < self::QUIET_VIEWS)
                     ->map(fn (string $route): array => ['route' => $route, 'views' => $views[$route] ?? 0])

@@ -216,8 +216,8 @@ describe('the answer', function () {
     });
 
     it('keeps a long list as a capped table rather than a hundred flattened lines', function () {
-        PageViewDaily::factory()->create([
-            'day' => '2026-09-04', 'route' => 'scoreboard', 'views' => 9,
+        ActivityEvent::factory()->count(9)->create([
+            'route' => 'scoreboard', 'occurred_at' => '2026-09-04 16:00:00',
         ]);
 
         OpsQuestion::fake([opsIntent(['question' => 'routes'])]);

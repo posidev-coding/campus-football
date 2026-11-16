@@ -101,7 +101,7 @@ class TeamGlance
     {
         $year ??= self::year();
 
-        return self::$memo["records:{$year}"] ??= Cache::remember(
+        return self::$memo["records:{$year}"] ??= Remember::orSource(
             "glance:records:{$year}",
             self::CACHE_SECONDS,
             fn () => Standing::fromEspn()
@@ -244,7 +244,7 @@ class TeamGlance
     {
         $year ??= self::year();
 
-        return self::$memo["conferences:{$year}"] ??= Cache::remember(
+        return self::$memo["conferences:{$year}"] ??= Remember::orSource(
             "glance:conferences:{$year}",
             self::CACHE_SECONDS,
             function () use ($year) {
@@ -270,7 +270,7 @@ class TeamGlance
     {
         $year ??= self::year();
 
-        return self::$memo["classifications:{$year}"] ??= Cache::remember(
+        return self::$memo["classifications:{$year}"] ??= Remember::orSource(
             "glance:classifications:{$year}",
             self::CACHE_SECONDS,
             fn () => TeamSeason::query()
@@ -324,7 +324,7 @@ class TeamGlance
     {
         $year ??= self::year();
 
-        return self::$memo["sizes:{$year}"] ??= Cache::remember(
+        return self::$memo["sizes:{$year}"] ??= Remember::orSource(
             "glance:sizes:{$year}",
             self::CACHE_SECONDS,
             function () use ($year) {
@@ -370,7 +370,7 @@ class TeamGlance
 
         // Cache key is versioned: the shape gained logo columns, and a stale
         // entry from before that would render rows with no mark at all.
-        return self::$memo["fbs:{$year}"] ??= Cache::remember(
+        return self::$memo["fbs:{$year}"] ??= Remember::orSource(
             "picker:teams:v2:{$year}",
             self::CACHE_SECONDS,
             fn () => Team::query()

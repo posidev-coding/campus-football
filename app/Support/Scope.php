@@ -7,7 +7,6 @@ use App\Models\Ranking;
 use App\Models\Season;
 use App\Models\TeamSeason;
 use App\Services\CfbCalendar;
-use Illuminate\Support\Facades\Cache;
 
 /**
  * The "who am I looking at" filter — Scores, Stats, Players, Recruiting,
@@ -139,7 +138,7 @@ class Scope
          */
         $hasRankings = $top25 && self::hasRankings($year);
 
-        return Cache::remember(
+        return Remember::orSource(
             "scope:options:{$year}:".($includeFcs ? 'all' : 'fbs').':'.($top25 ? 't' : 'f').':'.($hasRankings ? 'r' : 'nr'),
             self::CACHE_TTL,
             function () use ($year, $includeFcs, $top25, $hasRankings) {
@@ -281,14 +280,14 @@ class Scope
         // Cached like rankedTeamIds: membership moves weekly at most, and
         // these lists back every scoped screen's WHERE IN.
         if ($scope === self::FBS || $scope === self::FCS) {
-            return Cache::remember("scope:teams:{$scope}:{$year}", self::CACHE_TTL, fn () => TeamSeason::where('season_year', $year)
+            return Remember::orSource("scope:teams:{$scope}:{$year}", self::CACHE_TTL, fn () => TeamSeason::where('season_year', $year)
                 ->where('classification', strtoupper($scope))
                 ->pluck('team_id')
                 ->all());
         }
 
         if (ctype_digit($scope)) {
-            return Cache::remember("scope:teams:conf-{$scope}:{$year}", self::CACHE_TTL, fn () => TeamSeason::where('season_year', $year)
+            return Remember::orSource("scope:teams:conf-{$scope}:{$year}", self::CACHE_TTL, fn () => TeamSeason::where('season_year', $year)
                 ->where('conference_id', (int) $scope)
                 ->pluck('team_id')
                 ->all());
@@ -314,7 +313,7 @@ class Scope
         // TTL after the switch.
         $poll = app(CfbCalendar::class)->defaultPoll($year)->value;
 
-        return Cache::remember("scope:top25:{$year}:{$poll}", self::CACHE_TTL, function () use ($year, $poll) {
+        return Remember::orSource("scope:top25:{$year}:{$poll}", self::CACHE_TTL, function () use ($year, $poll) {
             $seasonIds = Season::where('year', $year)->pluck('id');
 
             if ($seasonIds->isEmpty()) {

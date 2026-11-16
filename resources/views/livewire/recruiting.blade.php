@@ -3,10 +3,10 @@
 use App\Models\Position;
 use App\Models\Recruit;
 use App\Support\RecruitingClasses;
+use App\Support\Remember;
 use App\Support\Scope;
 use App\Support\Search;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Url;
@@ -134,7 +134,7 @@ new class extends Component
     #[Computed]
     public function classes(): array
     {
-        return Cache::remember(
+        return Remember::filled(
             'recruiting:classes',
             3600,
             fn () => Recruit::query()->distinct()->orderByDesc('recruiting_class')->pluck('recruiting_class')->all()
@@ -158,7 +158,7 @@ new class extends Component
     #[Computed]
     public function positions(): array
     {
-        return Cache::remember("recruiting:positions:{$this->year}", 3600, function () {
+        return Remember::orSource("recruiting:positions:{$this->year}", 3600, function () {
             $rank = [70 => 0, 71 => 1, 72 => 2];
 
             return DB::table('recruits as r')

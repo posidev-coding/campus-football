@@ -200,6 +200,22 @@ with no `cache:clear`. Every year-list/latest-year lookup that gates a screen
 goes through it, with any calendar fallback applied OUTSIDE the cache so a
 fallback year can never be pinned either.
 
+## Every read-through goes through Remember, never a bare Cache::remember
+
+The cache is Redis, and a bare `Cache::remember` on a render path turns a Redis
+stall into a 500: the store throws, and the database row it stood in front of
+never gets asked. CFB-97 guarded the layout. CFB-112 guarded `filled()`. The
+screens' own reads (Scoreboard, Standings, Rankings, Teams, Team, Players,
+Recruiting) and the shared `app/Support` readers under them were still bare
+until all of them moved to `Remember`. Use `orSource()` where
+`Cache::remember` semantics are wanted, which caches any non-null value
+including `[]`. Use `filled()` where an empty list must not be pinned. When a
+render fires a queued fetch at most once per window, use
+`Remember::oncePer()`. It SKIPS the side effect when the store throws, because
+dispatching on every render is the opposite of a gate. `CacheOutageTest`
+sweeps `app/` and `resources/views` for a bare `Cache::remember`, so a new one
+fails the suite rather than waiting for the next stall.
+
 ## An arrow function captures by VALUE, and a mutation inside one is lost
 
 `fn ($g) => $claimed[$g->id] = true` writes to a copy — silently, no warning —

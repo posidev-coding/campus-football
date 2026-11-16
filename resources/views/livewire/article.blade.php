@@ -3,7 +3,7 @@
 use App\Jobs\FetchArticleStory;
 use App\Models\Article;
 use App\Support\ArticleStory;
-use Illuminate\Support\Facades\Cache;
+use App\Support\Remember;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -76,9 +76,11 @@ new class extends Component
             return;
         }
 
-        if (Cache::add("article:story:dispatched:{$this->article->id}", true, self::DISPATCH_GUARD_SECONDS)) {
-            FetchArticleStory::dispatch($this->article->id);
-        }
+        Remember::oncePer(
+            "article:story:dispatched:{$this->article->id}",
+            self::DISPATCH_GUARD_SECONDS,
+            fn () => FetchArticleStory::dispatch($this->article->id),
+        );
     }
 
     /**

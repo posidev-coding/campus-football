@@ -5,8 +5,8 @@ namespace App\Services\Espn\Sync;
 use App\Models\Article;
 use App\Models\Team;
 use App\Services\Espn\EspnClient;
+use App\Support\Deadlocks;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -38,16 +38,6 @@ class SyncNews
 {
     /** ESPN clamps to this regardless of what we ask for. Stated, not hoped. */
     private const MAX_LIMIT = 50;
-
-    /**
-     * Extra attempts after a deadlock, and only after a deadlock.
-     *
-     * Two, because the cycle needs another writer holding the same article's
-     * locks at the same instant and that window is milliseconds wide — a
-     * third attempt would be waiting on something other than contention, and
-     * the honest answer to that is to fail and leave a ledger row.
-     */
-    private const DEADLOCK_RETRIES = 2;
 
     public function __construct(private EspnClient $espn) {}
 
@@ -226,7 +216,7 @@ class SyncNews
      * 2. The delete-against-insert cycle survives ordering, so the pair is
      *    retried on a deadlock and only on a deadlock. MySQL has already
      *    rolled the loser back and both statements are idempotent, so a retry
-     *    is safe — see {@see writeTeamLinks()}.
+     *    is safe — see {@see writeTeamLinks()} and {@see Deadlocks::retry()}.
      * 3. Most calls have nothing to do at all, because ESPN hands the same
      *    national story to several jobs, and both statements are then pure
      *    lock acquisition for no change.
@@ -245,21 +235,7 @@ class SyncNews
         // attempt cannot take the locks in a third order.
         sort($wanted);
 
-        for ($attempt = 0; ; $attempt++) {
-            try {
-                $this->writeTeamLinks($article, $wanted);
-
-                return;
-            } catch (QueryException $e) {
-                if ($attempt >= self::DEADLOCK_RETRIES || ! self::isDeadlock($e)) {
-                    throw $e;
-                }
-
-                // Jittered, so two writers that just deadlocked with each
-                // other do not wake together and do it again.
-                usleep(random_int(20_000, 80_000));
-            }
-        }
+        Deadlocks::retry(fn () => $this->writeTeamLinks($article, $wanted));
     }
 
     /**
@@ -312,20 +288,6 @@ class SyncNews
             'created_at' => $now,
             'updated_at' => $now,
         ], $wanted));
-    }
-
-    /**
-     * A deadlock and nothing else.
-     *
-     * SQLSTATE 40001 is "serialization failure", which for MySQL is error
-     * 1213 — the loser of a lock cycle, already rolled back and safe to try
-     * again. Every other QueryException is re-raised untouched: a retry loop
-     * that swallowed a missing column or a foreign key would turn a bug into
-     * three seconds of silence.
-     */
-    private static function isDeadlock(QueryException $e): bool
-    {
-        return (string) ($e->errorInfo[0] ?? $e->getCode()) === '40001';
     }
 
     /**

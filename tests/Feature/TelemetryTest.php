@@ -3,7 +3,6 @@
 use App\Actions\RecordUxEvent;
 use App\Enums\ActivityFeature;
 use App\Enums\UxSignal;
-use App\Enums\ViewportBucket;
 use App\Enums\WorkbookStatus;
 use App\Jobs\FetchGameSummary;
 use App\Models\ActivityEvent;
@@ -132,7 +131,7 @@ describe('no user ever reaches the payload', function () {
         $task = telemetry()['schedule'][0];
 
         expect(array_keys($task))->toBe([
-            'name', 'cadence', 'gated', 'overdue', 'last_status', 'last_run_at',
+            'name', 'cadence', 'gated', 'overdue', 'shared', 'last_status', 'last_run_at',
         ]);
     });
 });
@@ -421,13 +420,12 @@ describe('the attention sections', function () {
         // Members only, staff excluded: at pilot scale the founder's own
         // browsing is most of the traffic, and "does anybody open Rankings"
         // is a question about readers.
-        PageViewDaily::factory()->create([
-            'day' => '2026-09-04', 'route' => 'rankings',
-            'audience' => ActivityEvent::MEMBER, 'views' => 6,
+        // Raw page views, which both route columns count (CFB-109).
+        ActivityEvent::factory()->count(6)->create([
+            'route' => 'rankings', 'occurred_at' => '2026-09-04 16:00:00',
         ]);
-        PageViewDaily::factory()->create([
-            'day' => '2026-09-04', 'route' => 'rankings', 'viewport_bucket' => ViewportBucket::Desktop,
-            'audience' => ActivityEvent::STAFF, 'views' => 400,
+        ActivityEvent::factory()->staff()->count(40)->create([
+            'route' => 'rankings', 'occurred_at' => '2026-09-04 16:00:00',
         ]);
 
         expect(collect(telemetry()['routes']['top'])->firstWhere('route', 'rankings')['views'])->toBe(6);

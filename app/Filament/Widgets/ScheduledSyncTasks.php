@@ -35,6 +35,7 @@ class ScheduledSyncTasks extends BaseWidget
                     'cadence' => $task['cadence'],
                     'gated' => $task['gated'],
                     'overdue' => $task['overdue'],
+                    'shared' => $task['shared'],
                     'status' => match (true) {
                         $task['gated'] => 'gated',
                         $task['run']?->status === FeedRun::FAILED => 'failed',
@@ -55,9 +56,17 @@ class ScheduledSyncTasks extends BaseWidget
                     ->weight('medium')
                     ->description(fn (array $record) => $record['cadence']),
 
+                /*
+                 * A shared row's stamp is THIS cadence's own pass, dealt out
+                 * of a ledger the command keeps for several entries — said in
+                 * the row, so nobody reads one entry's time as the command's.
+                 * With none of its own in the window it says so, rather than
+                 * "never": the command may well have run, just not as this.
+                 */
                 TextColumn::make('last_run')
                     ->label('Last run')
-                    ->placeholder('never')
+                    ->placeholder(fn (array $record) => $record['shared'] ? 'none of its own' : 'never')
+                    ->description(fn (array $record) => $record['shared'] ? 'this cadence · shared ledger' : null)
                     ->color('gray'),
 
                 TextColumn::make('records')
