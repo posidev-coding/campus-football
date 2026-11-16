@@ -340,3 +340,36 @@ it('keeps the artisan hint for the operator alone', function () {
         ->test('stats')->set('view', 'players')
         ->assertSee('php artisan cfb:aggregate');
 });
+
+it('leaves a team off a board when it has no numeric value for that stat', function () {
+    /*
+     * TeamSeasonStat::stat() hands back a display with a null value for an
+     * entry that carries no `value`, and for the legacy flat scalar shape
+     * ('12-18'). Neither may rank at a 0.0 it never had. A real 0 is data,
+     * though, and stays.
+     */
+    foreach ([2633 => 'tennessee', 2 => 'auburn', 333 => 'alabama', 99 => 'lsu'] as $id => $slug) {
+        Team::factory()->create(['id' => $id, 'slug' => $slug]);
+        TeamSeason::create(['team_id' => $id, 'season_year' => 2025, 'conference_id' => 8, 'classification' => 'FBS']);
+    }
+
+    $row = fn (int $teamId, mixed $entry) => TeamSeasonStat::create([
+        'team_id' => $teamId, 'season_year' => 2025, 'season_type' => Season::REGULAR,
+        'category' => 'defensiveInterceptions', 'stats' => ['interceptions' => $entry],
+    ]);
+
+    $row(2633, ['display' => '18', 'value' => 18, 'rank' => 2, 'label' => 'Interceptions']);
+    $row(2, ['display' => '9', 'rank' => 40, 'label' => 'Interceptions']);
+    $row(333, '12-18');
+    $row(99, ['display' => '0', 'value' => 0, 'rank' => 130, 'label' => 'Interceptions']);
+
+    $board = ['category' => 'defensiveInterceptions', 'stat' => 'interceptions'];
+
+    // One read under one key, so nothing here can be a cached earlier answer.
+    $rows = LeaderQuery::teams($board, 2025, Scope::FBS, limit: 10);
+
+    expect(array_column($rows, 'team_id'))->toBe([2633, 99])
+        ->and(array_column($rows, 'rank'))->toBe([1, 2])
+        ->and(array_column($rows, 'value'))->toBe([18.0, 0.0])
+        ->and(array_column($rows, 'display'))->toBe(['18', '0']);
+});
