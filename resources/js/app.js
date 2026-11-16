@@ -426,13 +426,36 @@ window.addEventListener('error', (event) => {
  * with it now, through the same failureMessage() the service-worker path uses
  * — and under the same contract, which is that neither half is ever invented.
  *
- * The label is what the event IS, not a guess at what failed. A caller who
- * knows better should be calling window.cfbErrors.failure() with a real one;
- * this report is deliberately, unmistakably the anonymous one.
+ * A rejection that came out of a LIVEWIRE CALL says which call, through
+ * livewireRejection() below. That was most of what still arrived anonymous:
+ * Livewire rejects a failed call with a bare `{ status, body, json, errors }`,
+ * which carries no name, no message and no stack, so the report was the label
+ * alone, from /groups/52 and /scoreboard, with nothing to chase (CFB-108).
+ *
+ * Otherwise the label is what the event IS, not a guess at what failed. A
+ * caller who knows better should be calling window.cfbErrors.failure() with a
+ * real one; this report is deliberately, unmistakably the anonymous one.
  */
 window.addEventListener('unhandledrejection', (event) => {
     try {
         const reason = event.reason;
+        const livewire = livewireRejection(event);
+
+        if (livewire) {
+            window.cfbErrors.report({
+                kind: 'unhandledrejection',
+                message: failureMessage(`unhandled rejection from ${livewire.label}`, livewire.detail),
+                /* The runtime that made and rejected the promise. The
+                 * reason has no stack to mine, and the call it names is in
+                 * the message. */
+                source: livewireScriptUrl(),
+                line: null,
+                col: null,
+                stack: livewire.stack,
+            });
+
+            return;
+        }
 
         window.cfbErrors.report({
             kind: 'unhandledrejection',
@@ -447,6 +470,151 @@ window.addEventListener('unhandledrejection', (event) => {
         });
     } catch { /* never let the reporter be the bug */ }
 });
+
+/*
+ * WHICH LIVEWIRE CALL FAILED, kept for the moment its promise rejects.
+ *
+ * `interceptAction` is Livewire 4's per-call seam, and its three failure
+ * callbacks run BEFORE the call's promise is rejected — so by the time the
+ * window hears an unhandled rejection, the outcome is already here:
+ *
+ *   - onError:   the server answered, badly. The status is the fact.
+ *   - onFailure: the request never got an answer. The fetch's own error is
+ *                the fact — Safari's "TypeError: Load failed", now with the
+ *                component and method beside it.
+ *   - onCancel:  superseded or navigated away from. Said as such.
+ *
+ * Kept by ACTION (exact, for the promise Livewire handed out) and briefly in
+ * a list (for a promise derived from it, which no longer carries the action).
+ * Only the component's registered name and the method name are kept — never
+ * params, never the payload, never anything typed.
+ */
+const livewireOutcomes = new WeakMap();
+let livewireRecent = [];
+
+/* Long enough for the rejection to be noticed and its event dispatched, and
+ * no longer: past it, a failure is old news rather than the cause. */
+const LIVEWIRE_RECENT_MS = 2000;
+
+document.addEventListener('livewire:init', () => {
+    try {
+        const livewire = window.Livewire;
+
+        if (typeof livewire?.interceptAction !== 'function') return;
+
+        livewire.interceptAction(({ action, onError, onFailure, onCancel }) => {
+            const record = (outcome) => {
+                try {
+                    const failed = {
+                        component: typeof action?.component?.name === 'string' ? action.component.name : null,
+                        method: typeof action?.name === 'string' ? action.name : null,
+                        ...outcome,
+                        at: Date.now(),
+                    };
+
+                    livewireOutcomes.set(action, failed);
+
+                    livewireRecent = livewireRecent
+                        .filter((entry) => failed.at - entry.at < LIVEWIRE_RECENT_MS)
+                        .concat(failed);
+                } catch { /* never let the reporter be the bug */ }
+            };
+
+            onError(({ response }) => record({ status: Number.isInteger(response?.status) ? response.status : null }));
+            onFailure(({ error }) => record({ error: error ?? null }));
+            onCancel(() => record({ cancelled: true }));
+        });
+    } catch { /* never let the reporter be the bug */ }
+});
+
+/*
+ * The Livewire call behind a rejection, or null when it was not one.
+ *
+ * EXACT when the unhandled promise is the one Livewire handed out: it carries
+ * its action as `_livewireAction`. That is an Alpine `$wire.save()` with no
+ * catch, which is what an `x-on` or `x-init` leaves.
+ *
+ * BY SHAPE when it is not — `await $wire.save()` inside an async method
+ * rejects that METHOD's promise, with Livewire's reason but not its action.
+ * The reason's exact `{ status, body, json, errors }` shape says it was a
+ * Livewire call; the calls that failed with the same status in the last two
+ * seconds say which. When nothing matches, it says it was a Livewire call
+ * and no more, rather than guessing one.
+ */
+function livewireRejection(event) {
+    const action = event?.promise?._livewireAction;
+
+    if (action) {
+        const failed = livewireOutcomes.get(action) ?? {
+            component: typeof action.component?.name === 'string' ? action.component.name : null,
+            method: typeof action.name === 'string' ? action.name : null,
+        };
+
+        return describeLivewireFailures([failed], event.reason);
+    }
+
+    if (!isLivewireReason(event?.reason)) return null;
+
+    const now = Date.now();
+    const status = Number.isInteger(event.reason.status) ? event.reason.status : null;
+
+    const matching = livewireRecent.filter((entry) => now - entry.at < LIVEWIRE_RECENT_MS
+        && (entry.status ?? null) === status);
+
+    return describeLivewireFailures(matching, event.reason);
+}
+
+/* Livewire's own rejection reason, and nothing else that happens to have a
+ * `status`: exactly these four keys, which is what every failed call
+ * rejects with in Livewire 4 (dist/livewire.js, rejectActionPromises). */
+function isLivewireReason(reason) {
+    if (!reason || typeof reason !== 'object') return false;
+
+    const keys = Object.keys(reason).sort().join(',');
+
+    return keys === 'body,errors,json,status';
+}
+
+/* "search-panel.ask()" — or, with no call to name, "a Livewire call". */
+function describeLivewireFailures(failures, reason) {
+    const calls = [...new Set(failures
+        .filter((failed) => failed.component || failed.method)
+        .map((failed) => `${failed.component ?? 'an unnamed component'}.${failed.method ?? 'an unnamed method'}()`))];
+
+    const label = calls.length ? calls.join(', ') : 'a Livewire call';
+
+    /* What the outcome actually was. The first failure that knows wins; a
+     * status on the reason itself is the server's own answer and is used
+     * when no recorded outcome has one. */
+    const known = failures.find((failed) => failed.error || failed.status || failed.cancelled);
+
+    let detail = null;
+
+    if (known?.error) {
+        detail = rejectionDetail(known.error);
+    } else if (known?.status) {
+        detail = { message: `HTTP ${known.status}` };
+    } else if (known?.cancelled) {
+        detail = { message: 'cancelled' };
+    } else if (Number.isInteger(reason?.status)) {
+        detail = { message: `HTTP ${reason.status}` };
+    }
+
+    const stack = known?.error?.stack ? String(known.error.stack) : null;
+
+    return { label, detail, stack };
+}
+
+/* Livewire injects its runtime with the update URI on the tag, which is the
+ * one marker that says THIS script is Livewire rather than anything else
+ * with "livewire" in its path. */
+function livewireScriptUrl() {
+    try {
+        return document.querySelector('script[data-update-uri]')?.src || null;
+    } catch {
+        return null;
+    }
+}
 
 /*
  * A rejection we catch ourselves, named — reported in the same shape the

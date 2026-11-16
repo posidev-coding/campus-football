@@ -332,10 +332,11 @@ describe('a rejection nobody caught', function () {
     it('never files Livewire\'s own rejection as "[object Object]"', function () {
         // What an uncaught $wire.call() rejects with: a plain
         // { status, body, json, errors }, which stringifies to a placeholder
-        // wearing data's clothes. Better to say nothing about the reason.
+        // wearing data's clothes. Its shape and its status are facts, and are
+        // said as such; the object's string form never is.
         $report = pwaSeamReports('rejection-livewire')[0];
 
-        expect($report['message'])->toBe('unhandled rejection')
+        expect($report['message'])->toBe('unhandled rejection from a Livewire call: HTTP 503')
             ->and($report['message'])->not->toContain('[object Object]');
     });
 
@@ -348,6 +349,96 @@ describe('a rejection nobody caught', function () {
 
         expect($error->message)->toBe('unhandled rejection: TypeError: Load failed')
             ->and($error->path)->toBe('/groups/51');
+    });
+});
+
+describe('a rejection out of a Livewire call', function () {
+    /*
+     * Livewire rejects a failed call with a bare `{ status, body, json,
+     * errors }`: no name, no message, no stack. So the report was the label
+     * alone — "unhandled rejection", source null — from /groups/52 and
+     * /scoreboard in an installed app, with nothing to say which screen's
+     * call had failed or why (CFB-108). Livewire 4's interceptAction runs its
+     * failure callbacks before that promise is rejected, which is where the
+     * call's component, method and outcome are picked up.
+     */
+    it('names the component and method of a call whose own promise went unhandled', function () {
+        // `x-on:click="$wire.ask()"` with no catch: the unhandled promise is
+        // the one Livewire handed out, and it carries its action.
+        $reports = pwaSeamReports('rejection-livewire-action-http');
+
+        expect($reports)->toHaveCount(1)
+            ->and($reports[0]['message'])->toBe('unhandled rejection from search-panel.ask(): HTTP 500')
+            ->and($reports[0]['kind'])->toBe(ClientError::REJECTION)
+            ->and($reports[0]['path'])->toBe('/groups/51');
+    });
+
+    it('sources it to the Livewire runtime that made the promise', function () {
+        // The reason has no stack to mine, so the source used to be null.
+        // The runtime that created and rejected the promise is the honest one.
+        expect(pwaSeamReports('rejection-livewire-action-http')[0]['source'])
+            ->toBe('https://campusfootball.test/livewire/livewire.min.js?id=df3a17f2');
+    });
+
+    it('never sends what was passed to the call', function () {
+        // The params are what someone typed. The telemetry contract is
+        // aggregate-only, and these rows are read by an automated advisor.
+        $report = pwaSeamReports('rejection-livewire-action-http')[0];
+
+        expect(json_encode($report))->not->toContain('sacks');
+    });
+
+    it('names the call behind an awaited one, with the fetch error that failed it', function () {
+        // `await $wire.save()` in an async method rejects the METHOD's promise,
+        // which carries Livewire's reason but not its action. Safari's bare
+        // "Load failed" now arrives with the call it failed.
+        $report = pwaSeamReports('rejection-livewire-derived-network')[0];
+
+        expect($report['message'])->toBe('unhandled rejection from pages::group.save(): TypeError: Load failed')
+            ->and($report['stack'])->toContain('livewire.min.js');
+    });
+
+    it('says a cancelled call was cancelled', function () {
+        expect(pwaSeamReports('rejection-livewire-derived-cancelled')[0]['message'])
+            ->toBe('unhandled rejection from scoreboard.$refresh(): cancelled');
+    });
+
+    it('says it was a Livewire call and no more when no failed call stands behind it', function () {
+        // The shape is a fact and so is the status on it. Which call is not
+        // known, so none is named.
+        expect(pwaSeamReports('rejection-livewire-unattributed')[0]['message'])
+            ->toBe('unhandled rejection from a Livewire call: HTTP 419');
+    });
+
+    it('does not pin a rejection on a call that failed long before it', function () {
+        // Broken back from the awaited case above: the same failed save, five
+        // seconds stale, must not be named — or "pages::group.save()" there
+        // proves only that the last failure always gets the blame.
+        $message = pwaSeamReports('rejection-livewire-stale')[0]['message'];
+
+        expect($message)->toBe('unhandled rejection from a Livewire call')
+            ->and($message)->not->toContain('save');
+    });
+
+    it('still reports by shape on a Livewire with no interceptAction, and does not throw', function () {
+        expect(pwaSeamReports('rejection-livewire-no-interceptor')[0]['message'])
+            ->toBe('unhandled rejection from a Livewire call');
+    });
+
+    it('leaves a rejection that is not Livewire\'s to the anonymous report', function () {
+        // A bare object with a `status` is not Livewire's reason. Only the
+        // exact four-key shape is, so nothing else is borrowed into a name.
+        expect(pwaSeamReports('rejection-anonymous')[0]['message'])->toBe('unhandled rejection')
+            ->and(pwaSeamReports('rejection-anonymous')[0]['source'])->toBeNull();
+    });
+
+    it('sends a payload the ingest endpoint actually accepts', function () {
+        $this->postJson(route('client-errors.store'), pwaSeamReports('rejection-livewire-derived-network')[0])
+            ->assertNoContent();
+
+        expect(ClientError::sole())
+            ->message->toBe('unhandled rejection from pages::group.save(): TypeError: Load failed')
+            ->source->toBe('https://campusfootball.test/livewire/livewire.min.js?id=df3a17f2');
     });
 });
 
