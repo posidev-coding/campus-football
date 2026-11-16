@@ -13,12 +13,14 @@ use App\Models\Slate;
 use App\Models\SlateGame;
 use App\Models\User;
 use App\Models\UxEvent;
+use App\Support\ActivityRollup;
 use App\Support\CoverageReport;
 use App\Support\OpsReport;
 use App\Support\PickemPreflight;
-use Carbon\CarbonImmutable;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Schedule as ScheduleFacade;
 
 /*
  * The third report in the house shape: is the APPLICATION behaving, beside
@@ -29,8 +31,36 @@ use Illuminate\Support\Facades\Redis;
 
 beforeEach(function () {
     Redis::connection('pulse')->flushdb();
-    $this->travelTo('2026-09-05 18:00:00');
+    scheduleAt('2026-09-05 18:00:00');
+
+    // A pipeline that is running: both clickstream passes completed this
+    // minute, so a row only warns when a test takes that away.
+    completedRun('activity:drain');
+    completedRun(ActivityRollup::TODAY_LEDGER);
 });
+
+/**
+ * Travel, then DEFINE the schedule again.
+ *
+ * `between()` captures `now` when an entry is defined, and the app's schedule
+ * was defined at boot, before any travel — so without this every gated entry
+ * would answer for the wall clock the suite happened to start at.
+ */
+function scheduleAt(string $utc): void
+{
+    test()->travelTo($utc);
+
+    app()->forgetInstance(Schedule::class);
+    ScheduleFacade::clearResolvedInstance(Schedule::class);
+
+    require base_path('routes/console.php');
+}
+
+/** A completed ledger row for the command, started now. */
+function completedRun(string $command): void
+{
+    FeedRun::begin($command, null)->complete(1, 0, 5);
+}
 
 /** Write one Pulse entry as the recorders would. */
 function pulseEntry(string $type, string $key, int $value, int $minutesAgo = 5): void
@@ -211,7 +241,7 @@ describe('the clickstream pipeline', function () {
         // The daily pass runs at 04:56 league time. Before the hour it is due
         // by, "not yet" is the honest answer rather than a warning about work
         // nobody has asked for.
-        $this->travelTo(CarbonImmutable::parse('2026-09-05 05:30', config('cfb.timezone')));
+        scheduleAt('2026-09-05 09:30:00'); // 05:30 ET
 
         ActivityEvent::factory()->create(['occurred_at' => '2026-09-04 18:00:00']);
 
@@ -220,6 +250,68 @@ describe('the clickstream pipeline', function () {
         expect($row['status'])->toBe(OpsReport::OK)
             ->and($row['detail'])->toContain('has not been rolled yet')
             ->and($row['remedy'])->toBeNull();
+    });
+});
+
+describe('the clickstream against its own schedule', function () {
+    beforeEach(function () {
+        FeedRun::query()->delete();
+    });
+
+    it('says the drain is gated off, and when it last ran, inside the overnight gap', function () {
+        /*
+         * 06:11 ET, when the advisor fires: the drain is gated to 08:00-03:00
+         * and last ran at 02:55. Asleep by design is healthy — but the row
+         * has to SAY so, or it reads exactly like a drain that died at 02:55.
+         */
+        $this->travelTo('2026-09-05 06:55:00'); // Sat 02:55 ET
+        completedRun('activity:drain');
+        $this->travelTo('2026-09-05 06:00:00'); // Sat 02:00 ET
+        completedRun(ActivityRollup::TODAY_LEDGER);
+
+        scheduleAt('2026-09-05 10:11:00'); // Sat 06:11 ET
+
+        $rows = collect((new OpsReport)->checks())->keyBy('key');
+
+        expect($rows['activity_ingest']['status'])->toBe(OpsReport::OK)
+            ->and($rows['activity_ingest']['detail'])->toBe('Gated off by its schedule — last drained Sat 02:55 ET; buffer empty')
+            ->and($rows['activity_rollup']['status'])->toBe(OpsReport::OK)
+            ->and($rows['activity_rollup']['detail'])->toContain('the hourly pass is gated off by its schedule — today last rolled Sat 02:00 ET');
+    });
+
+    it('warns when the drain is inside its window and has stopped running', function () {
+        // Saturday afternoon, the window wide open, and the last drain three
+        // hours ago: the dead pipeline the gap used to be indistinguishable from.
+        $this->travelTo('2026-09-05 15:00:00'); // Sat 11:00 ET
+        completedRun('activity:drain');
+        completedRun(ActivityRollup::TODAY_LEDGER);
+
+        scheduleAt('2026-09-05 18:00:00'); // Sat 14:00 ET
+
+        $rows = collect((new OpsReport)->checks())->keyBy('key');
+
+        expect($rows['activity_ingest']['status'])->toBe(OpsReport::WARN)
+            ->and($rows['activity_ingest']['detail'])->toBe('Inside its scheduled window and last drained Sat 11:00 ET — buffer empty')
+            ->and($rows['activity_ingest']['remedy'])->toContain('cfb:activity-drain')
+            ->and($rows['activity_rollup']['status'])->toBe(OpsReport::WARN)
+            ->and($rows['activity_rollup']['detail'])->toContain('the hourly pass is inside its scheduled window and today last rolled Sat 11:00 ET')
+            ->and($rows['activity_rollup']['remedy'])->toBe('php artisan cfb:activity-rollup --today');
+    });
+
+    it('stays quiet inside the window while both passes keep up', function () {
+        $this->travelTo('2026-09-05 17:55:00');
+        completedRun('activity:drain');
+        $this->travelTo('2026-09-05 17:00:00');
+        completedRun(ActivityRollup::TODAY_LEDGER);
+
+        scheduleAt('2026-09-05 18:00:00');
+
+        $rows = collect((new OpsReport)->checks())->keyBy('key');
+
+        expect($rows['activity_ingest']['status'])->toBe(OpsReport::OK)
+            ->and($rows['activity_ingest']['detail'])->toContain('keeping up')
+            ->and($rows['activity_rollup']['status'])->toBe(OpsReport::OK)
+            ->and($rows['activity_rollup']['detail'])->toContain('today last rolled Sat 13:00 ET');
     });
 });
 

@@ -92,10 +92,20 @@ class OpsReport
     public const RATE_SAMPLE_FLOOR = 20;
 
     /**
+     * The schedule as data, read once per report — both clickstream rows ask
+     * it, and each read walks the ledger.
+     *
+     * @var list<array<string, mixed>>|null
+     */
+    private ?array $tasks = null;
+
+    /**
      * @return list<array{key: string, label: string, status: string, detail: string, remedy: string|null}>
      */
     public function checks(): array
     {
+        $this->tasks = null;
+
         return [
             $this->ingest(),
             $this->exceptions(),
@@ -264,6 +274,44 @@ class OpsReport
             default => self::OK,
         };
 
+        $remedy = $status === self::OK ? null : 'php artisan cfb:activity-drain — above '.number_format(self::ACTIVITY_FAIL).' the stream starts trimming the oldest entries';
+
+        $buffer = $buffered === 0
+            ? 'buffer empty'
+            : "{$buffered} page views buffered and not yet written";
+
+        $schedule = $this->scheduleState('activity:drain');
+        $last = $this->lastRan('activity:drain', 'last drained', 'never drained');
+
+        /*
+         * ASLEEP AND DEAD MUST NOT READ ALIKE. In season the drain is gated
+         * to 08:00-03:00 ET, and a pass taken in the gap saw a buffer that
+         * stopped moving hours ago and called it "ok" — the same word a
+         * stalled worker earned (CFB-137). The schedule answers which one it
+         * is, from the entries' own filters rather than a second copy of the
+         * window: gated off is ok and says so; inside the window with no
+         * recent run is the dead pipeline, and warns.
+         */
+        if ($schedule === 'stalled') {
+            return $this->row(
+                'activity_ingest',
+                'Activity ingest',
+                $this->worst($status, self::WARN),
+                "Inside its scheduled window and {$last} — {$buffer}",
+                'Check the scheduler and the queue worker, then php artisan cfb:activity-drain',
+            );
+        }
+
+        if ($schedule === 'asleep') {
+            return $this->row(
+                'activity_ingest',
+                'Activity ingest',
+                $status,
+                "Gated off by its schedule — {$last}; {$buffer}",
+                $remedy,
+            );
+        }
+
         return $this->row(
             'activity_ingest',
             'Activity ingest',
@@ -271,12 +319,62 @@ class OpsReport
             $buffered === 0
                 ? 'Buffer empty — the drain is keeping up'
                 : "{$buffered} page views buffered and not yet written",
-            $status === self::OK ? null : 'php artisan cfb:activity-drain — above '.number_format(self::ACTIVITY_FAIL).' the stream starts trimming the oldest entries',
+            $remedy,
         );
     }
 
     /**
-     * Did yesterday get folded into the tables that live on?
+     * Where a scheduled command stands against its own schedule right now.
+     *
+     * `asleep` when every entry that writes this ledger key is gated off — a
+     * between() window or a season gate, read by the entries' own filters;
+     * `stalled` when one is inside its window and has missed its last two due
+     * moments ({@see SyncSchedule} judges that); `running` otherwise. Null
+     * when the schedule holds no such entry, which says nothing either way.
+     *
+     * @return 'asleep'|'stalled'|'running'|null
+     */
+    private function scheduleState(string $ledgerKey): ?string
+    {
+        $this->tasks ??= app(SyncSchedule::class)->tasks();
+
+        $entries = collect($this->tasks)->where('tracked', $ledgerKey);
+
+        if ($entries->isEmpty()) {
+            return null;
+        }
+
+        $open = $entries->reject(fn (array $task): bool => $task['gated']);
+
+        return match (true) {
+            $open->isEmpty() => 'asleep',
+            $open->contains('overdue', true) => 'stalled',
+            default => 'running',
+        };
+    }
+
+    /** "last drained Sat 02:55 ET", off the newest COMPLETE run of the key. */
+    private function lastRan(string $ledgerKey, string $prefix, string $never): string
+    {
+        $started = FeedRun::query()
+            ->where('command', $ledgerKey)
+            ->where('status', FeedRun::COMPLETE)
+            ->max('started_at');
+
+        return $started === null
+            ? $never
+            : $prefix.' '.CarbonImmutable::parse($started, 'UTC')->setTimezone(config('cfb.timezone'))->format('D H:i').' ET';
+    }
+
+    private function worst(string $a, string $b): string
+    {
+        $rank = [self::OK => 0, self::WARN => 1, self::FAIL => 2];
+
+        return $rank[$a] >= $rank[$b] ? $a : $b;
+    }
+
+    /**
+     * Did yesterday get folded into the tables that live on, and is today?
      *
      * Measured against the RAW rows rather than against the clock alone, so a
      * genuinely quiet day reads OK instead of crying wolf every morning of the
@@ -284,6 +382,36 @@ class OpsReport
      * "is there a row" check would call healthy.
      */
     private function activityRollup(): array
+    {
+        $row = $this->yesterdayRollup();
+
+        $last = $this->lastRan(ActivityRollup::TODAY_LEDGER, 'today last rolled', 'today never rolled');
+
+        /*
+         * And the hourly `--today` pass, which sleeps through the same gap
+         * the drain does. Everything the snapshot says about today stands on
+         * it, so the row says whether it is asleep by design or missing its
+         * window (CFB-137) — never just "ok" over a day that stopped at 03:00.
+         */
+        return match ($this->scheduleState(ActivityRollup::TODAY_LEDGER)) {
+            'asleep' => [...$row, 'detail' => $row['detail']."; the hourly pass is gated off by its schedule — {$last}"],
+            'stalled' => [
+                ...$row,
+                'status' => $this->worst($row['status'], self::WARN),
+                'detail' => $row['detail']."; the hourly pass is inside its scheduled window and {$last}",
+                'remedy' => $row['remedy'] ?? 'php artisan cfb:activity-rollup --today',
+            ],
+            'running' => [...$row, 'detail' => $row['detail']."; {$last}"],
+            default => $row,
+        };
+    }
+
+    /**
+     * The daily pass's half: is yesterday folded completely?
+     *
+     * @return array{key: string, label: string, status: string, detail: string, remedy: string|null}
+     */
+    private function yesterdayRollup(): array
     {
         $yesterday = now(config('cfb.timezone'))->subDay()->toDateString();
 
