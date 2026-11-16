@@ -646,3 +646,21 @@ Schedule::command('pickem:open-lobbies')
     ->timezone($tz)
     ->when($inSeason)
     ->withoutOverlapping(30);
+
+/*
+ * The net under the merge webhook: GitHub never retries a failed delivery,
+ * so a merge whose webhook landed mid-deploy is closed here instead. DB plus
+ * one GitHub read per In review card, and a no-op until GITHUB_READ_TOKEN is
+ * set. Six-hourly off-season, like the news sync, so June still sleeps.
+ */
+Schedule::command('cfb:workbook:reconcile')
+    ->hourly()
+    ->timezone($tz)
+    ->when($inSeason)
+    ->withoutOverlapping(30);
+
+Schedule::command('cfb:workbook:reconcile')
+    ->everySixHours()
+    ->timezone($tz)
+    ->when($offSeason)
+    ->withoutOverlapping(30);

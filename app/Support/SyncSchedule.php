@@ -317,6 +317,7 @@ class SyncSchedule
             str_starts_with($command, 'pickem:publish-slates') => 'publish-slates',
             str_starts_with($command, 'pickem:settle') => 'settle-slates',
             str_starts_with($command, 'pickem:open-lobbies') => 'open-lobbies',
+            str_starts_with($command, 'cfb:workbook:reconcile') => 'workbook:reconcile',
             default => null,
         };
     }

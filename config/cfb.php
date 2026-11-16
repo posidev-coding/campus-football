@@ -232,4 +232,24 @@ return [
      */
     'github_webhook_secret' => env('GITHUB_WEBHOOK_SECRET'),
 
+    /*
+     * A READ token for GitHub's REST API, used by `cfb:workbook:reconcile` to
+     * ask whether an In review card's pull request has merged.
+     *
+     * The webhook above is the fast path and this is the net under it: GitHub
+     * never retries a failed delivery, and every merge deploys, so a delivery
+     * that lands mid-swap gets a 503 and its card would sit In review for good.
+     * The repository is private, so asking needs a token.
+     *
+     * Create it as a FINE-GRAINED personal access token: repository access
+     * "Only select repositories" → this one repository; repository permissions
+     * → Pull requests: Read-only (Metadata: Read-only comes with it). Nothing
+     * else — it is read-only and it can only see this repository.
+     *
+     * UNSET MEANS OFF. The command says it is not configured and exits 0
+     * without moving anything — never a default, and never a guess from the
+     * branch name alone. The webhook still closes cards without it.
+     */
+    'github_token' => env('GITHUB_READ_TOKEN'),
+
 ];
