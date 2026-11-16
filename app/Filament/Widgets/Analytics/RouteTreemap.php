@@ -16,9 +16,12 @@ use Leandrocfe\FilamentApexCharts\Widgets\ApexChartWidget;
  * ranking: forty routes in a bar chart is a scroll, and the thing worth
  * seeing is that one screen is most of the app and eleven are slivers.
  *
- * DEFERRED, and read through {@see AnalyticsCatalog::routes()} so the panel
- * and the snapshot rank routes identically. Members only, staff excluded —
- * that decision lives in the catalog, once, rather than being re-argued here.
+ * DEFERRED, and read through {@see AnalyticsCatalog::attention()}, which
+ * counts the same member page views over the same span as `routes()`.
+ * Members only, staff excluded — that decision lives in the catalog, once,
+ * rather than being re-argued here. Not `routes.top`: top drops every route
+ * under five views so it cannot overlap `quiet`, and the slivers are what
+ * this chart is for.
  */
 class RouteTreemap extends ApexChartWidget
 {
@@ -45,7 +48,7 @@ class RouteTreemap extends ApexChartWidget
      */
     protected function getSubheading(): ?string
     {
-        $since = $this->catalogRoutes()['since'];
+        $since = $this->attention()['since'];
 
         return $since === null
             ? 'No data yet'
@@ -54,14 +57,14 @@ class RouteTreemap extends ApexChartWidget
 
     protected function getOptions(): array
     {
-        $routes = $this->catalogRoutes();
+        $attention = $this->attention();
 
         return [
             'chart' => ['type' => 'treemap', 'height' => 300, 'toolbar' => ['show' => false]],
             'series' => [[
                 'data' => array_map(
                     fn (array $row): array => ['x' => $row['route'], 'y' => $row['views']],
-                    $routes['top'],
+                    $attention['routes'],
                 ),
             ]],
             'colors' => [Brand::color('lager')],
@@ -72,9 +75,9 @@ class RouteTreemap extends ApexChartWidget
         ];
     }
 
-    /** @return array<string, mixed> */
-    private function catalogRoutes(): array
+    /** @return array{since: ?string, routes: list<array{route: string, views: int}>} */
+    private function attention(): array
     {
-        return app(AnalyticsCatalog::class)->routes(AnalyticsWindow::from($this->pageFilters ?? []));
+        return app(AnalyticsCatalog::class)->attention(AnalyticsWindow::from($this->pageFilters ?? []));
     }
 }

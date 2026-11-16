@@ -9,6 +9,7 @@ use App\Models\ActivityEvent;
 use App\Models\PageViewDaily;
 use App\Models\User;
 use App\Models\UserDay;
+use App\Support\AnalyticsCatalog;
 use App\Support\AnalyticsWindow;
 use App\Support\Brand;
 use App\Support\Cadence;
@@ -166,6 +167,29 @@ describe('the route treemap', function () {
 
         expect($chart->instance()->options['series'][0]['data'][0])
             ->toBe(['x' => 'scoreboard', 'y' => 9]);
+    });
+
+    it('keeps the slivers that top leaves out', function () {
+        /*
+         * `routes.top` only ranks a route at five member views or more, so
+         * it cannot overlap `quiet` (CFB-117). The treemap is for proportion,
+         * and a pilot week where nothing clears five must still draw the
+         * screens people opened rather than "No data yet".
+         */
+        ActivityEvent::factory()->count(3)->create([
+            'route' => 'scoreboard', 'occurred_at' => '2026-09-04 16:00:00',
+        ]);
+        ActivityEvent::factory()->create([
+            'route' => 'rankings', 'occurred_at' => '2026-09-04 16:00:00',
+        ]);
+
+        $chart = renderDeferred(RouteTreemap::class, ['window' => 28]);
+
+        expect(app(AnalyticsCatalog::class)->routes(AnalyticsWindow::of(28))['top'])->toBe([])
+            ->and($chart->instance()->options['series'][0]['data'])->toBe([
+                ['x' => 'scoreboard', 'y' => 3],
+                ['x' => 'rankings', 'y' => 1],
+            ]);
     });
 
     it('labels a long range from where the raw table starts, not the range', function () {
