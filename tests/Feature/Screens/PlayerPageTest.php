@@ -8,9 +8,12 @@ use App\Models\Game;
 use App\Models\Position;
 use App\Models\Season;
 use App\Models\Team;
+use App\Models\User;
 use App\Services\Espn\Sync\SyncAthleteStats;
+use App\Support\AutomatedAgents;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -66,6 +69,101 @@ it('dispatches a refresh rather than fetching on the render path', function () {
 
     Http::assertNothingSent();
     Queue::assertPushed(FetchAthleteGameLog::class, fn ($job) => $job->athleteId === $this->athlete->id);
+});
+
+describe('a crawler on the player page (CFB-111)', function () {
+    /*
+     * Crawlers were the only population reaching this screen — zero member
+     * views in 28 days against 76 slow requests in one — and every one of
+     * their views armed an ESPN game-log fetch nobody read.
+     */
+    beforeEach(function () {
+        Queue::fake();
+
+        // Stale under BOTH windows, and stamped rather than null, so a skipped
+        // view that wrote anything at all would show.
+        $this->stamp = now()->subDays(3)->startOfSecond();
+        $this->athlete->forceFill(['game_log_fetched_at' => $this->stamp])->save();
+    });
+
+    it('queues nothing for a crawler, and leaves the athlete exactly as it found it', function (string $agent) {
+        Livewire::withHeaders(['User-Agent' => $agent])
+            ->test('player', ['athlete' => $this->athlete->fresh()])
+            ->assertOk()
+            ->assertSee('Refresh')
+            ->assertDontSee('Refreshing');
+
+        Queue::assertNotPushed(FetchAthleteGameLog::class);
+
+        // No placeholder stamp: the next person still finds it stale.
+        $after = $this->athlete->fresh();
+        expect($after->game_log_fetched_at->equalTo($this->stamp))->toBeTrue()
+            ->and(app(SyncAthleteStats::class)->isStale($after))->toBeTrue();
+    })->with([
+        'Googlebot' => 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+        'an AI crawler' => 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GPTBot/1.2; +https://openai.com/gptbot)',
+        'a plain HTTP client' => 'curl/8.7.1',
+        'no user-agent at all' => '',
+    ]);
+
+    it('still queues for a person in a browser', function () {
+        Livewire::withHeaders(['User-Agent' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1'])
+            ->test('player', ['athlete' => $this->athlete->fresh()])
+            ->assertSee('Refreshing');
+
+        Queue::assertPushed(
+            FetchAthleteGameLog::class,
+            fn ($job) => $job->athleteId === $this->athlete->id && $job->force === false
+        );
+    });
+
+    it('still queues for a signed-in reader, whatever their browser calls itself', function () {
+        // An account is a person — the same call RecordActivity makes.
+        $this->actingAs(User::factory()->create());
+
+        Livewire::withHeaders(['User-Agent' => 'Mozilla/5.0 (Linux; Android 15) WhatsApp/2.24'])
+            ->test('player', ['athlete' => $this->athlete->fresh()]);
+
+        Queue::assertPushed(FetchAthleteGameLog::class);
+    });
+
+    it('lets the Refresh button fetch whoever presses it', function () {
+        // refreshGameLog() is a deliberate press, already behind the service's
+        // in-flight lock — only the automatic page-load dispatch is gated.
+        // Fresh, so the button is the only thing that could have queued.
+        $this->athlete->forceFill(['game_log_fetched_at' => now()])->save();
+
+        $screen = Livewire::withHeaders(['User-Agent' => 'curl/8.7.1'])
+            ->test('player', ['athlete' => $this->athlete->fresh()]);
+
+        Queue::assertNothingPushed();
+
+        // Livewire's test broker sends only X-Livewire on a ->call(), so the
+        // crawler's agent would be gone by the press. Press it under one.
+        $this->app->instance('request', Request::create('/', server: ['HTTP_USER_AGENT' => 'curl/8.7.1']));
+        expect(AutomatedAgents::isPerson(request()))->toBeFalse();
+
+        $screen->instance()->refreshGameLog();
+
+        Queue::assertPushed(
+            FetchAthleteGameLog::class,
+            fn ($job) => $job->athleteId === $this->athlete->id && $job->force === true
+        );
+    });
+
+    it('does not tell a crawler a never-fetched player has no stats', function () {
+        // Skipping the fetch must not substitute an empty log for a missing one.
+        $this->athlete->forceFill(['game_log_fetched_at' => null])->save();
+
+        Livewire::withHeaders(['User-Agent' => 'Googlebot/2.1'])
+            ->test('player', ['athlete' => $this->athlete->fresh()])
+            ->assertSee("game log hasn't been loaded yet", escape: false)
+            ->assertDontSee('No game log')
+            ->assertDontSee('no recorded stats');
+
+        Queue::assertNotPushed(FetchAthleteGameLog::class);
+        expect($this->athlete->fresh()->game_log_fetched_at)->toBeNull();
+    });
 });
 
 it('dates a night game in ET, not the next day in UTC', function () {

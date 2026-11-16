@@ -5,6 +5,7 @@ use App\Models\Athlete;
 use App\Models\AthleteGameStat;
 use App\Models\Team;
 use App\Services\Espn\Sync\SyncAthleteStats;
+use App\Support\AutomatedAgents;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
 
@@ -14,11 +15,11 @@ use Livewire\Component;
  * ESPN has no prose bio for college athletes — `/athletes/{id}/bio` returns only
  * team history — so this leans on measurables, hometown, class, and production.
  *
- * The game log is the one genuinely per-athlete feed. Opening the page
- * DISPATCHES a refresh when the log is due one and renders whatever we already
- * hold; nobody waits on an upstream round trip to read a page. Freshness is a
- * timestamp on the athlete, and the window is a day wider off gameday than on —
- * see SyncAthleteStats.
+ * The game log is the one genuinely per-athlete feed. A person opening the
+ * page DISPATCHES a refresh when the log is due one, and everybody is shown
+ * whatever we already hold; nobody waits on an upstream round trip to read a
+ * page. Freshness is a timestamp on the athlete, and the window is a day wider
+ * off gameday than on — see SyncAthleteStats.
  */
 new class extends Component
 {
@@ -52,7 +53,12 @@ new class extends Component
         // Dispatch, never fetch. The job is unique on the athlete, so a player
         // trending after a big game costs one request rather than one per
         // viewer.
-        if ($stats->isStale($athlete)) {
+        //
+        // And only for a person. Crawlers were the only population reaching
+        // this screen, each view arming an ESPN call nobody read (CFB-111). A
+        // skipped view renders what we hold and writes nothing, so the log is
+        // still stale for the next person and their view still queues.
+        if ($stats->isStale($athlete) && AutomatedAgents::isPerson(request())) {
             $this->queue();
         }
     }
@@ -342,6 +348,13 @@ new class extends Component
         @elseif ($this->refreshing)
             <flux:callout icon="chart-bar" variant="secondary">
                 <flux:callout.text>Fetching {{ $athlete->display_name }}'s game log…</flux:callout.text>
+            </flux:callout>
+        @elseif ($athlete->game_log_fetched_at === null)
+            {{-- Never fetched is not "no stats". A crawler's view queues nothing
+                 (CFB-111), and a fetch that failed stamps nothing, so neither
+                 may claim the player has no recorded stats. --}}
+            <flux:callout icon="chart-bar" variant="secondary">
+                <flux:callout.text>{{ $athlete->display_name }}'s game log hasn't been loaded yet.</flux:callout.text>
             </flux:callout>
         @else
             <flux:callout icon="chart-bar">
