@@ -27,7 +27,7 @@ class SyncSeasonCommand extends Command
 
     protected $signature = 'cfb:sync
         {--year= : Season year, or current|results|next resolved at run time (defaults to CFB_SEASON)}
-        {--only= : One step: seasons|conferences|teams|games|rankings|rankings-current|predictors|recruiting|injuries|standings|compute|reconcile|positions|leaders|athletes|news}
+        {--only= : One step: seasons|conferences|teams|games|rankings|rankings-current|predictors|recruiting|injuries|standings|compute|reconcile|leaders|athletes|news}
         {--days=10 : With --only=predictors, how far ahead to model}';
 
     protected $description = 'Sync a season of reference data from ESPN';
@@ -38,17 +38,19 @@ class SyncSeasonCommand extends Command
      * before games, and games must exist before predictors (which only fetch
      * for upcoming fixtures) and standings.
      *
-     * `positions` follows `reconcile` because it reads what the three
-     * standings steps just wrote: it re-puts the conference-position map Home,
-     * the team page and search read, so nobody rebuilds it on a request.
-     *
      * `leaders` runs before `athletes` because the athlete resolve pass reads
      * the leaderboard to find out who is missing.
      */
+    /**
+     * The steps that write the `standings` table, each of which re-warms the
+     * conference-position map once its own write has landed.
+     */
+    private const WRITES_STANDINGS = ['standings', 'compute', 'reconcile'];
+
     private const STEPS = [
         'seasons', 'conferences', 'teams', 'games',
         'rankings', 'predictors', 'recruiting', 'injuries',
-        'standings', 'compute', 'reconcile', 'positions',
+        'standings', 'compute', 'reconcile',
         'leaders', 'athletes', 'news',
     ];
 
@@ -128,13 +130,6 @@ class SyncSeasonCommand extends Command
             'standings' => app(SyncStandings::class)->handle($year),
             'compute' => app(ComputeStandings::class)->handle($year),
             'reconcile' => app(ReconcileStandings::class)->handle($year),
-            /*
-             * Zero ESPN requests: one query over the standings already
-             * written. The warm outlives the day, so a HAND-RUN standings,
-             * compute or reconcile step should be followed by this one, or the
-             * screens keep the morning's positions until the next night.
-             */
-            'positions' => count(TeamGlance::warmStandingPositions($year)),
             'leaders' => app(SyncNationalLeaders::class)->season($year),
             'athletes' => app(SyncNationalLeaders::class)->resolveAthletes(),
             // News is a rolling few-day window with no season parameter, so it
@@ -143,10 +138,24 @@ class SyncSeasonCommand extends Command
             'news' => app(SyncNews::class)->general(),
         });
 
+        /*
+         * Warmed by the writer, after the write, never by the clock. The map
+         * Home, the team page and search read lasts a day once warmed, so
+         * whatever writes standings has to refresh it: a nightly run, or a
+         * hand-run repair from Sync Health that used to show within fifteen
+         * minutes and would otherwise wait for the next night. And it runs
+         * only once this step has RETURNED — trackRun rethrows a failure, so
+         * a half-done write never gets pinned, and a standings sync that runs
+         * long is warmed when it finishes rather than at a fixed minute that
+         * might land mid-write. Zero ESPN requests: one query.
+         */
+        if (in_array($step, self::WRITES_STANDINGS, true)) {
+            TeamGlance::warmStandingPositions($year);
+        }
+
         $label = match ($step) {
             'reconcile' => $count > 0 ? "{$count} diverged" : 'no divergence',
             'athletes' => "{$count} resolved",
-            'positions' => "{$count} positioned",
             default => "{$count} records",
         };
 

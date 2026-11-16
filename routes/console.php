@@ -179,19 +179,6 @@ Schedule::command('cfb:sync --only=reconcile --year=results')
     ->when($inSeason)
     ->withoutOverlapping(60);
 
-/*
- * Then the conference-position map, warmed from here rather than rebuilt by
- * whoever opens Home first. It was a 900-second cache nothing refreshed, and
- * the request that found it cold paid for the whole league's standings —
- * 2424ms on Home. Zero ESPN requests; `results` because that is the season
- * the three steps above just wrote.
- */
-Schedule::command('cfb:sync --only=positions --year=results')
-    ->dailyAt('04:47')
-    ->timezone($tz)
-    ->when($inSeason)
-    ->withoutOverlapping(60);
-
 // Reference data barely moves. Conference membership can still change mid-year
 // when ESPN corrects its tree, so this is weekly rather than annual — but never
 // on a game day.

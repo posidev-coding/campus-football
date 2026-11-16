@@ -163,14 +163,17 @@ class TeamGlance
      * The read above is a 900-second remember that nothing refreshed,
      * so every fifteen minutes the first person to open Home or a team page
      * paid for the whole league's standings on the request path — 2424ms on
-     * Home, measured. Standings only move when `cfb:sync` writes them, once a
-     * night, so the scheduled `positions` step calls this straight after
-     * reconcile and the map is simply there all day.
+     * Home, measured. Standings only move when a `cfb:sync` standings,
+     * compute or reconcile step writes them, so each of those calls this once
+     * its write has landed — the nightly run and a hand-run repair alike —
+     * and the map is simply there all day.
      *
      * `WARM_SECONDS`, not `CACHE_SECONDS`: a warm that expires at 05:00 warms
-     * nothing. It outlives the gap to the next nightly warm, and if a night is
-     * missed the entry ages out and the read falls back to rebuilding it cold
-     * — slower, never wrong.
+     * nothing. It outlives the gap to the next nightly write, and if a night
+     * is missed the entry ages out and the read falls back to rebuilding it
+     * cold — slower, never wrong. That length is only safe BECAUSE every
+     * standings writer re-warms: anything new that writes `standings` must
+     * call this too, or the screens keep the old table for a day.
      *
      * An empty map is written as faithfully as a full one. Before kickoff it IS
      * the answer, and putting it is what keeps the preseason off the request
