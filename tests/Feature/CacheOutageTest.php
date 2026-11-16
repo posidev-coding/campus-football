@@ -210,17 +210,27 @@ describe('the data screens, while the cache store is down', function () {
      * the render path, so the next Redis stall was a 500 there even after the
      * layout's own reads were guarded (CFB-97, CFB-112).
      */
-    it('renders :dataset from its rows instead of a 500', function (string $route) {
+    it('renders :dataset from its rows instead of a 500', function (string $route, string $ownKey) {
         Log::spy();
         breakCacheStore();
 
         $this->get(route($route))->assertOk();
 
-        // Caught, not hidden: at least one of the screen's own reads warned.
+        // Caught, not hidden, and by the SCREEN's own read. Any warning would
+        // not do: the layout's guarded brand read warns on every page, so it
+        // would pass with the screen's own reads never reached.
         Log::shouldHaveReceived('warning')
-            ->withArgs(fn (string $message, array $context) => str_contains($message, 'Cache store unavailable'))
+            ->withArgs(fn (string $message, array $context) => str_contains($message, 'Cache store unavailable')
+                && str_starts_with($context['key'], $ownKey))
             ->atLeast()->once();
-    })->with(['scoreboard', 'standings', 'rankings', 'teams', 'players', 'recruiting']);
+    })->with([
+        'scoreboard' => ['scoreboard', 'scoreboard:has-live'],
+        'standings' => ['standings', 'standings:'],
+        'rankings' => ['rankings', 'rankings:'],
+        'teams' => ['teams', 'teams:'],
+        'players' => ['players', 'players:'],
+        'recruiting' => ['recruiting', 'recruiting:'],
+    ]);
 
     it('renders a team page and skips its news dispatch rather than firing one per render', function () {
         Queue::fake();
