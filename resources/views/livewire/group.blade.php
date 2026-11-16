@@ -158,7 +158,7 @@ new class extends Component
         $this->group = $group;
         $this->view = $this->normalizedView($this->view);
 
-        abort_unless($group->isLobby() || $this->seatOf(auth()->user()) !== null, 403);
+        abort_unless($group->isLobby() || $this->seat() !== null, 403);
 
         // Each kind lives at its own address: a shared link always reads
         // /contests/... for a room and /groups/... for a group. Keyed on
@@ -242,7 +242,7 @@ new class extends Component
      */
     private function countSlateEntry(): void
     {
-        if ($this->view !== 'slate' || auth()->guest() || $this->seatOf(auth()->user()) === null) {
+        if ($this->view !== 'slate' || $this->seat() === null) {
             return;
         }
 
@@ -1033,16 +1033,67 @@ new class extends Component
         unset($this->invitables);
     }
 
+    /**
+     * THE READER'S OWN SEAT HERE, resolved once per round trip (CFB-128).
+     *
+     * Mount's gate, the front door, the funnel guard, isMember,
+     * isCommissioner and the you-strip all ask "does the reader sit here",
+     * and each used to ask the database: up to six identical lookups on the
+     * app's busiest screen. They now share one.
+     *
+     * NULL IS THE ANSWER FOR AN OUTSIDER — a guest, or a member of some
+     * other group previewing a lobby. Never a blank GroupMember or a
+     * default role standing in for one: every caller branches on null and
+     * skips, which is what keeps a non-member from rendering as a member
+     * with no points.
+     *
+     * NOT A #[Computed], ON PURPOSE. Livewire memoizes a computed with
+     * `??=`, so a null result is never memoized at all — the outsider, the
+     * one case that matters most, went back to the database at every site.
+     * A private memo is request-scoped the same way (Livewire hydrates only
+     * public state, so every round trip starts unresolved), and the flag
+     * beside it lets null be an answer rather than "not asked yet". Private
+     * also keeps it off the wire: a public method is callable from the
+     * client.
+     *
+     * A write that moves the reader's seat (join, hand-off) calls
+     * forgetSeat() alongside unsetting what it derives, or the stale memo
+     * outlives the write for the rest of that request's render.
+     */
+    private bool $seatResolved = false;
+
+    private ?GroupMember $resolvedSeat = null;
+
+    private function seat(): ?GroupMember
+    {
+        if (! $this->seatResolved) {
+            $user = auth()->user();
+
+            $this->resolvedSeat = $user === null
+                ? null
+                : $this->group->memberships()->where('user_id', $user->id)->first();
+            $this->seatResolved = true;
+        }
+
+        return $this->resolvedSeat;
+    }
+
+    private function forgetSeat(): void
+    {
+        $this->seatResolved = false;
+        $this->resolvedSeat = null;
+    }
+
     #[Computed]
     public function isCommissioner(): bool
     {
-        return $this->seatOf(auth()->user())?->isCommissioner() ?? false;
+        return $this->seat()?->isCommissioner() ?? false;
     }
 
     #[Computed]
     public function isMember(): bool
     {
-        return $this->seatOf(auth()->user()) !== null;
+        return $this->seat() !== null;
     }
 
     /**
@@ -1191,7 +1242,7 @@ new class extends Component
     {
         $user = auth()->user();
 
-        if ($user === null || $this->seatOf($user) === null) {
+        if ($user === null || $this->seat() === null) {
             return null;
         }
 
@@ -1270,6 +1321,7 @@ new class extends Component
 
         session()->flash('status', Voice::line('groups.joined', ['group' => $this->group->name]));
         // The strip too: a seat is what puts the Talk stop on it.
+        $this->forgetSeat();
         unset($this->members, $this->isMember, $this->isCommissioner, $this->tabs);
     }
 
@@ -1405,9 +1457,9 @@ new class extends Component
      * member's row — so they abort rather than growing user copy for a
      * state a reader cannot reach.
      *
-     * isCommissioner is memoized and now WRONG for both people, so it is
-     * dropped alongside members: the row this ran from has to re-render
-     * with the badge and the buttons swapped.
+     * The reader's seat and isCommissioner are memoized and now WRONG for
+     * both people, so they are dropped alongside members: the row this ran
+     * from has to re-render with the badge and the buttons swapped.
      */
     public function handOff(int $userId, HandOffCommissioner $action): void
     {
@@ -1426,6 +1478,7 @@ new class extends Component
             'group' => $this->group->name,
         ]));
 
+        $this->forgetSeat();
         unset($this->members, $this->isCommissioner);
     }
 
@@ -1480,16 +1533,9 @@ new class extends Component
             return false;
         }
 
-        return $this->seatOf(auth()->user()) !== null
+        return $this->seat() !== null
             && $this->slate !== null
             && $this->entryComplete($this->slate);
-    }
-
-    private function seatOf(?User $user): ?GroupMember
-    {
-        return $user === null
-            ? null
-            : $this->group->memberships()->where('user_id', $user->id)->first();
     }
 }; ?>
 

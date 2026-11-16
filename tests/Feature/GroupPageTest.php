@@ -966,6 +966,31 @@ it('keeps the query count flat however big the slate gets', function () {
     expect($queries($groupB))->toBe($queries($groupA));
 });
 
+it('looks the reader\'s own seat up once per render, not once per question', function () {
+    // Mount's gate, the front door, the funnel guard, isMember,
+    // isCommissioner and the you-strip all ask whether the reader sits
+    // here (CFB-128). On a published slate every one of them is reached.
+    [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
+    app(PublishSlate::class)->handle($commissioner, pickemDraftSlate($contest));
+
+    $seatLookups = function (string $view) use ($commissioner, $group): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        Livewire::actingAs($commissioner)->test('group', ['group' => $group, 'view' => $view]);
+
+        $lookups = collect(DB::getQueryLog())
+            ->filter(fn (array $query) => preg_match('/from `group_members` where `group_members`.`group_id` = \\? .*`user_id` = \\? limit 1/', $query['query']) === 1)
+            ->count();
+        DB::disableQueryLog();
+
+        return $lookups;
+    };
+
+    expect($seatLookups('slate'))->toBe(1)
+        ->and($seatLookups('standings'))->toBe(1);
+});
+
 it('reveals the picks grid per game, and never before kickoff', function () {
     [$commissioner, $group, $contest] = pickemContest(ContestMode::Classic);
     $member = User::factory()->create(['admin' => true, 'handle' => 'gridwatcher']);
