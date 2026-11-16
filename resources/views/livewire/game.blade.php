@@ -13,6 +13,7 @@ use App\Services\CfbCalendar;
 use App\Services\Espn\Sync\SyncGameSummary;
 use App\Services\Stats\AggregateAthleteStats;
 use App\Support\GameRanks;
+use App\Support\Remember;
 use App\Support\TeamPalette;
 use Carbon\CarbonImmutable;
 use Livewire\Attributes\Computed;
@@ -47,6 +48,20 @@ new class extends Component
      * forced fetch starts being worth its 544 KB.
      */
     private const REFRESH_OFFERED_AFTER = 30;
+
+    /**
+     * How long the preview's season context is held across requests: the
+     * team-board TTL (Stats\LeaderQuery), because both reads are season
+     * aggregates the syncs rewrite on a schedule and never per request.
+     */
+    private const SEASON_CONTEXT_TTL = 900;
+
+    /** What each side's season leader is measured on, in display order. */
+    private const SEASON_LEADER_CATEGORIES = [
+        'passing' => ['stat' => 'passingYards', 'tds' => 'passingTouchdowns', 'label' => 'Passing'],
+        'rushing' => ['stat' => 'rushingYards', 'tds' => 'rushingTouchdowns', 'label' => 'Rushing'],
+        'receiving' => ['stat' => 'receivingYards', 'tds' => 'receivingTouchdowns', 'label' => 'Receiving'],
+    ];
 
     public Game $game;
 
@@ -516,10 +531,32 @@ new class extends Component
             return ['year' => null, 'rows' => []];
         }
 
+        /*
+         * Held across requests, keyed on the pair rather than the game: it
+         * reads neither the score nor the status, so it is the same answer
+         * on every page these two teams share. A pair with no numbers yet
+         * is never stored — the next reader asks again, rather than being
+         * served cached nothing until the TTL runs out.
+         */
+        return Remember::filled(
+            "game:comparison:v1:{$this->game->away_team_id}:{$this->game->home_team_id}",
+            self::SEASON_CONTEXT_TTL,
+            fn (): ?array => $this->readComparison($teamIds),
+        ) ?? ['year' => null, 'rows' => []];
+    }
+
+    /**
+     * The comparison as plain arrays, or null when neither side has a number.
+     *
+     * @param  array<int, int>  $teamIds
+     * @return array{year: int, rows: non-empty-list<array{label: string, away: array<string, mixed>, home: array<string, mixed>}>}|null
+     */
+    private function readComparison(array $teamIds): ?array
+    {
         $year = TeamSeasonStat::whereIn('team_id', $teamIds)->max('season_year');
 
         if ($year === null) {
-            return ['year' => null, 'rows' => []];
+            return null;
         }
 
         $stats = TeamSeasonStat::query()
@@ -552,7 +589,7 @@ new class extends Component
             ->values()
             ->all();
 
-        return ['year' => (int) $year, 'rows' => $rows];
+        return $rows === [] ? null : ['year' => (int) $year, 'rows' => $rows];
     }
 
     /**
@@ -571,17 +608,69 @@ new class extends Component
             return ['year' => null, 'rows' => []];
         }
 
-        $year = AthleteSeasonStat::whereIn('team_id', $teamIds)->max('season_year');
+        /*
+         * The athlete_season_stats scan is the costliest read on a pregame
+         * page (57ms of 93ms measured), so the leaders are held across
+         * requests by the pair, as ids and numbers only. The athletes
+         * themselves are resolved below, per request: a model in the cache
+         * round-trips as __PHP_Incomplete_Class.
+         */
+        $held = Remember::filled(
+            "game:season-leaders:v1:{$this->game->away_team_id}:{$this->game->home_team_id}",
+            self::SEASON_CONTEXT_TTL,
+            fn (): ?array => $this->readSeasonLeaders($teamIds),
+        );
 
-        if ($year === null) {
+        if ($held === null) {
             return ['year' => null, 'rows' => []];
         }
 
-        $categories = [
-            'passing' => ['stat' => 'passingYards', 'tds' => 'passingTouchdowns', 'label' => 'Passing'],
-            'rushing' => ['stat' => 'rushingYards', 'tds' => 'rushingTouchdowns', 'label' => 'Rushing'],
-            'receiving' => ['stat' => 'receivingYards', 'tds' => 'receivingTouchdowns', 'label' => 'Receiving'],
+        $leaders = $held['leaders'];
+
+        $athletes = Athlete::whereIn('id', collect($leaders)->flatten(1)->pluck('athlete_id'))
+            ->get(['id', 'slug', 'display_name', 'short_name', 'headshot_url'])
+            ->keyBy('id');
+
+        $resolve = function (string $category, ?int $teamId) use ($leaders, $athletes): ?array {
+            $entry = $leaders[$category][$teamId] ?? null;
+
+            if ($entry === null) {
+                return null;
+            }
+
+            return $entry + ['athlete' => $athletes->get($entry['athlete_id'])];
+        };
+
+        return [
+            'year' => $held['year'],
+            'rows' => collect(self::SEASON_LEADER_CATEGORIES)
+                ->map(fn (array $meta, string $category) => [
+                    'label' => $meta['label'],
+                    'away' => $resolve($category, $this->game->away_team_id),
+                    'home' => $resolve($category, $this->game->home_team_id),
+                ])
+                ->filter(fn (array $row) => $row['away'] !== null || $row['home'] !== null)
+                ->values()
+                ->all(),
         ];
+    }
+
+    /**
+     * Each side's leader per category as plain ids and numbers, or null when
+     * neither side has one.
+     *
+     * @param  array<int, int>  $teamIds
+     * @return array{year: int, leaders: array<string, array<int, array{athlete_id: int, yards: float, tds: float}>>}|null
+     */
+    private function readSeasonLeaders(array $teamIds): ?array
+    {
+        $year = AthleteSeasonStat::whereIn('team_id', $teamIds)->max('season_year');
+
+        if ($year === null) {
+            return null;
+        }
+
+        $categories = self::SEASON_LEADER_CATEGORIES;
 
         $rows = AthleteSeasonStat::query()
             ->whereIn('team_id', $teamIds)
@@ -610,32 +699,7 @@ new class extends Component
             }
         }
 
-        $athletes = Athlete::whereIn('id', collect($leaders)->flatten(1)->pluck('athlete_id'))
-            ->get(['id', 'slug', 'display_name', 'short_name', 'headshot_url'])
-            ->keyBy('id');
-
-        $resolve = function (string $category, ?int $teamId) use ($leaders, $athletes): ?array {
-            $entry = $leaders[$category][$teamId] ?? null;
-
-            if ($entry === null) {
-                return null;
-            }
-
-            return $entry + ['athlete' => $athletes->get($entry['athlete_id'])];
-        };
-
-        return [
-            'year' => (int) $year,
-            'rows' => collect($categories)
-                ->map(fn (array $meta, string $category) => [
-                    'label' => $meta['label'],
-                    'away' => $resolve($category, $this->game->away_team_id),
-                    'home' => $resolve($category, $this->game->home_team_id),
-                ])
-                ->filter(fn (array $row) => $row['away'] !== null || $row['home'] !== null)
-                ->values()
-                ->all(),
-        ];
+        return $leaders === [] ? null : ['year' => (int) $year, 'leaders' => $leaders];
     }
 
     /**
