@@ -1,5 +1,8 @@
 <?php
 
+use App\Actions\FollowTeam;
+use App\Jobs\SyncTeamNews;
+use App\Models\Article;
 use App\Models\Athlete;
 use App\Models\AthleteTeamSeason;
 use App\Models\Conference;
@@ -13,8 +16,13 @@ use App\Models\Team;
 use App\Models\TeamLeader;
 use App\Models\TeamSeason;
 use App\Models\TeamSeasonStat;
+use App\Models\User;
 use App\Models\Week;
+use App\Support\AutomatedAgents;
 use App\Support\RecruitingClasses;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 /*
@@ -801,5 +809,77 @@ describe('schedule dates', function () {
             ->set('scope', 'fbs')
             ->set('week', $week->id)
             ->assertDontSee('>9/5<', escape: false);
+    });
+});
+
+describe('the news fetch (CFB-132)', function () {
+    /*
+     * Opening the News tab arms a per-team ESPN news fetch, guarded for half
+     * an hour. Crawlers are most of this screen's traffic, and their views
+     * were what started that clock.
+     */
+    beforeEach(function () {
+        Cache::flush();
+        Queue::fake();
+
+        $this->guard = 'team:news:dispatched:61';
+
+        $article = Article::create(['espn_id' => 7001, 'headline' => 'Dawgs land a five-star', 'published_at' => now()]);
+        $article->teams()->attach(61);
+    });
+
+    it('queues nothing for a crawler, stamps nothing, and still shows what we hold', function (string $agent) {
+        Livewire::withQueryParams(['tab' => 'news'])
+            ->withHeaders(['User-Agent' => $agent])
+            ->test('team', ['team' => $this->team])
+            ->assertSet('tab', 'news')
+            ->assertSee('Dawgs land a five-star');
+
+        Queue::assertNotPushed(SyncTeamNews::class);
+
+        // A stamp here would hold back the next person's fetch for 30 minutes.
+        expect(Cache::has($this->guard))->toBeFalse();
+    })->with([
+        'Googlebot' => 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+        'a link unfurler' => 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+        'a plain HTTP client' => 'python-requests/2.32.3',
+        'no user-agent at all' => '',
+    ]);
+
+    it('still queues for a person in a browser, once per guard window', function () {
+        $browser = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15';
+
+        foreach (range(1, 3) as $view) {
+            Livewire::withQueryParams(['tab' => 'news'])
+                ->withHeaders(['User-Agent' => $browser])
+                ->test('team', ['team' => $this->team]);
+        }
+
+        Queue::assertPushed(SyncTeamNews::class, 1);
+        Queue::assertPushed(SyncTeamNews::class, fn (SyncTeamNews $job) => $job->teamId === 61);
+        expect(Cache::has($this->guard))->toBeTrue();
+    });
+
+    it('lets a person through after a crawler has already been', function () {
+        Livewire::withQueryParams(['tab' => 'news'])
+            ->withHeaders(['User-Agent' => 'Googlebot/2.1'])
+            ->test('team', ['team' => $this->team]);
+
+        // withHeaders() persists on the manager for the rest of the test, so
+        // the browser has to say who it is rather than inherit Googlebot.
+        Livewire::withQueryParams(['tab' => 'news'])
+            ->withHeaders(['User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/132.0'])
+            ->test('team', ['team' => $this->team]);
+
+        Queue::assertPushed(SyncTeamNews::class, 1);
+    });
+
+    it('leaves the follow path alone: following still fetches, whatever the agent', function () {
+        $this->app->instance('request', Request::create('/', server: ['HTTP_USER_AGENT' => 'curl/8.7.1']));
+        expect(AutomatedAgents::isPerson(request()))->toBeFalse();
+
+        app(FollowTeam::class)->handle(User::factory()->create(), $this->team);
+
+        Queue::assertPushed(SyncTeamNews::class, fn (SyncTeamNews $job) => $job->teamId === 61);
     });
 });
