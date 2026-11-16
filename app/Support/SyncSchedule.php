@@ -3,11 +3,14 @@
 namespace App\Support;
 
 use App\Models\FeedRun;
+use Carbon\CarbonImmutable;
 use Cron\CronExpression;
+use DateTimeInterface;
 use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 /**
@@ -49,17 +52,40 @@ class SyncSchedule
     private const REPORTED = ['cfb:', 'pickem:'];
 
     /**
+     * How many of a shared entry's own due moments the ledger is searched
+     * across for its run. Overdue only needs two; the rest is so a row that
+     * missed one pass still shows the pass before it.
+     */
+    private const SHARED_LOOKBACK = 4;
+
+    /**
      * @return list<array{
      *     name: string, cadence: string, tracked: ?string, gated: bool,
-     *     run: ?FeedRun, overdue: bool,
+     *     shared: bool, run: ?FeedRun, overdue: bool,
      * }>
      */
     public function tasks(): array
     {
-        return collect($this->events())
-            ->map(fn (Event $event) => $this->task($event))
+        $entries = collect($this->events())
+            ->map(fn (Event $event) => $this->entry($event))
             ->filter()
             ->values()
+            ->all();
+
+        $runs = $this->runs($entries);
+
+        $sharing = collect($entries)->pluck('tracked')->filter()->countBy();
+
+        return collect($entries)
+            ->map(fn (array $entry, int $index) => [
+                'name' => $entry['name'],
+                'cadence' => $this->cadence($entry['event']),
+                'tracked' => $entry['tracked'],
+                'gated' => $entry['gated'],
+                'shared' => $entry['tracked'] !== null && $sharing[$entry['tracked']] > 1,
+                'run' => $runs[$index],
+                'overdue' => ! $entry['gated'] && $entry['tracked'] !== null && $this->overdue($entry['event'], $runs[$index]),
+            ])
             ->all();
     }
 
@@ -91,12 +117,9 @@ class SyncSchedule
     }
 
     /**
-     * @return array{
-     *     name: string, cadence: string, tracked: ?string, gated: bool,
-     *     run: ?FeedRun, overdue: bool,
-     * }|null
+     * @return array{event: Event, name: string, tracked: ?string, gated: bool}|null
      */
-    private function task(Event $event): ?array
+    private function entry(Event $event): ?array
     {
         $name = $this->displayName($event);
 
@@ -104,22 +127,118 @@ class SyncSchedule
             return null;
         }
 
-        $tracked = $this->ledgerKey($name);
-        $run = $tracked !== null ? FeedRun::latestFor($tracked) : null;
-
-        // The season gates are pure month checks and the overlap mutex is a
-        // cache read, so evaluating the filters is safe — and it is what
-        // stops August flagging every offseason-gated task as overdue.
-        $gated = ! $event->filtersPass(app());
-
         return [
+            'event' => $event,
             'name' => $name,
-            'cadence' => $this->cadence($event),
-            'tracked' => $tracked,
-            'gated' => $gated,
-            'run' => $run,
-            'overdue' => ! $gated && $tracked !== null && $this->overdue($event, $run),
+            'tracked' => $this->ledgerKey($name),
+            // The season gates are pure month checks and the overlap mutex is a
+            // cache read, so evaluating the filters is safe — and it is what
+            // stops August flagging every offseason-gated task as overdue.
+            'gated' => ! $event->filtersPass(app()),
         ];
+    }
+
+    /**
+     * Each entry's OWN last run, by index — never a sibling's.
+     *
+     * A ledger key belongs to a COMMAND, and the schedule runs some commands
+     * from several entries: predictors on Wednesday, Thursday and Saturday,
+     * the drain on an in-season and an off-season cadence, the current games
+     * tier on Tue/Wed and Thu–Sun. Reading `latestFor()` per entry handed
+     * every one of them the same row, so the Thursday predictors pass
+     * reported complete at Saturday 08:00 — and a Thursday pass that had
+     * stopped would never have looked overdue.
+     *
+     * So a shared key's recent runs are dealt out instead: each run belongs
+     * to the entry that came due most recently before it started, the
+     * ungated one winning a tie (06:00 is due for both the hourly and the
+     * six-hourly news sync, and only one of them is on). An entry that owns
+     * no run in its last few due moments gets NULL — no evidence is no
+     * evidence, and a sibling's stamp is not evidence.
+     *
+     * @param  list<array{event: Event, name: string, tracked: ?string, gated: bool}>  $entries
+     * @return array<int, ?FeedRun>
+     */
+    private function runs(array $entries): array
+    {
+        $runs = array_fill(0, count($entries), null);
+
+        $groups = collect($entries)
+            ->filter(fn (array $entry) => $entry['tracked'] !== null)
+            ->groupBy(fn (array $entry) => $entry['tracked'], preserveKeys: true);
+
+        foreach ($groups as $key => $group) {
+            if ($group->count() === 1) {
+                $runs[$group->keys()->first()] = FeedRun::latestFor($key);
+
+                continue;
+            }
+
+            foreach ($this->recentRuns($key, $group) as $run) {
+                $owner = $this->owner($group, $run);
+
+                $runs[$owner] ??= $run;
+            }
+        }
+
+        return $runs;
+    }
+
+    /**
+     * A shared key's runs, newest first, back to the earliest of its
+     * ungated entries' last few due moments (all entries', when every one is
+     * gated). Bounded by the cadences rather than a row count, so the five-
+     * minute drain cannot crowd a slower sibling out of the window.
+     *
+     * @param  Collection<int, array{event: Event, name: string, tracked: ?string, gated: bool}>  $group
+     * @return Collection<int, FeedRun>
+     */
+    private function recentRuns(string $key, Collection $group): Collection
+    {
+        $judged = $group->reject(fn (array $entry) => $entry['gated']);
+
+        $since = ($judged->isEmpty() ? $group : $judged)
+            ->map(fn (array $entry) => $this->dueBefore($entry['event'], now(), self::SHARED_LOOKBACK - 1, allowCurrent: false))
+            ->min();
+
+        return FeedRun::where('command', $key)
+            ->where('started_at', '>=', $since)
+            ->orderByDesc('started_at')
+            ->get();
+    }
+
+    /**
+     * The index of the entry whose most recent due moment at or before the
+     * run's start is the latest — the pass that run was. Ties go to an
+     * ungated entry, then to schedule order.
+     *
+     * @param  Collection<int, array{event: Event, name: string, tracked: ?string, gated: bool}>  $group
+     */
+    private function owner(Collection $group, FeedRun $run): int
+    {
+        return $group
+            ->map(fn (array $entry, int $index) => [
+                'index' => $index,
+                'due' => $this->dueBefore($entry['event'], $run->started_at, 0, allowCurrent: true)->getTimestamp(),
+                'gated' => $entry['gated'],
+            ])
+            ->sortBy([['due', 'desc'], ['gated', 'asc'], ['index', 'asc']])
+            ->first()['index'];
+    }
+
+    /** The event's nth most recent due moment before (or at) the given time. */
+    private function dueBefore(Event $event, DateTimeInterface $at, int $nth, bool $allowCurrent): CarbonImmutable
+    {
+        $timezone = $event->timezone ?? config('app.timezone');
+
+        $due = (new CronExpression($event->expression))->getPreviousRunDate(
+            CarbonImmutable::instance($at)->setTimezone($timezone),
+            nth: $nth,
+            allowCurrentDate: $allowCurrent,
+            timeZone: $timezone,
+        );
+
+        return CarbonImmutable::instance($due);
     }
 
     /** The artisan invocation without the binary prefix, or the closure's name. */
@@ -155,7 +274,9 @@ class SyncSchedule
             str_starts_with($command, 'cfb:games') => 'games:'.($option('tier') ?? 'current'),
             str_starts_with($command, 'cfb:summaries:live') => 'summaries:live',
             str_starts_with($command, 'cfb:summaries') => 'summaries',
-            str_starts_with($command, 'cfb:sync') => 'sync:'.($option('only') ?? 'all'),
+            // `--year=next` is a different class from `--year=current`, and the
+            // command writes it under its own key — see SyncSeasonCommand.
+            str_starts_with($command, 'cfb:sync') => 'sync:'.($option('only') ?? 'all').($option('year') === 'next' ? ':next' : ''),
             str_starts_with($command, 'cfb:players') => 'players:'.($option('only') ?? 'all'),
             str_starts_with($command, 'cfb:coaches') => 'coaches',
             str_starts_with($command, 'cfb:aggregate') => 'aggregate',
@@ -179,7 +300,9 @@ class SyncSchedule
              * anywhere.
              */
             str_starts_with($command, 'cfb:activity-drain') => 'activity:drain',
-            str_starts_with($command, 'cfb:activity-rollup') => 'activity:rollup',
+            // The hourly `--today` pass writes its own key, or the daily
+            // 04:56 run reads as its last run all day.
+            str_starts_with($command, 'cfb:activity-rollup') => str_contains($command, '--today') ? 'activity:rollup:today' : 'activity:rollup',
             str_starts_with($command, 'cfb:gameday') => 'gameday',
             /*
              * ALL FOUR pick'em sweeps write rows now. Three of them did not,
@@ -261,10 +384,7 @@ class SyncSchedule
      */
     private function overdue(Event $event, ?FeedRun $run): bool
     {
-        $cron = new CronExpression($event->expression);
-        $timezone = $event->timezone ?? config('app.timezone');
-
-        $previous = $cron->getPreviousRunDate(now($timezone), nth: 1, allowCurrentDate: false, timeZone: $timezone);
+        $previous = $this->dueBefore($event, now(), 1, allowCurrent: false);
 
         return $run === null || $run->started_at->lt($previous);
     }

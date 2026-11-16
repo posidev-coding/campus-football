@@ -131,7 +131,7 @@ describe('no user ever reaches the payload', function () {
         $task = telemetry()['schedule'][0];
 
         expect(array_keys($task))->toBe([
-            'name', 'cadence', 'gated', 'overdue', 'last_status', 'last_run_at',
+            'name', 'cadence', 'gated', 'overdue', 'shared', 'last_status', 'last_run_at',
         ]);
     });
 });
