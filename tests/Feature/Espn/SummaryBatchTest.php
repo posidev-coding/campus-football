@@ -330,3 +330,131 @@ it('passes the job straight through when there is allowance left', function () {
 
     expect($reached)->toBeTrue();
 });
+
+describe('Summaries ESPN cannot answer', function () {
+    /*
+     * A summary row is written only when ESPN answers, so a completed game it
+     * never answered matched `--missing` on every run, forever, at one 544 KB
+     * request each. The attempt is recorded on the GAME — never as an empty
+     * summary, which every screen reading one would take for a box score.
+     */
+    beforeEach(function () {
+        // What ESPN sends for a game it has no summary for: EspnClient maps
+        // the 404 to null, and the sync stores nothing.
+        Http::fake(['*' => Http::response('', 404)]);
+
+        $this->unanswered = $this->games->first();
+    });
+
+    /**
+     * The ids the next nightly `--missing` run would queue.
+     *
+     * @return list<int>
+     */
+    function queuedSummaryIds(string $flags = ''): array
+    {
+        Bus::fake();
+
+        test()->artisan(trim('cfb:summaries --year=2025 '.$flags))->assertSuccessful();
+
+        $ids = [];
+
+        Bus::assertBatched(function ($batch) use (&$ids) {
+            $ids = $batch->jobs->map(fn (FetchGameSummary $job) => $job->gameId)->sort()->values()->all();
+
+            return true;
+        });
+
+        return $ids;
+    }
+
+    it('records an empty answer as an attempt, never as a summary', function () {
+        (new FetchGameSummary($this->unanswered->id, force: true))->handle(app(SyncGameSummary::class));
+
+        $game = $this->unanswered->fresh();
+
+        expect(GameSummary::whereKey($game->id)->exists())->toBeFalse()
+            ->and($game->summary_attempts)->toBe(1)
+            ->and($game->summary_attempted_at->equalTo(now()))->toBeTrue();
+    });
+
+    it('leaves the game out of the very next --missing run', function () {
+        (new FetchGameSummary($this->unanswered->id, force: true))->handle(app(SyncGameSummary::class));
+
+        expect(queuedSummaryIds())->toBe($this->games->skip(1)->pluck('id')->sort()->values()->all());
+    });
+
+    it('asks again once the short backoff has passed', function () {
+        // The just-final fetch often lands before ESPN has a box score; the
+        // 05:00 net the next morning must still retry it.
+        (new FetchGameSummary($this->unanswered->id, force: true))->handle(app(SyncGameSummary::class));
+
+        $this->travel(Game::SUMMARY_QUICK_RETRY_HOURS)->hours();
+        $this->travel(1)->minute();
+
+        expect(queuedSummaryIds())->toContain($this->unanswered->id);
+    });
+
+    it('backs off to the slow clock after the quick attempts, without giving up', function () {
+        $sync = app(SyncGameSummary::class);
+
+        foreach (range(1, Game::SUMMARY_QUICK_ATTEMPTS) as $night) {
+            (new FetchGameSummary($this->unanswered->id, force: true))->handle($sync);
+            $this->travel(1)->day();
+        }
+
+        expect($this->unanswered->fresh()->summary_attempts)->toBe(Game::SUMMARY_QUICK_ATTEMPTS)
+            // A day after the last miss is no longer enough...
+            ->and(queuedSummaryIds())->not->toContain($this->unanswered->id);
+
+        // ...but ESPN does backfill late, so a week later it is asked again.
+        $this->travel(Game::SUMMARY_SLOW_RETRY_DAYS)->days();
+
+        expect(queuedSummaryIds())->toContain($this->unanswered->id);
+    });
+
+    it('lets --force ask regardless of the backoff', function () {
+        (new FetchGameSummary($this->unanswered->id, force: true))->handle(app(SyncGameSummary::class));
+
+        expect(queuedSummaryIds('--force'))->toContain($this->unanswered->id);
+    });
+
+    it('records the miss on the in-process path too', function () {
+        $this->artisan('cfb:summaries --now --year=2025')->assertSuccessful();
+
+        expect(Game::whereIn('id', $this->games->pluck('id'))->pluck('summary_attempts')->all())
+            ->toBe([1, 1, 1])
+            ->and(GameSummary::count())->toBe(0);
+
+        Http::assertSentCount(3);
+
+        // And the immediate re-run spends nothing.
+        $this->artisan('cfb:summaries --now --year=2025')
+            ->expectsOutputToContain('Nothing to sync')
+            ->assertSuccessful();
+
+        Http::assertSentCount(3);
+    });
+
+    it('records nothing for a live game, which the sweep polls every two minutes', function () {
+        $this->unanswered->forceFill(['completed' => false, 'status' => 'in'])->save();
+
+        (new FetchGameSummary($this->unanswered->id, force: true))->handle(app(SyncGameSummary::class));
+
+        expect($this->unanswered->fresh())
+            ->summary_attempts->toBe(0)
+            ->summary_attempted_at->toBeNull();
+    });
+});
+
+it('records no summary attempt when ESPN answers', function () {
+    Http::fake(['*' => Http::response([
+        'boxscore' => ['teams' => [], 'players' => []],
+        'header' => ['competitions' => [['status' => ['type' => ['completed' => true]]]]],
+    ])]);
+
+    (new FetchGameSummary($this->games->first()->id, force: true))->handle(app(SyncGameSummary::class));
+
+    expect(GameSummary::whereKey($this->games->first()->id)->exists())->toBeTrue()
+        ->and($this->games->first()->fresh()->summary_attempted_at)->toBeNull();
+});

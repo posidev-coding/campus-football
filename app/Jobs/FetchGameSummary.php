@@ -114,6 +114,11 @@ class FetchGameSummary implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $sync->handle($game);
+        // An empty answer is recorded as an attempt, so `cfb:summaries
+        // --missing` can back off a game ESPN will not answer instead of
+        // paying for it every night.
+        if (! $sync->handle($game)) {
+            $game->recordSummaryMiss();
+        }
     }
 }
