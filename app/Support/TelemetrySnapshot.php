@@ -323,21 +323,28 @@ class TelemetrySnapshot
      *
      * Reported, never filled: a zero written now for a day nobody counted is
      * an invented measurement. Today is left out, because it is still in
-     * Redis and is never persisted until tomorrow. Yesterday is listed from
-     * midnight until the 04:55 rollup, and rightly: in that gap its counts
-     * are in neither the table nor today's Redis read, so the total above
-     * leaves them out too.
+     * Redis and is never persisted until tomorrow.
+     *
+     * Yesterday is left out too until `cfb:ux-rollup` has STARTED today:
+     * between midnight and the 04:55 run it is not missing, merely not due,
+     * and listing it would have every snapshot taken overnight file a false
+     * ops finding. Any run started today counts, failed included — a run
+     * that failed has had its chance, and its day is a real gap.
      *
      * @return list<string> Y-m-d, oldest first
      */
     private function funnelMissingDays(): array
     {
         $floor = $this->funnelFloor();
-        $yesterday = CarbonImmutable::now(config('cfb.timezone'))->startOfDay()->subDay();
+        $today = CarbonImmutable::now(config('cfb.timezone'))->startOfDay();
+        $lastRun = FeedRun::latestFor('ux:rollup')?->started_at;
+        $lastDue = $lastRun !== null && $lastRun->gte($today)
+            ? $today->subDay()
+            : $today->subDays(2);
 
         $stated = UxEvent::query()
             ->toBase()
-            ->whereBetween('day', [$floor->toDateString(), $yesterday->toDateString()])
+            ->whereBetween('day', [$floor->toDateString(), $lastDue->toDateString()])
             ->distinct()
             ->pluck('day')
             ->map(fn (mixed $day): string => substr((string) $day, 0, 10))
@@ -345,7 +352,7 @@ class TelemetrySnapshot
 
         $missing = [];
 
-        for ($day = $floor; $day->lte($yesterday); $day = $day->addDay()) {
+        for ($day = $floor; $day->lte($lastDue); $day = $day->addDay()) {
             if (! $stated->has($day->toDateString())) {
                 $missing[] = $day->toDateString();
             }

@@ -340,6 +340,27 @@ describe('what it reports', function () {
         expect(telemetry()['funnel_missing_days'])->toBe([]);
     });
 
+    it('does not list yesterday as missing until a rollup has run today', function () {
+        /*
+         * Between midnight and the 04:55 rollup, yesterday is not missing,
+         * merely not due — and the advisor files a non-empty list as an ops
+         * finding. A run started today, failed included, makes it due.
+         */
+        foreach (['2026-08-29', '2026-08-30', '2026-08-31', '2026-09-01', '2026-09-02', '2026-09-03'] as $day) {
+            UxEvent::create(['day' => $day, 'signal' => 'invite_opened', 'count' => 1]);
+        }
+
+        $this->travelTo('2026-09-04 09:00:00');
+        FeedRun::begin('ux:rollup', null)->complete(10, 0, 5);
+        $this->travelTo('2026-09-05 08:00:00');
+
+        expect(telemetry()['funnel_missing_days'])->toBe([]);
+
+        FeedRun::begin('ux:rollup', null)->fail('Connection refused', 0, 5);
+
+        expect(telemetry()['funnel_missing_days'])->toBe(['2026-09-04']);
+    });
+
     it('says a missing day out loud at the terminal', function () {
         foreach (['2026-08-29', '2026-08-30', '2026-08-31', '2026-09-01', '2026-09-03', '2026-09-04'] as $day) {
             UxEvent::create(['day' => $day, 'signal' => 'invite_opened', 'count' => 1]);

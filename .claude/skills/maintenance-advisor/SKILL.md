@@ -41,7 +41,7 @@ identifiers anywhere:
 | `performance` | Pulse's heaviest entries, grouped by key with a hit count |
 | `funnel` | Seven days of the nine named UX signals |
 | `funnel_since` | The first day each `funnel` total covers — a signal added this week reads zero for every day before it shipped |
-| `funnel_missing_days` | Finished days in the funnel window with no rollup row for ANY signal — days nothing measured, so every `funnel` total leaves them out. Empty when the window is whole |
+| `funnel_missing_days` | Finished days in the funnel window with no rollup row for ANY signal — days nothing measured, so every `funnel` total leaves them out. Yesterday is not listed until `cfb:ux-rollup` has started today (04:55 Eastern). Empty when the window is whole |
 | `traffic` | Views and visitors over 7 days, split guest / member / staff / automated. A guest is identified by session, so a client that never returns the cookie is a new visitor per request: read `guest_views_per_visitor` and `guest_one_view_visitors` before believing `visitors.guest`. `automated` is software that said so in its user-agent, counted, never dropped. Both halves count the same raw page views, so a visitor always has a view; a long window's `since` moves up to the thirty days the raw table holds |
 | `audience` | `actives` (daily, weekly, monthly, stickiness), `adoption` (share of weekly actives per feature), `cohorts` (eight registration weeks; `reached_picks` is arrival, meaning opened /picks or entered a slate, so it is never below `entered`, and `picks_home_seen` is the /picks-home stamp alone), `retention` (weekly grid), `saturday_retention` (`since` plus six `pairs`; a `from` before `since` is `active: null`, and a `to` before `since` or not yet over is `retained`/`share: null`, never 0) |
 | `routes` | 28 days of route popularity — `top` by views and visitors, `quiet` for the screens nobody opens |
@@ -177,7 +177,9 @@ non-negotiables that most often make a proposal wrong here:
   filed as the wizard losing everybody. Compare per day, or wait.
 - **Read `funnel_since` beside `funnel_missing_days`.** The rollup states every
   signal on every day it reads, zero included, so a day with no row at all was
-  never measured. Unstated days at the start of the window push every signal's
+  never measured. A quiet day is stated as zeros only when the clickstream
+  proves Redis was taking writes that day; a day the recorder silently could
+  not write to stays missing. Unstated days at the start of the window push every signal's
   `since` forward together, which looks exactly like ten signals shipping on
   one morning. A non-empty list is an ops finding about the rollup, not a
   product finding about the funnel, and a day on it is never a zero.
