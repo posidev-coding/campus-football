@@ -6,6 +6,7 @@ use App\Enums\ActivityKind;
 use App\Jobs\ShipActivityBatch;
 use App\Models\ActivityEvent;
 use App\Models\User;
+use App\Support\AutomatedAgents;
 use App\Support\PipelinesLogHandler;
 use App\Support\Release;
 use Carbon\CarbonImmutable;
@@ -88,13 +89,6 @@ class RecordActivity
      * guest's talk) to another one. Only the screen knows where it landed.
      */
     public const FACET_ATTRIBUTE = 'activity.facet';
-
-    /**
-     * User-agents that announce software rather than a person: search and AI
-     * crawlers, chat and social link unfurlers, uptime monitors, headless
-     * browsers and plain HTTP clients.
-     */
-    private const AUTOMATED_AGENTS = '/bot\b|bot\/|crawl|spider|slurp|facebookexternalhit|embedly|preview|whatsapp|headless|lighthouse|pingdom|uptime|monitor|curl\/|wget\/|python-requests|python-urllib|go-http-client|okhttp|axios\/|node-fetch|java\/|libwww|httpclient/i';
 
     /** The widest and narrowest client width worth believing. */
     private const MIN_WIDTH = 200;
@@ -320,28 +314,11 @@ class RecordActivity
     public static function audience(?User $user, ?Request $request = null): int
     {
         return match (true) {
-            $user === null && $request !== null && self::isAutomated($request) => ActivityEvent::AUTOMATED,
+            $user === null && $request !== null && AutomatedAgents::matches($request) => ActivityEvent::AUTOMATED,
             $user === null => ActivityEvent::GUEST,
             $user->isAdmin() => ActivityEvent::STAFF,
             default => ActivityEvent::MEMBER,
         };
-    }
-
-    /**
-     * Does this client say it is software?
-     *
-     * A client with no user-agent at all, or one that names a crawler, an
-     * unfurler, a monitor or an HTTP library. None of them keep the session
-     * cookie, so without this each request was a new guest "visitor". A
-     * matching list, not a verdict: a bot that dresses as a browser stays a
-     * guest, which is why the traffic section also publishes how many guest
-     * visitors made exactly one request.
-     */
-    private static function isAutomated(Request $request): bool
-    {
-        $agent = trim((string) $request->userAgent());
-
-        return $agent === '' || preg_match(self::AUTOMATED_AGENTS, $agent) === 1;
     }
 
     /**
