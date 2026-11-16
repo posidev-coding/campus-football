@@ -110,6 +110,17 @@ describe('daily actives', function () {
             ->assertSee('Today has not been rolled yet');
     });
 
+    it('says off season rather than calling a pass that never runs late', function () {
+        $this->travelTo('2027-03-10 17:00:00'); // Wed Mar 10, 12:00 ET
+
+        Livewire::actingAs($this->admin)
+            ->test(ActivesStats::class)
+            ->assertOk()
+            ->assertSee('no data')
+            ->assertSee('Off season — today is counted overnight, not hourly')
+            ->assertDontSee('Today has not been rolled yet');
+    });
+
     it('prints the count once today has been rolled, with the time it covers', function () {
         FeedRun::begin(ActivityRollup::TODAY_LEDGER, null)->complete(1, 0, 5); // 14:00 ET
 

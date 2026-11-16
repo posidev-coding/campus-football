@@ -491,3 +491,15 @@ it('speaks kickoff in exactly three named styles, ET, null for TBD', function ()
         ->and($game->kickoffLabel('date'))->toBe('Sat, Sep 5 · 7:30pm')
         ->and(Game::factory()->make(['kickoff_at' => null, 'season_id' => $this->regular->id])->kickoffLabel('day'))->toBeNull();
 });
+
+it('answers the schedule\'s season by league month, at its edges', function () {
+    /*
+     * The month the SCHEDULE reads, in league time: 22:00 ET on Jan 31 is
+     * already February in UTC, and still the season here. routes/console.php
+     * gates on this and the app reads it to explain a pass that is not due.
+     */
+    expect(CfbCalendar::scheduledInSeason(CarbonImmutable::parse('2027-02-01 03:00:00', 'UTC')))->toBeTrue()
+        ->and(CfbCalendar::scheduledInSeason(CarbonImmutable::parse('2027-02-01 05:00:00', 'UTC')))->toBeFalse()
+        ->and(CfbCalendar::scheduledInSeason(CarbonImmutable::parse('2026-07-31 12:00:00', 'UTC')))->toBeFalse()
+        ->and(CfbCalendar::scheduledInSeason(CarbonImmutable::parse('2026-08-01 12:00:00', 'UTC')))->toBeTrue();
+});

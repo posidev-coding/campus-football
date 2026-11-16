@@ -38,13 +38,16 @@ class ActivesStats extends BaseWidget
         $daily = $this->dailyTrend();
 
         return [
-            // Null until the hourly pass has rolled today, and all through
-            // the 03:00-08:00 ET gap it sleeps in — "not rolled" is not
-            // "nobody came", so it never prints as 0.
+            // Null until the hourly pass has rolled today, all through the
+            // 03:00-08:00 ET gap it sleeps in, and all day off season, when
+            // it does not run — "not rolled" is not "nobody came", so it
+            // never prints as 0.
             Stat::make('Daily actives', $actives['dau'] === null ? 'no data' : (string) $actives['dau'])
-                ->description($actives['dau'] === null
-                    ? 'Today has not been rolled yet'.($actives['dau_as_of'] === null ? '' : ' — last rolled '.CarbonImmutable::parse($actives['dau_as_of'])->format('D g:i A'))
-                    : 'Today so far, as of '.CarbonImmutable::parse($actives['dau_as_of'])->format('g:i A'))
+                ->description(match (true) {
+                    $actives['dau'] !== null => 'Today so far, as of '.CarbonImmutable::parse($actives['dau_as_of'])->format('g:i A'),
+                    ! $actives['dau_hourly'] => 'Off season — today is counted overnight, not hourly',
+                    default => 'Today has not been rolled yet'.($actives['dau_as_of'] === null ? '' : ' — last rolled '.CarbonImmutable::parse($actives['dau_as_of'])->format('D g:i A')),
+                })
                 ->chart($daily)
                 ->color($actives['dau'] === null ? 'gray' : 'success'),
 

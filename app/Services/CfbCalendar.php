@@ -54,6 +54,29 @@ class CfbCalendar
     private const CACHE_TTL = 900;
 
     /**
+     * The months the SCHEDULE runs at its season cadence: August through
+     * January, league time.
+     *
+     * A month check rather than phase(), on purpose: routes/console.php reads
+     * it on every scheduler tick, and the file must never touch the database
+     * while it loads. It lives here rather than as a closure in that file so
+     * the app can ask it too — the hourly activity rollup is gated on it, and
+     * a reader that cannot ask reads a pass that was never due as one that
+     * failed to run.
+     *
+     * @var list<int>
+     */
+    public const SCHEDULED_MONTHS = [8, 9, 10, 11, 12, 1];
+
+    /** Whether the schedule is on its in-season cadence at the given instant. */
+    public static function scheduledInSeason(?CarbonImmutable $at = null): bool
+    {
+        $at = ($at ?? CarbonImmutable::now())->setTimezone(config('cfb.timezone'));
+
+        return in_array($at->month, self::SCHEDULED_MONTHS, true);
+    }
+
+    /**
      * Translate ESPN's season type into a phase a person would recognise.
      *
      * This translation exists because ESPN's type names are misleading.

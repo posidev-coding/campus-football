@@ -585,6 +585,14 @@ describe('daily actives at the terminal', function () {
         expect(Artisan::output())->toMatch('/today \(2026-09-05\)\s+no data\s+as of never rolled/');
     });
 
+    it('says off season rather than never rolled when the hourly pass is not due', function () {
+        $this->travelTo('2027-03-10 17:00:00'); // Wed Mar 10, 12:00 ET
+
+        Artisan::call('cfb:telemetry');
+
+        expect(Artisan::output())->toMatch('/today \(2027-03-10\)\s+no data\s+off season, counted overnight/');
+    });
+
     it('prints the count beside the instant it was rolled', function () {
         FeedRun::begin('activity:rollup:today', null)->complete(1, 0, 5); // 14:00 ET
         UserDay::factory()->create(['user_id' => User::factory(), 'day' => '2026-09-05']);
