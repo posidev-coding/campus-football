@@ -161,8 +161,9 @@
                                                 <span class="text-stat font-medium">
                                                     {{ $row->kickoffLabel('time') }}
                                                 </span>
-                                                @if ($row->broadcasts)
-                                                    <x-network-logo :network="$row->broadcasts[0]" class="truncate text-micro text-zinc-400" />
+                                                @php($network = App\Support\Networks::names($row->broadcasts)[0] ?? null)
+                                                @if ($network !== null)
+                                                    <x-network-logo :network="$network" class="truncate text-micro text-zinc-400" />
                                                 @endif
                                             @endif
                                         </span>

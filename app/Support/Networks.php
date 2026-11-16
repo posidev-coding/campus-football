@@ -42,6 +42,28 @@ class Networks
     }
 
     /**
+     * The network names a `games.broadcasts` value actually holds, in order —
+     * the one read every caller hands to `x-network-logo`.
+     *
+     * The column is whatever ESPN put in `names[]`, so a null, a blank or a
+     * nested array is skipped here, never passed on to `mark()` and never
+     * swapped for a stand-in label. An empty list means nobody named a
+     * network, and the caller renders nothing.
+     *
+     * @param  array<array-key, mixed>|null  $broadcasts
+     * @return list<string>
+     */
+    public static function names(?array $broadcasts): array
+    {
+        return collect($broadcasts ?? [])
+            ->flatten()
+            ->filter(fn (mixed $name): bool => is_string($name) && trim($name) !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
      * @return array<string, array{logo: string, logo_dark: ?string}>
      */
     public static function all(): array

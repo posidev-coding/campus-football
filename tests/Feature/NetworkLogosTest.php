@@ -10,6 +10,7 @@ use App\Models\Week;
 use App\Services\Espn\Sync\SyncGames;
 use App\Support\Networks;
 use App\Support\Scope;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -212,4 +213,48 @@ it('wears the mark on a game card, and the name where ESPN ships none, off one r
         ->not->toContain('alt="FOX"')
         // Three cards, one map.
         ->and($reads)->toBe(1);
+});
+
+it('stores only the network names ESPN actually spelled', function () {
+    // A null or blank entry in names[] is ESPN naming nothing — skipped,
+    // never written through for x-network-logo to choke on.
+    Queue::fake();
+
+    Http::fake(['*scoreboard*' => Http::response(['events' => [
+        networkScoreboardEvent(401, [null, '', '  ', ['ESPN'], 7, 'ESPN'], []),
+    ]])]);
+
+    app(SyncGames::class)->week($this->week);
+
+    expect(Game::query()->find(401)->broadcasts)->toBe(['ESPN']);
+});
+
+it('stores no broadcasts at all when ESPN named no usable network', function () {
+    // Null, not [] and not a placeholder label: a network nobody named is no data.
+    Queue::fake();
+
+    Http::fake(['*scoreboard*' => Http::response(['events' => [
+        networkScoreboardEvent(401, [null, '', '   '], []),
+    ]])]);
+
+    app(SyncGames::class)->week($this->week);
+
+    expect(Game::query()->find(401))->not->toBeNull()
+        ->and(Game::query()->find(401)->getRawOriginal('broadcasts'))->toBeNull();
+});
+
+it('renders nothing for a network that is not a name, rather than throwing', function (mixed $network) {
+    // The backstop behind Networks::names(): mark() stays a strict string,
+    // so the next caller that hands over a raw element gets an empty render.
+    expect(trim(Blade::render('<x-network-logo :network="$network" />', ['network' => $network])))->toBe('');
+})->with([
+    'null' => [null],
+    'blank' => ['  '],
+    'a nested array' => [['ESPN']],
+]);
+
+it('reads the usable names out of a broadcasts column, in order', function () {
+    expect(Networks::names([null, 'ESPN', '', ['ABC', null], 'ESPN', 7]))->toBe(['ESPN', 'ABC'])
+        ->and(Networks::names([1 => 'FOX']))->toBe(['FOX'])
+        ->and(Networks::names(null))->toBe([]);
 });
