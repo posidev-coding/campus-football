@@ -19,9 +19,12 @@ use Throwable;
 trait TracksFeedRun
 {
     /**
-     * @param  Closure(): (int|array{records: int, batch_id: ?string})  $work
-     *                                                                         Returns the records written, or ['records' => …, 'batch_id' => …]
-     *                                                                         for a fan-out command whose real work drains through a batch.
+     * @param  Closure(): (int|array{records: int, batch_id?: ?string, error?: ?string})  $work
+     *                                                                                           Returns the records written, or ['records' => …, 'batch_id' => …]
+     *                                                                                           for a fan-out command whose real work drains through a batch.
+     *                                                                                           An `error` on a run that still completed is a PARTIAL failure —
+     *                                                                                           some units of a fan-out failed and the rest landed — kept on the
+     *                                                                                           row so it outlives the process.
      */
     protected function trackRun(string $command, ?int $year, Closure $work): int
     {
@@ -52,6 +55,7 @@ trait TracksFeedRun
             $espn->callCount(),
             (int) ((microtime(true) - $started) * 1000),
             is_array($result) ? ($result['batch_id'] ?? null) : null,
+            is_array($result) ? ($result['error'] ?? null) : null,
         );
 
         return $records;

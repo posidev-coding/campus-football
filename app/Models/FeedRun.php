@@ -72,7 +72,12 @@ class FeedRun extends Model
         ]);
     }
 
-    public function complete(int $records, int $requests, int $durationMs, ?string $batchId = null): void
+    /**
+     * A run that finished. `$error` is for a PARTIAL failure: a fan-out where
+     * some units threw and the rest landed, so the run did its job but the
+     * casualties still need a record that outlives the process.
+     */
+    public function complete(int $records, int $requests, int $durationMs, ?string $batchId = null, ?string $error = null): void
     {
         $this->update([
             'status' => self::COMPLETE,
@@ -80,6 +85,7 @@ class FeedRun extends Model
             'requests' => $requests,
             'duration_ms' => $durationMs,
             'batch_id' => $batchId,
+            'error' => $error === null ? null : mb_substr($error, 0, 2000),
             'finished_at' => now(),
         ]);
     }
