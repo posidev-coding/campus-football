@@ -371,6 +371,15 @@ because every mark carries its team's abbreviation. Floors: 2.0 against the
 page, 1.25 between the marks; the tests assert RATIOS, not which hex was
 picked.
 
+The page sets the pair inline as `--chart-away-brand` / `--chart-home-brand`,
+and `chart-pair` maps those onto the `--chart-away` / `--chart-home` the marks
+read. It must never set the read names itself: an inline declaration beats
+every stylesheet rule, so for as long as it did, the dark block never applied
+and Bucknell's navy drew on the near-black card at about 1.1:1 (its "0.3%" in
+the donut was all but invisible). Measured after the fix at 390: both
+percentages read at about 7.5:1. `ChromeConsistencyTest` pins the utility and
+sweeps every Blade for an inline `--chart-away:` / `--chart-home:`.
+
 ## The team page: four tabs, schedule first
 
     Schedule · Roster · Stats · News

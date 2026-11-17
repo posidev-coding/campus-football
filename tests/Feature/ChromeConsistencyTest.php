@@ -95,6 +95,73 @@ it('keeps sr-only text inside the stat-grid that scrolls it', function () {
         .' box and widens the page.');
 });
 
+it('maps the chart pair from its brand colors, and swaps in neutrals under dark', function () {
+    /*
+     * The marks read --chart-away / --chart-home. In light mode those come
+     * from the brand pair the page sets inline; under .dark the utility
+     * replaces them with the zinc/blue pair, the same un-branding as
+     * team-accent. This is the stylesheet half; the sweep below is the page
+     * half, and neither alone keeps dark mode neutral.
+     */
+    $css = file_get_contents(resource_path('css/app.css'));
+
+    expect(preg_match('/@utility chart-pair \{(?<body>.*?)\n\}/s', $css, $utility))->toBe(1)
+        ->and($utility['body'])->toContain('--chart-away: var(--chart-away-brand);')
+        ->and($utility['body'])->toContain('--chart-home: var(--chart-home-brand);')
+        ->and(preg_match('/\.dark & \{(?<dark>[^}]*)\}/', $utility['body'], $dark))->toBe(1)
+        ->and($dark['dark'])->toContain('--chart-away: var(--color-zinc-400);')
+        ->and($dark['dark'])->toContain('--chart-home: var(--color-blue-400);');
+});
+
+it('never sets a chart color inline, where it would beat the dark-mode swap', function () {
+    /*
+     * An inline declaration beats every stylesheet rule, so while the game
+     * page's wrapper set --chart-away and --chart-home in its style
+     * attribute, chart-pair's `.dark &` block never applied. Bucknell @ Pitt
+     * drew navy rings and text on the near-black card, and the away "0.3%"
+     * in the donut sat at roughly 1.1:1. The page sets
+     * --chart-away-brand / --chart-home-brand instead and the utility maps
+     * them, so the dark block has nothing inline to lose to.
+     *
+     * A feature test cannot compute a style, so this holds the source: no
+     * Blade declares the names the marks read, and every chart-pair element
+     * carries both brand colors, or light mode draws in nothing.
+     */
+    $inline = [];
+    $unbranded = [];
+    $callers = 0;
+
+    foreach (bladeViews() as $path => $contents) {
+        if (preg_match('/--chart-(away|home)\s*:/', $contents)) {
+            $inline[] = $path;
+        }
+
+        // Quote-aware, because a Blade echo in an attribute carries `->`.
+        preg_match_all('/<[\w:.-]+\s((?:[^>"]|"[^"]*")*)>/', $contents, $tags);
+
+        foreach ($tags[1] as $attributes) {
+            if (! preg_match('/\bclass="[^"]*(?<![\w-])chart-pair(?![\w-])[^"]*"/', $attributes)) {
+                continue;
+            }
+
+            $callers++;
+
+            preg_match('/\bstyle="([^"]*)"/', $attributes, $style);
+
+            if (! str_contains($style[1] ?? '', '--chart-away-brand:') || ! str_contains($style[1] ?? '', '--chart-home-brand:')) {
+                $unbranded[] = $path;
+            }
+        }
+    }
+
+    expect($callers)->toBeGreaterThan(0, 'no chart-pair element found — the sweep is vacuous')
+        ->and($inline)->toBe([], implode(', ', $inline)
+            .' — sets --chart-away/--chart-home directly, which beats chart-pair\'s'
+            .' dark block. Set --chart-away-brand/--chart-home-brand instead.')
+        ->and($unbranded)->toBe([], implode(', ', $unbranded)
+            .' — a chart-pair element without both brand colors draws nothing in light mode.');
+});
+
 it('never clips a right-aligned flex row, which would cut its label from the left', function () {
     /*
      * `truncate` on a `justify-end` flex row clips the wrong end. The row's
